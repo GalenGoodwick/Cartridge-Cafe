@@ -1,10 +1,11 @@
-// Game Audio — Web Audio API wrapper for sound effects and synthesized tones
+// Game Audio — Web Audio API wrapper for sound effects, synthesized tones, and music
 
 export class GameAudio {
   private ctx: AudioContext | null = null
   private masterGain: GainNode | null = null
   private sounds: Map<string, AudioBuffer> = new Map()
   private masterVolume: number = 1.0
+  private music: { source: AudioBufferSourceNode; gain: GainNode; url: string } | null = null
 
   /** Lazily initialize AudioContext (must be called from user gesture or after first interaction) */
   private ensureContext(): AudioContext {
@@ -75,6 +76,52 @@ export class GameAudio {
     osc.stop(ctx.currentTime + duration + 0.05)
   }
 
+  /** Play a looping music track from a URL (fades in; replaces any current track).
+   *  Buffers are cached per URL, so re-triggering the same track is a no-op. */
+  async playMusic(url: string, opts: { volume?: number; loop?: boolean; fadeSec?: number } = {}): Promise<void> {
+    if (this.music?.url === url) return
+    const ctx = this.ensureContext()
+    const cacheKey = '__music:' + url
+    let buffer = this.sounds.get(cacheKey)
+    if (!buffer) {
+      try {
+        const response = await fetch(url)
+        buffer = await ctx.decodeAudioData(await response.arrayBuffer())
+        this.sounds.set(cacheKey, buffer)
+      } catch (e) {
+        console.warn(`[GameAudio] Failed to load music from ${url}:`, e)
+        return
+      }
+    }
+    this.stopMusic(0.3)
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.loop = opts.loop !== false
+    const gain = ctx.createGain()
+    const vol = Math.max(opts.volume ?? 0.6, 0.001)
+    const fade = opts.fadeSec ?? 0.8
+    gain.gain.setValueAtTime(0.001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + fade)
+    source.connect(gain)
+    gain.connect(this.masterGain!)
+    source.start(0)
+    this.music = { source, gain, url }
+  }
+
+  /** Fade out and stop the current music track */
+  stopMusic(fadeSec: number = 0.5): void {
+    if (!this.music || !this.ctx) return
+    const { source, gain } = this.music
+    this.music = null
+    try {
+      gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), this.ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + fadeSec)
+      source.stop(this.ctx.currentTime + fadeSec + 0.05)
+    } catch {
+      try { source.stop() } catch { /* already stopped */ }
+    }
+  }
+
   /** Set master volume (0-1) */
   setVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume))
@@ -95,6 +142,7 @@ export class GameAudio {
 
   /** Destroy the audio context */
   destroy(): void {
+    this.stopMusic(0.05)
     if (this.ctx) {
       this.ctx.close().catch(() => {})
       this.ctx = null

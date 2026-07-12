@@ -172,6 +172,9 @@ export class FieldSimulation {
       if (snap.radius !== undefined) field.radius = snap.radius
       if (snap.w !== undefined) field.w = snap.w
       if (snap.h !== undefined) field.h = snap.h
+      // Restore interaction flags (scene-shipped backdrops rely on these)
+      if (snap.noHit) field.noHit = true
+      if (snap.noCollide) field.noCollide = true
       // Restore tags
       if (snap.tags?.length) {
         field.tags = [...snap.tags]
@@ -514,6 +517,9 @@ export class FieldSimulation {
     const pairs = this.spatialHash.getPotentialPairs()
 
     for (const [a, b] of pairs) {
+      // Backdrops opt out: a world-sized visual field overlaps everything forever —
+      // collision forces from every body would shove the whole picture around.
+      if (a.noCollide || b.noCollide) continue
       const boundsA = this.boundsCache.get(a.id) || this.getFieldBounds(a.id)
       const boundsB = this.boundsCache.get(b.id) || this.getFieldBounds(b.id)
       if (!boundsA || !boundsB) continue

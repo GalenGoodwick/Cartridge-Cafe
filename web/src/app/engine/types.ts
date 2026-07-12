@@ -104,6 +104,8 @@ export interface Field {
   renderOrder?: number
   /** If true, field renders but doesn't capture mouse clicks (click passes through to fields below) */
   noHit?: boolean
+  /** If true, field is exempt from field-field collision forces (world-sized backdrops) */
+  noCollide?: boolean
 }
 
 /** Drawing tool state */
@@ -225,6 +227,8 @@ export interface FieldSnapshot {
   visualParams?: [number, number, number, number]
   /** If true, field doesn't capture mouse clicks */
   noHit?: boolean
+  /** If true, field is exempt from field-field collision forces */
+  noCollide?: boolean
 }
 
 /** Full world state snapshot (sent via bridge to agents) */

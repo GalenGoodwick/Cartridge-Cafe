@@ -137,6 +137,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const lastPresenceRef = useRef<number>(0)
   const cachedOverlapMasksRef = useRef<Map<string, Uint8Array>>(new Map())
   const renderedSamplesRef = useRef<Map<string, { width: number; height: number; pixels: number[] }>>(new Map())
+  // Hook-initiated room transitions: hooks set worldData.__loadScene = 'Name';
+  // the frame loop consumes it via this ref (assigned before the render loop starts)
+  const loadSceneRef = useRef<((name: string) => void) | null>(null)
 
   // WGSL mods — reusable shader utilities registered by agents
   const wgslModsRef = useRef<Map<string, { id: string; code: string }>>(new Map())
@@ -189,6 +192,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   // Designer sidebar state
   const [terminalOpen, setTerminalOpen] = useState(false)
+  // WebGPU unavailable or lost — show a human answer, not a black void
+  const [gpuFailed, setGpuFailed] = useState(false)
+
   // World mode: the world is just the world — editor chrome hides behind a toggle
   const [chromeVisible, setChromeVisible] = useState(!spaceId && !playScene)
 
@@ -493,17 +499,26 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, refreshSceneList])
 
-  // Play mode: load a saved scene into the local sim and run it
-  const playLoadedRef = useRef(false)
+  // Play mode: load a saved scene into the local sim and run it.
+  // Reacts to playScene changes — the world swaps in place (portal travel).
+  const playLoadedRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!playScene || playLoadedRef.current) return
-    playLoadedRef.current = true
+    if (!playScene || playLoadedRef.current === playScene) return
+    playLoadedRef.current = playScene
 
     const loadPlayScene = async () => {
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
       try {
+        // teardown the previous scene completely — fresh world, fresh state
+        sim.restoreFromSnapshots([])
+        sim.stepHooks.clear()
+        sim.interactionRules = []
+        sim.interactionEffects = []
+        for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
+        frameFingerprintRef.current = ''
+
         // house cartridges ship as static files (CDN, stateless-server-proof);
         // the store API is the fallback for locally saved scenes
         let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
@@ -1001,9 +1016,15 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     let cancelled = false
 
     async function initEngine() {
-    const ok = await renderer.init(canvas!)
+    let ok = await renderer.init(canvas!)
+    if (!ok && !cancelled) {
+      // transient device loss (tab remounts, GPU pressure) — one retry earns a lot
+      await new Promise(r => setTimeout(r, 700))
+      ok = await renderer.init(canvas!)
+    }
     if (!ok || cancelled) {
       console.error('Failed to initialize WebGPU renderer')
+      if (!cancelled) setGpuFailed(true)
       return
     }
 
@@ -1140,15 +1161,21 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (!cancelled) setFields(new Map(sim.fields))
     }
 
+    // Wire hook-initiated scene transitions (handleLoadScene reads live refs, so a
+    // mount-time capture stays valid)
+    loadSceneRef.current = handleLoadScene
+
     // Render loop
     function frame() {
       const now = performance.now()
       // Cap at ~60fps: ProMotion displays otherwise drive the full compute
       // pipeline at 120Hz — double the GPU load (and laptop heat) for no
-      // perceptible gain in a shader-driven scene. A focused window always
-      // gets full rate — watching IS using (spectators give no input). An
-      // unfocused-but-visible window idles at ~10fps; hidden tabs pause free.
-      const minFrameMs = windowFocusedRef.current ? 15 : 100
+      // perceptible gain in a shader-driven scene. Watching IS using, focused
+      // or not — the usual posture is the engine visible beside a chat window,
+      // and a 10fps unfocused throttle read as "the scene is choppy" (Jul 12
+      // 2026, measured: every dropped frame was an unfocused one). Full rate
+      // whenever visible; hidden tabs still pause free via rAF.
+      const minFrameMs = 15
       if (now - lastFrameRef.current < minFrameMs) {
         animFrameRef.current = requestAnimationFrame(frame)
         return
@@ -1162,16 +1189,59 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
       sim.step(dt)
 
-      // Process audio triggers from worldData
-      const playSound = sim.worldData['__play_sound'] as { id?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType } | undefined
-      if (playSound) {
+      // Process audio triggers from worldData (single event or an array per tick)
+      type PlaySoundCmd = { id?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
+      const playSoundRaw = sim.worldData['__play_sound'] as PlaySoundCmd | PlaySoundCmd[] | undefined
+      if (playSoundRaw) {
         delete sim.worldData['__play_sound']
         const audio = audioRef.current
-        if (playSound.id && audio.hasSound(playSound.id)) {
-          audio.play(playSound.id, playSound.volume ?? 1.0, playSound.pitch ?? 1.0)
-        } else if (playSound.frequency) {
-          audio.beep(playSound.frequency, playSound.duration ?? 0.2, playSound.volume ?? 0.5, playSound.type)
+        for (const playSound of Array.isArray(playSoundRaw) ? playSoundRaw : [playSoundRaw]) {
+          if (playSound.id && audio.hasSound(playSound.id)) {
+            audio.play(playSound.id, playSound.volume ?? 1.0, playSound.pitch ?? 1.0)
+          } else if (playSound.frequency) {
+            audio.beep(playSound.frequency, playSound.duration ?? 0.2, playSound.volume ?? 0.5, playSound.type)
+          }
         }
+      }
+
+      // Music: { url, loop?, volume? } starts/switches a track; { stop: true } fades out
+      const playMusic = sim.worldData['__play_music'] as { url?: string; volume?: number; loop?: boolean; stop?: boolean } | undefined
+      if (playMusic) {
+        delete sim.worldData['__play_music']
+        const audio = audioRef.current
+        if (playMusic.stop) audio.stopMusic()
+        else if (playMusic.url) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
+      }
+
+      // Hook-initiated room transition: worldData.__loadScene = 'SceneName' — the
+      // door that actually leads somewhere (Zelda rooms from inside a running scene)
+      const nextScene = sim.worldData['__loadScene']
+      if (typeof nextScene === 'string') {
+        delete sim.worldData['__loadScene']
+        loadSceneRef.current?.(nextScene)
+      }
+
+      // Game saves: __save_game {slot, data} persists; __load_game {slot} answers
+      // into worldData.game_save = { slot, data } for the hook to consume
+      const saveReq = sim.worldData['__save_game'] as { slot?: string; data?: unknown } | undefined
+      if (saveReq && typeof saveReq.slot === 'string') {
+        delete sim.worldData['__save_game']
+        fetch('/api/engine/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot: saveReq.slot, data: saveReq.data ?? null }),
+        }).catch(() => {})
+      }
+      const loadReq = sim.worldData['__load_game'] as { slot?: string } | undefined
+      if (loadReq && typeof loadReq.slot === 'string') {
+        delete sim.worldData['__load_game']
+        fetch(`/api/engine/save?slot=${encodeURIComponent(loadReq.slot)}`)
+          .then(r => r.json())
+          .then(j => {
+            const s = simulationRef.current
+            if (s) s.worldData['game_save'] = { slot: loadReq.slot, data: j?.data ?? null }
+          })
+          .catch(() => {})
       }
 
       // Update HUD overlay from worldData (cached element lookups, no per-frame DOM queries)
@@ -3528,7 +3598,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
 
-          {(spaceId || playScene) && (
+          {spaceId && (
             <button
               onClick={() => setChromeVisible(v => !v)}
               className="absolute bottom-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -3537,12 +3607,29 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             </button>
           )}
 
+          {gpuFailed && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#0c0a09]">
+              <div className="text-center font-mono px-6">
+                <div className="font-serif text-3xl text-amber-50/90 mb-3">the windows are dark</div>
+                <div className="text-sm text-[#c9b896] max-w-md">
+                  these worlds run on WebGPU, and this browser isn&apos;t offering it.
+                  <br /><br />
+                  Chrome or Edge (any recent), or Safari 26+, will light them up.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* HUD overlay — positioned absolutely over the canvas, pointer-events disabled */}
           <div
             ref={hudContainerRef}
             className="absolute inset-0 pointer-events-none z-10 font-mono"
             style={{ fontFamily: 'monospace' }}
           />
+
+          {/* Virtual touch controls — writes the same worldData.key_* the keyboard
+              does, so every cartridge gains touch support unchanged. Touch-only. */}
+          <TouchControls simRef={simulationRef} />
 
           {/* Space breadcrumb — shown when in a child space */}
           {spaceSlug && <SpaceBreadcrumb spaceSlug={spaceSlug} />}
@@ -3951,6 +4038,87 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         </div>
       </div>
       )}
+    </div>
+  )
+}
+/** Virtual touch controls — a left thumb-stick (arrows + WASD) and two action
+ *  buttons (A = space, B = enter) writing the same worldData.key_* the keyboard
+ *  writes, so every existing cartridge gains touch support unchanged.
+ *  Renders only on touch devices; the stick nub is moved via style (no re-renders). */
+function TouchControls({ simRef }: { simRef: { current: FieldSimulation | null } }) {
+  const [isTouch] = useState(() =>
+    typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0))
+  const originRef = useRef<{ x: number; y: number } | null>(null)
+  const nubRef = useRef<HTMLDivElement>(null)
+
+  const setKeys = useCallback((dx: number, dy: number) => {
+    const wd = simRef.current?.worldData
+    if (!wd) return
+    const TH = 14
+    const L = dx < -TH, R = dx > TH, U = dy < -TH, D = dy > TH
+    wd.key_left = L; wd.key_a = L
+    wd.key_right = R; wd.key_d = R
+    wd.key_up = U; wd.key_w = U
+    wd.key_down = D; wd.key_s = D
+  }, [simRef])
+
+  const stickDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    originRef.current = { x: e.clientX, y: e.clientY }
+  }, [])
+  const stickMove = useCallback((e: React.PointerEvent) => {
+    const o = originRef.current
+    if (!o) return
+    const dx = Math.max(-40, Math.min(40, e.clientX - o.x))
+    const dy = Math.max(-40, Math.min(40, e.clientY - o.y))
+    if (nubRef.current) nubRef.current.style.transform = `translate(${dx}px, ${dy}px)`
+    setKeys(dx, dy)
+  }, [setKeys])
+  const stickUp = useCallback(() => {
+    originRef.current = null
+    if (nubRef.current) nubRef.current.style.transform = 'translate(0px, 0px)'
+    setKeys(0, 0)
+  }, [setKeys])
+
+  const btn = useCallback((key: string, down: boolean) => (e: React.PointerEvent) => {
+    e.preventDefault()
+    const wd = simRef.current?.worldData
+    if (wd) wd[key] = down
+  }, [simRef])
+
+  if (!isTouch) return null
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
+      <div
+        className="absolute bottom-8 left-8 w-28 h-28 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
+        style={{ touchAction: 'none' }}
+        onPointerDown={stickDown}
+        onPointerMove={stickMove}
+        onPointerUp={stickUp}
+        onPointerCancel={stickUp}
+      >
+        <div
+          ref={nubRef}
+          className="absolute left-1/2 top-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-white/20 border border-white/30 transition-transform duration-75"
+        />
+      </div>
+      <div className="absolute bottom-10 right-8 flex gap-4 pointer-events-auto">
+        <button
+          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
+          style={{ touchAction: 'none' }}
+          onPointerDown={btn('key_space', true)}
+          onPointerUp={btn('key_space', false)}
+          onPointerCancel={btn('key_space', false)}
+        >A</button>
+        <button
+          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
+          style={{ touchAction: 'none' }}
+          onPointerDown={btn('key_enter', true)}
+          onPointerUp={btn('key_enter', false)}
+          onPointerCancel={btn('key_enter', false)}
+        >B</button>
+      </div>
     </div>
   )
 }

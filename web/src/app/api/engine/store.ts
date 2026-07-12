@@ -726,3 +726,51 @@ export function deleteScene(name: string): boolean {
   if (existed) schedulePersist()
   return existed
 }
+
+// ─── Game Save Slots ───
+// Named progress saves for game cartridges — separate file from the world store
+// so a corrupted world never takes the player's saves with it (and vice versa).
+
+const SAVES_PATH = join(process.cwd(), '.engine-saves.json')
+let gameSaves: Record<string, { data: unknown; savedAt: number }> | null = null
+
+function loadSaves(): Record<string, { data: unknown; savedAt: number }> {
+  if (gameSaves) return gameSaves
+  try {
+    gameSaves = JSON.parse(readFileSync(SAVES_PATH, 'utf-8'))
+  } catch {
+    gameSaves = {}
+  }
+  return gameSaves!
+}
+
+function persistSaves(): void {
+  try { writeFileSync(SAVES_PATH, JSON.stringify(gameSaves ?? {})) } catch { /* disk write is best-effort */ }
+}
+
+/** Write a named game save slot */
+export function saveGameSlot(slot: string, data: unknown): void {
+  const saves = loadSaves()
+  saves[slot] = { data, savedAt: Date.now() }
+  persistSaves()
+}
+
+/** Read a named game save slot */
+export function loadGameSlot(slot: string): unknown | undefined {
+  return loadSaves()[slot]?.data
+}
+
+/** List all save slots with timestamps */
+export function listGameSlots(): Array<{ slot: string; savedAt: number }> {
+  const saves = loadSaves()
+  return Object.keys(saves).map(k => ({ slot: k, savedAt: saves[k].savedAt }))
+}
+
+/** Delete a save slot */
+export function deleteGameSlot(slot: string): boolean {
+  const saves = loadSaves()
+  if (!(slot in saves)) return false
+  delete saves[slot]
+  persistSaves()
+  return true
+}
