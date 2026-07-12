@@ -114,11 +114,21 @@ for (const [id, m] of Object.entries(MAPS)) {
     enemies: ROOM_ENEMIES[id],
     nodes: nodes.map(n => ({ x: n.x, y: n.y, a: n.adj, c: n.cov })) }
 }
+// spawn one hex INSIDE the destination room — arriving ON the destination door
+// hex re-triggers it instantly (teleporter ping-pong, one beep per bounce)
+const HEXDIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]]
+const inwardSpawn = (roomId, hexProp) => {
+  for (const [dq, dr] of HEXDIRS) {
+    const h = rooms[roomId].hexes.find(h => h.q === hexProp.q + dq && h.r === hexProp.r + dr)
+    if (h && (h.l === 0 || h.l === 1)) return h.px
+  }
+  return hexProp.px
+}
 const DOORS = [
-  { room: 1, hex: rooms[1].props.a, to: 2, spawn: rooms[2].props.a, gated: false },
-  { room: 1, hex: rooms[1].props.b, to: 3, spawn: rooms[3].props.b, gated: true },
-  { room: 2, hex: rooms[2].props.a, to: 1, spawn: rooms[1].props.a, gated: false },
-  { room: 3, hex: rooms[3].props.b, to: 1, spawn: rooms[1].props.b, gated: false },
+  { room: 1, hex: rooms[1].props.a, to: 2, spawn: { px: inwardSpawn(2, rooms[2].props.a) }, gated: false },
+  { room: 1, hex: rooms[1].props.b, to: 3, spawn: { px: inwardSpawn(3, rooms[3].props.b) }, gated: true },
+  { room: 2, hex: rooms[2].props.a, to: 1, spawn: { px: inwardSpawn(1, rooms[1].props.a) }, gated: false },
+  { room: 3, hex: rooms[3].props.b, to: 1, spawn: { px: inwardSpawn(1, rooms[1].props.b) }, gated: false },
 ]
 
 const num = v => (Math.round(v * 100) / 100).toFixed(2)
@@ -431,6 +441,35 @@ ${[0, 1, 2].map(i => `  {
   if (anyAlert) { col += vec3f(0.5, 0.02, 0.03) * (0.5 + 0.5 * sin(t * 6.0)) * smoothstep(0.55, 1.0, length(uv)); }
   col += vec3f(1.2, 0.0, 0.0) * uni(24) * smoothstep(0.45, 1.0, length(uv));
 
+  // ── the hand: card UI in SCREEN space (immune to the camera) ──
+  let ps = (uv + vec2f(1.0)) * 256.0;
+  for (var ci = 0; ci < 3; ci++) {
+    var cc = vec3f(2.4, 0.5, 0.3);                                 // fire
+    if (ci == 1) { cc = vec3f(0.5, 1.1, 2.2); }                    // psychic
+    if (ci == 2) { cc = vec3f(0.55, 0.35, 0.95); }                 // shadow
+    let armed = ci < 2 && i32(uni(25) + 0.5) == ci && uni(38) > 0.0;
+    var cy = 474.0;
+    if (armed) { cy = 466.0; }
+    let cp = ps - vec2f(256.0 + (f32(ci) - 1.0) * 64.0, cy);
+    let cd = sdRoundedBox(cp, vec2f(26.0, 17.0), 4.0);
+    if (cd < 0.0) {
+      col = vec3f(0.050, 0.058, 0.078);
+      if (cd > -2.0) { col = cc * select(0.35, 0.8, armed); }      // border
+      // sigils
+      if (ci == 0 && sdBox(rotate(cp + vec2f(0.0, 3.0), 0.785), vec2f(4.5, 4.5)) < 0.0) { col = cc * 0.9; }
+      if (ci == 1 && abs(length(cp + vec2f(0.0, 3.0)) - 5.0) < 1.5) { col = cc * 0.9; }
+      if (ci == 2 && length(cp + vec2f(1.0, 3.0)) < 5.5 && length(cp + vec2f(-2.0, 4.0)) > 4.5) { col = cc * 0.9; }
+      // charge pips
+      var pips = uni(40);
+      if (ci == 1) { pips = uni(41); }
+      if (ci == 2) { pips = uni(6); }
+      for (var pi = 0; pi < 3; pi++) {
+        if (f32(pi) < pips && length(cp - vec2f((f32(pi) - 1.0) * 9.0, -10.0)) < 2.4) { col = cc * 1.2; }
+      }
+    }
+    if (armed) { col += cc * 0.20 * exp(-max(cd, 0.0) * 0.18); }   // armed glow
+  }
+
   return vec4f(col, 1.0);
 }`
 
@@ -474,11 +513,11 @@ try {
     return true
   }
 
-  if (!wd.__eq || wd.__eq.v !== 4) {
-    wd.__eq = { v: 4, loaded: 0, room: 1, node: -1, path: [], moveT: 1, fx: STARTPX[0], fy: STARTPX[1], x: STARTPX[0], y: STARTPX[1],
+  if (!wd.__eq || wd.__eq.v !== 5) {
+    wd.__eq = { v: 5, loaded: 0, room: 1, node: -1, path: [], moveT: 1, fx: STARTPX[0], fy: STARTPX[1], x: STARTPX[0], y: STARTPX[1],
       face: 0.5, hasKey: 0, chest: 0, alarm: 0, hurt: 0, flare: 0, shadow: 0, charges: 3,
       wins: 0, kills: 0, casts: 0, en: null, eff: 0, effCh: EFFECTS.map(e => e.charges), zoneT: 0,
-      camx: STARTPX[0], camy: STARTPX[1] * ${ISY} + ${IYOFF} - 9,
+      camx: STARTPX[0], camy: STARTPX[1] * ${ISY} + ${IYOFF} - 9, doorArm: 1, stepReq: 0,
       ray: { t: 0, ax: 0, ay: 0, bx: 0, by: 0, c: [1, 1, 1] },
       mHeld: 0, spaceHeld: 0, shiftHeld: 0 }
   }
@@ -545,7 +584,7 @@ try {
 
   const sfx = s => { wd.__play_sound = s }
   const roomSwap = (to, spx) => {
-    G.room = to; G.x = spx[0]; G.y = spx[1]; G.node = -1; G.path = []; G.moveT = 1
+    G.room = to; G.x = spx[0]; G.y = spx[1]; G.node = -1; G.path = []; G.moveT = 1; G.doorArm = 0
     G.en = initEnemies(to); G.alarm = 0
     G.effCh = EFFECTS.map(e => e.charges); G.charges = 3
     wd.__save_game = { slot: 'esper', data: { hasKey: G.hasKey, chest: G.chest, wins: G.wins } }
@@ -577,7 +616,14 @@ try {
   if (wd.mouse_down && !G.mHeld) {
     G.mHeld = 1
     const mx0 = wd.mouse_x, my0 = wd.mouse_y
-    if (typeof mx0 === 'number') {
+    if (typeof mx0 === 'number' && my0 > 446) {
+      // the hand: clicks in the bottom strip select cards (screen space)
+      const ci = Math.round((mx0 - 256) / 64) + 1
+      if (ci >= 0 && ci <= 2) {
+        if (ci < 2) { G.eff = ci; G.zoneT = 3.0; sfx({ frequency: 440 + ci * 140, duration: 0.06, volume: 0.2, type: 'sine' }) }
+        else { G.stepReq = 1 }
+      }
+    } else if (typeof mx0 === 'number') {
       const mx = G.camx + (mx0 - 256) / 2
       const my = G.camy + (my0 - 256) / 2
       const gpy = (my - IYOFF) / ISY
@@ -640,8 +686,9 @@ try {
   }
 
   // ── SPACE: shadow step (the shadow controller) ──
-  if (wd.key_space && !G.spaceHeld) {
+  if ((wd.key_space && !G.spaceHeld) || G.stepReq) {
     G.spaceHeld = 1
+    G.stepReq = 0
     if (G.charges > 0) {
       let best = -1, bs = -2
       for (const nb of NODES[G.node] ? NODES[G.node].a : []) {
@@ -662,11 +709,16 @@ try {
   if (!wd.key_space) G.spaceHeld = 0
   G.shadow = Math.max(0, G.shadow - pdt)
 
-  // ── doors trigger continuously — reaching the door hex is enough to leave ──
+  // ── doors trigger continuously, but only once ARMED (armed = you've stepped clear) ──
+  let nearDoor = false
   for (const d of DOORS) {
     if (d.room !== G.room) continue
-    if (Math.hypot(G.x - d.px[0], G.y - d.px[1]) < S * 0.95 && !(d.gated && !G.hasKey)) { roomSwap(d.to, d.spx); break }
+    if (Math.hypot(G.x - d.px[0], G.y - d.px[1]) < S * 0.95) {
+      nearDoor = true
+      if (G.doorArm && !(d.gated && !G.hasKey)) { roomSwap(d.to, d.spx); break }
+    }
   }
+  if (!nearDoor) G.doorArm = 1
   // ── arrivals: key, chest (node-scoped) ──
   if (G.moveT >= 1) {
     if (G.room === 2 && !G.hasKey && Math.hypot(G.x - KEYPX[0], G.y - KEYPX[1]) < S * 0.6) {
@@ -754,7 +806,7 @@ try {
     const e = G.en[i]
     if (e && e.st >= 0) u.push(e.x, e.y, e.f, e.st); else u.push(0, 0, 0, -1)
   }
-  u.push(G.hurt, G.eff, G.camx, G.camy, G.ray.t, G.ray.ax, G.ray.ay, G.ray.bx, G.ray.by, G.ray.c[0], G.ray.c[1], G.ray.c[2], mwx, mwy, G.zoneT, G.casts * 7.13)
+  u.push(G.hurt, G.eff, G.camx, G.camy, G.ray.t, G.ray.ax, G.ray.ay, G.ray.bx, G.ray.by, G.ray.c[0], G.ray.c[1], G.ray.c[2], mwx, mwy, G.zoneT, G.casts * 7.13, G.effCh[0], G.effCh[1])
   wd.gpuUniforms = u
 
   wd.hud = [

@@ -151,6 +151,11 @@ try {
     C.hov[i] += (want - C.hov[i]) * Math.min(1, dt2 * 8)
   }
 
+  if (hovered !== (C.lastHover ?? -1) && typeof window !== 'undefined') {
+    C.lastHover = hovered
+    window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? GAMES[hovered] : null }))
+  }
+
   const down = !!wd.mouse_down
   if (down && !C.prevDown && hovered >= 0 && typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cafe:launch', { detail: GAMES[hovered] }))
