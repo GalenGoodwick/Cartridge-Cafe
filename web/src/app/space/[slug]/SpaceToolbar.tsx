@@ -140,14 +140,14 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
     ? `Connect to my Unity Chant world "${name}":\nPOST commands to ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/bridge\nheader: Authorization: Bearer ${aiToken}\nFull docs: GET ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/guide (markdown). GET the bridge URL returns world state. worldData.player_focus = what I have selected — follow it. Fields are INVISIBLE until given a visualType.`
     : ''
 
-  const btn = 'px-2.5 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/20 text-white/90 transition-colors disabled:opacity-40'
+  const btn = 'brass-tab px-2.5 py-1 text-[10px] disabled:opacity-30'
 
   return (
     <div className="fixed top-14 right-4 z-50 flex flex-col items-end gap-2 font-sans">
       {/* header chip */}
-      <div className="flex items-center gap-2 rounded-lg bg-black/60 backdrop-blur px-3 py-2 border border-white/10">
+      <div className="flex items-center gap-2 rounded-lg bg-[#171009]/80 backdrop-blur px-3 py-2 border border-[#b97a2a]/25">
         <div className="text-sm text-white/90">
-          <span className="font-semibold">{name}</span>
+          <span className="font-display italic text-[#ffdba8]">{name}</span>
           {ownerName && <span className="text-white/50"> · {ownerName}</span>}
           {versionView !== undefined && (
             <span className="ml-2 rounded bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[11px]">save point v{versionView} · read-only</span>
@@ -167,7 +167,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
       </div>
 
       {/* actions */}
-      <div className="flex items-center gap-1.5 rounded-lg bg-black/60 backdrop-blur px-2 py-1.5 border border-white/10">
+      <div className="flex items-center gap-1.5 rounded-lg bg-[#171009]/80 backdrop-blur px-2 py-1.5 border border-[#b97a2a]/25">
         {versionView !== undefined ? (
           <>
             <a href={`/space/${slug}`} className={btn}>Back to live</a>
@@ -209,11 +209,11 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
         )
       })()}
 
-      {msg && <div className="rounded bg-black/70 text-white/90 text-xs px-3 py-1.5 border border-white/10">{msg}</div>}
+      {msg && <div className="rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[10px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
 
       {/* history drawer */}
       {open && (
-        <div className="w-72 max-h-80 overflow-y-auto rounded-lg bg-black/75 backdrop-blur border border-white/10 p-2 space-y-1">
+        <div className="w-72 max-h-80 overflow-y-auto rounded-lg bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-2 space-y-1">
           {versions.length === 0 && <div className="text-xs text-white/50 p-2">No save points yet.</div>}
           {versions.map(v => (
             <div key={v.id} className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-white/5">
@@ -234,7 +234,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
 
       {/* connect-AI panel */}
       {aiOpen && (
-        <div className="w-80 rounded-lg bg-black/80 backdrop-blur border border-white/10 p-3 space-y-2">
+        <div className="w-80 rounded-lg bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-2">
           <div className="text-xs text-white/80 font-medium">Plug an AI into this world</div>
           {aiToken ? (
             <>
@@ -257,7 +257,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
 
       {/* call-a-vote dialog */}
       {flagOpen && (
-        <div className="w-72 rounded-lg bg-black/80 backdrop-blur border border-white/10 p-3 space-y-2">
+        <div className="w-72 rounded-lg bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-2">
           <div className="text-xs text-white/80">
             Open a resolution: the two latest save points become a live-demo ballot and a cell votes.
           </div>

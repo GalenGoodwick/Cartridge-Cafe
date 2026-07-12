@@ -216,3 +216,172 @@ h1, h2, h3, h4, h5, h6 {
 :focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CARTRIDGE.CAFE — the last café at the edge of space
+   Chrome is furniture: brass, amber, steam, grain. Worlds are the
+   light source; everything HTML is what the light falls on.
+   ═══════════════════════════════════════════════════════════════ */
+
+@theme {
+  --font-display: var(--font-display), Georgia, serif;
+
+  --color-void: #0b0908;
+  --color-roast: #171009;
+  --color-flame: #f5b04c;
+  --color-brass: #b97a2a;
+  --color-glow: #ffdba8;
+  --color-steamer: #efe6d8;
+  --color-crema: #c9b896;
+  --color-grounds: #8a7c66;
+  --color-ghost: #7fd8e8;
+}
+
+/* grain + vignette — every chrome page breathes */
+.cafe-room {
+  background:
+    radial-gradient(ellipse 120% 90% at 50% -10%, #1a120a 0%, #0b0908 55%, #060404 100%);
+  position: relative;
+  min-height: 100vh;
+}
+.cafe-room::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+}
+.cafe-room::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(4, 2, 1, 0.55) 100%);
+}
+
+/* the neon sign — hand-bent glass, flickers on once */
+.cafe-sign {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 500;
+  color: var(--color-glow);
+  text-shadow:
+    0 0 6px rgba(245, 176, 76, 0.55),
+    0 0 22px rgba(245, 176, 76, 0.28),
+    0 0 60px rgba(185, 122, 42, 0.18);
+  animation: sign-on 2.2s ease-out 1;
+}
+@keyframes sign-on {
+  0% { opacity: 0; }
+  6% { opacity: 0.9; }
+  9% { opacity: 0.2; }
+  14% { opacity: 1; }
+  19% { opacity: 0.35; }
+  24% { opacity: 1; }
+  62% { opacity: 1; }
+  64% { opacity: 0.75; }
+  66% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+/* steam — two wisps rising off anything warm */
+.cafe-steam {
+  position: relative;
+}
+.cafe-steam::before,
+.cafe-steam::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  width: 8px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(to top, rgba(239, 230, 216, 0.14), transparent 80%);
+  filter: blur(4px);
+  transform-origin: bottom center;
+  animation: steam-rise 3.4s ease-in-out infinite;
+}
+.cafe-steam::before { left: 32%; }
+.cafe-steam::after { left: 58%; animation-delay: 1.7s; animation-duration: 4.1s; }
+@keyframes steam-rise {
+  0% { transform: translateY(6px) scaleY(0.4) rotate(0deg); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(-26px) scaleY(1.15) rotate(6deg); opacity: 0; }
+}
+
+/* a cartridge — the physical object. notched shoulders, label, spine. */
+.cart {
+  clip-path: polygon(0 14px, 14px 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  background: linear-gradient(168deg, #241a10 0%, #171009 58%, #120c07 100%);
+  border: 1px solid rgba(185, 122, 42, 0.22);
+  transition: transform 0.28s cubic-bezier(0.34, 1.4, 0.44, 1), border-color 0.2s, box-shadow 0.28s;
+  box-shadow: 0 1px 0 rgba(255, 219, 168, 0.05) inset, 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+.cart:hover {
+  transform: translateY(-7px) rotate(-0.7deg);
+  border-color: rgba(245, 176, 76, 0.5);
+  box-shadow:
+    0 1px 0 rgba(255, 219, 168, 0.1) inset,
+    0 22px 44px rgba(0, 0, 0, 0.65),
+    0 0 34px rgba(245, 176, 76, 0.09);
+}
+.cart-label {
+  background:
+    linear-gradient(180deg, rgba(255, 219, 168, 0.055), transparent 45%),
+    repeating-linear-gradient(90deg, transparent 0 26px, rgba(255, 219, 168, 0.02) 26px 27px);
+  border-bottom: 1px dashed rgba(185, 122, 42, 0.28);
+}
+.cart-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-flame);
+  box-shadow: 0 0 8px rgba(245, 176, 76, 0.9), 0 0 20px rgba(245, 176, 76, 0.4);
+  animation: led-breathe 2.6s ease-in-out infinite;
+}
+@keyframes led-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.cart-led--cold {
+  background: #3d3126;
+  box-shadow: none;
+  animation: none;
+}
+
+/* the shelf line the carts sit on */
+.shelf-rail {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(185, 122, 42, 0.45) 12%, rgba(185, 122, 42, 0.45) 88%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6), 0 -1px 0 rgba(255, 219, 168, 0.12);
+  border-radius: 999px;
+}
+
+/* brass tab — small interactive chrome (menu strip, toolbar buttons) */
+.brass-tab {
+  font-family: var(--font-mono);
+  letter-spacing: 0.12em;
+  color: rgba(239, 230, 216, 0.62);
+  border: 1px solid rgba(185, 122, 42, 0.0);
+  border-radius: 8px;
+  transition: all 0.18s ease;
+}
+.brass-tab:hover {
+  color: var(--color-glow);
+  border-color: rgba(185, 122, 42, 0.45);
+  background: rgba(245, 176, 76, 0.06);
+  text-shadow: 0 0 12px rgba(245, 176, 76, 0.35);
+}
+
+/* staggered arrival — the room sets itself when you walk in */
+.arrive {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: arrive 0.7s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+@keyframes arrive {
+  to { opacity: 1; transform: translateY(0); }
+}

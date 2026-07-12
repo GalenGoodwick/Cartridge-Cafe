@@ -158,6 +158,7 @@ const EX0: f32 = ${num(X0)};
 const EY0: f32 = ${num(Y0)};
 const ISY: f32 = ${num(ISY)};
 const IYOFF: f32 = ${num(IYOFF)};
+const ZOOM: f32 = 2.0;
 
 fn hex_px(h: vec2i) -> vec2f {
   return vec2f(EX0 + ES * 1.5 * f32(h.x), EY0 + ES * (0.8660254 * f32(h.x) + 1.7320508 * f32(h.y)));
@@ -177,7 +178,7 @@ fn hex_dist(a: vec2i, b: vec2i) -> i32 {
 }
 fn esp_land(room: i32, q: i32, r: i32) -> i32 {
 ${landWGSL}
-  return 2;
+  return 9;
 }
 fn hex_los(a: vec2i, b: vec2i, room: i32) -> f32 {
   let pa = hex_px(a); let pb = hex_px(b);
@@ -188,7 +189,7 @@ fn hex_los(a: vec2i, b: vec2i, room: i32) -> f32 {
     let h = px_hex(mix(pa, pb, f32(i) / f32(n)));
     if (all(h == a) || all(h == b)) { continue; }
     let l = esp_land(room, h.x, h.y);
-    if (l == 1 || l == 2) { return 0.0; }
+    if (l == 1 || l == 2 || l == 9) { return 0.0; }
   }
   return 1.0;
 }
@@ -198,7 +199,9 @@ fn iso_plan(p: vec2f, h: f32) -> vec2f { return vec2f(p.x, (p.y - IYOFF + h) / I
 fn iso_scr(g: vec2f, h: f32) -> vec2f { return vec2f(g.x, g.y * ISY + IYOFF - h); }
 
 fn visual_esper(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  let p = (uv + vec2f(1.0)) * 256.0;
+  // camera: zoomed in, eased onto the esper (hook publishes cam at uni 26,27)
+  let cam = vec2f(uni(26), uni(27));
+  let p = cam + ((uv + vec2f(1.0)) * 256.0 - vec2f(256.0)) / ZOOM;
   let t = time;
   let room = i32(uni(0) + 0.5);
 
@@ -215,18 +218,23 @@ fn visual_esper(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
   if (room == 3) { ga = vec3f(0.052, 0.044, 0.038); gb = vec3f(0.088, 0.075, 0.060); }
   var col = mix(ga, gb, fbm3(g * 0.05) * 0.7 + vnoise(g * 0.2) * 0.3);
 
-  // lattice: hex borders + kite spokes, faint
-  let spoke = abs(fract(atan2(glp.y, glp.x) / 1.0471976 + 0.5) - 0.5);
-  col += vec3f(0.010, 0.016, 0.018) * smoothstep(0.05, 0.0, spoke) * step(grad, ES * 0.82);
-  var second = 1.0e9;
-  for (var d = 0; d < 6; d++) {
-    var nb = vec2i(0, 0);
-    if (d == 0) { nb = vec2i(1, 0); } else if (d == 1) { nb = vec2i(1, -1); }
-    else if (d == 2) { nb = vec2i(0, -1); } else if (d == 3) { nb = vec2i(-1, 0); }
-    else if (d == 4) { nb = vec2i(-1, 1); } else { nb = vec2i(0, 1); }
-    second = min(second, length(g - hex_px(gh + nb)));
+  // beyond the level lies nothing — the board ends, the dark begins
+  if (gland == 9) {
+    col = vec3f(0.010, 0.014, 0.022) * (0.6 + 0.4 * fbm3(g * 0.012 + vec2f(t * 0.01, 0.0)));
+  } else {
+    // lattice: hex borders + kite spokes, faint
+    let spoke = abs(fract(atan2(glp.y, glp.x) / 1.0471976 + 0.5) - 0.5);
+    col += vec3f(0.010, 0.016, 0.018) * smoothstep(0.05, 0.0, spoke) * step(grad, ES * 0.82);
+    var second = 1.0e9;
+    for (var d = 0; d < 6; d++) {
+      var nb = vec2i(0, 0);
+      if (d == 0) { nb = vec2i(1, 0); } else if (d == 1) { nb = vec2i(1, -1); }
+      else if (d == 2) { nb = vec2i(0, -1); } else if (d == 3) { nb = vec2i(-1, 0); }
+      else if (d == 4) { nb = vec2i(-1, 1); } else { nb = vec2i(0, 1); }
+      second = min(second, length(g - hex_px(gh + nb)));
+    }
+    col += vec3f(0.018, 0.028, 0.030) * smoothstep(3.5, 0.0, second - grad);
   }
-  col += vec3f(0.018, 0.028, 0.030) * smoothstep(3.5, 0.0, second - grad);
 
   if (gland == 3) {
     let wv = vnoise(g * 0.08 + vec2f(t * 0.25, t * 0.18));
@@ -239,20 +247,63 @@ fn visual_esper(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
 ${coneWGSL}
   }
 
-  // ── movement nodes on the ground: centers, edge midpoints, corners ──
+  // ── movement nodes, typed: centers (large) · edge midpoints (mid) · corners (small) ──
   if (gland == 0 || gland == 1) {
-    var nd = grad;                                                  // center
+    let ndC = grad;
+    var ndM = 1.0e9;
+    var ndV = 1.0e9;
     for (var d = 0; d < 6; d++) {
       let a0 = 1.0471976 * f32(d);
-      nd = min(nd, length(glp - vec2f(cos(a0), sin(a0)) * ES));                       // corner
+      ndV = min(ndV, length(glp - vec2f(cos(a0), sin(a0)) * ES));
       let a1 = a0 + 0.5235988;
-      nd = min(nd, length(glp - vec2f(cos(a1), sin(a1)) * (ES * 0.866)));             // midpoint
+      ndM = min(ndM, length(glp - vec2f(cos(a1), sin(a1)) * (ES * 0.866)));
     }
-    col += vec3f(0.045, 0.085, 0.085) * smoothstep(1.9, 0.7, nd);
+    col += vec3f(0.10, 0.17, 0.17) * smoothstep(2.8, 1.3, ndC);
+    col += vec3f(0.060, 0.105, 0.105) * smoothstep(2.1, 0.9, ndM);
+    col += vec3f(0.042, 0.072, 0.072) * smoothstep(1.7, 0.7, ndV);
+    // cursor hover: nearby nodes glow so a click has a visible target
+    let mw = vec2f(uni(36), uni(37));
+    let ndAll = min(ndC, min(ndM, ndV));
+    if (length(g - mw) < 10.0) {
+      col += vec3f(0.14, 0.34, 0.34) * smoothstep(2.8, 1.0, ndAll);
+    }
     // reachable ring: nodes within one graph step of the esper
     let hero = vec2f(uni(1), uni(2));
-    if (nd < 1.9 && length(g - hero) < ES * 1.15 && length(g - hero) > 3.0) {
+    if (ndAll < 2.0 && length(g - hero) < ES * 1.15 && length(g - hero) > 3.0) {
       col += vec3f(0.10, 0.30, 0.30) * (0.65 + 0.35 * sin(t * 3.5));
+    }
+  }
+
+  // ── armed effect: the attack zone telegraph (kite-triangle shading, like the game) ──
+  if (uni(38) > 0.0 && (gland == 0 || gland == 1)) {
+    let hz = px_hex(vec2f(uni(1), uni(2)));
+    let hzd = hex_dist(hz, gh);
+    var zc = vec3f(2.4, 0.5, 0.3);
+    if (uni(25) > 0.5) { zc = vec3f(0.5, 1.1, 2.2); }
+    if (hzd >= 1 && hzd <= 3 && hex_los(hz, gh, room) > 0.5) {
+      let kang2 = (floor((atan2(glp.y, glp.x) + 3.14159265) / 1.04719755) + 0.5) * 1.04719755 - 3.14159265;
+      let kc2 = gc + vec2f(cos(kang2), sin(kang2)) * (ES * 0.55);
+      let kt = 0.5 + 0.5 * sin(t * 5.0 + length(kc2 - vec2f(uni(1), uni(2))) * 0.06);
+      col += zc * 0.085 * uni(38) * (0.6 + 0.4 * kt);
+      let spk2 = abs(fract(atan2(glp.y, glp.x) / 1.0471976 + 0.5) - 0.5);
+      col += zc * 0.05 * uni(38) * smoothstep(0.04, 0.0, spk2);
+    }
+  }
+
+  // ── effect burst zone + animated pixel sparks at the target ──
+  if (uni(28) > 0.01) {
+    let tgt = vec2f(uni(31), uni(32));
+    if (hex_dist(px_hex(tgt), gh) <= 1 && (gland == 0 || gland == 1)) {
+      col += vec3f(uni(33), uni(34), uni(35)) * 0.22 * uni(28);
+    }
+    let bs = iso_scr(tgt, 10.0);
+    for (var si = 0; si < 12; si++) {
+      let hsh = hash22(vec2f(f32(si) * 3.7, uni(39)));
+      let sa = hsh.x * 6.2831853;
+      let sp2 = bs + vec2f(cos(sa), sin(sa) * 0.6) * (1.0 - uni(28)) * (16.0 + hsh.y * 26.0);
+      if (length(floor(p / 2.0) * 2.0 - floor(sp2 / 2.0) * 2.0) < 1.4) {
+        col += vec3f(uni(33), uni(34), uni(35)) * uni(28) * 2.5;
+      }
     }
   }
 
@@ -423,10 +474,11 @@ try {
     return true
   }
 
-  if (!wd.__eq || wd.__eq.v !== 3) {
-    wd.__eq = { v: 3, loaded: 0, room: 1, node: -1, path: [], moveT: 1, fx: STARTPX[0], fy: STARTPX[1], x: STARTPX[0], y: STARTPX[1],
+  if (!wd.__eq || wd.__eq.v !== 4) {
+    wd.__eq = { v: 4, loaded: 0, room: 1, node: -1, path: [], moveT: 1, fx: STARTPX[0], fy: STARTPX[1], x: STARTPX[0], y: STARTPX[1],
       face: 0.5, hasKey: 0, chest: 0, alarm: 0, hurt: 0, flare: 0, shadow: 0, charges: 3,
-      fx2: 0, wins: 0, kills: 0, en: null, eff: 0, effCh: EFFECTS.map(e => e.charges),
+      wins: 0, kills: 0, casts: 0, en: null, eff: 0, effCh: EFFECTS.map(e => e.charges), zoneT: 0,
+      camx: STARTPX[0], camy: STARTPX[1] * ${ISY} + ${IYOFF} - 9,
       ray: { t: 0, ax: 0, ay: 0, bx: 0, by: 0, c: [1, 1, 1] },
       mHeld: 0, spaceHeld: 0, shiftHeld: 0 }
   }
@@ -510,18 +562,25 @@ try {
          { frequency: 110, duration: 0.30, volume: 0.4, type: 'sawtooth' }])
   }
 
-  // ── SHIFT cycles the readied effect ──
-  if (wd.key_shift && !G.shiftHeld) { G.shiftHeld = 1; G.eff = (G.eff + 1) % EFFECTS.length; sfx({ frequency: 440 + G.eff * 120, duration: 0.06, volume: 0.2, type: 'sine' }) }
+  // ── SHIFT arms an effect and telegraphs its zone (the game's targeting read) ──
+  if (wd.key_shift && !G.shiftHeld) {
+    G.shiftHeld = 1
+    if (G.zoneT <= 0) { G.zoneT = 2.5 }                       // first press: show zone
+    else { G.eff = (G.eff + 1) % EFFECTS.length; G.zoneT = 2.5 }   // again: cycle
+    sfx({ frequency: 440 + G.eff * 140, duration: 0.06, volume: 0.2, type: 'sine' })
+  }
   if (!wd.key_shift) G.shiftHeld = 0
+  G.zoneT = Math.max(0, G.zoneT - pdt * (G.zoneT > 0 ? 0.55 : 0))
 
-  // ── CLICK: enemy in range → cast the readied effect; otherwise path to node ──
+  // ── CLICK (through the camera): adjacent-and-behind enemy → silent kill;
+  //    enemy in the armed zone → cast; otherwise path to the node ──
   if (wd.mouse_down && !G.mHeld) {
     G.mHeld = 1
-    const mx = wd.mouse_x, my = wd.mouse_y
-    if (typeof mx === 'number') {
-      const gx = mx, gy = (my - IYOFF) / ISY + 9 / ISY * 0   // ground-plane inverse
+    const mx0 = wd.mouse_x, my0 = wd.mouse_y
+    if (typeof mx0 === 'number') {
+      const mx = G.camx + (mx0 - 256) / 2
+      const my = G.camy + (my0 - 256) / 2
       const gpy = (my - IYOFF) / ISY
-      // enemy under the cursor? (compare in screen space, chars stand at h=9)
       let hitE = -1
       for (let i = 0; i < G.en.length; i++) {
         const e = G.en[i]
@@ -530,18 +589,21 @@ try {
         if ((mx - sxp) ** 2 + (my - syp) ** 2 < 170) { hitE = i; break }
       }
       if (hitE >= 0) {
-        const eff = EFFECTS[G.eff], e = G.en[hitE]
+        const e = G.en[hitE]
         const eh = pxHex(e.x, e.y), hh = pxHex(G.x, G.y)
-        if (G.effCh[G.eff] > 0 && hexDist(eh, hh) <= eff.rangeHex) {
-          G.effCh[G.eff]--
+        let rel = Math.atan2(G.y - e.y, G.x - e.x) - e.f
+        rel = Math.atan2(Math.sin(rel), Math.cos(rel))
+        const eff = EFFECTS[G.eff]
+        if (e.st < 2 && hexDist(eh, hh) <= 1 && Math.abs(rel) > 1.6) {
+          e.st = -1; G.kills++; G.casts++
+          G.ray = { t: 1, ax: G.x, ay: G.y, bx: e.x, by: e.y, c: [0.5, 0.3, 0.9] }
+          sfx({ frequency: 90, duration: 0.22, volume: 0.45, type: 'triangle' })
+        } else if (G.effCh[G.eff] > 0 && hexDist(eh, hh) <= eff.rangeHex && losClear(G.room, hh, eh)) {
+          G.effCh[G.eff]--; G.casts++; G.zoneT = 0
           G.ray = { t: 1, ax: G.x, ay: G.y, bx: e.x, by: e.y, c: eff.visual.rayColor }
           sfx({ frequency: eff.id === 'fire' ? 200 : 620, duration: 0.2, volume: 0.4, type: eff.id === 'fire' ? 'sawtooth' : 'sine' })
-          // mechanical resolution — the controller pattern
-          if (eff.mechanical.damage) {
-            e.hp -= eff.mechanical.damage
-            if (e.hp <= 0) { e.st = -1; G.kills++ }
-          }
-          if (eff.mechanical.calm) { e.sus = 0; if (e.st < 2 || true) e.st = Math.min(e.st, 0) }
+          if (eff.mechanical.damage) { e.hp -= eff.mechanical.damage; if (e.hp <= 0) { e.st = -1; G.kills++ } }
+          if (eff.mechanical.calm) { e.sus = 0; e.st = Math.min(e.st, 0) }
           if (eff.mechanical.stun) e.stun = eff.mechanical.stun
           if (eff.mechanical.loud) {
             for (const o of G.en) {
@@ -553,7 +615,7 @@ try {
           sfx({ frequency: 160, duration: 0.1, volume: 0.25, type: 'square' })
         }
       } else {
-        const tn = nearestNode(gx, gpy, S * 0.8)
+        const tn = nearestNode(mx, gpy, S * 0.8)
         if (tn >= 0 && !gateBlocked(tn)) {
           const path = bfsPath(tn)
           if (path.length) { G.path = path; if (G.moveT >= 1) { G.fx = G.x; G.fy = G.y } }
@@ -600,12 +662,13 @@ try {
   if (!wd.key_space) G.spaceHeld = 0
   G.shadow = Math.max(0, G.shadow - pdt)
 
-  // ── arrivals: doors, key, chest (node-scoped) ──
+  // ── doors trigger continuously — reaching the door hex is enough to leave ──
+  for (const d of DOORS) {
+    if (d.room !== G.room) continue
+    if (Math.hypot(G.x - d.px[0], G.y - d.px[1]) < S * 0.95 && !(d.gated && !G.hasKey)) { roomSwap(d.to, d.spx); break }
+  }
+  // ── arrivals: key, chest (node-scoped) ──
   if (G.moveT >= 1) {
-    for (const d of DOORS) {
-      if (d.room !== G.room) continue
-      if (Math.hypot(G.x - d.px[0], G.y - d.px[1]) < S * 0.55 && !(d.gated && !G.hasKey)) { roomSwap(d.to, d.spx); break }
-    }
     if (G.room === 2 && !G.hasKey && Math.hypot(G.x - KEYPX[0], G.y - KEYPX[1]) < S * 0.6) {
       G.hasKey = 1
       sfx([{ frequency: 660, duration: 0.09, volume: 0.35, type: 'sine' }, { frequency: 990, duration: 0.16, volume: 0.3, type: 'sine' }])
@@ -674,18 +737,30 @@ try {
   G.flare = Math.max(0, G.flare - 0.6 * pdt)
   G.ray.t = Math.max(0, G.ray.t - 2.2 * pdt)
 
+  // camera eases onto the esper (screen space, matches the shader's iso_scr)
+  const tcx = G.x, tcy = G.y * ISY + IYOFF - 9
+  G.camx += (tcx - G.camx) * Math.min(1, 4 * pdt)
+  G.camy += (tcy - G.camy) * Math.min(1, 4 * pdt)
+
+  // cursor in world coords, for node hover
+  let mwx = -999, mwy = -999
+  if (typeof wd.mouse_x === 'number') {
+    mwx = G.camx + (wd.mouse_x - 256) / 2
+    mwy = (G.camy + (wd.mouse_y - 256) / 2 - IYOFF) / ISY
+  }
+
   const u = [G.room, G.x, G.y, G.face, covered ? 1 : 0, G.shadow, G.charges, G.alarm, G.flare, exposed, G.hasKey, G.chest]
   for (let i = 0; i < 3; i++) {
     const e = G.en[i]
     if (e && e.st >= 0) u.push(e.x, e.y, e.f, e.st); else u.push(0, 0, 0, -1)
   }
-  u.push(G.hurt, G.eff, 0, 0, G.ray.t, G.ray.ax, G.ray.ay, G.ray.bx, G.ray.by, G.ray.c[0], G.ray.c[1], G.ray.c[2])
+  u.push(G.hurt, G.eff, G.camx, G.camy, G.ray.t, G.ray.ax, G.ray.ay, G.ray.bx, G.ray.by, G.ray.c[0], G.ray.c[1], G.ray.c[2], mwx, mwy, G.zoneT, G.casts * 7.13)
   wd.gpuUniforms = u
-  const effName = EFFECTS[G.eff].name
+
   wd.hud = [
     { id: 'eq_room', type: 'text', x: '14px', y: '12px', text: ROOMS[G.room].name.toUpperCase(), color: '#9fe8d8', fontSize: '13px' },
     { id: 'eq_ch', type: 'text', x: '14px', y: '32px', text: '\\u25c8'.repeat(G.charges) + '\\u25c7'.repeat(Math.max(0, 3 - G.charges)) + '  shadow', color: '#7fd4ff', fontSize: '14px' },
-    { id: 'eq_eff', type: 'text', x: '14px', y: '52px', text: effName.toUpperCase() + ' \\u00d7' + G.effCh[G.eff] + '  (shift cycles, click enemy casts)', color: G.eff === 0 ? '#ff8866' : '#88bbff', fontSize: '13px' },
+    { id: 'eq_eff', type: 'text', x: '14px', y: '52px', text: EFFECTS[G.eff].name.toUpperCase() + ' \\u00d7' + G.effCh[G.eff] + '  \\u00b7 shift: arm/cycle \\u00b7 click enemy: cast \\u00b7 behind+close: silent kill', color: G.eff === 0 ? '#ff8866' : '#88bbff', fontSize: '12px' },
     { id: 'eq_al', type: 'bar', right: '14px', y: '16px', value: G.alarm, max: 3, color: '#cc2244' },
     { id: 'eq_q', type: 'text', x: '14px', bottom: '12px', color: '#c9b370', fontSize: '13px',
       text: G.chest ? 'the treasure is yours (' + G.wins + ')' : (G.hasKey ? 'the north door is open' : 'find the key in the Hollow — east door') },

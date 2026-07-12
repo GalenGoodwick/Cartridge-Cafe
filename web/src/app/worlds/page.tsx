@@ -14,7 +14,9 @@ interface WorldCard {
   _count?: { versions: number; forks: number; flags: number }
 }
 
-/** /worlds — the gallery: browse public worlds, jump into yours, make a new one. */
+const fresh = (iso: string) => Date.now() - new Date(iso).getTime() < 1000 * 60 * 60 * 48
+
+/** THE SHELF — worlds as cartridges. Pull one down, or press a blank. */
 export default function WorldsPage() {
   const router = useRouter()
   const [publicWorlds, setPublicWorlds] = useState<WorldCard[]>([])
@@ -31,10 +33,7 @@ export default function WorldsPage() {
     } catch { /* fine */ }
     try {
       const r = await fetch('/api/spaces')
-      if (r.ok) {
-        setSignedIn(true)
-        setMine((await r.json()).spaces || [])
-      }
+      if (r.ok) { setSignedIn(true); setMine((await r.json()).spaces || []) }
     } catch { /* signed out */ }
   }, [])
 
@@ -42,8 +41,7 @@ export default function WorldsPage() {
 
   const createWorld = async () => {
     if (!newName.trim()) return
-    setBusy(true)
-    setErr(null)
+    setBusy(true); setErr(null)
     try {
       const r = await fetch('/api/spaces', {
         method: 'POST',
@@ -52,81 +50,114 @@ export default function WorldsPage() {
       })
       const d = await r.json()
       if (r.ok) router.push(`/space/${d.space.slug}`)
-      else setErr(d.error || 'Could not create world')
+      else setErr(d.error || 'the press jammed — try another name')
     } finally { setBusy(false) }
   }
 
-  const Card = ({ w, owned }: { w: WorldCard; owned?: boolean }) => (
+  const Cart = ({ w, owned, i }: { w: WorldCard; owned?: boolean; i: number }) => (
     <a
       href={`/space/${w.slug}`}
-      className="block rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] transition-colors p-4"
+      className="cart block arrive"
+      style={{ animationDelay: `${0.08 + i * 0.06}s` }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="font-serif text-lg text-white/90">{w.name}</div>
-        {owned && <span className="text-[10px] rounded bg-accent/20 text-accent px-1.5 py-0.5">yours</span>}
+      <div className="cart-label px-4 pt-4 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="font-display italic text-xl text-glow leading-tight">{w.name}</div>
+          <span className={`cart-led mt-1.5 shrink-0 ${fresh(w.updatedAt) ? '' : 'cart-led--cold'}`} />
+        </div>
+        {w.description && (
+          <div className="text-[12px] text-crema/80 mt-1.5 line-clamp-2 font-sans">{w.description}</div>
+        )}
       </div>
-      {w.owner && <div className="text-xs text-white/40 mt-0.5">by {w.owner.name || 'anonymous'}</div>}
-      {w.description && <div className="text-sm text-white/60 mt-2 line-clamp-2">{w.description}</div>}
-      <div className="flex gap-3 mt-3 text-[11px] text-white/40">
-        {w._count && <span>{w._count.versions} save points</span>}
-        {w._count && w._count.forks > 0 && <span>{w._count.forks} remixes</span>}
-        {w.forkOf && <span className="text-white/30">remix of {w.forkOf.name}</span>}
-        <span className="ml-auto">{new Date(w.updatedAt).toLocaleDateString()}</span>
+      <div className="px-4 py-2.5 flex items-center gap-3 font-mono text-[10px] tracking-wider text-grounds">
+        <span className="truncate">{owned ? 'YOURS' : (w.owner?.name || 'ANONYMOUS').toUpperCase()}</span>
+        <span className="ml-auto shrink-0">{w._count?.versions ?? 0} SAVES</span>
+        {(w._count?.forks ?? 0) > 0 && <span className="shrink-0">{w._count!.forks} REMIXES</span>}
       </div>
+      {w.forkOf && (
+        <div className="px-4 pb-2.5 -mt-1 font-mono text-[9px] tracking-wider text-grounds/60">
+          REMIX OF {w.forkOf.name.toUpperCase()}
+        </div>
+      )}
     </a>
   )
 
+  const Rail = ({ children, delay }: { children: React.ReactNode; delay: number }) => (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 items-end">{children}</div>
+      <div className="shelf-rail mt-0 mb-10 arrive" style={{ animationDelay: `${delay}s` }} />
+    </>
+  )
+
   return (
-    <div className="min-h-screen bg-[#0b0f1a] px-4 py-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex items-end justify-between flex-wrap gap-4 mb-8">
+    <div className="cafe-room text-steamer">
+      <div className="relative z-10 mx-auto max-w-4xl px-6 py-14">
+
+        {/* signage */}
+        <header className="mb-14 flex items-end justify-between flex-wrap gap-6">
           <div>
-            <h1 className="font-serif text-3xl text-white/95">Worlds</h1>
-            <p className="text-sm text-white/50 mt-1">
-              Living spaces built by people and AIs. Visit any of them. Remix the ones you love.
+            <a href="/" className="brass-tab inline-block px-2 py-1 text-[10px] mb-4">← THE ROOM</a>
+            <h1 className="cafe-sign text-5xl sm:text-6xl">the shelf</h1>
+            <p className="font-mono text-[11px] tracking-[0.3em] text-grounds uppercase mt-3">
+              every world is one file · pull it down · leave your own
             </p>
           </div>
+
+          {/* the blank cartridge — the press */}
           {signedIn && (
-            <div className="flex gap-2">
-              <input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && createWorld()}
-                placeholder="Name a new world…"
-                className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/90 outline-none focus:border-accent/50"
-              />
+            <div className="cart cafe-steam w-full sm:w-72 arrive" style={{ animationDelay: '0.15s' }}>
+              <div className="cart-label px-4 pt-4 pb-3">
+                <div className="font-display italic text-lg text-flame/90">a blank cartridge</div>
+                <input
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && createWorld()}
+                  placeholder="name the world…"
+                  className="mt-2 w-full bg-transparent border-b border-dashed border-brass/40 pb-1 font-sans text-sm text-steamer placeholder:text-grounds/50 outline-none focus:border-flame/70 transition-colors"
+                />
+              </div>
               <button
                 onClick={createWorld}
                 disabled={busy || !newName.trim()}
-                className="rounded-lg bg-accent/80 hover:bg-accent text-white text-sm px-4 py-2 disabled:opacity-40 transition-colors"
+                className="w-full px-4 py-2.5 font-mono text-[10px] tracking-[0.25em] text-void bg-flame/90 hover:bg-glow disabled:opacity-30 disabled:hover:bg-flame/90 transition-colors"
               >
-                Create
+                {busy ? 'PRESSING…' : 'PRESS IT'}
               </button>
             </div>
           )}
-        </div>
+          {!signedIn && (
+            <a href="/auth/signin" className="cart px-5 py-4 font-mono text-[11px] tracking-[0.2em] text-flame hover:text-glow arrive" style={{ animationDelay: '0.15s' }}>
+              SIGN IN TO PRESS A BLANK →
+            </a>
+          )}
+        </header>
 
-        {err && <div className="mb-4 text-sm text-error">{err}</div>}
+        {err && <div className="mb-6 font-mono text-xs text-red-300/80">{err}</div>}
 
         {mine.length > 0 && (
           <>
-            <h2 className="text-sm uppercase tracking-wide text-white/40 mb-3">Your worlds</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
-              {mine.map(w => <Card key={w.id} w={w} owned />)}
-            </div>
+            <h2 className="font-mono text-[10px] tracking-[0.4em] text-brass mb-4">YOUR RAIL</h2>
+            <Rail delay={0.3}>
+              {mine.map((w, i) => <Cart key={w.id} w={w} owned i={i} />)}
+            </Rail>
           </>
         )}
 
-        <h2 className="text-sm uppercase tracking-wide text-white/40 mb-3">Public worlds</h2>
+        <h2 className="font-mono text-[10px] tracking-[0.4em] text-brass mb-4">THE HOUSE RAIL</h2>
         {publicWorlds.length === 0 ? (
-          <div className="text-white/40 text-sm rounded-xl border border-dashed border-white/10 p-8 text-center">
-            No public worlds yet. {signedIn ? 'Yours could be the first.' : 'Sign in to make the first one.'}
+          <div className="cart px-6 py-8 text-center arrive" style={{ animationDelay: '0.2s' }}>
+            <div className="font-display italic text-lg text-crema">the rail is empty tonight.</div>
+            <div className="font-mono text-[10px] tracking-widest text-grounds mt-2">FIRST CARTRIDGE GETS THE WARM SPOT BY THE WINDOW</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {publicWorlds.map(w => <Card key={w.id} w={w} />)}
-          </div>
+          <Rail delay={0.4}>
+            {publicWorlds.map((w, i) => <Cart key={w.id} w={w} i={i} />)}
+          </Rail>
         )}
+
+        <footer className="mt-4 text-center font-mono text-[9px] tracking-[0.4em] text-grounds/40">
+          CARTRIDGE.CAFE · OPEN ALL NIGHT · FREE REFILLS
+        </footer>
       </div>
     </div>
   )

@@ -55,35 +55,31 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
 
       {/* in a game: nothing over the world but a hint that leaves */}
       {inGame && hint && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 font-mono text-[11px] text-white/40 pointer-events-none select-none transition-opacity">
-          esc → cafe
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 font-mono text-[10px] tracking-[0.3em] text-glow/40 pointer-events-none select-none">
+          ESC → CAFE
         </div>
       )}
 
       {/* the cafe wears its sign; games wear nothing */}
       {!inGame && (
         <>
-          <div className="fixed top-4 left-5 z-50 font-mono pointer-events-none select-none">
-            <div className="font-serif text-2xl text-amber-50/90">{BRAND}</div>
-            <div className="text-[10px] tracking-[0.35em] text-amber-200/40 uppercase mt-0.5">
-              little worlds · hover a window · step through
+          <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
+            <div className="cafe-sign text-3xl">
+              cartridge<span className="not-italic font-mono text-lg text-brass">.cafe</span>
+            </div>
+            <div className="font-mono text-[9px] tracking-[0.42em] text-crema/40 uppercase mt-1.5 arrive" style={{ animationDelay: '1.6s' }}>
+              hover a window · step through
             </div>
           </div>
-          <div className="fixed top-4 right-5 z-50 flex gap-2 font-mono">
-            <a href="/worlds" className="rounded-lg bg-black/50 backdrop-blur border border-white/10 px-3 py-1.5 text-xs text-amber-200/80 hover:text-amber-100 transition-colors">
-              the shelf
-            </a>
-            <a href="/auth/signin" className="rounded-lg bg-amber-400/90 hover:bg-amber-300 px-3 py-1.5 text-xs font-semibold text-[#1a1206] transition-colors">
-              brew yours
+          <div className="fixed top-5 right-6 z-50 flex gap-2 arrive" style={{ animationDelay: '0.8s' }}>
+            <a href="/worlds" className="brass-tab px-3 py-1.5 text-[10px]">THE SHELF</a>
+            <a href="/auth/signin" className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+              BREW YOURS
             </a>
           </div>
-          <div className="fixed bottom-5 left-0 right-0 z-50 flex justify-center gap-1 font-mono px-4 flex-wrap">
+          <div className="fixed bottom-5 left-0 right-0 z-50 flex justify-center gap-1 px-4 flex-wrap arrive" style={{ animationDelay: '1.1s' }}>
             {GAMES.map(g => (
-              <button
-                key={g}
-                onClick={() => go(g)}
-                className="px-2.5 py-1 rounded text-[11px] text-amber-100/60 hover:text-amber-50 hover:bg-white/5 transition-colors tracking-wider"
-              >
+              <button key={g} onClick={() => go(g)} className="brass-tab px-2.5 py-1 text-[10px]">
                 {g}
               </button>
             ))}
