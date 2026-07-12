@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <!-- Gold to Blue gradients -->
+    <linearGradient id="gb1" x1="30" y1="100" x2="100" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8b84b"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="gb2" x1="30" y1="100" x2="105" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8b84b"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="gb3" x1="30" y1="100" x2="100" y2="142" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e8b84b"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+
+    <!-- Blue to Pink gradients — from B1 -->
+    <linearGradient id="bp1a" x1="100" y1="58" x2="142" y2="41" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="bp1b" x1="100" y1="58" x2="145" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="bp1c" x1="100" y1="58" x2="142" y2="75" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#db2777"/>
+    </linearGradient>
+    <!-- from B2 -->
+    <linearGradient id="bp2a" x1="105" y1="100" x2="147" y2="83" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="bp2b" x1="105" y1="100" x2="150" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="bp2c" x1="105" y1="100" x2="147" y2="117" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/><stop offset="100%" stop-color="#db2777"/>
+    </linearGradient>
+    <!-- from B3 -->
+    <linearGradient id="bp3a" x1="100" y1="142" x2="142" y2="125" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <linearGradient id="bp3b" x1="100" y1="142" x2="145" y2="142" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <linearGradient id="bp3c" x1="100" y1="142" x2="142" y2="159" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="100%" stop-color="#db2777"/>
+    </linearGradient>
+
+    <!-- Glows -->
+    <radialGradient id="goldGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f0c95c" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#e8b84b" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#e8b84b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blueGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.45"/>
+      <stop offset="60%" stop-color="#3b82f6" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pinkGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f9a8d4" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#ec4899" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Unification field -->
+    <radialGradient id="unifyField" cx="35%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#e8b84b" stop-opacity="0.08"/>
+      <stop offset="40%" stop-color="#6080b8" stop-opacity="0.06"/>
+      <stop offset="70%" stop-color="#c060a0" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Unification energy field -->
+  <ellipse cx="95" cy="100" rx="90" ry="68" fill="url(#unifyField)"/>
+
+  <!-- Gold → Blue connections -->
+  <line x1="30" y1="100" x2="100" y2="58" stroke="url(#gb1)" stroke-width="2.5" stroke-linecap="round" opacity="0.75"/>
+  <line x1="30" y1="100" x2="105" y2="100" stroke="url(#gb2)" stroke-width="2.5" stroke-linecap="round" opacity="0.75"/>
+  <line x1="30" y1="100" x2="100" y2="142" stroke="url(#gb3)" stroke-width="2.5" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Blue → Pink connections from B1 -->
+  <line x1="100" y1="58" x2="142" y2="41" stroke="url(#bp1a)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="100" y1="58" x2="145" y2="58" stroke="url(#bp1b)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="100" y1="58" x2="142" y2="75" stroke="url(#bp1c)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <!-- from B2 -->
+  <line x1="105" y1="100" x2="147" y2="83" stroke="url(#bp2a)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="105" y1="100" x2="150" y2="100" stroke="url(#bp2b)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="105" y1="100" x2="147" y2="117" stroke="url(#bp2c)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <!-- from B3 -->
+  <line x1="100" y1="142" x2="142" y2="125" stroke="url(#bp3a)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="100" y1="142" x2="145" y2="142" stroke="url(#bp3b)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+  <line x1="100" y1="142" x2="142" y2="159" stroke="url(#bp3c)" stroke-width="1.8" stroke-linecap="round" opacity="0.65"/>
+
+  <!-- Power highlights at midpoints -->
+  <circle cx="62" cy="80" r="2.5" fill="#c8a850" opacity="0.4"/>
+  <circle cx="65" cy="100" r="2.5" fill="#8a9ec8" opacity="0.35"/>
+  <circle cx="62" cy="120" r="2.5" fill="#8a9ec8" opacity="0.35"/>
+
+  <!-- Glows -->
+  <circle cx="30" cy="100" r="30" fill="url(#goldGlow)"/>
+  <circle cx="100" cy="58" r="20" fill="url(#blueGlow)"/>
+  <circle cx="105" cy="100" r="20" fill="url(#blueGlow)"/>
+  <circle cx="100" cy="142" r="20" fill="url(#blueGlow)"/>
+  <!-- Pink glows -->
+  <circle cx="142" cy="41" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="145" cy="58" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="142" cy="75" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="147" cy="83" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="150" cy="100" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="147" cy="117" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="142" cy="125" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="145" cy="142" r="14" fill="url(#pinkGlow)"/>
+  <circle cx="142" cy="159" r="14" fill="url(#pinkGlow)"/>
+
+  <!-- Gold dot -->
+  <circle cx="30" cy="100" r="14" fill="#e8b84b"/>
+  <circle cx="30" cy="100" r="9.5" fill="#f0c95c" opacity="0.7"/>
+  <circle cx="27" cy="96" r="3.5" fill="#fff8e0" opacity="0.4"/>
+
+  <!-- Blue dots -->
+  <circle cx="100" cy="58" r="10" fill="#3b82f6"/>
+  <circle cx="100" cy="58" r="6.5" fill="#60a5fa" opacity="0.5"/>
+  <circle cx="105" cy="100" r="10" fill="#2563eb"/>
+  <circle cx="105" cy="100" r="6.5" fill="#60a5fa" opacity="0.5"/>
+  <circle cx="100" cy="142" r="10" fill="#1d4ed8"/>
+  <circle cx="100" cy="142" r="6.5" fill="#60a5fa" opacity="0.5"/>
+
+  <!-- Pink dots -->
+  <circle cx="142" cy="41" r="7" fill="#f472b6"/>
+  <circle cx="142" cy="41" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="145" cy="58" r="7" fill="#ec4899"/>
+  <circle cx="145" cy="58" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="142" cy="75" r="7" fill="#db2777"/>
+  <circle cx="142" cy="75" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+
+  <circle cx="147" cy="83" r="7" fill="#f472b6"/>
+  <circle cx="147" cy="83" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="150" cy="100" r="7" fill="#ec4899"/>
+  <circle cx="150" cy="100" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="147" cy="117" r="7" fill="#db2777"/>
+  <circle cx="147" cy="117" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+
+  <circle cx="142" cy="125" r="7" fill="#f472b6"/>
+  <circle cx="142" cy="125" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="145" cy="142" r="7" fill="#ec4899"/>
+  <circle cx="145" cy="142" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+  <circle cx="142" cy="159" r="7" fill="#db2777"/>
+  <circle cx="142" cy="159" r="4.5" fill="#fbcfe8" opacity="0.45"/>
+</svg>

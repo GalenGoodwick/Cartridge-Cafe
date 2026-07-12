@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reach Tiers - Final Mockup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 8px; color: #fff; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 14px; }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      margin-top: 30px;
+    }
+
+    /* Comment Card */
+    .comment {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .comment.expanding {
+      border-color: #f59e0b;
+    }
+    .comment.high-reach {
+      border-color: #10b981;
+    }
+
+    .comment-main {
+      padding: 14px;
+    }
+
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .comment-author {
+      font-size: 13px;
+      color: #0891b2;
+      font-weight: 500;
+    }
+    .comment-reach {
+      font-size: 11px;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .comment-reach-tier {
+      color: #10b981;
+      font-weight: 600;
+    }
+    .comment-reach-tier.t1 { color: #888; }
+    .comment-reach-tier.t2 { color: #0891b2; }
+    .comment-reach-tier.t3 { color: #8b5cf6; }
+    .comment-reach-tier.t4 { color: #f59e0b; }
+    .comment-reach-tier.t5 { color: #10b981; }
+
+    .comment-text {
+      font-size: 14px;
+      color: #e5e5e5;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
+    /* Progress Section */
+    .comment-progress {
+      background: #111;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .progress-label {
+      color: #888;
+    }
+    .progress-target {
+      color: #10b981;
+      font-weight: 500;
+    }
+    .progress-target.pending { color: #f59e0b; }
+    .progress-bar {
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .progress-fill.t1 { background: linear-gradient(90deg, #666, #888); }
+    .progress-fill.t2 { background: linear-gradient(90deg, #0891b2, #06b6d4); }
+    .progress-fill.t3 { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+    .progress-fill.t4 { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .progress-fill.t5 { background: linear-gradient(90deg, #10b981, #34d399); }
+
+    /* Actions */
+    .comment-actions {
+      display: flex;
+      gap: 16px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #333;
+    }
+    .action {
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: color 0.2s;
+    }
+    .action:hover { color: #0891b2; }
+    .action.primary { color: #0891b2; }
+    .action.voted { color: #10b981; }
+    .action-count { font-weight: 500; }
+
+    /* Journey Expansion */
+    .journey {
+      background: #0d0d0d;
+      border-top: 1px solid #333;
+      padding: 14px;
+    }
+    .journey-title {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+    .journey-path {
+      position: relative;
+      padding-left: 20px;
+    }
+    .journey-line {
+      position: absolute;
+      left: 5px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: linear-gradient(180deg, #333 0%, #10b981 50%, #333 100%);
+    }
+    .journey-step {
+      position: relative;
+      padding: 8px 0;
+    }
+    .journey-dot {
+      position: absolute;
+      left: -20px;
+      top: 12px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #333;
+      border: 2px solid #1a1a1a;
+    }
+    .journey-dot.complete { background: #10b981; }
+    .journey-dot.current { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+    .journey-dot.future { background: #333; border-style: dashed; }
+    .journey-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .journey-tier {
+      font-size: 13px;
+      color: #e5e5e5;
+      font-weight: 500;
+    }
+    .journey-tier.future { color: #666; }
+    .journey-meta {
+      font-size: 11px;
+      color: #888;
+    }
+    .journey-meta.highlight { color: #f59e0b; }
+    .journey-meta.complete { color: #10b981; }
+
+    /* Fractal explanation */
+    .fractal-note {
+      margin-top: 12px;
+      padding: 10px;
+      background: rgba(16,185,129,0.1);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #10b981;
+      text-align: center;
+    }
+
+    /* States section */
+    .states-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .state-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .state-label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .state-example {
+      font-size: 12px;
+      color: #e5e5e5;
+    }
+    .state-bar {
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .state-fill {
+      height: 100%;
+      border-radius: 2px;
+    }
+
+    /* Mobile preview frame */
+    .phone-frame {
+      max-width: 390px;
+      margin: 30px auto;
+      background: #000;
+      border-radius: 40px;
+      padding: 12px;
+      border: 3px solid #333;
+    }
+    .phone-screen {
+      background: #0a0a0a;
+      border-radius: 30px;
+      overflow: hidden;
+      padding: 20px 16px;
+    }
+    .phone-header {
+      text-align: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #333;
+      margin-bottom: 16px;
+    }
+    .phone-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .phone-subtitle {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Reach Tiers</h1>
+  <p class="subtitle">Comments spread through the same fractal structure as voting: 5 → 25 → 125 → 625...</p>
+
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="phone-header">
+        <div class="phone-title">Discussion</div>
+        <div class="phone-subtitle">Cell 4 · Tier 1 Voting</div>
+      </div>
+
+      <!-- Comment 1: Early stage, close to spreading -->
+      <div class="comment expanding">
+        <div class="comment-main">
+          <div class="comment-header">
+            <span class="comment-author">@sarah_k</span>
+            <span class="comment-reach">Reach: <span class="comment-reach-tier t1">Tier 1</span> · 5 people</span>
+          </div>
+          <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral. The waste problem is solvable with modern reactor designs."</div>
+          <div class="comment-progress">
+            <div class="progress-header">
+              <span class="progress-label">3 more upvotes to spread</span>
+              <span class="progress-target pending">→ Tier 2 (25 people)</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill t2" style="width: 70%"></div>
+            </div>
+          </div>
+          <div class="comment-actions">
+            <span class="action primary">↑ <span class="action-count">7</span></span>
+            <span class="action">💬 <span class="action-count">3</span></span>
+            <span class="action">Journey ↓</span>
+          </div>
+        </div>
+
+        <!-- Journey expanded -->
+        <div class="journey">
+          <div class="journey-title">Journey</div>
+          <div class="journey-path">
+            <div class="journey-line"></div>
+
+            <div class="journey-step">
+              <div class="journey-dot complete"></div>
+              <div class="journey-content">
+                <span class="journey-tier">Tier 1</span>
+                <span class="journey-meta complete">5 people · 1 cell ✓</span>
+              </div>
+            </div>
+
+            <div class="journey-step">
+              <div class="journey-dot current"></div>
+              <div class="journey-content">
+                <span class="journey-tier">Tier 2</span>
+                <span class="journey-meta highlight">3 more upvotes...</span>
+              </div>
+            </div>
+
+            <div class="journey-step">
+              <div class="journey-dot future"></div>
+              <div class="journey-content">
+                <span class="journey-tier future">Tier 3</span>
+                <span class="journey-meta">125 people · 25 cells</span>
+              </div>
+            </div>
+
+            <div class="journey-step">
+              <div class="journey-dot future"></div>
+              <div class="journey-content">
+                <span class="journey-tier future">Tier 4</span>
+                <span class="journey-meta">625 people · 125 cells</span>
+              </div>
+            </div>
+          </div>
+          <div class="fractal-note">
+            Arguments spread through the same structure as ideas
+          </div>
+        </div>
+      </div>
+
+      <!-- Comment 2: Already spread to Tier 2 -->
+      <div class="comment">
+        <div class="comment-main">
+          <div class="comment-header">
+            <span class="comment-author">@mike_t</span>
+            <span class="comment-reach">Reach: <span class="comment-reach-tier t2">Tier 2</span> · 25 people</span>
+          </div>
+          <div class="comment-text">"Modular reactors change the economics entirely - faster build times, easier financing, less risk."</div>
+          <div class="comment-progress">
+            <div class="progress-header">
+              <span class="progress-label">18 more upvotes to spread</span>
+              <span class="progress-target pending">→ Tier 3 (125 people)</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill t3" style="width: 28%"></div>
+            </div>
+          </div>
+          <div class="comment-actions">
+            <span class="action voted">↑ <span class="action-count">12</span></span>
+            <span class="action">💬 <span class="action-count">7</span></span>
+            <span class="action">Journey ↓</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comment 3: New, just started -->
+      <div class="comment">
+        <div class="comment-main">
+          <div class="comment-header">
+            <span class="comment-author">@jane_d</span>
+            <span class="comment-reach">Reach: <span class="comment-reach-tier t1">Tier 1</span> · 5 people</span>
+          </div>
+          <div class="comment-text">"What about construction timelines though?"</div>
+          <div class="comment-progress">
+            <div class="progress-header">
+              <span class="progress-label">9 more upvotes to spread</span>
+              <span class="progress-target pending">→ Tier 2 (25 people)</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill t2" style="width: 10%"></div>
+            </div>
+          </div>
+          <div class="comment-actions">
+            <span class="action">↑ <span class="action-count">1</span></span>
+            <span class="action">💬 <span class="action-count">0</span></span>
+            <span class="action">Journey ↓</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- High reach example -->
+  <div class="container">
+    <div class="section-label">High Reach Example</div>
+
+    <div class="comment high-reach">
+      <div class="comment-main">
+        <div class="comment-header">
+          <span class="comment-author">@alex_r</span>
+          <span class="comment-reach">Reach: <span class="comment-reach-tier t4">Tier 4</span> · 312 people</span>
+        </div>
+        <div class="comment-text">"The real insight is that we need a portfolio approach - nuclear for baseload, renewables for peak, and storage to bridge them. It's not either/or."</div>
+        <div class="comment-progress">
+          <div class="progress-header">
+            <span class="progress-label">Spreading to 625 people...</span>
+            <span class="progress-target">→ Tier 5</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill t5" style="width: 50%"></div>
+          </div>
+        </div>
+        <div class="comment-actions">
+          <span class="action voted">↑ <span class="action-count">89</span></span>
+          <span class="action">💬 <span class="action-count">34</span></span>
+          <span class="action">Journey ↓</span>
+        </div>
+      </div>
+
+      <div class="journey">
+        <div class="journey-title">Journey</div>
+        <div class="journey-path">
+          <div class="journey-line"></div>
+
+          <div class="journey-step">
+            <div class="journey-dot complete"></div>
+            <div class="journey-content">
+              <span class="journey-tier">Tier 1</span>
+              <span class="journey-meta complete">5 people ✓</span>
+            </div>
+          </div>
+
+          <div class="journey-step">
+            <div class="journey-dot complete"></div>
+            <div class="journey-content">
+              <span class="journey-tier">Tier 2</span>
+              <span class="journey-meta complete">25 people ✓</span>
+            </div>
+          </div>
+
+          <div class="journey-step">
+            <div class="journey-dot complete"></div>
+            <div class="journey-content">
+              <span class="journey-tier">Tier 3</span>
+              <span class="journey-meta complete">125 people ✓</span>
+            </div>
+          </div>
+
+          <div class="journey-step">
+            <div class="journey-dot current"></div>
+            <div class="journey-content">
+              <span class="journey-tier">Tier 4</span>
+              <span class="journey-meta highlight">312 of 625 people...</span>
+            </div>
+          </div>
+
+          <div class="journey-step">
+            <div class="journey-dot future"></div>
+            <div class="journey-content">
+              <span class="journey-tier future">Tier 5</span>
+              <span class="journey-meta">3,125 people</span>
+            </div>
+          </div>
+        </div>
+        <div class="fractal-note">
+          🌟 Top 2% of all comments in this deliberation
+        </div>
+      </div>
+    </div>
+
+    <!-- Tier scale reference -->
+    <div class="section-label">Reach Scale</div>
+    <div class="states-grid">
+      <div class="state-card">
+        <div class="state-label">Tier 1</div>
+        <div class="state-example">5 people · 1 cell</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: #666;"></div></div>
+      </div>
+      <div class="state-card">
+        <div class="state-label">Tier 2</div>
+        <div class="state-example">25 people · 5 cells</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: #0891b2;"></div></div>
+      </div>
+      <div class="state-card">
+        <div class="state-label">Tier 3</div>
+        <div class="state-example">125 people · 25 cells</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: #8b5cf6;"></div></div>
+      </div>
+      <div class="state-card">
+        <div class="state-label">Tier 4</div>
+        <div class="state-example">625 people · 125 cells</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: #f59e0b;"></div></div>
+      </div>
+      <div class="state-card">
+        <div class="state-label">Tier 5</div>
+        <div class="state-example">3,125 people · 625 cells</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: #10b981;"></div></div>
+      </div>
+      <div class="state-card">
+        <div class="state-label">Tier 9</div>
+        <div class="state-example">~2M people · 390K cells</div>
+        <div class="state-bar"><div class="state-fill" style="width: 100%; background: linear-gradient(90deg, #f59e0b, #ef4444);"></div></div>
+      </div>
+    </div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #1a1a1a; border-radius: 12px; text-align: center;">
+      <h3 style="color: #fff; margin-bottom: 10px;">Key Elements</h3>
+      <p style="color: #888; font-size: 13px; line-height: 1.6;">
+        <strong style="color: #0891b2;">Reach: Tier X</strong> — clear current state<br>
+        <strong style="color: #f59e0b;">X more upvotes to spread</strong> — tangible goal<br>
+        <strong style="color: #10b981;">→ Tier Y (Z people)</strong> — shows what's next<br>
+        <strong style="color: #e5e5e5;">Journey ↓</strong> — expandable full path
+      </p>
+    </div>
+
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Union Chant Feed UI Mockups</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* Tab Navigation */
+    .tabs {
+      display: flex;
+      background: #16213e;
+      border-bottom: 2px solid #0f3460;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .tab {
+      flex: 1;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: #888;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: #fff; background: #1a1a2e; }
+    .tab.active { color: #0891b2; border-bottom: 3px solid #0891b2; margin-bottom: -2px; }
+
+    .mockup { display: none; padding: 16px; max-width: 420px; margin: 0 auto; }
+    .mockup.active { display: block; }
+
+    .description {
+      background: #16213e;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border-left: 4px solid #0891b2;
+    }
+    .description h2 { color: #0891b2; margin-bottom: 8px; font-size: 18px; }
+    .description p { color: #aaa; font-size: 14px; line-height: 1.5; }
+
+    /* Feed Cards */
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      border: 1px solid #0f3460;
+    }
+    .card-header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #0f3460;
+    }
+    .card-badge {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-badge.vote { color: #f59e0b; }
+    .card-badge.predict { color: #a855f7; }
+    .card-badge.submit { color: #0891b2; }
+    .card-timer { font-size: 12px; color: #888; font-family: monospace; }
+
+    .card-body { padding: 16px; }
+    .card-question { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #fff; }
+
+    .idea-row {
+      background: #1a1a2e;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .idea-text { font-size: 14px; flex: 1; }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-vote { background: #f59e0b; color: #000; }
+    .btn-vote:hover { background: #d97706; }
+    .btn-predict { background: #a855f7; color: #fff; }
+    .btn-predict:hover { background: #9333ea; }
+    .btn-submit { background: #0891b2; color: #fff; }
+    .btn-submit:hover { background: #0e7490; }
+
+    .card-footer {
+      padding: 12px 16px;
+      border-top: 1px solid #0f3460;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #888;
+    }
+    .card-footer a { color: #0891b2; text-decoration: none; }
+    .card-footer a:hover { text-decoration: underline; }
+
+    /* Progress bar */
+    .progress-container { margin: 12px 0; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 4px; }
+    .progress-bar { height: 6px; background: #1a1a2e; border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #a855f7; border-radius: 3px; }
+
+    /* Vote tally */
+    .tally-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .tally-text { width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tally-bar { flex: 1; height: 20px; background: #1a1a2e; border-radius: 4px; margin: 0 8px; overflow: hidden; }
+    .tally-fill { height: 100%; background: linear-gradient(90deg, #a855f7, #7c3aed); }
+    .tally-count { width: 30px; text-align: right; font-family: monospace; color: #888; }
+
+    /* Input field */
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .input-field {
+      flex: 1;
+      background: #1a1a2e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 12px;
+      color: #fff;
+      font-size: 14px;
+    }
+    .input-field::placeholder { color: #666; }
+
+    /* Bottom Sheet */
+    .overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 200;
+      display: none;
+    }
+    .overlay.show { display: block; }
+
+    .bottom-sheet {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #16213e;
+      border-radius: 20px 20px 0 0;
+      max-height: 70vh;
+      z-index: 201;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      overflow: hidden;
+    }
+    .bottom-sheet.show { transform: translateY(0); }
+
+    .sheet-handle {
+      width: 40px;
+      height: 4px;
+      background: #444;
+      border-radius: 2px;
+      margin: 12px auto;
+    }
+    .sheet-header {
+      padding: 0 20px 16px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .sheet-header h3 { font-size: 18px; color: #fff; }
+    .sheet-content {
+      padding: 20px;
+      max-height: calc(70vh - 80px);
+      overflow-y: auto;
+    }
+    .sheet-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: #1a1a2e;
+      border: none;
+      color: #888;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    /* Chat messages */
+    .chat-msg {
+      margin-bottom: 12px;
+      padding: 12px;
+      background: #1a1a2e;
+      border-radius: 8px;
+    }
+    .chat-author { font-weight: 600; color: #0891b2; font-size: 13px; margin-bottom: 4px; }
+    .chat-text { font-size: 14px; color: #ccc; }
+
+    /* Full page view */
+    .full-page {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #1a1a2e;
+      z-index: 200;
+      display: none;
+      overflow-y: auto;
+    }
+    .full-page.show { display: block; }
+    .full-page-header {
+      background: #16213e;
+      padding: 16px;
+      border-bottom: 1px solid #0f3460;
+      position: sticky;
+      top: 0;
+    }
+    .full-page-header a { color: #0891b2; text-decoration: none; font-size: 14px; }
+    .full-page-content { padding: 20px; max-width: 420px; margin: 0 auto; }
+
+    /* Expandable card */
+    .card-expandable .card-expand-content {
+      display: none;
+      border-top: 1px solid #0f3460;
+      padding: 16px;
+      background: #0f1729;
+    }
+    .card-expandable.expanded .card-expand-content { display: block; }
+    .expand-toggle {
+      background: none;
+      border: none;
+      color: #0891b2;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0;
+    }
+
+    /* Dimmed state */
+    .dimmed { opacity: 0.4; pointer-events: none; }
+
+    /* Section label */
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin: 16px 0 8px;
+      padding-left: 4px;
+    }
+
+    /* Carousel */
+    .card-carousel {
+      overflow: hidden;
+      position: relative;
+    }
+    .carousel-track {
+      display: flex;
+      transition: transform 0.3s ease;
+    }
+    .carousel-slide {
+      min-width: 100%;
+      flex-shrink: 0;
+    }
+    .carousel-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #444;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .dot.active { background: #a855f7; width: 20px; border-radius: 4px; }
+    .dot.predicted { background: #059669; }
+    .swipe-hint {
+      font-size: 11px;
+      color: #666;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('sheets')">Bottom Sheets</button>
+  <button class="tab" onclick="showTab('fullpage')">Full Page</button>
+  <button class="tab" onclick="showTab('expandable')">Expandable</button>
+</div>
+
+<!-- OPTION A: BOTTOM SHEETS -->
+<div id="sheets" class="mockup active">
+  <div class="description">
+    <h2>Option A: Bottom Sheets</h2>
+    <p>Tap "Discuss" to see the sheet slide up. Feed stays visible but dimmed behind. Swipe down or tap X to close.</p>
+  </div>
+
+  <div class="card" id="card1">
+    <div class="card-header">
+      <span class="card-badge vote">Vote Now</span>
+      <span class="card-timer">Tier 2 - 3:42</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"What should our mascot be?"</div>
+      <div class="idea-row">
+        <span class="idea-text">A flying octopus</span>
+        <button class="btn btn-vote" onclick="voteDemo(this)">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A dancing robot</span>
+        <button class="btn btn-vote" onclick="voteDemo(this)">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A wise owl</span>
+        <button class="btn btn-vote" onclick="voteDemo(this)">Vote</button>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>4/5 voted</span>
+      <a href="#" onclick="openSheet(); return false;">Discuss &rarr;</a>
+    </div>
+  </div>
+
+  <div class="card" id="card2">
+    <div class="card-header">
+      <span class="card-badge predict">Predict</span>
+      <span class="card-timer" id="tierLabel">Tier 1 - 45% voted</span>
+    </div>
+    <div class="card-carousel">
+      <div class="carousel-track" id="carouselTrack">
+        <!-- Tier 1 -->
+        <div class="carousel-slide" id="slide1">
+          <div class="card-body">
+            <div class="card-question">"Best approach to climate change?"</div>
+            <div class="idea-row">
+              <span class="idea-text">Carbon tax</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 1)">Predict</button>
+            </div>
+            <div class="idea-row">
+              <span class="idea-text">Nuclear power</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 1)">Predict</button>
+            </div>
+            <div class="idea-row">
+              <span class="idea-text">Renewables only</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 1)">Predict</button>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar"><div class="progress-fill" style="width: 45%"></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- Tier 2 -->
+        <div class="carousel-slide" id="slide2">
+          <div class="card-body">
+            <div class="card-question">"Best approach to climate change?"</div>
+            <div class="idea-row">
+              <span class="idea-text">Carbon tax</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 2)">Predict</button>
+            </div>
+            <div class="idea-row">
+              <span class="idea-text">Solar subsidies</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 2)">Predict</button>
+            </div>
+            <div class="idea-row">
+              <span class="idea-text">EV mandates</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 2)">Predict</button>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar"><div class="progress-fill" style="width: 67%"></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- Tier 3 -->
+        <div class="carousel-slide" id="slide3">
+          <div class="card-body">
+            <div class="card-question">"Best approach to climate change?"</div>
+            <div class="idea-row">
+              <span class="idea-text">Nuclear power</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 3)">Predict</button>
+            </div>
+            <div class="idea-row">
+              <span class="idea-text">Carbon tax</span>
+              <button class="btn btn-predict" onclick="predictDemo(this, 3)">Predict</button>
+            </div>
+            <div class="progress-container">
+              <div class="progress-bar"><div class="progress-fill" style="width: 89%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <div class="carousel-dots">
+        <span class="dot active" onclick="goToSlide(0)"></span>
+        <span class="dot" onclick="goToSlide(1)"></span>
+        <span class="dot" onclick="goToSlide(2)"></span>
+      </div>
+      <span class="swipe-hint" id="swipeHint">← Swipe for more tiers →</span>
+      <a href="#" id="exploreLink" style="display:none;" onclick="openSheet(); return false;">Explore →</a>
+    </div>
+  </div>
+
+  <div class="card" id="card3">
+    <div class="card-header">
+      <span class="card-badge submit">Accepting Ideas</span>
+      <span class="card-timer">2d 4h left</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"How should we improve the park?"</div>
+      <div class="input-row">
+        <input type="text" class="input-field" placeholder="Your idea...">
+        <button class="btn btn-submit">Submit</button>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>23 ideas - 45 participants</span>
+      <a href="#">See all ideas &rarr;</a>
+    </div>
+  </div>
+</div>
+
+<!-- Overlay + Bottom Sheet -->
+<div class="overlay" id="overlay" onclick="closeSheet()"></div>
+<div class="bottom-sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <button class="sheet-close" onclick="closeSheet()">&times;</button>
+  <div class="sheet-header">
+    <h3>Deliberation Overview</h3>
+  </div>
+  <div class="sheet-content">
+    <div class="card-question" style="margin-bottom: 16px;">"What should our mascot be?"</div>
+
+    <div class="section-label">Your Status</div>
+    <div style="background: #059669; color: #fff; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+      <div style="font-weight: 600;">You voted for "A wise owl"</div>
+      <div style="font-size: 13px; opacity: 0.8;">Tier 2 • Waiting for results</div>
+    </div>
+
+    <div class="section-label">Voting Progress</div>
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <div style="flex:1; background: #1a1a2e; padding: 12px; border-radius: 8px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: #f59e0b;">3</div>
+        <div style="font-size: 11px; color: #888;">Competing</div>
+      </div>
+      <div style="flex:1; background: #1a1a2e; padding: 12px; border-radius: 8px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: #059669;">2</div>
+        <div style="font-size: 11px; color: #888;">Advanced</div>
+      </div>
+      <div style="flex:1; background: #1a1a2e; padding: 12px; border-radius: 8px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: #ef4444;">4</div>
+        <div style="font-size: 11px; color: #888;">Eliminated</div>
+      </div>
+    </div>
+
+    <div class="section-label">Your Predictions</div>
+    <div class="idea-row" style="border-left: 3px solid #a855f7;">
+      <span class="idea-text">Carbon tax</span>
+      <span style="color: #f59e0b; font-size: 12px;">Tier 1 pending</span>
+    </div>
+    <div class="idea-row" style="border-left: 3px solid #059669;">
+      <span class="idea-text">Nuclear power</span>
+      <span style="color: #059669; font-size: 12px;">Tier 2 won!</span>
+    </div>
+
+    <div class="section-label" style="margin-top: 16px;">Discussion</div>
+    <div class="chat-msg">
+      <div class="chat-author">@alice</div>
+      <div class="chat-text">I think the owl is the best choice...</div>
+    </div>
+    <div class="chat-msg">
+      <div class="chat-author">@bob</div>
+      <div class="chat-text">But robots are cooler!</div>
+    </div>
+    <div class="input-row">
+      <input type="text" class="input-field" placeholder="Join the discussion...">
+      <button class="btn btn-submit">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPTION B: FULL PAGE -->
+<div id="fullpage" class="mockup">
+  <div class="description">
+    <h2>Option B: Full Page Navigation</h2>
+    <p>Tap "Discuss" to navigate to a new page. Clean separation but loses feed context. Use back button to return.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge vote">Vote Now</span>
+      <span class="card-timer">Tier 2 - 3:42</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"What should our mascot be?"</div>
+      <div class="idea-row">
+        <span class="idea-text">A flying octopus</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A dancing robot</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A wise owl</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>4/5 voted</span>
+      <a href="#" onclick="openFullPage(); return false;">Discuss &rarr;</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge predict">Predict</span>
+      <span class="card-timer">Tier 3 - 67% voted</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"Best approach to climate change?"</div>
+      <div class="idea-row">
+        <span class="idea-text">Carbon tax</span>
+        <button class="btn btn-predict" onclick="predictDemo(this)">Predict</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">Nuclear power</span>
+        <button class="btn btn-predict" onclick="predictDemo(this)">Predict</button>
+      </div>
+      <div class="progress-container">
+        <div class="progress-bar"><div class="progress-fill" style="width: 67%"></div></div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>12 cells - Results hidden</span>
+    </div>
+  </div>
+</div>
+
+<!-- Full Page View -->
+<div class="full-page" id="fullPageView">
+  <div class="full-page-header">
+    <a href="#" onclick="closeFullPage(); return false;">&larr; Back to Feed</a>
+  </div>
+  <div class="full-page-content">
+    <h2 style="margin-bottom: 8px;">Discussion</h2>
+    <p style="color: #888; margin-bottom: 20px;">"What should our mascot be?"</p>
+
+    <div class="chat-msg">
+      <div class="chat-author">@alice</div>
+      <div class="chat-text">I think the owl is the best choice because it represents wisdom and knowledge. We want something that reflects our values.</div>
+    </div>
+    <div class="chat-msg">
+      <div class="chat-author">@bob</div>
+      <div class="chat-text">But robots are cooler! They represent innovation and the future of technology. Plus they're more memorable.</div>
+    </div>
+    <div class="chat-msg">
+      <div class="chat-author">@carol</div>
+      <div class="chat-text">What about both? A robot owl would be unique! Best of both worlds.</div>
+    </div>
+    <div class="chat-msg">
+      <div class="chat-author">@dave</div>
+      <div class="chat-text">I'm voting for the octopus. Eight arms means we can do eight things at once!</div>
+    </div>
+
+    <div class="input-row" style="margin-top: 20px;">
+      <input type="text" class="input-field" placeholder="Type a message...">
+      <button class="btn btn-submit">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPTION C: EXPANDABLE -->
+<div id="expandable" class="mockup">
+  <div class="description">
+    <h2>Option C: Expandable Cards</h2>
+    <p>Tap "Expand" to see more content inline. Everything stays in one scroll. Can get long with multiple expanded cards.</p>
+  </div>
+
+  <div class="card card-expandable" id="expandCard1">
+    <div class="card-header">
+      <span class="card-badge vote">Vote Now</span>
+      <span class="card-timer">Tier 2 - 3:42</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"What should our mascot be?"</div>
+      <div class="idea-row">
+        <span class="idea-text">A flying octopus</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A dancing robot</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">A wise owl</span>
+        <button class="btn btn-vote">Vote</button>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>4/5 voted</span>
+      <button class="expand-toggle" onclick="toggleExpand('expandCard1')">Expand &darr;</button>
+    </div>
+    <div class="card-expand-content">
+      <div class="section-label">Discussion</div>
+      <div class="chat-msg">
+        <div class="chat-author">@alice</div>
+        <div class="chat-text">I think the owl is the best choice because it represents wisdom.</div>
+      </div>
+      <div class="chat-msg">
+        <div class="chat-author">@bob</div>
+        <div class="chat-text">But robots are cooler! They represent innovation.</div>
+      </div>
+      <div class="input-row">
+        <input type="text" class="input-field" placeholder="Type a message...">
+        <button class="btn btn-submit">Send</button>
+      </div>
+
+      <div class="section-label" style="margin-top: 16px;">Participants</div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <span style="background: #059669; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">alice (voted)</span>
+        <span style="background: #059669; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">bob (voted)</span>
+        <span style="background: #059669; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">carol (voted)</span>
+        <span style="background: #059669; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">dave (voted)</span>
+        <span style="background: #444; color: #ccc; padding: 4px 8px; border-radius: 4px; font-size: 12px;">you (waiting)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge predict">Predict</span>
+      <span class="card-timer">Tier 3 - 67% voted</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"Best approach to climate change?"</div>
+      <div class="idea-row">
+        <span class="idea-text">Carbon tax</span>
+        <button class="btn btn-predict" onclick="predictDemo(this)">Predict</button>
+      </div>
+      <div class="idea-row">
+        <span class="idea-text">Nuclear power</span>
+        <button class="btn btn-predict" onclick="predictDemo(this)">Predict</button>
+      </div>
+      <div class="progress-container">
+        <div class="progress-bar"><div class="progress-fill" style="width: 67%"></div></div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>12 cells - Results hidden</span>
+      <button class="expand-toggle">Expand &darr;</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge submit">Accepting Ideas</span>
+      <span class="card-timer">2d 4h left</span>
+    </div>
+    <div class="card-body">
+      <div class="card-question">"How should we improve the park?"</div>
+      <div class="input-row">
+        <input type="text" class="input-field" placeholder="Your idea...">
+        <button class="btn btn-submit">Submit</button>
+      </div>
+    </div>
+    <div class="card-footer">
+      <span>23 ideas</span>
+      <button class="expand-toggle">See all &darr;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.mockup').forEach(m => m.classList.remove('active'));
+  document.querySelector(`[onclick="showTab('${id}')"]`).classList.add('active');
+  document.getElementById(id).classList.add('active');
+  closeSheet();
+  closeFullPage();
+}
+
+function openSheet() {
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('sheet').classList.add('show');
+  document.getElementById('card1').classList.add('dimmed');
+  document.getElementById('card2').classList.add('dimmed');
+  document.getElementById('card3').classList.add('dimmed');
+}
+
+function closeSheet() {
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('sheet').classList.remove('show');
+  document.getElementById('card1').classList.remove('dimmed');
+  document.getElementById('card2').classList.remove('dimmed');
+  document.getElementById('card3').classList.remove('dimmed');
+}
+
+function openFullPage() {
+  document.getElementById('fullPageView').classList.add('show');
+}
+
+function closeFullPage() {
+  document.getElementById('fullPageView').classList.remove('show');
+}
+
+function toggleExpand(id) {
+  const card = document.getElementById(id);
+  card.classList.toggle('expanded');
+  const btn = card.querySelector('.expand-toggle');
+  btn.innerHTML = card.classList.contains('expanded') ? 'Collapse &uarr;' : 'Expand &darr;';
+}
+
+function voteDemo(btn) {
+  const row = btn.parentElement;
+  const card = row.closest('.card');
+
+  // Change to "Your Pick" momentarily
+  btn.textContent = 'Your Pick';
+  btn.style.background = '#059669';
+  btn.disabled = true;
+
+  // Disable other vote buttons
+  card.querySelectorAll('.btn-vote').forEach(b => {
+    if (b !== btn) {
+      b.style.opacity = '0.3';
+      b.disabled = true;
+    }
+  });
+
+  // After a moment, change to "Explore →" button
+  setTimeout(() => {
+    btn.textContent = 'Explore →';
+    btn.style.background = '#0891b2';
+    btn.disabled = false;
+    btn.onclick = () => openSheet();
+  }, 1000);
+}
+
+let currentSlide = 0;
+const predictedTiers = new Set();
+
+function predictDemo(btn, tier) {
+  const slide = btn.closest('.carousel-slide');
+  btn.textContent = 'Your Pick';
+  btn.style.background = '#059669';
+  btn.disabled = true;
+
+  // Disable other predict buttons in same slide
+  slide.querySelectorAll('.btn-predict').forEach(b => {
+    if (b !== btn) {
+      b.style.opacity = '0.5';
+      b.disabled = true;
+    }
+  });
+
+  // Mark this tier as predicted
+  predictedTiers.add(tier);
+  document.querySelectorAll('.dot')[tier - 1].classList.add('predicted');
+
+  // Show explore link after first prediction
+  document.getElementById('swipeHint').style.display = 'none';
+  document.getElementById('exploreLink').style.display = 'inline';
+
+  // Auto-advance to next tier after short delay
+  if (tier < 3) {
+    setTimeout(() => goToSlide(tier), 800);
+  }
+}
+
+function goToSlide(index) {
+  currentSlide = index;
+  const track = document.getElementById('carouselTrack');
+  track.style.transform = `translateX(-${index * 100}%)`;
+
+  // Update dots
+  document.querySelectorAll('.dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i === index);
+  });
+
+  // Update tier label
+  const tierLabels = ['Tier 1 - 45% voted', 'Tier 2 - 67% voted', 'Tier 3 - 89% voted'];
+  document.getElementById('tierLabel').textContent = tierLabels[index];
+}
+
+// Touch swipe support
+let touchStartX = 0;
+document.addEventListener('DOMContentLoaded', () => {
+  const carousel = document.querySelector('.card-carousel');
+  if (carousel) {
+    carousel.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+    });
+    carousel.addEventListener('touchend', e => {
+      const diff = touchStartX - e.changedTouches[0].clientX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0 && currentSlide < 2) goToSlide(currentSlide + 1);
+        if (diff < 0 && currentSlide > 0) goToSlide(currentSlide - 1);
+      }
+    });
+  }
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Up-Pollinate with Views</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 8px; color: #fff; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 10px; font-size: 14px; }
+
+    .section-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 30px 0 12px 0;
+      text-align: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .phone-frame {
+      max-width: 390px;
+      margin: 0 auto;
+      background: #000;
+      border-radius: 40px;
+      padding: 12px;
+      border: 3px solid #333;
+    }
+    .phone-screen {
+      background: #0a0a0a;
+      border-radius: 30px;
+      overflow: hidden;
+      padding: 20px 16px;
+    }
+    .phone-header {
+      text-align: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #333;
+      margin-bottom: 16px;
+    }
+    .phone-title { font-size: 16px; font-weight: 600; color: #fff; }
+    .phone-subtitle { font-size: 12px; color: #666; margin-top: 4px; }
+
+    /* Comment Styles */
+    .comment {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .comment-author {
+      font-size: 13px;
+      color: #0891b2;
+      font-weight: 500;
+    }
+
+    .reach-badge {
+      font-size: 11px;
+      color: #888;
+    }
+    .reach-badge .tier { color: #10b981; font-weight: 500; }
+
+    .comment-text {
+      font-size: 14px;
+      color: #e5e5e5;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .comment-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .comment-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .action {
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .action:hover { color: #0891b2; }
+    .action.voted { color: #10b981; }
+    .action .eye { color: #888; }
+    .action .views { color: #888; }
+
+    .up-pollinate-hint {
+      font-size: 10px;
+      color: #f59e0b;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .mini-bar {
+      width: 30px;
+      height: 3px;
+      background: #333;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .mini-fill {
+      height: 100%;
+      background: #f59e0b;
+      border-radius: 2px;
+    }
+
+    /* Feed Card Styles */
+    .feed-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .feed-card-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .feed-card-type {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .feed-card-type.submit { color: #0891b2; }
+    .feed-card-type.vote { color: #f59e0b; }
+    .feed-card-type.champion { color: #10b981; }
+    .feed-card-meta {
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .feed-card-body {
+      padding: 14px;
+    }
+    .feed-card-question {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .feed-card-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #888;
+    }
+    .feed-card-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .feed-card-footer {
+      padding: 10px 14px;
+      border-top: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .feed-card-action {
+      font-size: 12px;
+      color: #0891b2;
+      font-weight: 500;
+    }
+    .feed-card-views {
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Homepage feed preview */
+    .homepage-section {
+      background: #111;
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .homepage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .homepage-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .homepage-link {
+      font-size: 12px;
+      color: #0891b2;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Views + Up-Pollinate</h1>
+  <p class="subtitle">Eye icon shows reach. Clean, minimal.</p>
+
+  <div class="grid">
+
+    <!-- Comments with views -->
+    <div>
+      <div class="section-label">Comments in Discussion</div>
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <div class="phone-header">
+            <div class="phone-title">Discussion</div>
+            <div class="phone-subtitle">Cell 4 · Voting Tier 1</div>
+          </div>
+
+          <!-- Comment close to up-pollinating -->
+          <div class="comment">
+            <div class="comment-header">
+              <span class="comment-author">@sarah_k</span>
+              <span class="reach-badge">Tier 1</span>
+            </div>
+            <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+            <div class="comment-footer">
+              <div class="comment-actions">
+                <span class="action">↑ 7</span>
+                <span class="action">💬 3</span>
+                <span class="action"><span class="eye">👁</span> <span class="views">23</span></span>
+              </div>
+              <span class="up-pollinate-hint">
+                <div class="mini-bar"><div class="mini-fill" style="width: 70%"></div></div>
+                3 more to ↑
+              </span>
+            </div>
+          </div>
+
+          <!-- Comment that reached Tier 2 -->
+          <div class="comment">
+            <div class="comment-header">
+              <span class="comment-author">@mike_t</span>
+              <span class="reach-badge">→ reached <span class="tier">Tier 2</span></span>
+            </div>
+            <div class="comment-text">"Modular reactors change the economics entirely."</div>
+            <div class="comment-footer">
+              <div class="comment-actions">
+                <span class="action voted">↑ 12</span>
+                <span class="action">💬 5</span>
+                <span class="action"><span class="eye">👁</span> <span class="views">67</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- New comment, low views -->
+          <div class="comment">
+            <div class="comment-header">
+              <span class="comment-author">@jane_d</span>
+              <span class="reach-badge">Tier 1</span>
+            </div>
+            <div class="comment-text">"What about construction timelines?"</div>
+            <div class="comment-footer">
+              <div class="comment-actions">
+                <span class="action">↑ 1</span>
+                <span class="action">💬 0</span>
+                <span class="action"><span class="eye">👁</span> <span class="views">5</span></span>
+              </div>
+              <span class="up-pollinate-hint">
+                <div class="mini-bar"><div class="mini-fill" style="width: 10%"></div></div>
+                9 more to ↑
+              </span>
+            </div>
+          </div>
+
+          <!-- High reach comment -->
+          <div class="comment">
+            <div class="comment-header">
+              <span class="comment-author">@alex_r</span>
+              <span class="reach-badge">→ reached <span class="tier">Tier 4</span></span>
+            </div>
+            <div class="comment-text">"Portfolio approach - nuclear for baseload, renewables for peak."</div>
+            <div class="comment-footer">
+              <div class="comment-actions">
+                <span class="action voted">↑ 89</span>
+                <span class="action">💬 34</span>
+                <span class="action"><span class="eye">👁</span> <span class="views">412</span></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Feed Cards with views -->
+    <div>
+      <div class="section-label">Feed Cards (with views)</div>
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <div class="phone-header">
+            <div class="phone-title">Your Feed</div>
+            <div class="phone-subtitle">3 items need attention</div>
+          </div>
+
+          <!-- Vote now card -->
+          <div class="feed-card">
+            <div class="feed-card-header">
+              <span class="feed-card-type vote">Vote Now</span>
+              <span class="feed-card-meta">Tier 2 · 2:34 left</span>
+            </div>
+            <div class="feed-card-body">
+              <div class="feed-card-question">"What should be our approach to climate policy?"</div>
+              <div class="feed-card-stats">
+                <span class="feed-card-stat">💡 4 ideas</span>
+                <span class="feed-card-stat">👥 127 participants</span>
+                <span class="feed-card-stat">👁 1.2k views</span>
+              </div>
+            </div>
+            <div class="feed-card-footer">
+              <span class="feed-card-action">Cast your vote →</span>
+              <span class="feed-card-views">4/5 in your cell voted</span>
+            </div>
+          </div>
+
+          <!-- Submit ideas card -->
+          <div class="feed-card">
+            <div class="feed-card-header">
+              <span class="feed-card-type submit">Accepting Ideas</span>
+              <span class="feed-card-meta">18/25 ideas</span>
+            </div>
+            <div class="feed-card-body">
+              <div class="feed-card-question">"How should we improve the local park?"</div>
+              <div class="feed-card-stats">
+                <span class="feed-card-stat">💡 18 ideas</span>
+                <span class="feed-card-stat">👥 45 participants</span>
+                <span class="feed-card-stat">👁 234 views</span>
+              </div>
+            </div>
+            <div class="feed-card-footer">
+              <span class="feed-card-action">Submit your idea →</span>
+            </div>
+          </div>
+
+          <!-- Champion card -->
+          <div class="feed-card">
+            <div class="feed-card-header">
+              <span class="feed-card-type champion">Champion</span>
+              <span class="feed-card-meta">2 challengers waiting</span>
+            </div>
+            <div class="feed-card-body">
+              <div class="feed-card-question">"Best programming language for beginners?"</div>
+              <div class="feed-card-stats">
+                <span class="feed-card-stat">👑 Python</span>
+                <span class="feed-card-stat">👥 892 participants</span>
+                <span class="feed-card-stat">👁 5.4k views</span>
+              </div>
+            </div>
+            <div class="feed-card-footer">
+              <span class="feed-card-action">Submit challenger →</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Homepage with feed -->
+  <div class="section-label">Homepage with Feed</div>
+  <div class="homepage-section">
+    <div class="homepage-header">
+      <span class="homepage-title">Active Deliberations</span>
+      <span class="homepage-link">See all →</span>
+    </div>
+
+    <div class="feed-card">
+      <div class="feed-card-header">
+        <span class="feed-card-type vote">Voting Now</span>
+        <span class="feed-card-meta">Tier 3</span>
+      </div>
+      <div class="feed-card-body">
+        <div class="feed-card-question">"What should be our approach to climate policy?"</div>
+        <div class="feed-card-stats">
+          <span class="feed-card-stat">👥 1,247</span>
+          <span class="feed-card-stat">👁 8.9k</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="feed-card">
+      <div class="feed-card-header">
+        <span class="feed-card-type submit">Accepting Ideas</span>
+        <span class="feed-card-meta">2d left</span>
+      </div>
+      <div class="feed-card-body">
+        <div class="feed-card-question">"How should we improve public transit?"</div>
+        <div class="feed-card-stats">
+          <span class="feed-card-stat">💡 34</span>
+          <span class="feed-card-stat">👥 156</span>
+          <span class="feed-card-stat">👁 2.1k</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="max-width: 500px; margin: 40px auto; padding: 20px; background: #1a1a1a; border-radius: 12px;">
+    <h3 style="color: #fff; margin-bottom: 12px; font-size: 14px; text-align: center;">Summary</h3>
+    <p style="color: #888; font-size: 12px; line-height: 1.8;">
+      <strong style="color: #e5e5e5;">Comments:</strong> 👁 views inline with upvotes and replies<br>
+      <strong style="color: #e5e5e5;">Feed cards:</strong> 👁 views as a stat alongside participants/ideas<br>
+      <strong style="color: #e5e5e5;">Homepage:</strong> Feed preview with view counts for social proof<br><br>
+      <strong style="color: #f59e0b;">Up-pollinate hint:</strong> Mini progress bar + "X more to ↑" stays minimal
+    </p>
+  </div>
+
+</body>
+</html>

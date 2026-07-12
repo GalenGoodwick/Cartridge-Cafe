@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Up-Pollinate - Minimal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 8px; color: #fff; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 14px; }
+
+    .phone-frame {
+      max-width: 390px;
+      margin: 20px auto;
+      background: #000;
+      border-radius: 40px;
+      padding: 12px;
+      border: 3px solid #333;
+    }
+    .phone-screen {
+      background: #0a0a0a;
+      border-radius: 30px;
+      overflow: hidden;
+      padding: 20px 16px;
+    }
+    .phone-header {
+      text-align: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #333;
+      margin-bottom: 16px;
+    }
+    .phone-title { font-size: 16px; font-weight: 600; color: #fff; }
+    .phone-subtitle { font-size: 12px; color: #666; margin-top: 4px; }
+
+    .section-label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 24px 0 12px 0;
+      text-align: center;
+    }
+
+    /* Comment Styles */
+    .comment {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    /* Header with inline progress */
+    .comment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .comment-author {
+      font-size: 13px;
+      color: #0891b2;
+      font-weight: 500;
+    }
+
+    /* Reach badge - minimal */
+    .reach-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .reach-tier {
+      color: #888;
+    }
+    .reach-tier.t2 { color: #0891b2; }
+    .reach-tier.t3 { color: #8b5cf6; }
+    .reach-tier.t4 { color: #f59e0b; }
+    .reach-tier.t5 { color: #10b981; }
+
+    /* Mini progress bar in header */
+    .reach-progress {
+      width: 40px;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .reach-progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: #666;
+    }
+    .reach-progress-fill.close { background: #f59e0b; }
+    .reach-progress-fill.t2 { background: #0891b2; }
+    .reach-progress-fill.t3 { background: #8b5cf6; }
+
+    .comment-text {
+      font-size: 14px;
+      color: #e5e5e5;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+
+    .comment-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .comment-actions {
+      display: flex;
+      gap: 14px;
+    }
+    .action {
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .action:hover { color: #0891b2; }
+    .action.voted { color: #10b981; }
+
+    .up-pollinate-hint {
+      font-size: 10px;
+      color: #f59e0b;
+    }
+
+    /* Variant B: Even more minimal - just badge */
+    .reach-simple {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: #333;
+      color: #888;
+    }
+    .reach-simple.t2 { background: rgba(8,145,178,0.2); color: #0891b2; }
+    .reach-simple.t3 { background: rgba(139,92,246,0.2); color: #8b5cf6; }
+    .reach-simple.t4 { background: rgba(245,158,11,0.2); color: #f59e0b; }
+
+    /* Variant C: Arrow notation */
+    .reach-arrow {
+      font-size: 11px;
+      color: #666;
+    }
+    .reach-arrow .tier { color: #10b981; font-weight: 500; }
+
+    /* Variant D: Progress only on hover/expand */
+    .comment-expand {
+      text-align: center;
+      padding-top: 10px;
+      border-top: 1px solid #333;
+      margin-top: 10px;
+    }
+    .expand-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+    .expand-progress {
+      width: 60px;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+    }
+    .expand-fill {
+      height: 100%;
+      background: #f59e0b;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Up-Pollinate</h1>
+  <p class="subtitle">Minimal inline indicators</p>
+
+  <!-- VARIANT A: Progress bar in header -->
+  <div class="section-label">A: Progress in Header</div>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="phone-header">
+        <div class="phone-title">Discussion</div>
+        <div class="phone-subtitle">Cell 4 · Voting Tier 1</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@sarah_k</span>
+          <div class="reach-badge">
+            <span class="reach-tier">Tier 1</span>
+            <div class="reach-progress">
+              <div class="reach-progress-fill close" style="width: 70%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action">↑ 7</span>
+            <span class="action">💬 3</span>
+          </div>
+          <span class="up-pollinate-hint">3 more to up-pollinate</span>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@mike_t</span>
+          <div class="reach-badge">
+            <span class="reach-tier t2">→ Tier 2</span>
+          </div>
+        </div>
+        <div class="comment-text">"Modular reactors change the economics entirely."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 12</span>
+            <span class="action">💬 5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@jane_d</span>
+          <div class="reach-badge">
+            <span class="reach-tier">Tier 1</span>
+            <div class="reach-progress">
+              <div class="reach-progress-fill" style="width: 10%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="comment-text">"What about construction timelines?"</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action">↑ 1</span>
+            <span class="action">💬 0</span>
+          </div>
+          <span class="up-pollinate-hint">9 more to up-pollinate</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- VARIANT B: Simple badge only -->
+  <div class="section-label">B: Badge Only (no progress bar)</div>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="phone-header">
+        <div class="phone-title">Discussion</div>
+        <div class="phone-subtitle">Cell 4 · Voting Tier 1</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@sarah_k</span>
+          <span class="reach-simple">Tier 1</span>
+        </div>
+        <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action">↑ 7</span>
+            <span class="action">💬 3</span>
+          </div>
+          <span class="up-pollinate-hint">3 more to up-pollinate</span>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@mike_t</span>
+          <span class="reach-simple t2">Tier 2</span>
+        </div>
+        <div class="comment-text">"Modular reactors change the economics entirely."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 12</span>
+            <span class="action">💬 5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@alex_r</span>
+          <span class="reach-simple t3">Tier 3</span>
+        </div>
+        <div class="comment-text">"Portfolio approach - nuclear for baseload, renewables for peak."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 34</span>
+            <span class="action">💬 12</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- VARIANT C: Arrow reached notation -->
+  <div class="section-label">C: Arrow Notation</div>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="phone-header">
+        <div class="phone-title">Discussion</div>
+        <div class="phone-subtitle">Cell 4 · Voting Tier 1</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@sarah_k</span>
+          <span class="reach-arrow">Tier 1</span>
+        </div>
+        <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action">↑ 7</span>
+            <span class="action">💬 3</span>
+          </div>
+          <span class="up-pollinate-hint">3 more to ↑</span>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@mike_t</span>
+          <span class="reach-arrow">→ reached <span class="tier">Tier 2</span></span>
+        </div>
+        <div class="comment-text">"Modular reactors change the economics entirely."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 12</span>
+            <span class="action">💬 5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@alex_r</span>
+          <span class="reach-arrow">→ reached <span class="tier">Tier 4</span></span>
+        </div>
+        <div class="comment-text">"Portfolio approach - nuclear for baseload, renewables for peak."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 89</span>
+            <span class="action">💬 34</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- VARIANT D: Progress only in footer -->
+  <div class="section-label">D: Progress in Footer Only</div>
+  <div class="phone-frame">
+    <div class="phone-screen">
+      <div class="phone-header">
+        <div class="phone-title">Discussion</div>
+        <div class="phone-subtitle">Cell 4 · Voting Tier 1</div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@sarah_k</span>
+        </div>
+        <div class="comment-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action">↑ 7</span>
+            <span class="action">💬 3</span>
+          </div>
+        </div>
+        <div class="comment-expand">
+          <div class="expand-bar">
+            <span>3 more to up-pollinate</span>
+            <div class="expand-progress"><div class="expand-fill" style="width: 70%"></div></div>
+            <span>→ Tier 2</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comment">
+        <div class="comment-header">
+          <span class="comment-author">@mike_t</span>
+          <span class="reach-arrow">→ reached <span class="tier">Tier 2</span></span>
+        </div>
+        <div class="comment-text">"Modular reactors change the economics entirely."</div>
+        <div class="comment-footer">
+          <div class="comment-actions">
+            <span class="action voted">↑ 12</span>
+            <span class="action">💬 5</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="max-width: 400px; margin: 30px auto; padding: 20px; background: #1a1a1a; border-radius: 12px; text-align: center;">
+    <h3 style="color: #fff; margin-bottom: 12px; font-size: 14px;">Summary</h3>
+    <p style="color: #888; font-size: 12px; line-height: 1.6;">
+      <strong style="color: #0891b2;">A:</strong> Progress bar in header + hint in footer<br>
+      <strong style="color: #8b5cf6;">B:</strong> Just a tier badge, hint in footer<br>
+      <strong style="color: #10b981;">C:</strong> "→ reached Tier X" text only<br>
+      <strong style="color: #f59e0b;">D:</strong> Clean header, progress bar in footer
+    </p>
+  </div>
+
+</body>
+</html>

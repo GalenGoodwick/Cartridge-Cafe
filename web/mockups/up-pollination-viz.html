@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Up-Pollination Visualization Options</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 10px; color: #fff; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 40px; }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .option {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .option-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #333;
+    }
+    .option-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .option-tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #333;
+      color: #aaa;
+    }
+    .option-desc {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    /* Option A: Journey Trail */
+    .journey-trail {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .comment-card {
+      background: #1a1a1a;
+      border: 1px solid #0891b2;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .comment-text {
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .comment-author {
+      font-size: 12px;
+      color: #0891b2;
+    }
+    .journey-path {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 10px;
+      background: linear-gradient(90deg, rgba(8,145,178,0.1) 0%, rgba(16,185,129,0.1) 100%);
+      border-radius: 8px;
+    }
+    .tier-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tier-dot.active { background: #0891b2; color: #fff; }
+    .tier-dot.future { background: #333; color: #666; }
+    .tier-dot.passed { background: #10b981; color: #fff; }
+    .journey-arrow {
+      color: #444;
+      flex-shrink: 0;
+    }
+    .journey-label {
+      font-size: 11px;
+      color: #888;
+      margin-left: auto;
+    }
+
+    /* Option B: Bracket Style */
+    .bracket-viz {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+    }
+    .bracket-container {
+      display: flex;
+      gap: 20px;
+      min-width: 500px;
+    }
+    .bracket-tier {
+      flex: 1;
+      min-width: 120px;
+    }
+    .bracket-tier-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .bracket-item {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: #aaa;
+      position: relative;
+    }
+    .bracket-item.highlighted {
+      border-color: #f59e0b;
+      background: rgba(245,158,11,0.1);
+      color: #f59e0b;
+    }
+    .bracket-item.won {
+      border-color: #10b981;
+      color: #10b981;
+    }
+    .bracket-connector {
+      position: absolute;
+      right: -20px;
+      top: 50%;
+      width: 20px;
+      height: 1px;
+      background: #333;
+    }
+
+    /* Option C: River Flow */
+    .river-viz {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .river-comment {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .river-flow {
+      width: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .river-node {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #333;
+      position: relative;
+    }
+    .river-node.source { background: #0891b2; }
+    .river-node.current { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+    .river-line {
+      width: 2px;
+      flex: 1;
+      background: linear-gradient(180deg, #0891b2 0%, #f59e0b 100%);
+      min-height: 30px;
+    }
+    .river-content {
+      flex: 1;
+    }
+    .river-meta {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .river-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 8px;
+      border-left: 3px solid #f59e0b;
+    }
+    .river-stats {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+    .river-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .river-stat.highlight { color: #10b981; }
+
+    /* Option D: Notification Style */
+    .notif-viz {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .notif-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      border-left: 3px solid transparent;
+    }
+    .notif-item.advance { border-left-color: #10b981; }
+    .notif-item.reply { border-left-color: #0891b2; }
+    .notif-item.vote { border-left-color: #f59e0b; }
+    .notif-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .notif-icon.advance { background: rgba(16,185,129,0.2); }
+    .notif-icon.reply { background: rgba(8,145,178,0.2); }
+    .notif-icon.vote { background: rgba(245,158,11,0.2); }
+    .notif-content { flex: 1; }
+    .notif-title {
+      font-size: 13px;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .notif-title strong { color: #10b981; }
+    .notif-preview {
+      font-size: 12px;
+      color: #888;
+      font-style: italic;
+    }
+    .notif-time {
+      font-size: 11px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    /* Option E: Heatmap / Pulse */
+    .pulse-viz {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .pulse-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .pulse-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .pulse-author {
+      font-size: 12px;
+      color: #0891b2;
+    }
+    .pulse-reach {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pulse-bar {
+      display: flex;
+      gap: 2px;
+    }
+    .pulse-segment {
+      width: 8px;
+      height: 16px;
+      border-radius: 2px;
+      background: #333;
+    }
+    .pulse-segment.t1 { background: #0891b2; }
+    .pulse-segment.t2 { background: #06b6d4; }
+    .pulse-segment.t3 { background: #10b981; }
+    .pulse-segment.t4 { background: #f59e0b; }
+    .pulse-label {
+      font-size: 10px;
+      color: #666;
+    }
+    .pulse-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 8px;
+    }
+    .pulse-footer {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      color: #666;
+    }
+    .pulse-stat { display: flex; align-items: center; gap: 4px; }
+    .pulse-stat.hot { color: #f59e0b; }
+
+    /* Option F: Thread/Tree */
+    .tree-viz {
+      background: #111;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .tree-root {
+      background: linear-gradient(135deg, rgba(8,145,178,0.2) 0%, rgba(16,185,129,0.2) 100%);
+      border: 1px solid #0891b2;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .tree-root-label {
+      font-size: 10px;
+      color: #0891b2;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .tree-root-text {
+      font-size: 14px;
+      color: #fff;
+    }
+    .tree-branches {
+      padding-left: 20px;
+      border-left: 2px solid #333;
+      margin-left: 10px;
+    }
+    .tree-branch {
+      position: relative;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #1a1a1a;
+      border-radius: 8px;
+    }
+    .tree-branch::before {
+      content: '';
+      position: absolute;
+      left: -20px;
+      top: 50%;
+      width: 18px;
+      height: 2px;
+      background: #333;
+    }
+    .tree-branch-tier {
+      font-size: 10px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .tree-branch-text {
+      font-size: 12px;
+      color: #ccc;
+    }
+    .tree-branch.highlight {
+      border: 1px solid #f59e0b;
+      background: rgba(245,158,11,0.1);
+    }
+    .tree-branch.highlight .tree-branch-tier { color: #f59e0b; }
+
+    .pros-cons {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #333;
+    }
+    .pros-cons-title {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .pro, .con {
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .pro { color: #10b981; }
+    .con { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>Up-Pollination Visualization</h1>
+  <p class="subtitle">How should we show comments traveling through tiers?</p>
+
+  <div class="options-grid">
+
+    <!-- Option A: Journey Trail -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">A: Journey Trail</span>
+        <span class="option-tag">Card-based</span>
+      </div>
+      <p class="option-desc">Each comment shows its path through tiers as a horizontal trail. Users see exactly where their argument has traveled.</p>
+
+      <div class="journey-trail">
+        <div class="comment-card">
+          <div class="comment-text">"Nuclear is the only path that can scale to meet demand while being carbon-neutral"</div>
+          <div class="comment-author">@sarah_k</div>
+          <div class="journey-path">
+            <div class="tier-dot passed">T1</div>
+            <span class="journey-arrow">→</span>
+            <div class="tier-dot passed">T2</div>
+            <span class="journey-arrow">→</span>
+            <div class="tier-dot active">T3</div>
+            <span class="journey-arrow">→</span>
+            <div class="tier-dot future">T4</div>
+            <span class="journey-label">Reached 847 people</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Clear progress indication</div>
+        <div class="pro">+ Gamifies contribution</div>
+        <div class="con">- Takes vertical space</div>
+      </div>
+    </div>
+
+    <!-- Option B: Tournament Bracket -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">B: Tournament Bracket</span>
+        <span class="option-tag">Overview</span>
+      </div>
+      <p class="option-desc">Shows all comments competing like a sports bracket. Winning arguments advance visually to the right.</p>
+
+      <div class="bracket-viz">
+        <div class="bracket-container">
+          <div class="bracket-tier">
+            <div class="bracket-tier-label">Tier 1</div>
+            <div class="bracket-item">Solar cheaper...</div>
+            <div class="bracket-item highlighted">Nuclear scales...<div class="bracket-connector"></div></div>
+            <div class="bracket-item">Wind + storage...</div>
+            <div class="bracket-item">Hydro under...</div>
+          </div>
+          <div class="bracket-tier">
+            <div class="bracket-tier-label">Tier 2</div>
+            <div class="bracket-item highlighted">Nuclear scales...<div class="bracket-connector"></div></div>
+            <div class="bracket-item">Combo approach...</div>
+          </div>
+          <div class="bracket-tier">
+            <div class="bracket-tier-label">Tier 3</div>
+            <div class="bracket-item won">Nuclear scales...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Familiar mental model</div>
+        <div class="pro">+ Shows competition</div>
+        <div class="con">- Complex with many comments</div>
+        <div class="con">- Needs dedicated page</div>
+      </div>
+    </div>
+
+    <!-- Option C: River Flow -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">C: River Flow</span>
+        <span class="option-tag">Timeline</span>
+      </div>
+      <p class="option-desc">Comments flow like a river, with visual nodes showing where they originated and how far they've traveled.</p>
+
+      <div class="river-viz">
+        <div class="river-comment">
+          <div class="river-flow">
+            <div class="river-node source"></div>
+            <div class="river-line"></div>
+            <div class="river-node current"></div>
+          </div>
+          <div class="river-content">
+            <div class="river-meta">T1 Cell 4 → T3 (currently)</div>
+            <div class="river-text">"Nuclear is the only path that can scale to meet demand while being carbon-neutral"</div>
+            <div class="river-stats">
+              <span class="river-stat highlight">↑ 23 upvotes</span>
+              <span class="river-stat">💬 8 replies</span>
+              <span class="river-stat">👥 312 reached</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Shows origin story</div>
+        <div class="pro">+ Elegant visual</div>
+        <div class="con">- Metaphor may not be obvious</div>
+      </div>
+    </div>
+
+    <!-- Option D: Notification Style -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">D: Activity Feed</span>
+        <span class="option-tag">Notifications</span>
+      </div>
+      <p class="option-desc">Show up-pollination as events in an activity feed. "Your comment advanced!" feels rewarding.</p>
+
+      <div class="notif-viz">
+        <div class="notif-item advance">
+          <div class="notif-icon advance">🚀</div>
+          <div class="notif-content">
+            <div class="notif-title">Your comment advanced to <strong>Tier 3</strong></div>
+            <div class="notif-preview">"Nuclear is the only path that can scale..."</div>
+            <div class="notif-time">2 minutes ago</div>
+          </div>
+        </div>
+        <div class="notif-item reply">
+          <div class="notif-icon reply">💬</div>
+          <div class="notif-content">
+            <div class="notif-title">Mike replied in Tier 2</div>
+            <div class="notif-preview">"I'd add that the waste problem is overstated..."</div>
+            <div class="notif-time">15 minutes ago</div>
+          </div>
+        </div>
+        <div class="notif-item vote">
+          <div class="notif-icon vote">⬆️</div>
+          <div class="notif-content">
+            <div class="notif-title">12 people upvoted your comment</div>
+            <div class="notif-preview">"Nuclear is the only path..."</div>
+            <div class="notif-time">1 hour ago</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Familiar pattern</div>
+        <div class="pro">+ Dopamine hits</div>
+        <div class="con">- Doesn't show full journey</div>
+        <div class="con">- Separate from main UI</div>
+      </div>
+    </div>
+
+    <!-- Option E: Reach/Pulse -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E: Reach Meter</span>
+        <span class="option-tag">Inline</span>
+      </div>
+      <p class="option-desc">Each comment shows a small "reach" indicator - how many tiers it's touched. Subtle but always visible.</p>
+
+      <div class="pulse-viz">
+        <div class="pulse-comment">
+          <div class="pulse-header">
+            <span class="pulse-author">@sarah_k</span>
+            <div class="pulse-reach">
+              <div class="pulse-bar">
+                <div class="pulse-segment t1"></div>
+                <div class="pulse-segment t2"></div>
+                <div class="pulse-segment t3"></div>
+                <div class="pulse-segment"></div>
+              </div>
+              <span class="pulse-label">T3</span>
+            </div>
+          </div>
+          <div class="pulse-text">"Nuclear is the only path that can scale to meet demand while being carbon-neutral"</div>
+          <div class="pulse-footer">
+            <span class="pulse-stat">↑ 23</span>
+            <span class="pulse-stat">💬 8</span>
+            <span class="pulse-stat hot">🔥 trending</span>
+          </div>
+        </div>
+        <div class="pulse-comment">
+          <div class="pulse-header">
+            <span class="pulse-author">@mike_t</span>
+            <div class="pulse-reach">
+              <div class="pulse-bar">
+                <div class="pulse-segment t1"></div>
+                <div class="pulse-segment"></div>
+                <div class="pulse-segment"></div>
+                <div class="pulse-segment"></div>
+              </div>
+              <span class="pulse-label">T1</span>
+            </div>
+          </div>
+          <div class="pulse-text">"What about the waste storage issue though?"</div>
+          <div class="pulse-footer">
+            <span class="pulse-stat">↑ 4</span>
+            <span class="pulse-stat">💬 2</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Minimal space</div>
+        <div class="pro">+ Works inline</div>
+        <div class="con">- Less exciting</div>
+        <div class="con">- Easy to ignore</div>
+      </div>
+    </div>
+
+    <!-- Option F: Thread Tree -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">F: Argument Tree</span>
+        <span class="option-tag">Threaded</span>
+      </div>
+      <p class="option-desc">Show how one comment spawned responses across tiers. The original argument becomes a "root" with branches.</p>
+
+      <div class="tree-viz">
+        <div class="tree-root">
+          <div class="tree-root-label">Original · Tier 1</div>
+          <div class="tree-root-text">"Nuclear is the only path that can scale..."</div>
+        </div>
+        <div class="tree-branches">
+          <div class="tree-branch">
+            <div class="tree-branch-tier">Tier 2 response</div>
+            <div class="tree-branch-text">"Agreed, and the safety record is actually excellent"</div>
+          </div>
+          <div class="tree-branch highlight">
+            <div class="tree-branch-tier">Tier 3 response · Now</div>
+            <div class="tree-branch-text">"The real issue is regulatory, not technical"</div>
+          </div>
+          <div class="tree-branch">
+            <div class="tree-branch-tier">Tier 2 response</div>
+            <div class="tree-branch-text">"What about construction costs?"</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pros-cons-title">Trade-offs</div>
+        <div class="pro">+ Shows discourse evolution</div>
+        <div class="pro">+ Threaded = familiar</div>
+        <div class="con">- Can get deeply nested</div>
+        <div class="con">- Complex to implement</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="text-align: center; margin-top: 50px; padding: 30px; background: #1a1a1a; border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto;">
+    <h2 style="color: #fff; margin-bottom: 10px;">Recommendation</h2>
+    <p style="color: #888; margin-bottom: 20px;">Combine approaches:</p>
+    <p style="color: #e5e5e5; line-height: 1.6;">
+      <strong style="color: #0891b2;">E (Reach Meter)</strong> inline on every comment for passive awareness<br>
+      +<br>
+      <strong style="color: #10b981;">D (Activity Feed)</strong> as notification center for dopamine<br>
+      +<br>
+      <strong style="color: #f59e0b;">A (Journey Trail)</strong> on detail view for full story
+    </p>
+  </div>
+
+</body>
+</html>

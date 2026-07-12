@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reach Meter Variants (E) - Deep Engagement Focus</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      padding: 20px;
+    }
+    h1 { text-align: center; margin-bottom: 10px; color: #fff; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 40px; }
+    .goal { text-align: center; color: #f59e0b; margin-bottom: 40px; font-size: 14px; }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 30px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .option {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .option-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #333;
+    }
+    .option-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .option-tag {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: #333;
+      color: #aaa;
+    }
+    .option-desc {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .comment-list {
+      background: #111;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    /* E1: Progress Bar with Threshold */
+    .e1-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .e1-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .e1-author {
+      font-size: 12px;
+      color: #0891b2;
+    }
+    .e1-origin {
+      font-size: 10px;
+      color: #666;
+    }
+    .e1-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .e1-progress-container {
+      background: #0a0a0a;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .e1-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .e1-progress-left { color: #888; }
+    .e1-progress-right { color: #10b981; font-weight: 600; }
+    .e1-progress-bar {
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+    .e1-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #0891b2, #10b981);
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .e1-progress-threshold {
+      position: absolute;
+      top: -2px;
+      bottom: -2px;
+      width: 2px;
+      background: #f59e0b;
+    }
+    .e1-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .e1-action {
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .e1-action:hover { color: #0891b2; }
+    .e1-action.voted { color: #10b981; }
+
+    /* E2: Circular with Call to Action */
+    .e2-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 12px;
+    }
+    .e2-circle-container {
+      flex-shrink: 0;
+      width: 56px;
+      height: 56px;
+      position: relative;
+    }
+    .e2-circle-bg {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: conic-gradient(#10b981 0deg, #10b981 var(--progress), #333 var(--progress), #333 360deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .e2-circle-inner {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .e2-circle-tier {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .e2-circle-label {
+      font-size: 8px;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .e2-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .e2-meta {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .e2-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .e2-cta {
+      font-size: 11px;
+      color: #f59e0b;
+      background: rgba(245,158,11,0.1);
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .e2-cta.ready {
+      color: #10b981;
+      background: rgba(16,185,129,0.1);
+    }
+
+    /* E3: Minimal with Expand */
+    .e3-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 3px solid #333;
+    }
+    .e3-comment.advancing { border-left-color: #f59e0b; }
+    .e3-comment.spread { border-left-color: #10b981; }
+    .e3-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .e3-author { font-size: 12px; color: #0891b2; }
+    .e3-badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: #333;
+      color: #888;
+    }
+    .e3-badge.hot { background: rgba(245,158,11,0.2); color: #f59e0b; }
+    .e3-badge.spread { background: rgba(16,185,129,0.2); color: #10b981; }
+    .e3-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 8px;
+    }
+    .e3-expand {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 8px;
+      border-top: 1px solid #333;
+    }
+    .e3-stats {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #666;
+    }
+    .e3-expand-btn {
+      font-size: 11px;
+      color: #0891b2;
+      cursor: pointer;
+    }
+    .e3-detail {
+      margin-top: 10px;
+      padding: 10px;
+      background: #0a0a0a;
+      border-radius: 8px;
+    }
+    .e3-detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 4px 0;
+    }
+    .e3-detail-label { color: #666; }
+    .e3-detail-value { color: #e5e5e5; }
+    .e3-detail-value.highlight { color: #f59e0b; }
+
+    /* E4: Gamified XP Style */
+    .e4-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .e4-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .e4-author { font-size: 12px; color: #0891b2; }
+    .e4-xp {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .e4-xp-badge {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 10px;
+    }
+    .e4-xp-next {
+      font-size: 10px;
+      color: #666;
+    }
+    .e4-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 10px;
+    }
+    .e4-milestones {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .e4-milestone {
+      flex: 1;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      position: relative;
+    }
+    .e4-milestone.complete { background: #10b981; }
+    .e4-milestone.current { background: linear-gradient(90deg, #10b981, #333); }
+    .e4-milestone-label {
+      position: absolute;
+      top: 8px;
+      right: 0;
+      font-size: 9px;
+      color: #666;
+    }
+    .e4-milestone.complete .e4-milestone-label { color: #10b981; }
+    .e4-unlock {
+      background: rgba(245,158,11,0.1);
+      border: 1px dashed #f59e0b;
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+      font-size: 11px;
+      color: #f59e0b;
+    }
+
+    /* E5: Thread Preview with Reach */
+    .e5-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .e5-main {
+      padding: 12px;
+    }
+    .e5-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .e5-author { font-size: 12px; color: #0891b2; }
+    .e5-reach {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: #666;
+    }
+    .e5-reach-icon { color: #10b981; }
+    .e5-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 8px;
+    }
+    .e5-votes-needed {
+      font-size: 11px;
+      color: #888;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .e5-mini-bar {
+      flex: 1;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      max-width: 100px;
+    }
+    .e5-mini-fill {
+      height: 100%;
+      background: #f59e0b;
+      border-radius: 2px;
+    }
+    .e5-thread-preview {
+      background: #0a0a0a;
+      padding: 10px 12px;
+      border-top: 1px solid #333;
+    }
+    .e5-thread-label {
+      font-size: 10px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    .e5-thread-item {
+      font-size: 12px;
+      color: #aaa;
+      padding: 4px 0;
+      padding-left: 12px;
+      border-left: 2px solid #333;
+      margin-bottom: 4px;
+    }
+    .e5-thread-item.highlighted {
+      border-left-color: #10b981;
+      color: #e5e5e5;
+    }
+    .e5-thread-more {
+      font-size: 11px;
+      color: #0891b2;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    /* E6: Seed Growing */
+    .e6-comment {
+      background: #1a1a1a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .e6-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .e6-author-block {}
+    .e6-author { font-size: 12px; color: #0891b2; }
+    .e6-origin { font-size: 10px; color: #666; }
+    .e6-plant {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .e6-plant-icon { font-size: 20px; }
+    .e6-plant-label { font-size: 9px; color: #666; }
+    .e6-text {
+      font-size: 13px;
+      color: #e5e5e5;
+      margin-bottom: 10px;
+    }
+    .e6-growth {
+      background: #0a0a0a;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .e6-growth-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 11px;
+    }
+    .e6-growth-label { color: #666; }
+    .e6-growth-value { color: #10b981; }
+    .e6-growth-stages {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .e6-stage {
+      flex: 1;
+      text-align: center;
+    }
+    .e6-stage-icon {
+      font-size: 16px;
+      margin-bottom: 4px;
+      opacity: 0.3;
+    }
+    .e6-stage.active .e6-stage-icon { opacity: 1; }
+    .e6-stage.complete .e6-stage-icon { opacity: 1; }
+    .e6-stage-label {
+      font-size: 9px;
+      color: #666;
+    }
+    .e6-stage.active .e6-stage-label { color: #f59e0b; }
+    .e6-stage.complete .e6-stage-label { color: #10b981; }
+    .e6-water {
+      margin-top: 10px;
+      text-align: center;
+    }
+    .e6-water-btn {
+      background: rgba(8,145,178,0.2);
+      border: 1px solid #0891b2;
+      color: #0891b2;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .e6-water-hint {
+      font-size: 10px;
+      color: #666;
+      margin-top: 6px;
+    }
+
+    .notes {
+      margin-top: 15px;
+      padding: 12px;
+      background: #0a0a0a;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #888;
+      line-height: 1.5;
+    }
+    .notes strong { color: #e5e5e5; }
+  </style>
+</head>
+<body>
+  <h1>Reach Meter Variants (E)</h1>
+  <p class="subtitle">Inline indicators that encourage deep engagement</p>
+  <p class="goal">Goal: Slow people down. Make them read, think, respond.</p>
+
+  <div class="options-grid">
+
+    <!-- E1: Progress Bar with Threshold -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E1: Progress to Spread</span>
+        <span class="option-tag">Threshold</span>
+      </div>
+      <p class="option-desc">Clear progress bar showing "X more upvotes to spread to next tier." Creates a tangible goal.</p>
+
+      <div class="comment-list">
+        <div class="e1-comment">
+          <div class="e1-header">
+            <span class="e1-author">@sarah_k</span>
+            <span class="e1-origin">from Cell 4, Tier 1</span>
+          </div>
+          <div class="e1-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral. The waste problem is solvable with modern reactors."</div>
+          <div class="e1-progress-container">
+            <div class="e1-progress-label">
+              <span class="e1-progress-left">7 of 10 upvotes to spread</span>
+              <span class="e1-progress-right">→ Tier 2</span>
+            </div>
+            <div class="e1-progress-bar">
+              <div class="e1-progress-fill" style="width: 70%"></div>
+              <div class="e1-progress-threshold" style="left: 100%"></div>
+            </div>
+          </div>
+          <div class="e1-actions">
+            <span class="e1-action">↑ Upvote</span>
+            <span class="e1-action">💬 Reply (3)</span>
+            <span class="e1-action">📖 Read thread</span>
+          </div>
+        </div>
+
+        <div class="e1-comment">
+          <div class="e1-header">
+            <span class="e1-author">@mike_t</span>
+            <span class="e1-origin">from Cell 2, Tier 1</span>
+          </div>
+          <div class="e1-text">"What about construction costs? New plants take decades."</div>
+          <div class="e1-progress-container">
+            <div class="e1-progress-label">
+              <span class="e1-progress-left">2 of 10 upvotes to spread</span>
+              <span class="e1-progress-right">→ Tier 2</span>
+            </div>
+            <div class="e1-progress-bar">
+              <div class="e1-progress-fill" style="width: 20%"></div>
+            </div>
+          </div>
+          <div class="e1-actions">
+            <span class="e1-action">↑ Upvote</span>
+            <span class="e1-action">💬 Reply (1)</span>
+            <span class="e1-action">📖 Read thread</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> "3 more upvotes" creates urgency. Reading thread before upvoting adds friction.
+      </div>
+    </div>
+
+    <!-- E2: Circular with CTA -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E2: Radial + CTA</span>
+        <span class="option-tag">Visual</span>
+      </div>
+      <p class="option-desc">Circular progress indicator with clear call-to-action. Shows current tier prominently.</p>
+
+      <div class="comment-list">
+        <div class="e2-comment">
+          <div class="e2-circle-container">
+            <div class="e2-circle-bg" style="--progress: 252deg">
+              <div class="e2-circle-inner">
+                <span class="e2-circle-tier">T1</span>
+                <span class="e2-circle-label">tier</span>
+              </div>
+            </div>
+          </div>
+          <div class="e2-content">
+            <div class="e2-meta">@sarah_k · Cell 4 · 23 reached</div>
+            <div class="e2-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+            <div class="e2-cta">⬆️ 3 more to spread to Tier 2</div>
+          </div>
+        </div>
+
+        <div class="e2-comment">
+          <div class="e2-circle-container">
+            <div class="e2-circle-bg" style="--progress: 324deg">
+              <div class="e2-circle-inner">
+                <span class="e2-circle-tier">T2</span>
+                <span class="e2-circle-label">tier</span>
+              </div>
+            </div>
+          </div>
+          <div class="e2-content">
+            <div class="e2-meta">@alex_r · started T1 Cell 7 · 156 reached</div>
+            <div class="e2-text">"Modular reactors change the economics entirely - faster to build, easier to finance."</div>
+            <div class="e2-cta ready">✓ Spreading to Tier 3...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> Circle fills as you approach threshold. "Spreading to Tier 3" feels like achievement.
+      </div>
+    </div>
+
+    <!-- E3: Minimal with Expand -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E3: Minimal + Details</span>
+        <span class="option-tag">Clean</span>
+      </div>
+      <p class="option-desc">Clean default state, expand for full journey. Left border indicates status.</p>
+
+      <div class="comment-list">
+        <div class="e3-comment advancing">
+          <div class="e3-header">
+            <span class="e3-author">@sarah_k</span>
+            <span class="e3-badge hot">3 to spread</span>
+          </div>
+          <div class="e3-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+          <div class="e3-expand">
+            <div class="e3-stats">
+              <span>↑ 7</span>
+              <span>💬 3</span>
+              <span>👁 23</span>
+            </div>
+            <span class="e3-expand-btn">Journey ↓</span>
+          </div>
+          <div class="e3-detail">
+            <div class="e3-detail-row">
+              <span class="e3-detail-label">Origin</span>
+              <span class="e3-detail-value">Cell 4, Tier 1</span>
+            </div>
+            <div class="e3-detail-row">
+              <span class="e3-detail-label">Current reach</span>
+              <span class="e3-detail-value">23 people</span>
+            </div>
+            <div class="e3-detail-row">
+              <span class="e3-detail-label">To spread</span>
+              <span class="e3-detail-value highlight">3 more upvotes</span>
+            </div>
+            <div class="e3-detail-row">
+              <span class="e3-detail-label">Replies</span>
+              <span class="e3-detail-value">3 (2 also spreading)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="e3-comment spread">
+          <div class="e3-header">
+            <span class="e3-author">@alex_r</span>
+            <span class="e3-badge spread">Tier 2</span>
+          </div>
+          <div class="e3-text">"Modular reactors change the economics entirely."</div>
+          <div class="e3-expand">
+            <div class="e3-stats">
+              <span>↑ 15</span>
+              <span>💬 8</span>
+              <span>👁 156</span>
+            </div>
+            <span class="e3-expand-btn">Journey ↓</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> "Journey" expansion reveals the full story. Minimal by default keeps feed scannable.
+      </div>
+    </div>
+
+    <!-- E4: Gamified XP -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E4: Milestone Unlocks</span>
+        <span class="option-tag">Gamified</span>
+      </div>
+      <p class="option-desc">Show milestones that unlock as comment spreads. Creates anticipation.</p>
+
+      <div class="comment-list">
+        <div class="e4-comment">
+          <div class="e4-header">
+            <span class="e4-author">@sarah_k</span>
+            <div class="e4-xp">
+              <span class="e4-xp-badge">23 reach</span>
+              <span class="e4-xp-next">→ 50 next</span>
+            </div>
+          </div>
+          <div class="e4-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+          <div class="e4-milestones">
+            <div class="e4-milestone complete">
+              <span class="e4-milestone-label">5</span>
+            </div>
+            <div class="e4-milestone complete">
+              <span class="e4-milestone-label">10</span>
+            </div>
+            <div class="e4-milestone current">
+              <span class="e4-milestone-label">50</span>
+            </div>
+            <div class="e4-milestone">
+              <span class="e4-milestone-label">100</span>
+            </div>
+            <div class="e4-milestone">
+              <span class="e4-milestone-label">500</span>
+            </div>
+          </div>
+          <div class="e4-unlock">
+            🔓 At 50: Spreads to Tier 2 discussions
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> Milestones create goals. "At 50: Spreads to Tier 2" previews the reward.
+      </div>
+    </div>
+
+    <!-- E5: Thread Preview -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E5: Thread + Reach</span>
+        <span class="option-tag">Context</span>
+      </div>
+      <p class="option-desc">Shows replies inline, encouraging reading the full thread before voting.</p>
+
+      <div class="comment-list">
+        <div class="e5-comment">
+          <div class="e5-main">
+            <div class="e5-header">
+              <span class="e5-author">@sarah_k</span>
+              <span class="e5-reach"><span class="e5-reach-icon">↗</span> T1 → 23 people</span>
+            </div>
+            <div class="e5-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+            <div class="e5-votes-needed">
+              <span>3 more to spread</span>
+              <div class="e5-mini-bar"><div class="e5-mini-fill" style="width: 70%"></div></div>
+            </div>
+          </div>
+          <div class="e5-thread-preview">
+            <div class="e5-thread-label">Thread (3 replies)</div>
+            <div class="e5-thread-item highlighted">"The waste issue is way overstated..." — @mike</div>
+            <div class="e5-thread-item">"What about cost overruns?" — @jane</div>
+            <div class="e5-thread-more">Read full thread to upvote →</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> "Read full thread to upvote" forces engagement before action. Shows context matters.
+      </div>
+    </div>
+
+    <!-- E6: Organic/Seed Growing -->
+    <div class="option">
+      <div class="option-header">
+        <span class="option-title">E6: Growing Seed</span>
+        <span class="option-tag">Organic</span>
+      </div>
+      <p class="option-desc">Pollination metaphor - ideas are seeds that grow as they spread. "Water" = upvote.</p>
+
+      <div class="comment-list">
+        <div class="e6-comment">
+          <div class="e6-header">
+            <div class="e6-author-block">
+              <div class="e6-author">@sarah_k</div>
+              <div class="e6-origin">planted in Cell 4</div>
+            </div>
+            <div class="e6-plant">
+              <span class="e6-plant-icon">🌱</span>
+              <span class="e6-plant-label">seedling</span>
+            </div>
+          </div>
+          <div class="e6-text">"Nuclear is the only path that can scale to meet baseload demand while remaining carbon-neutral."</div>
+          <div class="e6-growth">
+            <div class="e6-growth-header">
+              <span class="e6-growth-label">Growth stage</span>
+              <span class="e6-growth-value">23 people reached</span>
+            </div>
+            <div class="e6-growth-stages">
+              <div class="e6-stage complete">
+                <div class="e6-stage-icon">🌰</div>
+                <div class="e6-stage-label">seed</div>
+              </div>
+              <div class="e6-stage active">
+                <div class="e6-stage-icon">🌱</div>
+                <div class="e6-stage-label">sprout</div>
+              </div>
+              <div class="e6-stage">
+                <div class="e6-stage-icon">🌿</div>
+                <div class="e6-stage-label">growing</div>
+              </div>
+              <div class="e6-stage">
+                <div class="e6-stage-icon">🌳</div>
+                <div class="e6-stage-label">tree</div>
+              </div>
+              <div class="e6-stage">
+                <div class="e6-stage-icon">🌲</div>
+                <div class="e6-stage-label">forest</div>
+              </div>
+            </div>
+            <div class="e6-water">
+              <button class="e6-water-btn">💧 Water this idea (3 more to grow)</button>
+              <div class="e6-water-hint">Read the replies before watering</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <strong>Engagement hook:</strong> Organic language softens competition. "Water" feels collaborative not combative. Stages create journey.
+      </div>
+    </div>
+
+  </div>
+
+  <div style="text-align: center; margin-top: 50px; padding: 30px; background: #1a1a1a; border-radius: 12px; max-width: 900px; margin-left: auto; margin-right: auto;">
+    <h2 style="color: #fff; margin-bottom: 15px;">Key Patterns</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: left;">
+      <div>
+        <h3 style="color: #f59e0b; font-size: 14px; margin-bottom: 8px;">Progress to Spread</h3>
+        <p style="color: #888; font-size: 12px;">E1, E2, E3, E5 all show "X more to spread" — creates immediate goal</p>
+      </div>
+      <div>
+        <h3 style="color: #10b981; font-size: 14px; margin-bottom: 8px;">Origin Story</h3>
+        <p style="color: #888; font-size: 12px;">E1, E3, E5, E6 show where comment started — creates narrative</p>
+      </div>
+      <div>
+        <h3 style="color: #0891b2; font-size: 14px; margin-bottom: 8px;">Read Before Vote</h3>
+        <p style="color: #888; font-size: 12px;">E5, E6 gate voting behind reading — forces engagement</p>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

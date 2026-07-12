@@ -1,0 +1,77 @@
+/*
+ * Dark Feed Theme
+ * Bookmarked from mockup.html - user loved this UI
+ * Can be used as alternate theme option in settings
+ */
+
+:root[data-theme="dark-feed"] {
+  /* Base colors */
+  --background: #1a1a2e;
+  --surface: #16213e;
+  --border: #0f3460;
+
+  /* Text */
+  --foreground: #e0e0e0;
+  --muted: #888888;
+  --muted-light: #666666;
+
+  /* Accents - same semantic meaning, darker palette */
+  --accent: #0891b2;        /* Cyan - Submit/Primary */
+  --accent-hover: #0e7490;
+  --accent-light: rgba(8, 145, 178, 0.15);
+
+  --warning: #f59e0b;       /* Amber - Vote Now */
+  --warning-hover: #d97706;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+
+  --success: #059669;       /* Emerald - Won/Completed */
+  --success-hover: #047857;
+  --success-bg: rgba(5, 150, 105, 0.15);
+
+  --error: #ef4444;         /* Red - Eliminated */
+  --error-hover: #dc2626;
+  --error-bg: rgba(239, 68, 68, 0.15);
+
+  --purple: #a855f7;        /* Purple - Predict */
+  --purple-hover: #9333ea;
+  --purple-bg: rgba(168, 85, 247, 0.15);
+  --purple-light: rgba(168, 85, 247, 0.25);
+
+  --orange: #f97316;        /* Orange - Challenge */
+  --orange-hover: #ea580c;
+  --orange-bg: rgba(249, 115, 22, 0.15);
+
+  /* Card specific */
+  --card-background: #16213e;
+  --card-border: #0f3460;
+  --input-background: #1a1a2e;
+
+  /* Shadows for depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* Font settings for this theme */
+[data-theme="dark-feed"] {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+[data-theme="dark-feed"] .card {
+  background: var(--card-background);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+}
+
+[data-theme="dark-feed"] .btn {
+  border-radius: 6px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+/* Badge styles */
+[data-theme="dark-feed"] .badge-vote { color: var(--warning); }
+[data-theme="dark-feed"] .badge-predict { color: var(--purple); }
+[data-theme="dark-feed"] .badge-submit { color: var(--accent); }
+[data-theme="dark-feed"] .badge-challenge { color: var(--orange); }
+[data-theme="dark-feed"] .badge-champion { color: var(--success); }
