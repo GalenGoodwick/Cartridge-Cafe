@@ -1,24 +1,21 @@
 {
-  "name": "Unity Chant",
-  "short_name": "Unity Chant",
-  "description": "Query your crowd. Get a collective answer.",
+  "name": "cartridge.cafe",
+  "short_name": "cartridge.cafe",
+  "description": "little worlds, served as single files",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0c4a6e",
-  "orientation": "portrait-primary",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ]
 }

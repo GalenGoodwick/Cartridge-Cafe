@@ -23,7 +23,6 @@ const CSRF_EXEMPT_PATHS = [
   '/api/cron/',
   '/api/auth/',
   '/api/admin/test/',
-  '/api/stripe/webhook',
   '/api/v1/',
   '/api/embed/',
   '/api/ask-ai',
@@ -35,9 +34,7 @@ const CSRF_EXEMPT_PATHS = [
 ]
 
 // Patterns that match via regex (for dynamic segments)
-const CSRF_EXEMPT_PATTERNS = [
-  /^\/api\/deliberations\/[^/]+\/leave$/, // sendBeacon from page unload
-  /^\/api\/deliberations\/[^/]+\/release-seats$/, // sendBeacon from page unload
+const CSRF_EXEMPT_PATTERNS: RegExp[] = [
 ]
 
 export function proxy(req: NextRequest) {
