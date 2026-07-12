@@ -163,9 +163,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [, forceUpdate] = useState(0)
 
   // 2D/3D render mode
-  const [renderMode, setRenderMode] = useState<'2d' | '3d'>('2d')
+  // 3D mode removed: the superimposed 2D path carries full 3D via raymarched
+  // visuals (see the scene library) — a second pipeline was pure overhead.
+  const renderMode = '2d' as const
   const renderModeRef = useRef<'2d' | '3d'>('2d')
-  renderModeRef.current = renderMode
   const camera3DRef = useRef({ pos: [gridSize / 2, gridSize / 2, 150] as [number, number, number], pitch: -0.6, yaw: 0, fov: 1.047 })
   const isOrbiting = useRef(false)
 
@@ -3578,21 +3579,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           {/* Info overlay */}
           {chromeVisible && (
           <div className="absolute top-3 left-3 text-[10px] text-muted font-mono flex items-center gap-2">
-            <button
-              onClick={() => setRenderMode(m => m === '2d' ? '3d' : '2d')}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${
-                renderMode === '3d'
-                  ? 'bg-accent/30 text-accent border-accent/50 hover:bg-accent/50'
-                  : 'bg-white/10 text-muted border-white/20 hover:bg-white/20'
-              }`}
-            >
-              {renderMode.toUpperCase()}
-            </button>
             <span className="pointer-events-none">
               {gridSize}x{gridSize} | zoom: {cameraRef.current.zoom.toFixed(1)}x
               {selectedField && <span> | selected: {selectedField.name}</span>}
               {agentConnected && <span className="text-accent"> | agent live</span>}
-              {renderMode === '3d' && <span className="text-accent"> | right-drag: orbit, scroll: dolly</span>}
             </span>
             {worldLocked && (
               <span className="flex items-center gap-2 px-2 py-0.5 rounded bg-error/20 border border-error/40 text-error text-[10px] font-bold">
