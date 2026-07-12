@@ -101,9 +101,11 @@ interface FieldEngineProps {
   isOwner?: boolean
   /** View a historical save point instead of the live world (read-only demo mode) */
   versionView?: number
+  /** Load this saved scene on mount and just play it — local sim, no server state, no chrome */
+  playScene?: string
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene }: FieldEngineProps = {}) {
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -187,7 +189,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
   // Designer sidebar state
   const [terminalOpen, setTerminalOpen] = useState(false)
   // World mode: the world is just the world — editor chrome hides behind a toggle
-  const [chromeVisible, setChromeVisible] = useState(!spaceId)
+  const [chromeVisible, setChromeVisible] = useState(!spaceId && !playScene)
 
   // Saved scenes list (server-side persistent)
   const [savedScenes, setSavedScenes] = useState<string[]>([])
@@ -489,6 +491,52 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
       showToast(`Failed to delete "${sceneName}"`, 'error')
     }
   }, [showToast, refreshSceneList])
+
+  // Play mode: load a saved scene into the local sim and run it
+  const playLoadedRef = useRef(false)
+  useEffect(() => {
+    if (!playScene || playLoadedRef.current) return
+    playLoadedRef.current = true
+
+    const loadPlayScene = async () => {
+      const sim = simulationRef.current
+      const renderer = rendererRef.current
+      if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
+      try {
+        // house cartridges ship as static files (CDN, stateless-server-proof);
+        // the store API is the fallback for locally saved scenes
+        let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
+        if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
+        const data = await resp.json()
+        const scene = data.scene || data
+        if (!scene || !scene.fields) return
+        if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
+        if (scene.modules) for (const m of scene.modules) renderer.registerModule(m.name, m.wgsl)
+        sim.restoreFromSnapshots(scene.fields || [])
+        for (const field of sim.fields.values()) {
+          if (field.visualTypeName) {
+            const runtimeId = renderer.resolveVisualType(field.visualTypeName)
+            if (runtimeId !== undefined) field.visualType = runtimeId
+          }
+        }
+        if (scene.worldParams) sim.setWorldParams(scene.worldParams)
+        if (scene.worldData) Object.assign(sim.worldData, scene.worldData)
+        for (const k of Object.keys(sim.worldData)) {
+          if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
+        }
+        if (scene.interactionRules) sim.interactionRules = scene.interactionRules
+        if (scene.interactionEffects) for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
+        if (scene.stepHooks) for (const h of scene.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+        sim.running = true
+        setRunning(true)
+        syncFields()
+      } catch (err) {
+        console.error('Failed to load play scene:', err)
+      }
+    }
+    loadPlayScene()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
 
   // Load space snapshot on mount (for space mode)
   const spaceLoadedRef = useRef(false)
@@ -970,7 +1018,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
     // Space mode restores from its own snapshot effect — pulling the GLOBAL
     // state here would layer global fields on top of the space's world.
     try {
-      const data = (spaceId || spaceSlug)
+      const data = (spaceId || spaceSlug || playScene)
         ? {}
         : await fetch('/api/engine/state').then(r => r.json())
       if (cancelled) return
@@ -1793,6 +1841,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
     let retryTimeout: ReturnType<typeof setTimeout>
 
     function connect() {
+      if (playScene) return   // play sessions are local-only — no shared queue
       const sseUrl = spaceId
         ? `/api/engine/agent?spaceId=${encodeURIComponent(spaceId)}`
         : '/api/engine/agent'
@@ -3295,6 +3344,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
     if (spaceId && !isOwner) return
 
     const interval = setInterval(async () => {
+      if (playScene) return   // play sessions never write back
       // A hidden tab is paused — it must not renew the writer lease with frozen state
       if (document.hidden) return
       const sim = simulationRef.current
@@ -3477,7 +3527,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView }
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
 
-          {spaceId && (
+          {(spaceId || playScene) && (
             <button
               onClick={() => setChromeVisible(v => !v)}
               className="absolute bottom-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"

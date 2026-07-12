@@ -118,7 +118,7 @@ export default function CafePage() {
           <ul className="space-y-2.5">
             {HOUSE_MENU.map(item => (
               <li key={item.name} className="group">
-                <a href="/engine" className="flex items-baseline gap-2 hover:bg-amber-100/[0.04] rounded px-2 py-1 -mx-2 transition-colors">
+                <a href={`/play/${encodeURIComponent(item.name)}`} className="flex items-baseline gap-2 hover:bg-amber-100/[0.04] rounded px-2 py-1 -mx-2 transition-colors">
                   <span className="text-amber-50 font-semibold text-sm shrink-0">{item.name}</span>
                   <span className="flex-1 border-b border-dotted border-amber-100/15 translate-y-[-3px]" />
                   <span className="text-xs text-[#b3a284] text-right">{item.blurb}</span>
