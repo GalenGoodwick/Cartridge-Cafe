@@ -499,6 +499,26 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, refreshSceneList])
 
+  // Play mode: the world IS the screen. Fit the 512 grid to the viewport
+  // (contain: the whole world visible, void beyond it) on mount and resize.
+  useEffect(() => {
+    if (!playScene) return
+    const fit = () => {
+      const cv = canvasRef.current
+      if (!cv) return
+      const w = cv.clientWidth || window.innerWidth
+      const h = cv.clientHeight || window.innerHeight
+      cameraRef.current.x = gridSize / 2
+      cameraRef.current.y = gridSize / 2
+      cameraRef.current.zoom = Math.min(w, h) / gridSize
+    }
+    fit()
+    const t = setTimeout(fit, 300)   // after the canvas settles
+    window.addEventListener('resize', fit)
+    return () => { clearTimeout(t); window.removeEventListener('resize', fit) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
+
   // Play mode: load a saved scene into the local sim and run it.
   // Reacts to playScene changes — the world swaps in place (portal travel).
   const playLoadedRef = useRef<string | null>(null)
@@ -3581,7 +3601,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [syncFields])
 
   return (
-    <div className="fixed inset-0 bg-background overflow-hidden flex">
+    <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}>
       {/* Canvas + fields panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Canvas area */}
@@ -3644,7 +3664,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           )}
 
           {/* Pixel hover tooltip */}
-          {pixelInfo && (
+          {pixelInfo && !playScene && (
             <div
               className="fixed z-50 pointer-events-none bg-black/85 text-white text-[10px] font-mono px-2 py-1 rounded border border-white/20 whitespace-nowrap"
               style={{ left: pixelInfo.screenX + 14, top: pixelInfo.screenY - 10 }}

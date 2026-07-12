@@ -143,19 +143,19 @@ const coneWGSL = Object.values(rooms).map(rm =>
     let st = uni(${15 + i * 4});
     if (st > -0.5 && st < 2.5) {
       let eo = vec2f(uni(${12 + i * 4}), uni(${13 + i * 4}));
-      let oh = px_hex(eo);
-      let hd = hex_dist(oh, gh);
-      if (hd >= 1 && hd <= ${e.range}) {
-        let kang = (floor((atan2(glp.y, glp.x) + 3.14159265) / 1.04719755) + 0.5) * 1.04719755 - 3.14159265;
-        let kc = gc + vec2f(cos(kang), sin(kang)) * (ES * 0.55);
-        let dd = kc - hex_px(oh);
+      // the cone APEX is the enemy's BODY — kites are the resolution, not the origin
+      let kang = (floor((atan2(glp.y, glp.x) + 3.14159265) / 1.04719755) + 0.5) * 1.04719755 - 3.14159265;
+      let kc = gc + vec2f(cos(kang), sin(kang)) * (ES * 0.55);
+      let dd = kc - eo;
+      let rr = length(dd);
+      if (rr > ES * 0.45 && rr < ${num(e.range * S * SQ3)}) {
         var diff = atan2(dd.y, dd.x) - uni(${14 + i * 4});
         diff = abs(atan2(sin(diff), cos(diff)));
-        if (diff < ${num(e.half)} && length(dd) < ${num((e.range + 0.4) * S * SQ3)} && hex_los(oh, gh, room) > 0.5) {
+        if (diff < ${num(e.half)} && hex_los(px_hex(eo), gh, room) > 0.5) {
           var cc = vec3f(0.10, 0.13, 0.15);
           if (st > 0.5) { cc = vec3f(0.30, 0.13, 0.40); }
           if (st > 1.5) { cc = vec3f(0.55, 0.06, 0.08); }
-          col += cc * (1.0 - f32(hd) / ${num(e.range + 1)}) * (0.55 + 0.20 * sin(time * 3.0 + f32(${i})));
+          col += cc * (1.0 - rr / ${num(e.range * S * SQ3)}) * (0.55 + 0.20 * sin(time * 3.0 + f32(${i})));
         }
       }
     }
@@ -743,10 +743,10 @@ try {
     if (e.st < 0) continue
     if (e.stun > 0) { e.stun -= pdt; continue }
     const eh = pxHex(e.x, e.y), hh = pxHex(G.x, G.y)
-    const dist = hexDist(eh, hh)
+    const pxd = Math.hypot(G.x - e.x, G.y - e.y)
 
     let seen = false
-    if (G.shadow <= 0 && !covered && dist >= 1 && dist <= cfg.range) {
+    if (G.shadow <= 0 && !covered && pxd > S * 0.45 && pxd <= cfg.range * S * SQ3) {
       let rel = Math.atan2(G.y - e.y, G.x - e.x) - e.f
       rel = Math.atan2(Math.sin(rel), Math.cos(rel))
       if (Math.abs(rel) < cfg.half) seen = losClear(G.room, eh, hh)
