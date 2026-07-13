@@ -27,6 +27,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [scene, setScene] = useState(initialScene)
   const [hint, setHint] = useState(false)
   const [hover, setHover] = useState<string | null>(null)
+  const hoverBlockRef = useRef(0)
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
@@ -366,6 +367,7 @@ worldData.instructions is mandatory: key entry + the point.`
     setAudioScene(name)
     setScene(name)
     setHover(null)
+    hoverBlockRef.current = Date.now() + 600   // a dying frame's last hover event must not resurrect the tooltip
     setCaption(null)
     setConfirmLeave(false)
     setModalUp(false)   // a panel left open in the old world must not latch shut the new one
@@ -430,7 +432,10 @@ worldData.instructions is mandatory: key entry + the point.`
         }
       } catch { /* private mode */ }
     }
-    const onHover = (e: Event) => setHover((e as CustomEvent).detail)
+    const onHover = (e: Event) => {
+      if (Date.now() < hoverBlockRef.current) return   // scene just changed — stale hover
+      setHover((e as CustomEvent).detail)
+    }
     // worlds can put a line of phosphor text on the glass — SIGNAL shows the word you type
     const onCaption = (e: Event) => {
       const d = (e as CustomEvent).detail as { text: string; kind: string } | null
@@ -614,6 +619,27 @@ worldData.instructions is mandatory: key entry + the point.`
           </div>
         </div>
       )}
+
+      {/* every bubble wears its world's true face: a screenshot the Eye took,
+          inlaid under the shader's glass edge. Worlds with living WGSL
+          miniatures have no thumb file, so the img 404s and hides itself. */}
+      {vp.w > 0 && !modalUp && portals.map(pt => {
+        const px = vp.w / 2 + pt.x * span / 2
+        const py = vp.h / 2 + pt.y * span / 2
+        const d = pt.r * span * 0.88
+        if (d < 8) return null
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={'thumb-' + pt.name}
+            src={`/thumbs/${encodeURIComponent(pt.name)}.jpg`}
+            alt=""
+            className="fixed z-30 pointer-events-none select-none rounded-full object-cover"
+            style={{ left: px, top: py, width: d, height: d, transform: 'translate(-50%, -50%)',
+                     opacity: 0.92, boxShadow: 'inset 0 0 18px rgba(0,0,0,0.8)' }}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        )
+      })}
 
       {/* who's inside: a head-count on every door */}
       {vp.w > 0 && !modalUp && portals.map(pt => {

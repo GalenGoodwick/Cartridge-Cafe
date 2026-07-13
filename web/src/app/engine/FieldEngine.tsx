@@ -994,6 +994,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
         if (snapshot.stepHooks) {
           for (const h of snapshot.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+          // a world with logic boots RUNNING — same law as the cartridges.
+          // Without this, AI-built spaces load with their brain installed but
+          // the clock stopped: shader drawing, hooks never ticking.
+          if (snapshot.stepHooks.length > 0 && !sim.running) sim.running = true
         }
 
         // Recompile effects
@@ -4228,6 +4232,29 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ? INSTRUCTIONS
             </button>
+            {/* restart-on-entry lives with the tools, not buried in the manual */}
+            {(isOwner || !spaceId) && !isHub && (
+              <button
+                title="When ON, entering this world always starts from the beginning — no resuming"
+                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                onClick={() => {
+                  const s = simulationRef.current
+                  if (!s) return
+                  const on = !s.worldData.resetOnEntry
+                  s.worldData.resetOnEntry = on
+                  setAiPulse(v => v + 1)   // nudge a re-render
+                  const key = spaceId ? undefined : playScene
+                  if (key) {
+                    fetch('/api/engine/save', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on } }),
+                    }).catch(() => {})
+                  }
+                }}
+              >
+                ↻ RESTART: {simulationRef.current?.worldData?.resetOnEntry ? 'ON' : 'OFF'}
+              </button>
+            )}
             {!isHub && <button
               onClick={handleBranch}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -4345,27 +4372,6 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   <div className="flex items-center gap-2">
                     {(isOwner || !spaceId) && !instrEdit && (
                       <>
-                        <button
-                          title="When ON, entering this world always starts from the beginning — no resuming"
-                          className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
-                          onClick={() => {
-                            const s = simulationRef.current
-                            if (!s) return
-                            const on = !s.worldData.resetOnEntry
-                            s.worldData.resetOnEntry = on
-                            setInstrDraft(d => d)   // nudge a re-render
-                            setAiPulse(v => v + 1)
-                            const key = spaceId ? undefined : playScene
-                            if (key) {
-                              fetch('/api/engine/save', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on } }),
-                              }).catch(() => {})
-                            }
-                          }}
-                        >
-                          ↻ RESTART: {simulationRef.current?.worldData?.resetOnEntry ? 'ON' : 'OFF'}
-                        </button>
                         <button
                           className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
                           onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}

@@ -24,6 +24,21 @@ interface SpaceToolbarProps {
  *  Sits over the engine without touching it. */
 export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionView }: SpaceToolbarProps) {
   const [editingName, setEditingName] = useState(false)
+  // worlds speak through cafe:caption everywhere — space pages must listen
+  // too, or every AI-built world is mute on its own page
+  const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onCaption = (e: Event) => {
+      const d = (e as CustomEvent).detail as { text: string; kind: string } | null
+      if (timer) clearTimeout(timer)
+      if (!d || (!d.text && d.kind !== 'typing')) { setCaption(null); return }
+      setCaption(d)
+      if (d.kind !== 'typing') timer = setTimeout(() => setCaption(null), d.kind === 'hint' ? 6000 : 3200)
+    }
+    window.addEventListener('cafe:caption', onCaption)
+    return () => { window.removeEventListener('cafe:caption', onCaption); if (timer) clearTimeout(timer) }
+  }, [])
   const [nameDraft, setNameDraft] = useState(name)
   const [shownName, setShownName] = useState(name)
   const [confirmDel, setConfirmDel] = useState(false)
@@ -193,6 +208,17 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
 
   return (
     <>
+      {/* a world's OSD — old TV set lettering, top-left of the glass */}
+      {caption && (caption.text || caption.kind === 'typing') && (
+        <div className="fixed top-8 left-10 z-50 pointer-events-none select-none font-mono uppercase tracking-[0.3em]"
+          style={{
+            color: caption.kind === 'hint' ? 'rgba(140,255,170,0.45)' : 'rgb(140,255,170)',
+            fontSize: caption.kind === 'hint' ? 11 : 22,
+            textShadow: '0 0 8px rgba(80,255,140,0.8), 0 0 28px rgba(80,255,140,0.35)',
+          }}>
+          {caption.text}{caption.kind === 'typing' ? '▮' : ''}
+        </div>
+      )}
     {/* the version arena: LIVE vs this world's save points — every page votes */}
     <TournamentBar
       visible
