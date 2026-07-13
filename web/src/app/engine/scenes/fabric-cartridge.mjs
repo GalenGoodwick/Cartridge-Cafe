@@ -148,6 +148,12 @@ try {
   }
   if (pressed('shift') && F.anchors.length > 0) F.anchors.pop()
   if (pressed('enter')) F.grid = 1 - F.grid
+  if (pressed('r')) {
+    // reset: the fabric relaxes flat
+    F.anchors = []; F.ms = 0.012; F.chroma = 0.35; F.grid = 0
+    F.rippleT = 0; F.rx = F.mx; F.ry = F.my
+    wd.__play_sound = { frequency: 240, duration: 0.25, volume: 0.3, type: 'sine' }
+  }
   F.gridT += ((F.grid ? 1 : 0) - F.gridT) * Math.min(1, dt2 * 4)
   F.rippleT += dt2
 

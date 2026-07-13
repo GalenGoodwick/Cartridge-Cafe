@@ -252,7 +252,6 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             </div>
           </div>
           <div className="fixed top-5 right-6 z-50 flex gap-2">
-            <a href="/worlds" className="brass-tab px-3 py-1.5 text-[10px]">THE SHELF</a>
             <a href="/auth/signin" className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
               BREW YOURS
             </a>

@@ -17,6 +17,13 @@ import { dirname, join } from 'path'
 
 const WORLD = /* wgsl */`
 // a moon whose bite orbits with phase — six unique crescents, one per stone
+fn se_seg(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
 fn se_moon(rel: vec2f, r: f32, ph: f32) -> f32 {
   let d = length(rel);
   let disc = smoothstep(r, r * 0.9, d);
@@ -74,12 +81,34 @@ fn visual_selene(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
     }
   }
 
-  // ── the way home: a golden door where the ring closes ──
-  if (win > 0.01) {
-    let pd = length(uv);
-    let swirl = 0.5 + 0.5 * sin(atan2(uv.y, uv.x) * 3.0 + t * 1.2 - pd * 14.0);
-    col += vec3f(1.25, 0.85, 0.30) * exp(-pd * pd * 42.0) * win * (0.8 + 0.6 * swirl);
-    col += vec3f(1.0, 0.75, 0.30) * win * (0.055 + 0.05 * sin(t * 2.1));
+  // ── the way home: when the ring is lit, the MOON-TREE grows ──
+  let wt = clamp(uni(11), 0.0, 1.0);
+  if (wt > 0.005) {
+    let g1 = clamp(wt * 3.0, 0.0, 1.0);
+    let g2 = clamp(wt * 3.0 - 1.0, 0.0, 1.0);
+    let g3 = clamp(wt * 3.0 - 2.0, 0.0, 1.0);
+    let p0 = vec2f(0.0, 0.42);
+    let p1 = p0 + vec2f(-0.03, -0.20) * g1;
+    let p2 = p1 + vec2f(0.05, -0.19) * g2;
+    let p3 = p2 + vec2f(-0.02, -0.16) * g3;
+    var td = se_seg(uv, p0, p1) - 0.022 * (0.6 + 0.4 * g1);
+    td = min(td, se_seg(uv, p1, p2) - 0.016);
+    td = min(td, se_seg(uv, p2, p3) - 0.011);
+    for (var bi = 0; bi < 5; bi++) {
+      let fb = f32(bi);
+      let gb = clamp(wt * 4.0 - 2.2 - fb * 0.25, 0.0, 1.0);
+      if (gb > 0.01) {
+        let root = mix(p2, p3, 0.2 + fb * 0.2);
+        let ang = -1.5707963 + (fb - 2.0) * 0.55 + sin(t * 0.4 + fb) * 0.04;
+        let tip = root + vec2f(cos(ang), sin(ang)) * (0.14 + fb * 0.014) * gb;
+        td = min(td, se_seg(uv, root, tip) - 0.006);
+        col += vec3f(1.15, 1.10, 0.75) * exp(-dot(uv - tip, uv - tip) * 900.0) * gb * (0.8 + 0.3 * sin(t * 2.0 + fb * 2.1));
+        col += vec3f(0.55, 0.60, 0.45) * exp(-dot(uv - tip, uv - tip) * 120.0) * gb * 0.35;
+      }
+    }
+    if (td < 0.0) { col = mix(vec3f(0.72, 0.68, 0.58), vec3f(0.35, 0.30, 0.24), clamp((uv.y - p2.y) * 2.0, 0.0, 1.0)); }
+    col += vec3f(1.0, 0.85, 0.45) * exp(-dot(uv - p3, uv - p3) * 9.0) * wt * 0.30;
+    col += vec3f(0.9, 0.75, 0.35) * wt * (0.035 + 0.03 * sin(t * 2.1));
   }
 
   // ── the drowned moon you carry ──
@@ -130,17 +159,18 @@ try {
     if (S.lit[i] < 1) all = false
   }
 
-  if (all && !S.won) { S.won = 1; cap('the ring is open \\u00b7 step through', 'tuned') }
+  if (all && !S.won) { S.won = 1; cap('the moon-tree grows \\u00b7 step through it', 'tuned') }
+  S.wonT = S.won ? Math.min(1, (S.wonT || 0) + pdt / 3.0) : 0
 
   // the golden door home
   if (S.won && typeof window !== 'undefined') {
-    const nearDoor = mx * mx + my * my < 0.03
-    if (nearDoor) cap('back through the moon', 'hint')
+    const nearDoor = (mx * mx + my * my < 0.03) || (Math.abs(mx) < 0.12 && my > -0.15 && my < 0.45)
+    if (nearDoor) cap('step through the moon-tree', 'hint')
     if (nearDoor && md && !S.pmd) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'HELIOS' }))
   }
   S.pmd = md
 
-  wd.gpuUniforms = [mx, my, S.ph, md ? 1 : 0, ...S.lit, S.won]
+  wd.gpuUniforms = [mx, my, S.ph, md ? 1 : 0, ...S.lit, S.won, S.wonT || 0]
 } catch (e) { /* the deep keeps its patience */ }
 `
 
@@ -155,7 +185,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'SELENE — the world under the lake, reached through the moon’s reflection.\\n\\nMOVE — carry the drowned moon.\\nCLICK & HOLD — age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH — an amber rim means the phase is right — and the stone drinks the light. Light all six to open the golden way home.\\n\\nThe deep remembers: lit stones stay lit.',
+    instructions: 'SELENE — the world under the lake, reached through the moon’s reflection.\\n\\nMOVE — carry the drowned moon.\\nCLICK & HOLD — age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH — an amber rim means the phase is right — and the stone drinks the light. Light all six and the MOON-TREE grows \\u2014 step through it to go home.\\n\\nThe deep remembers: lit stones stay lit.',
     postProcess: { bloomIntensity: 0.6, bloomThreshold: 0.55, exposure: 1.0, vignetteStrength: 0.35, vignetteRadius: 0.85 },
   },
   stepHooks: [{ id: 'se_tide', author: 'fable', description: 'SELENE: phase-matching puzzle — carry the drowned moon, match crescents, light the ring', code: HOOK }],

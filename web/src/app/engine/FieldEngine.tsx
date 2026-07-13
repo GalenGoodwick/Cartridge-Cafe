@@ -135,6 +135,59 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // spectators can browse branches without signing in — looking is free
   const [branchesOpen, setBranchesOpen] = useState(false)
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
+  // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
+  type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
+  const [cellData, setCellData] = useState<CellDoc>({ viewers: {}, votes: {}, discussion: {} })
+  const [cellDraft, setCellDraft] = useState('')
+  const [discOpen, setDiscOpen] = useState<string | null>(null)
+  const [riding, setRiding] = useState<string | null>(null)
+  const whoRef = useRef('')
+  useEffect(() => {
+    let anon = ''
+    try { anon = localStorage.getItem('cc-anon') || '' } catch { /* fine */ }
+    if (!anon) { anon = 'anon-' + Math.random().toString(36).slice(2, 6); try { localStorage.setItem('cc-anon', anon) } catch { /* fine */ } }
+    whoRef.current = me ? me.split('@')[0] : anon
+  }, [me])
+  const cellBase = () => (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+  const castVoteFor = useCallback((author: string) => {
+    setCellData(prev => {
+      const doc = JSON.parse(JSON.stringify(prev)) as CellDoc
+      for (const k of Object.keys(doc.votes)) doc.votes[k] = (doc.votes[k] || []).filter(nm => nm !== whoRef.current)
+      doc.votes[author] = [...(doc.votes[author] || []), whoRef.current]
+      saveCellDoc(doc)
+      return doc
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const loadCellDoc = useCallback(async (): Promise<CellDoc> => {
+    try {
+      const j = await fetch(`/api/engine/save?slot=${encodeURIComponent('cell:' + cellBase())}`).then(r => r.json())
+      const d = j?.data || {}
+      return { viewers: d.viewers || {}, votes: d.votes || {}, discussion: d.discussion || {} }
+    } catch { return { viewers: {}, votes: {}, discussion: {} } }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
+  const saveCellDoc = useCallback((doc: CellDoc) => {
+    fetch('/api/engine/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: 'cell:' + cellBase(), data: doc }),
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
+  useEffect(() => {
+    if (!branchesOpen && !riding) return
+    let stop = false
+    const beat = async () => {
+      const doc = await loadCellDoc()
+      const now = Date.now()
+      for (const k of Object.keys(doc.viewers)) if (now - doc.viewers[k] > 12000) delete doc.viewers[k]
+      doc.viewers[whoRef.current] = now
+      if (!stop) { saveCellDoc(doc); setCellData(doc) }
+    }
+    beat()
+    const iv = setInterval(beat, 3000)
+    return () => { stop = true; clearInterval(iv) }
+  }, [branchesOpen, riding, loadCellDoc, saveCellDoc])
   const lastSceneRef = useRef<string>('')
   const aiDirtyRef = useRef(false)
   const aiLastEditRef = useRef(0)
@@ -521,6 +574,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const renderer = rendererRef.current
     if (!sim || !renderer) return
     lastSceneRef.current = sceneName
+    setRiding(sceneName.includes(' ⑂ ') ? sceneName : null)
     try {
       const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
       const { scene } = await resp.json()
@@ -714,6 +768,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         sim.interactionEffects = []
         for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
         frameFingerprintRef.current = ''
+        audioRef.current?.stopMusic(0.3)   // no world's sound outlives it
         // every world opens with a fresh eye — a zoom left over from another
         // scene must not follow the player through the door. CONTAIN, not cover:
         // the whole world at max size in the viewport; letterbox is honest,
@@ -1477,16 +1532,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const saveReq = sim.worldData['__save_game'] as { slot?: string; data?: unknown } | undefined
       if (saveReq && typeof saveReq.slot === 'string') {
         delete sim.worldData['__save_game']
+        // each player owns their save: slots are namespaced by identity
         fetch('/api/engine/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slot: saveReq.slot, data: saveReq.data ?? null }),
+          body: JSON.stringify({ slot: `${whoRef.current || 'anon'}:${saveReq.slot}`, data: saveReq.data ?? null }),
         }).catch(() => {})
       }
       const loadReq = sim.worldData['__load_game'] as { slot?: string } | undefined
       if (loadReq && typeof loadReq.slot === 'string') {
         delete sim.worldData['__load_game']
-        fetch(`/api/engine/save?slot=${encodeURIComponent(loadReq.slot)}`)
+        fetch(`/api/engine/save?slot=${encodeURIComponent(`${whoRef.current || 'anon'}:${loadReq.slot}`)}`)
           .then(r => r.json())
           .then(j => {
             const s = simulationRef.current
@@ -3993,6 +4049,28 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ⚡ CONNECT AI
             </button>
+            {/* juror mode: riding a branch, the viewer votes and speaks from the saddle */}
+            {riding && (() => {
+              const author = (riding.split(' ⑂ ')[1] || '').split(' · ')[0]
+              const viewers = Object.keys(cellData.viewers).length
+              const full = viewers >= 5
+              const votes = (cellData.votes[author] || []).length
+              const mine = (cellData.votes[author] || []).includes(whoRef.current)
+              return (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
+                  <span className="text-amber-200/80">⑂ {author}</span>
+                  <button
+                    disabled={!full}
+                    title={full ? 'vote for this branch' : `cell votes at 5 (${viewers}/5)`}
+                    className={`px-1.5 rounded border transition-colors ${mine ? 'border-emerald-400/60 text-emerald-300' : 'border-white/15 hover:text-white'} disabled:opacity-30`}
+                    onClick={() => castVoteFor(author)}
+                  >
+                    ▲ {votes}
+                  </button>
+                  <button className="px-1 hover:text-white" title="discuss" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
+                </div>
+              )
+            })()}
             {/* the AI, honestly: unplugged / live / processing */}
             {(() => {
               void aiPulse
@@ -4059,43 +4137,87 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             </div>
           )}
 
-          {/* BRANCHES — the spectator window: anyone may look; the cells will vote */}
+          {/* BRANCHES — the CELL: viewers gather, five unlock the vote, every branch has a table */}
           {branchesOpen && (() => {
-            const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+            const base = cellBase()
+            const viewers = Object.keys(cellData.viewers)
+            const full = viewers.length >= 5
+            const myVote = Object.keys(cellData.votes).find(k => (cellData.votes[k] || []).includes(whoRef.current))
+            const castVote = castVoteFor
+            const say = (author: string) => {
+              const text = cellDraft.trim()
+              if (!text) return
+              const doc: CellDoc = JSON.parse(JSON.stringify(cellData))
+              doc.discussion[author] = [...(doc.discussion[author] || []), { who: whoRef.current, text, at: Date.now() }].slice(-50)
+              saveCellDoc(doc); setCellData(doc); setCellDraft('')
+            }
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBranchesOpen(false)}>
-                <div className="max-w-md w-[92%] max-h-[70%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-[11px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
-                    <button
-                      aria-label="Close"
-                      className="text-white/40 hover:text-white text-[13px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors"
-                      onClick={() => setBranchesOpen(false)}
-                    >
-                      ✕
-                    </button>
+                    <button aria-label="Close" className="text-white/40 hover:text-white text-[13px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
                   </div>
-                  <p className="text-[10px] text-white/40 mb-3">looking is free · the top-voted branch becomes main · lineage is append-only</p>
-                  <button
-                    className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5"
-                    onClick={() => { setBranchesOpen(false); handleLoadScene(base) }}
-                  >
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-[10px] text-white/40">CELL</span>
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <span key={i} className={`inline-block w-2 h-2 rounded-full ${i < viewers.length ? 'bg-emerald-400' : 'bg-white/15'}`} />
+                    ))}
+                    <span className="text-[10px] text-white/40">
+                      {full ? 'the cell is full — vote' : `${viewers.length}/5 · ${5 - viewers.length} more unlock the vote`}
+                    </span>
+                  </div>
+                  <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => { setBranchesOpen(false); handleLoadScene(base) }}>
                     <span className="text-emerald-300/90">main</span>
                     <span className="text-white/40 text-[10px]"> — the world as it stands</span>
                   </button>
-                  {branchList.map(b => (
-                    <button
-                      key={b.name}
-                      className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5"
-                      onClick={() => { setBranchesOpen(false); handleLoadScene(b.name) }}
-                    >
-                      <span className="text-amber-200/90">⑂ {b.author}</span>
-                      <span className="text-white/40 text-[10px]"> — at v{b.v} · click to ride it</span>
-                    </button>
-                  ))}
+                  {branchList.map(bB => {
+                    const votes = (cellData.votes[bB.author] || []).length
+                    const chat = cellData.discussion[bB.author] || []
+                    return (
+                      <div key={bB.name} className="rounded-lg border border-white/10 mb-1.5">
+                        <div className="flex items-center">
+                          <button className="flex-1 text-left px-3 py-2 hover:bg-white/5 transition-colors" onClick={() => { setBranchesOpen(false); handleLoadScene(bB.name) }}>
+                            <span className="text-amber-200/90">⑂ {bB.author}</span>
+                            <span className="text-white/40 text-[10px]"> — v{bB.v} · ride it</span>
+                          </button>
+                          <button className="px-2 py-1 text-[10px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
+                            💬{chat.length > 0 ? chat.length : ''}
+                          </button>
+                          <button
+                            disabled={!full}
+                            title={full ? 'cast your vote' : 'the cell votes at 5 viewers'}
+                            className={`mr-2 px-2 py-1 rounded text-[10px] border transition-colors ${myVote === bB.author ? 'border-emerald-400/60 text-emerald-300' : 'border-white/15 text-white/50 hover:text-white'} disabled:opacity-30`}
+                            onClick={() => castVote(bB.author)}
+                          >
+                            ▲ {votes}
+                          </button>
+                        </div>
+                        {discOpen === bB.author && (
+                          <div className="border-t border-white/10 px-3 py-2">
+                            {chat.length === 0 && <div className="text-white/30 text-[10px] mb-1">no discussion yet — say why this branch should win</div>}
+                            {chat.slice(-8).map((m, i) => (
+                              <div key={i} className="text-[11px] mb-0.5"><span className="text-white/45">{m.who}:</span> {m.text}</div>
+                            ))}
+                            <div className="flex gap-1.5 mt-1.5">
+                              <input
+                                value={cellDraft}
+                                onChange={e => setCellDraft(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') say(bB.author) }}
+                                placeholder="speak in the cell…"
+                                className="flex-1 bg-black/60 border border-white/15 rounded px-2 py-1 text-[11px] outline-none focus:border-white/35"
+                              />
+                              <button className="text-[10px] px-2 border border-white/15 rounded hover:border-white/40" onClick={() => say(bB.author)}>SAY</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                   {branchList.length === 0 && (
                     <div className="text-white/35 text-[11px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
                   )}
+                  <div className="text-[9px] text-white/30 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
                 </div>
               </div>
             )

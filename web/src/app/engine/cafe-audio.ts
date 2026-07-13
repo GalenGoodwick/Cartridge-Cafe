@@ -28,7 +28,7 @@ let started = false
 let currentScene = ''
 let pointerDownAt = 0
 let lastKeyAt = 0
-let ambDuck = 1
+let ambDuck = 0   // starts silent; entering a world raises it
 
 // worlds with a voice of their own; anything else hashes to a pentatonic root
 const ROOTS: Record<string, number> = {
@@ -211,6 +211,15 @@ export function setScene(scene: string) {
   oscRoot.frequency.setTargetAtTime(r, t, 0.8)
   oscFifth.frequency.setTargetAtTime(r * 1.4983, t, 0.8)
   oscThird.frequency.setTargetAtTime(r * 2.52, t, 0.8)
+  // the main page stays quiet — the drone belongs inside worlds
+  ambDuck = scene === 'CAFE' ? 0 : 1
+  applyDuck()
+  // airlock: crossing between worlds, the hum falls near-silent and breathes
+  // back in — no sudden ambience appearing the moment you step out
+  if (master && !muted) {
+    master.gain.setTargetAtTime(0.015, t, 0.15)
+    master.gain.setTargetAtTime(0.14, t + 1.4, 1.6)
+  }
 }
 
 export function isMuted() { return muted }

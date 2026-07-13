@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation'
 
 function SignInInner() {
   const params = useSearchParams()
-  const callbackUrl = params.get('callbackUrl') || '/worlds'
+  const callbackUrl = params.get('callbackUrl') || '/'
 
   return (
     <div className="cafe-room text-steamer flex items-center justify-center px-6">

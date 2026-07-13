@@ -283,6 +283,14 @@ try {
 
   O.ign = Math.max(0, O.ign - dt2 * 1.5)
 
+  if (pressed('r')) {
+    // reset: back to a bare sun and the drawing board (the record survives)
+    O.mode = 0
+    O.bodies = [{ x: 0, z: 0, vx: 0, vz: 0, t: 0, r: 0.7, m: 400 }]
+    O.years = 0; O.saved = null; O.ign = 1
+    wd.__play_sound = { frequency: 240, duration: 0.25, volume: 0.3, type: 'sine' }
+  }
+
   if (O.mode === 0) {
     // ── BUILD ──
     if (wd.key_a) O.gA -= 1.6 * dt2
