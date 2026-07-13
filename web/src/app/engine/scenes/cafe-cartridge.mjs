@@ -143,13 +143,22 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 const HOOK = `
 try {
   const wd = sim.worldData
-  // a fresh session must not inherit a stashed universe: the engine restores
-  // cc-save worldData on every load, and an old __cu carries a portalSig that
-  // matches its own frozen layout — the doors would never be re-announced.
-  // Rebuild instead; the bubbles bloom from the heart again, live.
-  if (wd.__fresh) { delete wd.__fresh; delete wd.__cu }
+  // a fresh session keeps the universe (positions are shared, live for all
+  // players) but must drop per-session state: a stashed portalSig matches its
+  // own frozen layout and would mute the doors forever, and a stashed
+  // 'launched' latch would keep them mute after returning from a world.
+  if (wd.__fresh) {
+    delete wd.__fresh
+    if (wd.__cu) {
+      const R = wd.__cu
+      R.portalSig = null; R.lastHover = -1; R.prevDown = false; R.kN = {}
+      R.launched = 0; R.drag = 0; R.pollT = 0; R.sharedAt = 0
+    }
+  }
+  // wake starts 0: a joining player adopts the shared universe at rest —
+  // only real perturbations (a birth, a chant shift, a filter flip) wake it
   if (!wd.__cu || wd.__cu.v !== 1) wd.__cu = { v: 1, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
-    pollT: 0, wake: 12, drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
+    pollT: 0, wake: 0, mineKey: '', drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
   const U = wd.__cu
   const dt2 = Math.min(dt, 0.05)
   // ── whose universe? MY WORLDS flips the door into a personal submain ──
@@ -167,15 +176,21 @@ try {
     ;(async () => {
       try {
         const now = Date.now()
-        const [sc, sp, sl] = await Promise.all([
+        const [sc, sp, sl, uvr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
           fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
+          MF ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
           if (s.slot.startsWith('cell:')) cellAt[s.slot.slice(5)] = s.savedAt
         }
+        // one universe, every screen: the shared layout is truth; adopt any
+        // arrangement newer than the one we last saw (including our own saves)
+        const shared = (uvr && uvr.data && uvr.data.v === 1 && uvr.data.bubbles) ? uvr.data : null
+        const adopt = (shared && shared.at > (U.sharedAt || 0)) ? shared : null
+        if (adopt) U.sharedAt = adopt.at
         if (mineKey !== U.mineKey) return   // filter flipped mid-flight; stale poll
         const want = {}
         if (MF) {
@@ -213,20 +228,35 @@ try {
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
-            // born around the heart — their true place is live: packing
-            // pressure and participation sort them outward from here
-            const a2 = angOf(n)
-            U.bubbles[n] = { x: 256 + Math.cos(a2) * 26, y: 256 + Math.sin(a2) * 26 * 0.74, vx: 0, vy: 0,
-              born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
-            U.wake = 10   // a birth perturbs the whole field
+            const sb = shared && shared.bubbles[n]
+            if (sb) {
+              // this world already has its place in the shared universe
+              U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1,
+                born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+            } else {
+              // truly newborn — born around the heart; its true place is live:
+              // packing pressure and participation sort it outward from here
+              const a2 = angOf(n)
+              U.bubbles[n] = { x: 256 + Math.cos(a2) * 26, y: 256 + Math.sin(a2) * 26 * 0.74, vx: 0, vy: 0,
+                born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+              U.wake = 10   // a birth perturbs the whole field
+            }
           }
           const B = U.bubbles[n]
           B.launch = want[n].launch
+          if (adopt && adopt.bubbles[n]) {   // the shared arrangement wins
+            const sb2 = adopt.bubbles[n]
+            B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0
+            if (sb2.born) B.born = sb2.born
+          }
           // participation pressure: cell activity + birth heat
           const cellAge = cellAt[n] ? (now - cellAt[n]) / 60000 : 999
           const bornHeat = Math.max(0, 1 - (now - B.born) / 120000)
           const ns = 1 / (1 + cellAge / 20) + bornHeat
-          if (Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)   // chant shifts perturb
+          // chant shifts perturb — but a bubble just placed from the shared
+          // universe getting its first real score is not a shift, it's arrival
+          if (!B.justPlaced && Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)
+          delete B.justPlaced
           B.score = ns
         }
         for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
@@ -271,8 +301,21 @@ try {
       B.vx *= fr; B.vy *= fr
       B.x += B.vx * dt2; B.y += B.vy * dt2
     }
-    if (U.wake <= 0) for (const n of U.order) {   // friction locks them in place
-      const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0 }
+    if (U.wake <= 0) {   // friction locks them in place
+      for (const n of U.order) { const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0 } }
+      // the settled arrangement becomes everyone's: publish it to the shared
+      // universe slot so every player (and every reload) sees this layout
+      if (!MF && U.order.length > 0) {
+        const at = Date.now()
+        U.sharedAt = at
+        const out = {}
+        for (const n of U.order) {
+          const B = U.bubbles[n]
+          if (B) out[n] = { x: Math.round(B.x * 10) / 10, y: Math.round(B.y * 10) / 10, born: B.born }
+        }
+        fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot: 'cafe:universe', data: { v: 1, at, bubbles: out } }) }).catch(() => {})
+      }
     }
   }
 
@@ -301,23 +344,31 @@ try {
   if (!down && U.prevDown) {
     if (hovered >= 0 && U.moved < 8 && typeof window !== 'undefined') {
       const B = U.bubbles[U.order[hovered]]
-      if (B) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
+      if (B) {
+        U.launched = 1   // stepping through: say nothing more — a late portals
+                         // or hover dispatch would follow the player into the world
+        window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
+      }
     }
     U.drag = 0
   }
   U.prevDown = down
-  if (hovered !== U.lastHover && typeof window !== 'undefined') {
+  if (!U.launched && hovered !== U.lastHover && typeof window !== 'undefined') {
     U.lastHover = hovered
     window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? U.order[hovered] : null }))
   }
 
   // ── tell the shell where the doors are (uv space) — it pins the hover
-  // tooltip and live head-counts there; re-sent whenever cam or layout moves ──
-  if (typeof window !== 'undefined') {
+  // tooltip and live head-counts there. Sent when cam or layout moves, and
+  // re-announced every 2s regardless: the shell drops portal events during
+  // scene changes, so a one-shot could be lost forever ──
+  U.portalT = (U.portalT || 0) - dt2
+  if (!U.launched && typeof window !== 'undefined') {
     let sig = ((U.cam.x * 10) | 0) + '|' + ((U.cam.y * 10) | 0) + '|' + ((U.cam.z * 100) | 0)
     for (const n of U.order) { const B = U.bubbles[n]; if (B) sig += '|' + n + ':' + ((B.x * 10) | 0) + ',' + ((B.y * 10) | 0) }
-    if (sig !== U.portalSig) {
+    if (sig !== U.portalSig || U.portalT <= 0) {
       U.portalSig = sig
+      U.portalT = 2
       window.dispatchEvent(new CustomEvent('cafe:portals', {
         detail: U.order.map(n => {
           const B = U.bubbles[n]

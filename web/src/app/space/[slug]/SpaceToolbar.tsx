@@ -143,7 +143,8 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   const btn = 'brass-tab px-2.5 py-1 text-[10px] disabled:opacity-30'
 
   return (
-    <div className="fixed top-14 right-4 z-50 flex flex-col items-end gap-2 font-sans">
+    // left rail — the right rail belongs to the engine (instructions, AI lamp, branches)
+    <div className="fixed top-3 left-3 z-50 flex flex-col items-start gap-2 font-sans">
       {/* header chip */}
       <div className="flex items-center gap-2 rounded-lg bg-[#171009]/80 backdrop-blur px-3 py-2 border border-[#b97a2a]/25">
         <div className="text-sm text-white/90">
@@ -175,6 +176,12 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
           </>
         ) : (
           <>
+            <button
+              className={btn}
+              onClick={() => { if (window.history.length > 1) router.back(); else window.location.href = '/' }}
+            >
+              ⟵ Back
+            </button>
             {isOwner && <button className={btn} disabled={busy} onClick={savePoint}>Save point</button>}
             {isOwner && <button className={btn} disabled={busy} onClick={connectAI}>Connect AI</button>}
             <button className={btn} onClick={() => setOpen(o => !o)}>History</button>
@@ -192,7 +199,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
         const pl = aiStatus.playerFocus
         if (!fresh(ai?.at) && !fresh(pl?.at)) return null
         return (
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col items-start gap-1">
             {fresh(ai?.at) && (
               <div className="inline-flex items-center gap-1.5 rounded-lg bg-black/60 backdrop-blur border border-emerald-400/20 px-2.5 py-1 text-[11px] text-emerald-200/90">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

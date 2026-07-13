@@ -34,12 +34,31 @@ export async function GET(req: NextRequest) {
 }
 
 /** POST /api/engine/save  Body: { slot: string, data: unknown } */
-export async function POST(req: NextRequest) {
-  if (!(await writeAllowed(req))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+/** The cafe's shared bubble universe: one layout, live for all players —
+ *  anonymous browsers publish it too, so this single slot is writable
+ *  without a session, but only when the payload is exactly the expected
+ *  shape (a small map of named positions). */
+function isPublicUniverseWrite(body: { slot?: unknown; data?: unknown }): boolean {
+  if (body.slot !== 'cafe:universe') return false
+  const d = body.data as { v?: unknown; at?: unknown; bubbles?: unknown } | null
+  if (!d || d.v !== 1 || typeof d.at !== 'number' || !d.bubbles || typeof d.bubbles !== 'object') return false
+  const bubbles = d.bubbles as Record<string, { x?: unknown; y?: unknown; born?: unknown }>
+  const names = Object.keys(bubbles)
+  if (names.length > 40) return false
+  for (const n of names) {
+    const b = bubbles[n]
+    if (n.length > 80 || !b || typeof b.x !== 'number' || typeof b.y !== 'number' ||
+        !isFinite(b.x) || !isFinite(b.y) || (b.born !== undefined && typeof b.born !== 'number')) return false
   }
+  return true
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    if (!isPublicUniverseWrite(body) && !(await writeAllowed(req))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     if (typeof body.slot === 'string' && 'data' in body) {
       saveGameSlot(body.slot, body.data)
       return NextResponse.json({ ok: true })

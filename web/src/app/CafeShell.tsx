@@ -31,6 +31,12 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [mute, setMute] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  const [brewStep, setBrewStep] = useState(0)          // 0 closed · 1 connect-AI · 2 name · 3 brief · 4 key
+  const [brewName, setBrewName] = useState('')
+  const [brewBrief, setBrewBrief] = useState('')
+  const [brewToken, setBrewToken] = useState('')
+  const [brewSlug, setBrewSlug] = useState('')
+  const [brewErr, setBrewErr] = useState('')
   const activeTabRef = useRef(true)
   const claimRef = useRef<() => void>(() => {})
   const [portals, setPortals] = useState<{ name: string; x: number; y: number; r: number }[]>([])
@@ -48,6 +54,10 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const skipCrumbRef = useRef(false)
   const portalsRef = useRef(portals)
   portalsRef.current = portals
+  // scene changes drop in-flight portal events: the departing hub's hook can
+  // tick a frame or two past go(), and its doors must not follow the player
+  // into the next world. Hubs re-announce every 2s, so a dropped one returns.
+  const portalsBlockRef = useRef(0)
   const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
@@ -64,16 +74,24 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     setMine(null)
   }
 
-  /** BREW YOURS: signed out → auth (and resume); signed in → name it, make it, enter it */
+  /** BREW YOURS: signed out → auth (and resume); signed in → the wizard:
+   *  connect your AI first, then name the world, then tell the AI what to
+   *  build — the brief travels inside the world so the AI can't run off */
   const brew = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
-    const name = window.prompt('Name your world:')
-    if (!name?.trim()) return
-    const r = await fetch('/api/spaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) })
+    setBrewName(''); setBrewBrief(''); setBrewToken(''); setBrewErr('')
+    setBrewStep(1)
+  }
+  const brewCreate = async () => {
+    setBrewErr('')
+    const r = await fetch('/api/spaces', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: brewName.trim(), brief: brewBrief.trim() }),
+    })
     const d = await r.json()
-    if (r.ok && d?.space?.slug) window.location.href = '/space/' + d.space.slug
-    else window.alert(d?.error || 'could not brew')
+    if (r.ok && d?.space?.slug) { setBrewToken(d.token || ''); setBrewSlug(d.space.slug); setBrewStep(4) }
+    else setBrewErr(d?.error || 'could not brew')
   }
 
   const go = (name: string, push = true) => {
@@ -89,6 +107,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     setCaption(null)
     setConfirmLeave(false)
     setPortals([])
+    portalsBlockRef.current = Date.now() + 600
     if (push && typeof window !== 'undefined') {
       window.history.pushState({ scene: name }, '', name === 'CAFE' ? '/' : `/play/${encodeURIComponent(name)}`)
     }
@@ -138,7 +157,10 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       go(m ? decodeURIComponent(m[1]) : 'CAFE', false)
     }
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
-    const onPortals = (e: Event) => setPortals((e as CustomEvent).detail || [])
+    const onPortals = (e: Event) => {
+      if (Date.now() < portalsBlockRef.current) return   // a door slamming behind us
+      setPortals((e as CustomEvent).detail || [])
+    }
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     window.addEventListener('cafe:launch', onLaunch)
@@ -278,6 +300,72 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       >
         {mute ? '∅' : '♪'}
       </button>
+
+      {/* BREW: connect AI → name → brief → key */}
+      {brewStep > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/80 backdrop-blur-sm"
+          onClick={() => brewStep < 4 && setBrewStep(0)}>
+          <div className="w-[420px] max-w-[92vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+            onClick={e => e.stopPropagation()}>
+            {brewStep === 1 && (<>
+              <div className="cafe-sign text-2xl mb-2">first: your AI</div>
+              <div className="font-mono text-[11px] leading-relaxed text-crema/70 mb-5">
+                Worlds here are built by an AI companion — Claude, or any agent that can
+                make HTTP calls. When your world is born you&rsquo;ll get a key to hand it,
+                and it will receive your brief as its first instruction.
+              </div>
+              <button onClick={() => setBrewStep(2)}
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
+                I HAVE AN AI → NAME THE WORLD
+              </button>
+            </>)}
+            {brewStep === 2 && (<>
+              <div className="cafe-sign text-2xl mb-2">name your world</div>
+              <input autoFocus value={brewName} onChange={e => setBrewName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && brewName.trim()) setBrewStep(3) }}
+                placeholder="e.g. Tidepool Abbey"
+                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-sm text-glow outline-none focus:border-brass mb-4" />
+              <button disabled={!brewName.trim()} onClick={() => setBrewStep(3)}
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
+                NEXT → THE BRIEF
+              </button>
+            </>)}
+            {brewStep === 3 && (<>
+              <div className="cafe-sign text-2xl mb-2">tell it what to build</div>
+              <div className="font-mono text-[10px] tracking-wide text-crema/60 mb-3">
+                your AI reads this first — it builds YOUR idea, not its own
+              </div>
+              <textarea autoFocus value={brewBrief} onChange={e => setBrewBrief(e.target.value)}
+                placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
+                rows={4}
+                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-xs text-glow outline-none focus:border-brass mb-4 resize-none" />
+              {brewErr && <div className="font-mono text-[10px] text-red-400 mb-2">{brewErr}</div>}
+              <button disabled={!brewBrief.trim()} onClick={brewCreate}
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
+                BREW IT
+              </button>
+            </>)}
+            {brewStep === 4 && (<>
+              <div className="cafe-sign text-2xl mb-2">hand your AI this key</div>
+              <div className="font-mono text-[10px] leading-relaxed text-crema/70 mb-3">
+                Paste this to your AI with: &ldquo;connect to my world&rdquo;. Your brief is already
+                inside the world — it&rsquo;s the first thing the AI will read.
+              </div>
+              <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[11px] text-glow break-all select-all mb-3">
+                {brewToken}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => navigator.clipboard?.writeText(brewToken)}
+                  className="flex-1 brass-tab py-2 text-[10px]">COPY KEY</button>
+                <button onClick={() => { window.location.href = '/space/' + brewSlug }}
+                  className="flex-1 rounded-lg bg-flame/90 hover:bg-glow py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+                  ENTER WORLD
+                </button>
+              </div>
+            </>)}
+          </div>
+        </div>
+      )}
 
       {/* one table per player — this tab lost the seat */}
       {blocked && (

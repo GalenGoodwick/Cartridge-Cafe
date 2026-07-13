@@ -134,6 +134,22 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugBusy, setPlugBusy] = useState(false)
   // spectators can browse branches without signing in — looking is free
   const [branchesOpen, setBranchesOpen] = useState(false)
+
+  // ESC closes the topmost open panel and stops there — it must never fall
+  // through a modal into "leave this world" (the shell's ESC handler)
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (plugOpen) setPlugOpen(false)
+      else if (instrOpen) { setInstrOpen(false); setInstrEdit(false) }
+      else if (branchesOpen) setBranchesOpen(false)
+      else return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', onEsc, { capture: true })
+    return () => window.removeEventListener('keydown', onEsc, { capture: true })
+  }, [plugOpen, instrOpen, branchesOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
   // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
   type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
@@ -724,7 +740,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // the main door is ALWAYS a hub — no branch or version chrome there,
     // only the sub-main space link. Other worlds declare hubness via portals.
     setIsHub(playScene === 'CAFE')
-    const onPortals = () => setIsHub(true)
+    // grace: the departing hub's hook can dispatch a frame or two past the
+    // scene change — a stale portals event must not brand the NEW world a hub
+    const bornAt = Date.now()
+    const onPortals = () => { if (Date.now() - bornAt > 600) setIsHub(true) }
     window.addEventListener('cafe:portals', onPortals)
     return () => window.removeEventListener('cafe:portals', onPortals)
   }, [playScene])
@@ -1087,6 +1106,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // cursor and pull the whole scene with it.
     if (playScene) return
 
+    // Player worlds play like worlds too: fields only move by hand
+    // while the workshop is open (⚙ tools) — never during plain play.
+    if (spaceId && !chromeVisible) return
+
     // Hit-test: check if pointer is over a field
     if (sim) {
       const rect = canvas.getBoundingClientRect()
@@ -1113,7 +1136,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playScene])
+  }, [playScene, spaceId, chromeVisible])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const input = inputRef.current

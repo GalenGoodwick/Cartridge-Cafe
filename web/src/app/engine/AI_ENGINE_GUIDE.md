@@ -60,6 +60,13 @@ in the viewer's browser. `define_visual` persists either way, but you only get a
 `compileResult` back when someone has the world's page open — if it times out, your WGSL is
 saved but unverified. Ask the owner to keep the world page open while you do shader work.
 
+**The creation brief comes first.** A newly created world carries
+`worldData.creation_brief = { prompt, by, at }` — the player's own words for
+what this world should be. On connecting: GET the state, and if a brief exists
+without `worldData.brief_done`, BUILD THE BRIEF — not your own idea. When the
+first pass is delivered, `set_world_data {"brief_done": true}` and continue
+from the player's feedback.
+
 **Make things visible.** Fields with no visual render as NOTHING. Always pair `create_field`
 with `visualType`, or use `set_visual` on existing fields. A skeleton of bare fields is
 invisible — skin it.

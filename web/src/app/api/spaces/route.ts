@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
   const body = await req.json()
-  const { name, slug: rawSlug, description } = body
+  const { name, slug: rawSlug, description, brief } = body
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
@@ -79,12 +80,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Maximum 10 spaces per account' }, { status: 400 })
   }
 
+  // the creation brief rides in the world itself: the FIRST thing a connecting
+  // AI reads is what the player asked for — it builds that, not its own idea
+  const snapshot = brief?.trim()
+    ? { fields: [], worldData: { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } }
+    : undefined
+
   const space = await prisma.playerSpace.create({
     data: {
       name: name.trim(),
       slug,
       description: description?.trim() || null,
       ownerId: user.id,
+      ...(snapshot ? { snapshot } : {}),
     },
     select: {
       id: true,
@@ -96,5 +104,16 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  return NextResponse.json({ space }, { status: 201 })
+  // connect-AI-first: the world is born with its first companion key
+  const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
+  await prisma.spaceToken.create({
+    data: {
+      name: 'first companion',
+      tokenHash: crypto.createHash('sha256').update(rawToken).digest('hex'),
+      tokenPrefix: rawToken.slice(0, 12) + '...',
+      spaceId: space.id,
+    },
+  })
+
+  return NextResponse.json({ space, token: rawToken }, { status: 201 })
 }
