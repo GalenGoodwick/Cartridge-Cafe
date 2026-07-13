@@ -3761,14 +3761,23 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[11px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
-                  {(isOwner || !spaceId) && !instrEdit && (
+                  <div className="flex items-center gap-2">
+                    {(isOwner || !spaceId) && !instrEdit && (
+                      <button
+                        className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                        onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
+                      >
+                        EDIT
+                      </button>
+                    )}
                     <button
-                      className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
-                      onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
+                      aria-label="Close instructions"
+                      className="w-6 h-6 rounded text-white/60 hover:text-white hover:bg-white/10 text-[13px] leading-none transition-colors"
+                      onClick={() => { setInstrOpen(false); setInstrEdit(false) }}
                     >
-                      EDIT
+                      ✕
                     </button>
-                  )}
+                  </div>
                 </div>
                 {instrEdit ? (
                   <>

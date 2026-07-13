@@ -155,7 +155,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'SELENE \\u2014 the world under the lake, reached through the moon\\u2019s reflection.\\n\\nMOVE \\u2014 carry the drowned moon.\\nCLICK & HOLD \\u2014 age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH \\u2014 an amber rim means the phase is right \\u2014 and the stone drinks the light. Light all six to open the golden way home.\\n\\nThe deep remembers: lit stones stay lit.',
+    instructions: 'SELENE — the world under the lake, reached through the moon’s reflection.\\n\\nMOVE — carry the drowned moon.\\nCLICK & HOLD — age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH — an amber rim means the phase is right — and the stone drinks the light. Light all six to open the golden way home.\\n\\nThe deep remembers: lit stones stay lit.',
     postProcess: { bloomIntensity: 0.6, bloomThreshold: 0.55, exposure: 1.0, vignetteStrength: 0.35, vignetteRadius: 0.85 },
   },
   stepHooks: [{ id: 'se_tide', author: 'fable', description: 'SELENE: phase-matching puzzle — carry the drowned moon, match crescents, light the ring', code: HOOK }],

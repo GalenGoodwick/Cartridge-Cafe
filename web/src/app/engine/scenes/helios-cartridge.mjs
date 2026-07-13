@@ -210,7 +210,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'MOVE \\u2014 the sun follows your cursor; all of its light comes with it.\nTime passes on its own \\u2014 the sun slowly ages to moonlight and back.\nCLICK & HOLD \\u2014 time races.\n\nThe point: there is no goal. The valley is yours to light \\u2014 stars and fireflies come with the moon.',
+    instructions: 'MOVE — the sun follows your cursor; all of its light comes with it.\nTime passes on its own — the sun slowly ages to moonlight and back.\nCLICK & HOLD — time races.\n\nThe point: there is no goal. The valley is yours to light — stars and fireflies come with the moon.',
     postProcess: { bloomIntensity: 0.5, bloomThreshold: 0.6, exposure: 1.0, vignetteStrength: 0.3, vignetteRadius: 0.8 },
   },
   stepHooks: [{ id: 'hl_sun', author: 'fable', description: 'HELIOS: the Held Sun — drag carries it, holding ages it day\\u2194moon, release freezes the sky.', code: HOOK }],
