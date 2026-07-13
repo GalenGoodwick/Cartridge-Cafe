@@ -221,8 +221,18 @@ export function startCafeAudio(initialScene: string) {
   }, { capture: true })
 
   // the shell's own event language becomes sound
+  // hover is a HEARTBEAT (the world re-affirms ~2×/s; there is no "hover
+  // ended" event — tooltips expire instead). The tink fires on a NEW name, or
+  // on the same name after the affirmation went quiet — mirroring the
+  // tooltip's own 1.4s expiry, so leaving and returning tinks again.
+  let lastHoverName: string | null = null
+  let lastHoverAt = 0
   window.addEventListener('cafe:hover', e => {
-    if ((e as CustomEvent).detail) sfx.hoverTink()
+    const d = (e as CustomEvent).detail as string | null
+    const now = performance.now()
+    if (d && (d !== lastHoverName || now - lastHoverAt > 1400)) sfx.hoverTink()
+    if (d) lastHoverAt = now
+    lastHoverName = d
   })
   window.addEventListener('cafe:caption', e => {
     const d = (e as CustomEvent).detail as { text?: string; kind?: string } | null

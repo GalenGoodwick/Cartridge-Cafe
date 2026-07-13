@@ -1536,6 +1536,11 @@ struct InteractionGPU {
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
 @group(1) @binding(7) var<storage, read> worldUni: array<vec4f>;
+// icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
+// The cafe door samples a world's real screenshot INTO its bubble with this —
+// same shader pass as the bubble, so the face can never detach. Empty for
+// every other world (a 1-element fallback keeps the layout satisfied).
+@group(1) @binding(8) var<storage, read> iconBuf: array<u32>;
 
 // ─── World uniforms ("the whiteboard") ───
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
@@ -1549,6 +1554,20 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
+
+// Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
+// from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
+const CAFE_ICON: i32 = 64;
+fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
+  if (slot < 0) { return vec3f(0.0); }
+  let px = clamp(i32((uv.x * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  let py = clamp(i32((0.5 - uv.y * 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  let idx = slot * CAFE_ICON * CAFE_ICON + py * CAFE_ICON + px;
+  if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
+  let p = iconBuf[idx];
+  let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
+  return pow(c, vec3f(2.2));
+}
 
 // ─── Cell shaders: the previous frame is the world's memory ───
 // prevAt(o) reads last frame's composite at this pixel + offset o (in pixels,
@@ -2012,6 +2031,11 @@ ${moduleCode}
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
 @group(1) @binding(7) var<storage, read> worldUni: array<vec4f>;
+// icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
+// The cafe door samples a world's real screenshot INTO its bubble with this —
+// same shader pass as the bubble, so the face can never detach. Empty for
+// every other world (a 1-element fallback keeps the layout satisfied).
+@group(1) @binding(8) var<storage, read> iconBuf: array<u32>;
 
 // ─── World uniforms ("the whiteboard") ───
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
@@ -2025,6 +2049,20 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
+
+// Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
+// from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
+const CAFE_ICON: i32 = 64;
+fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
+  if (slot < 0) { return vec3f(0.0); }
+  let px = clamp(i32((uv.x * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  let py = clamp(i32((0.5 - uv.y * 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  let idx = slot * CAFE_ICON * CAFE_ICON + py * CAFE_ICON + px;
+  if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
+  let p = iconBuf[idx];
+  let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
+  return pow(c, vec3f(2.2));
+}
 
 // ─── Cell shaders: the previous frame is the world's memory ───
 // prevAt(o) reads last frame's composite at this pixel + offset o (in pixels,

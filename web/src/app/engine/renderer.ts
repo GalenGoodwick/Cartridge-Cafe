@@ -150,6 +150,12 @@ export class FieldRenderer {
   private _worldUniData = new Float32Array(64)
   private _worldUniDirty = true
 
+  // Icon atlas — packed RGBA8 screenshots (64x64/slot) the cafe door samples
+  // into its bubbles. Always allocated (min 1 u32) so the super layout is
+  // satisfied for every world, even those that never sample it.
+  private iconBuffer: GPUBuffer | null = null
+  private iconBufferCapacity = 0
+
   // Pre-allocated typed arrays (reused every frame to avoid GC pressure)
   private _frameUniformData = new Float32Array(16)
   private _stateUniformData = new Float32Array(4)
@@ -845,6 +851,7 @@ export class FieldRenderer {
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       ],
     })
 
@@ -2727,6 +2734,7 @@ export class FieldRenderer {
           { binding: 5, resource: { buffer: this.ixTypeBuf! } },
           { binding: 6, resource: { buffer: this.prevAccumBuf! } },
           { binding: 7, resource: { buffer: this.worldUniBuffer! } },
+          { binding: 8, resource: { buffer: this.iconBuffer! } },
         ],
       })
       this._lastSuperFieldCount = fields.length
