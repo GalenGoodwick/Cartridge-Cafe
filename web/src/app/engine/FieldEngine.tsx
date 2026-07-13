@@ -119,6 +119,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [])
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Every world carries instructions (worldData.instructions) behind a mandatory
+  // top-right button — a world you can enter is a world you can learn.
+  // Convention: key entry first (every input, one per line), then the point.
+  const [instrOpen, setInstrOpen] = useState(false)
+  const [instrEdit, setInstrEdit] = useState(false)
+  const [instrDraft, setInstrDraft] = useState('')
   // Focus throttle: a WATCHING viewer gets full rate (spectators give no input) —
   // only an unfocused-but-visible window drops to ~10fps. Hidden tabs pause free (rAF).
   const windowFocusedRef = useRef(typeof document !== 'undefined' ? document.hasFocus() : true)
@@ -577,6 +583,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           const stash = localStorage.getItem(`cc-save-${playScene}`)
           if (stash) Object.assign(sim.worldData, JSON.parse(stash))
         } catch { /* no save, no problem */ }
+        // session-start signal: hooks reset per-session state (timers, key latches)
+        // while keeping restored save data
+        sim.worldData.__fresh = true
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
         }
@@ -1009,16 +1018,19 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   useEffect(() => {
     const keyMap: Record<string, string> = {
       ArrowLeft: 'key_left', ArrowRight: 'key_right', ArrowUp: 'key_up', ArrowDown: 'key_down',
-      a: 'key_a', d: 'key_d', w: 'key_w', s: 'key_s',
-      ' ': 'key_space', Enter: 'key_enter', Shift: 'key_shift',
+      ' ': 'key_space', Enter: 'key_enter', Shift: 'key_shift', Backspace: 'key_backspace',
     }
+    // the whole alphabet — worlds that listen to language need every letter
+    for (let c = 97; c <= 122; c++) keyMap[String.fromCharCode(c)] = 'key_' + String.fromCharCode(c)
     const onKeyDown = (e: KeyboardEvent) => {
       const sim = simulationRef.current
       if (!sim) return
       if (e.key === ' ') spaceHeld.current = true
-      const mapped = keyMap[e.key]
+      const mapped = keyMap[e.key] ?? keyMap[e.key.toLowerCase()]
       if (mapped) {
         sim.worldData[mapped] = true
+        // pulse counter — a tap shorter than one sim frame still registers once
+        sim.worldData[mapped + '_n'] = ((sim.worldData[mapped + '_n'] as number) || 0) + 1
         // Prevent arrow keys from scrolling
         if (e.key.startsWith('Arrow') || e.key === ' ') e.preventDefault()
       }
@@ -1027,7 +1039,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const sim = simulationRef.current
       if (!sim) return
       if (e.key === ' ') spaceHeld.current = false
-      const mapped = keyMap[e.key]
+      const mapped = keyMap[e.key] ?? keyMap[e.key.toLowerCase()]
       if (mapped) {
         sim.worldData[mapped] = false
       }
@@ -3666,6 +3678,58 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             className="absolute inset-0 pointer-events-none z-10 font-mono"
             style={{ fontFamily: 'monospace' }}
           />
+
+          {/* Mandatory world instructions — top right, every world */}
+          <button
+            onClick={() => setInstrOpen(v => !v)}
+            className="absolute top-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+          >
+            ? INSTRUCTIONS
+          </button>
+          {instrOpen && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInstrOpen(false); setInstrEdit(false) }}>
+              <div
+                className="max-w-md w-[90%] max-h-[70%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[13px] leading-relaxed text-white/85"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
+                  {(isOwner || !spaceId) && !instrEdit && (
+                    <button
+                      className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                      onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
+                    >
+                      EDIT
+                    </button>
+                  )}
+                </div>
+                {instrEdit ? (
+                  <>
+                    <textarea
+                      value={instrDraft}
+                      onChange={e => setInstrDraft(e.target.value)}
+                      rows={10}
+                      className="w-full bg-black/60 border border-white/15 rounded-lg p-3 text-[13px] font-mono text-white/85 outline-none focus:border-white/35"
+                      placeholder={'Key entry first, one per line:\nWASD — move · SPACE — dash · CLICK — select\n\nThen the point: what the player is trying to do, and what winning is.'}
+                    />
+                    <div className="flex gap-2 mt-3 justify-end">
+                      <button className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
+                      <button
+                        className="text-[10px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                        onClick={() => { const s = simulationRef.current; if (s) s.worldData.instructions = instrDraft; setInstrEdit(false) }}
+                      >
+                        SAVE
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="whitespace-pre-line">
+                    {String(simulationRef.current?.worldData?.instructions || 'No instructions written for this world yet.')}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Virtual touch controls — writes the same worldData.key_* the keyboard
               does, so every cartridge gains touch support unchanged. Touch-only. */}

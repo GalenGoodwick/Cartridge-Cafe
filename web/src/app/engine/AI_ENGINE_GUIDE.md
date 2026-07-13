@@ -76,6 +76,29 @@ heads-up first — `reset` wipes the world (history survives, but don't make the
 
 ---
 
+## World Instructions (MANDATORY)
+
+Every world MUST ship `worldData.instructions` — a plain string surfaced behind the
+top-right **? INSTRUCTIONS** button on every world. Two parts, in this order:
+
+1. **Key entry** — every input the world listens to, one per line:
+   `WASD — move · SPACE — dash · CLICK — select a node`.
+   A world with no controls says so: `No controls. Watch.`
+2. **The point** — what the player is trying to do, and what winning or losing is.
+   One or two sentences. If there is no goal, say what the world is for.
+
+Set it in a scene's `worldData`, or live over the bridge:
+
+```json
+{"type": "set_world_data", "data": {"instructions": "WASD — fly\nSPACE — chime pulse\n\nCarry sparks to the star. 5 sparks fill a tier; 5 tiers crown a champion."}}
+```
+
+Space owners can also edit instructions in the UI (? INSTRUCTIONS → EDIT), and the
+edit persists with the world. A world without instructions shows a placeholder —
+never ship that.
+
+---
+
 ## Bridge API
 
 **Endpoint**: `POST /api/engine/bridge`
@@ -319,6 +342,36 @@ wd.gpuUniforms = [boat.x, boat.y, boat.heading, windX, windY, gust]
 // any visual: read it
 let boatPos = vec2f(uni(0), uni(1));
 ```
+
+### Cell Shaders — the previous frame is the world's memory
+
+Every visual can read **last frame's finished composite** at any pixel:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `prevHere()` | `vec4f` | Previous frame's color at this pixel |
+| `prevAt(o: vec2f)` | `vec4f` | Previous frame at this pixel + offset `o` (in pixels, edge-clamped) |
+| `pix()` | `vec2f` | This pixel's canvas coordinate |
+
+A visual that returns a function of its neighbors' past **is a cellular
+automaton** — the field stops being a picture and becomes a computer whose
+state lives in the frame itself. Conway's Life, reaction-diffusion, wave
+equations, falling sand are all a few lines. See the SIGNAL cartridge
+(`scenes/signal-cartridge.mjs`) for a complete worked example.
+
+Rules of the medium:
+- **Storage = display.** The returned color is both next frame's state and
+  this frame's picture. Design encodings that decode exactly AND look right
+  (keep state amplitudes ≥ ~0.35 so they survive; spare channels are free
+  for pure art).
+- **Seed on boot.** First frames read black. Have your hook publish a
+  "running" uniform after ~0.4s and output seed noise until it flips.
+- **Shaders can control shaders.** Reserve sparse pixels as *controller
+  cells* that measure their neighborhood and store parameters; substrate
+  pixels read them back with `prevAt`. A full control loop with no CPU in
+  it — SIGNAL's bezel LEDs are thermostat pixels holding the reaction stable.
+- Any visual using `prevAt`/`prevHere` is treated as always-animated (never
+  frame-memoized) and evolves at the render rate (60fps focused).
 
 ### Available WGSL Utility Functions
 
@@ -636,6 +689,40 @@ resets state if it goes non-finite.
 **Game cartridges** (fields + WGSL + JS hook shipped as a scene): see `scenes/README.md` —
 step hooks only run from scenes (the bridge blocks them), entity pools are pre-created and
 recycled, keyboard arrives in `worldData.key_*`.
+
+---
+
+## The Held Sun — controllable celestial pattern
+
+One orb owns the world's light. Every shader derives its sky, rim light, reflections
+and palette from TWO whiteboard values: the orb's position and its PHASE. The input
+grammar (pointer state is already in `worldData.mouse_x/mouse_y/mouse_down`):
+
+- **DRAG** — the orb follows the pointer across the sky, and every downstream effect
+  (light direction, haze, reflections, shadows) moves with it, because they all read
+  the same uniforms.
+- **HOLD** (pressed, not moving) — the orb AGES: phase loops day → moonlight → day
+  (~6s per cycle) while held.
+- **RELEASE** — position and phase freeze. The sky keeps the player's choice.
+
+Hook skeleton:
+
+```js
+const md = wd.mouse_down, mx = wd.mouse_x, my = wd.mouse_y
+if (md && !S.held) { S.held = 1; S.hx = mx; S.hy = my }
+if (!md) S.held = 0
+if (S.held) {
+  if (Math.hypot(mx - S.hx, my - S.hy) > 6) {           // drag: carry the sun
+    S.sx = mx; S.sy = Math.min(my, HORIZON - 20); S.hx = mx; S.hy = my
+  } else {
+    S.phase = (S.phase + dt / 6) % 1                    // hold: age toward moonlight and back
+  }
+}
+wd.gpuUniforms = [S.sx, S.sy, S.phase]
+```
+
+In the shader, derive `moonness = 0.5 - 0.5 * cos(6.2831 * phase)` — 0 is full day,
+1 is full moon — and interpolate every palette by it. Reference world: HELIOS.
 
 ---
 

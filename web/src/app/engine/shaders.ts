@@ -1550,6 +1550,21 @@ fn uni(i: i32) -> f32 {
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
 
+// ─── Cell shaders: the previous frame is the world's memory ───
+// prevAt(o) reads last frame's composite at this pixel + offset o (in pixels,
+// clamped at edges). prevHere() is prevAt(vec2f(0)). pix() is this pixel's
+// canvas coordinate. A visual that returns f(its neighbors' past) is a
+// cellular automaton — Life, reaction-diffusion, wave equations, sand.
+// State persists frame to frame in the accumulation buffer itself.
+var<private> ca_pix: vec2i = vec2i(0, 0);
+fn pix() -> vec2f { return vec2f(ca_pix); }
+fn prevAt(o: vec2f) -> vec4f {
+  let r = vec2i(i32(frame.resolution.x), i32(frame.resolution.y));
+  let p = clamp(ca_pix + vec2i(o), vec2i(0, 0), r - vec2i(1, 1));
+  return prevAccumBuf[u32(p.y) * u32(r.x) + u32(p.x)];
+}
+fn prevHere() -> vec4f { return prevAt(vec2f(0.0)); }
+
 ${targetBindingsStr}
 
 ${SHADER_UTILITIES}
@@ -1640,6 +1655,7 @@ ${interactionSwitchCases}
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   let pixel = vec2f(f32(gid.x), f32(gid.y));
   if (pixel.x >= frame.resolution.x || pixel.y >= frame.resolution.y) { return; }
+  ca_pix = vec2i(gid.xy);
 
   let stride = u32(frame.resolution.x);
   let idx = gid.y * stride + gid.x;
@@ -2009,6 +2025,21 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
+
+// ─── Cell shaders: the previous frame is the world's memory ───
+// prevAt(o) reads last frame's composite at this pixel + offset o (in pixels,
+// clamped at edges). prevHere() is prevAt(vec2f(0)). pix() is this pixel's
+// canvas coordinate. A visual that returns f(its neighbors' past) is a
+// cellular automaton — Life, reaction-diffusion, wave equations, sand.
+// State persists frame to frame in the accumulation buffer itself.
+var<private> ca_pix: vec2i = vec2i(0, 0);
+fn pix() -> vec2f { return vec2f(ca_pix); }
+fn prevAt(o: vec2f) -> vec4f {
+  let r = vec2i(i32(frame.resolution.x), i32(frame.resolution.y));
+  let p = clamp(ca_pix + vec2i(o), vec2i(0, 0), r - vec2i(1, 1));
+  return prevAccumBuf[u32(p.y) * u32(r.x) + u32(p.x)];
+}
+fn prevHere() -> vec4f { return prevAt(vec2f(0.0)); }
 ${targetBindingsStr}
 
 struct FieldGPU {

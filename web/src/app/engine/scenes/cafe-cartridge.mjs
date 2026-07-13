@@ -5,8 +5,8 @@
 const WORLD = /* wgsl */`
 fn cf_portal_pos(i: i32) -> vec2f {
   // an easy arc across the room
-  let fx = f32(i) - 3.0;
-  return vec2f(fx * 0.27, -0.02 + abs(fx) * abs(fx) * 0.016);
+  let fx = f32(i) - 3.5;
+  return vec2f(fx * 0.25, -0.02 + abs(fx) * abs(fx) * 0.014);
 }
 
 fn cf_stars(p: vec2f, t: f32) -> vec3f {
@@ -38,8 +38,8 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // warm hearth-light from below — this is a cafe, not a void
   col += vec3f(0.10, 0.055, 0.02) * pow(max(0.0, uv.y + 0.2), 2.0) * (0.8 + 0.2 * sin(t * 0.7));
 
-  // ── seven cartridges, each a living miniature ──
-  for (var i = 0; i < 7; i++) {
+  // ── eight cartridges, each a living miniature ──
+  for (var i = 0; i < 8; i++) {
     let ctr = cf_portal_pos(i);
     let d = length(uv - ctr);
     let R = 0.105;
@@ -102,13 +102,19 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let hill = q.y - (0.25 + 0.15 * sin(q.x * 3.0 + 1.0));
         let lit = max(0.0, 1.0 - length(q - sp) * 1.4);
         g = mix(g, mix(vec3f(0.03, 0.05, 0.02), vec3f(0.15, 0.3, 0.08), lit), smoothstep(-0.02, 0.02, hill));
-      } else {
+      } else if (i == 6) {
         // TIDERUNNER — wind over water
         let band = sin(q.y * 14.0 - t * 1.1 + sin(q.x * 4.0) * 0.7);
         g = mix(vec3f(0.05, 0.13, 0.17), vec3f(0.12, 0.25, 0.3), 0.5 + 0.5 * band);
         g += vec3f(0.8, 0.85, 0.85) * pow(max(0.0, band - 0.8) * 5.0, 2.0) * 0.4;
         let bt = q - vec2f(sin(t * 0.4) * 0.4, 0.0);
         g += vec3f(0.9, 0.85, 0.75) * exp(-dot(bt, bt) * 300.0) * 1.2;
+      } else {
+        // SIGNAL — a television waiting for a word
+        let sn = hash21(floor(q * 24.0) + floor(t * 9.0));
+        g = vec3f(sn * 0.5);
+        g += vec3f(0.3, 1.0, 0.45) * exp(-dot(q, q) * 8.0) * (0.28 + 0.14 * sin(t * 2.0));
+        g *= 0.82 + 0.18 * sin(q.y * 60.0 - t * 8.0);
       }
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
@@ -130,23 +136,24 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 const HOOK = `
 try {
   const wd = sim.worldData
-  if (!wd.__cf) wd.__cf = { hov: [0,0,0,0,0,0,0], prevDown: false, mx: 0, my: 0 }
+  if (!wd.__cf || !wd.__cf.hov || wd.__cf.hov.length !== 8) wd.__cf = { hov: [0,0,0,0,0,0,0,0], prevDown: false, mx: 0, my: 0 }
   const C = wd.__cf
   const dt2 = Math.min(dt, 0.05)
 
+  const hasMouse = wd.mouse_x !== undefined
   const tx = ((wd.mouse_x ?? 256) - 256) / 256
   const ty = ((wd.mouse_y ?? 256) - 256) / 256
   C.mx += (tx - C.mx) * Math.min(1, dt2 * 12)
   C.my += (ty - C.my) * Math.min(1, dt2 * 12)
 
-  const GAMES = ['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER']
-  const pos = i => { const fx = i - 3; return [fx * 0.27, -0.02 + Math.abs(fx) * Math.abs(fx) * 0.016] }
+  const GAMES = ['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL']
+  const pos = i => { const fx = i - 3.5; return [fx * 0.25, -0.02 + Math.abs(fx) * Math.abs(fx) * 0.014] }
 
   let hovered = -1
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) {
     const [px, py] = pos(i)
     const d = Math.hypot(tx - px, ty - py)
-    const want = d < 0.13 ? 1 : 0
+    const want = hasMouse && d < 0.13 ? 1 : 0
     if (want) hovered = i
     C.hov[i] += (want - C.hov[i]) * Math.min(1, dt2 * 8)
   }
@@ -187,6 +194,13 @@ const scene = {
   modules: [],
   timestamp: Date.now(),
 }
+
+import { writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+const here = dirname(fileURLToPath(import.meta.url))
+writeFileSync(join(here, '../../../../public/cartridges/CAFE.json'), JSON.stringify(scene, null, 1))
+console.log('CAFE bundled to public/cartridges/CAFE.json')
 
 const res = await fetch('http://localhost:3000/api/engine/scene', {
   method: 'POST',

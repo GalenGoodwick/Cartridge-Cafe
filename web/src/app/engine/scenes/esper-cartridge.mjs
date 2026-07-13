@@ -845,6 +845,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
+    instructions: "A stealth quest on the hex-kite lattice \u2014 three rooms in one world.\nCLICK a node (centers, edge midpoints, corners): your esper pathfinds and walks.\nEnemy vision cones radiate live. Forest blocks sight \u2014 and hides you inside it.\nCARDS (bottom): click FIRE or PSYCHIC to arm \u2014 the range zone paints on the board; click an enemy inside it to cast. Click the SHADOW card (or SPACE) to blink forward, unseen for 1.2s.\nClick an adjacent enemy from BEHIND: silent kill.\nThree alerts = permanent hunt. Caught = the room resets.\nThe quest: the key in the Hollow \u2192 the sealed north door opens \u2192 the chest in the Keep.",
     postProcess: { bloomIntensity: 0.42, bloomThreshold: 0.72, exposure: 1.0, vignetteStrength: 0.34, vignetteRadius: 0.74 },
   },
   stepHooks: [{ id: 'eq_core', author: 'fable', description: 'ESPER v3: isometric hex-kite stealth — full c/m/v node graph with click-to-move BFS, effect controllers (fire/psychic/shadow), 3 rooms in one tab.', code: HOOK }],

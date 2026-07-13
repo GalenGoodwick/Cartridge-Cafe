@@ -226,9 +226,13 @@ async function checkAuth(req: NextRequest): Promise<{ authorized: boolean; isAdm
  * The engine page opens an EventSource to this endpoint and receives commands in real-time.
  */
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
+  // Dev keeps the frictionless local workflow (same posture as the scene route);
+  // production requires a session.
+  if (process.env.NODE_ENV === 'production') {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
+    }
   }
 
   const spaceId = req.nextUrl.searchParams.get('spaceId')

@@ -2935,7 +2935,7 @@ export class FieldRenderer {
       this.visualTypeRegistry.set(name, { id, name, wgsl })
     }
     // Signature contributes exactly one `time` — more means the body uses it
-    this.visualTimeDep.set(id, ((wgsl.match(/\btime\b/g) || []).length) > 1)
+    this.visualTimeDep.set(id, ((wgsl.match(/\btime\b/g) || []).length) > 1 || /\b(prevAt|prevHere)\b/.test(wgsl))
     // Invalidate uber-shader — bump compilation ID so any in-flight compilation is discarded
     this.superCompilationId++
     this.superCompilationError = null

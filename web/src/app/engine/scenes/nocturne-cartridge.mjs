@@ -174,6 +174,9 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
+    instructions: name === 'NOCTURNE'
+      ? 'A night drive down a neon avenue — rain-wet road, HDR windows, a hazy moon.\nThe glowing ball is a real physics field: it caroms between the towers and reflects in the wet street.\nNo goals. Ride.'
+      : 'The neon city as a still pinball table, seen from above the avenue.\nThe ball is leashed to the stage — watch it bounce off the tower fields and drop its light into the puddles.',
     postProcess: { bloomIntensity: 0.50, bloomThreshold: 0.60, exposure: 1.05, vignetteStrength: 0.36, vignetteRadius: 0.70 },
   },
   stepHooks: [],
