@@ -647,11 +647,11 @@ export class FieldRenderer {
     const bufSize = pixelCount * 16 // vec4f = 16 bytes per pixel
     this.accumBuf = device.createBuffer({
       size: bufSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     })
     this.prevAccumBuf = device.createBuffer({
       size: bufSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     })
     this.postOutBuf?.destroy()
     this.postOutBuf = device.createBuffer({
@@ -1968,6 +1968,51 @@ export class FieldRenderer {
   }
 
   /** Read GPU state back to CPU. Async — non-blocking. */
+  /** The screen's mood: sparse taps of the last finished composite.
+   *  bright = tonemapped mean luma · warm = red-vs-blue balance ·
+   *  busy = mean change since the previous sample. For the audio layer. */
+  private lastMoodTaps: Float32Array | null = null
+  async sampleMood(points = 8): Promise<{ bright: number; warm: number; busy: number } | null> {
+    const device = this.device
+    const src = this.prevAccumBuf
+    if (!device || !src || !this.accumBufStride || !this.accumBufPixelCount) return null
+    const W = this.accumBufStride
+    const H = Math.floor(this.accumBufPixelCount / W)
+    if (H < points || W < points) return null
+    const n = points * points
+    const out = device.createBuffer({ size: n * 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+    const enc = device.createCommandEncoder()
+    let k = 0
+    for (let j = 0; j < points; j++) {
+      for (let i = 0; i < points; i++) {
+        const x = Math.floor((i + 0.5) / points * W)
+        const y = Math.floor((j + 0.5) / points * H)
+        enc.copyBufferToBuffer(src, (y * W + x) * 16, out, k * 16, 16)
+        k++
+      }
+    }
+    device.queue.submit([enc.finish()])
+    await out.mapAsync(GPUMapMode.READ)
+    const f = new Float32Array(out.getMappedRange().slice(0))
+    out.unmap()
+    out.destroy()
+    let lum = 0, warm = 0, busy = 0
+    for (let i = 0; i < n; i++) {
+      const r = f[i * 4], g = f[i * 4 + 1], b = f[i * 4 + 2]
+      lum += 0.299 * r + 0.587 * g + 0.114 * b
+      warm += r - b
+      if (this.lastMoodTaps) {
+        busy += Math.abs(r - this.lastMoodTaps[i * 4]) + Math.abs(g - this.lastMoodTaps[i * 4 + 1]) + Math.abs(b - this.lastMoodTaps[i * 4 + 2])
+      }
+    }
+    this.lastMoodTaps = f
+    return {
+      bright: 1 - Math.exp(-(lum / n) * 1.4),
+      warm: Math.max(0, Math.min(1, (warm / n) * 1.8 + 0.5)),
+      busy: Math.min(1, (busy / n) * 2.2),
+    }
+  }
+
   async readbackState(target: Float32Array): Promise<void> {
     const device = this.device
     if (!device) return

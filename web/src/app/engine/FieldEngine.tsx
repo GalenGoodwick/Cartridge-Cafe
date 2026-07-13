@@ -505,6 +505,28 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, refreshSceneList])
 
+  // Play mode: the screen, heard. Every ~600ms sample the rendered frame at
+  // 8x8 and dispatch its mood (brightness, warmth, busy-ness) for the audio
+  // layer. Skipped when the tab is hidden.
+  useEffect(() => {
+    if (!playScene) return
+    let stop = false
+    const tick = async () => {
+      if (stop) return
+      const renderer = rendererRef.current
+      if (renderer && !document.hidden) {
+        try {
+          const mood = await renderer.sampleMood(8)
+          if (mood) window.dispatchEvent(new CustomEvent('cafe:mood', { detail: mood }))
+        } catch { /* readback is best-effort */ }
+      }
+      if (!stop) setTimeout(tick, 600)
+    }
+    const t = setTimeout(tick, 1500)
+    return () => { stop = true; clearTimeout(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
+
   // Play mode: the shell can freeze the world (back-button confirm dialog)
   useEffect(() => {
     if (!playScene) return
@@ -571,14 +593,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
         frameFingerprintRef.current = ''
         // every world opens with a fresh eye — a zoom left over from another
-        // scene must not follow the player through the door. Play-mode opens at
-        // COVER zoom (world fills the viewport, no side voids). Measure the
-        // WINDOW, not the canvas: the canvas lies about its size mid-mount.
-        {
-          const asp = typeof window !== 'undefined' && window.innerHeight > 0
-            ? window.innerWidth / window.innerHeight : 1
-          cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: Math.min(2, Math.max(1, asp)) }
-        }
+        // scene must not follow the player through the door. CONTAIN, not cover:
+        // the whole world at max size in the viewport; letterbox is honest,
+        // cropping is not (a wide monitor was losing 40% of every scene).
+        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
 
         // house cartridges ship as static files (CDN, stateless-server-proof);
         // the store API is the fallback for locally saved scenes
@@ -1918,7 +1936,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       // Sample rendered pixels per field (throttled to once per second, async)
       // Scenes with many fields can set worldData.noPixelSampling to skip this —
       // the per-field GPU readback loop stalls a frame (visible black flash) at scale.
-      if (now - lastSampleTimeRef.current > 1000 && !sim.worldData['noPixelSampling']) {
+      // Readback stalls the pipe once per second (the 'black flash'). It exists
+      // for agents in the workshop — play sessions and player spaces default OFF
+      // unless a world explicitly asks (noPixelSampling: false).
+      const samplingOn = sim.worldData['noPixelSampling'] === false ||
+        (!playScene && !spaceId && !sim.worldData['noPixelSampling'])
+      if (now - lastSampleTimeRef.current > 1000 && samplingOn) {
         lastSampleTimeRef.current = now
         // Fire async sampling — results land next cycle
         ;(async () => {

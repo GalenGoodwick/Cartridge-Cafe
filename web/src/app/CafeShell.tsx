@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
+import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
   'FABRIC': 'bend starlight',
@@ -9,7 +10,6 @@ const BLURBS: Record<string, string> = {
   'GARNET': 'build a ship of crystals',
   'ONE DAY': 'a lighthouse keeps its whole day',
   'SAIL': 'one boat, real water',
-  'SOLSTICE': 'you are the sun',
   'TIDERUNNER': 'sail against the wind',
   'SIGNAL': 'speak a world into being',
   'NOCTURNE': 'a night drive, neon and rain',
@@ -30,6 +30,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
+  const [mute, setMute] = useState(false)
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -42,6 +43,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const stay = () => { setConfirmLeave(false); pause(false) }
 
   const go = (name: string, push = true) => {
+    if (name !== sceneRef.current) { if (name === 'CAFE') sfx.leave(); else sfx.launch(name) }
+    setAudioScene(name)
     setScene(name)
     setHover(null)
     setCaption(null)
@@ -57,6 +60,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   }
 
   useEffect(() => {
+    startCafeAudio(initialScene)
+    setMute(isMuted())
     const onLaunch = (e: Event) => {
       const name = (e as CustomEvent).detail
       if (typeof name === 'string' && name) go(name)
@@ -107,11 +112,11 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       {/* a name surfaces where you're looking, then gets out of the way */}
       {!inGame && hover && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
-          className="fixed z-50 pointer-events-none select-none"
+          className="fixed z-50 pointer-events-none select-none rounded-xl bg-black/60 backdrop-blur-sm border border-brass/20 px-3.5 py-2.5"
           style={{ left: mouse.x + 18, top: mouse.y - 8 }}
         >
           <div className="cafe-sign text-xl leading-none">{hover.toLowerCase()}</div>
-          <div className="font-mono text-[9px] tracking-[0.25em] text-crema/50 uppercase mt-1">
+          <div className="font-mono text-[9px] tracking-[0.25em] text-crema/60 uppercase mt-1.5">
             {BLURBS[hover] || ''} · click to enter
           </div>
         </div>
@@ -128,6 +133,15 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
           {caption.text}{caption.kind === 'typing' ? '▮' : ''}
         </div>
       )}
+
+      {/* the cafe's ears — one small switch, bottom-right */}
+      <button
+        onClick={() => { setMuted(!mute); setMute(!mute) }}
+        aria-label={mute ? 'Unmute' : 'Mute'}
+        className="fixed bottom-4 right-4 z-50 w-8 h-8 rounded-full border border-brass/40 bg-void/60 backdrop-blur-sm text-glow/60 hover:text-glow font-mono text-[11px] transition-colors"
+      >
+        {mute ? '∅' : '♪'}
+      </button>
 
       {/* every level: a way back, top-left. It pauses and asks. */}
       {inGame && (
