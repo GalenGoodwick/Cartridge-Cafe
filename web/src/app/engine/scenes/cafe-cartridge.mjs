@@ -193,16 +193,24 @@ try {
   // ── the universe breathes: poll the shelf; newborns arrive at the edge ──
   U.pollT -= dt2
   if (U.pollT <= 0) {
-    U.pollT = 8
+    // the FIRST fill must not wait for the slow web: scene list and layout
+    // are local and fast; spaces/scores/crowns ride Neon and can take seconds
+    // on a cold start. Race them against a short patience on the first pass —
+    // doors (and their tooltips) appear immediately; a quick re-poll enriches.
+    const firstFill = U.order.length === 0
+    U.pollT = firstFill ? 2 : 8
     ;(async () => {
       try {
         const now = Date.now()
+        const patience = (pr, fb) => firstFill
+          ? Promise.race([pr, new Promise(res => setTimeout(() => res(fb), 700))])
+          : pr
         const [sc, sp, sl, uvr, tvr, smr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
-          fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
-          fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
+          patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })), { spaces: [] }),
+          patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
           (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
-          (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null),
+          (MF || SUB) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
           SUB ? fetch('/api/engine/save?slot=submains%3Aindex').then(r => r.json()).catch(() => null) : Promise.resolve(null),
         ])
         const cellAt = {}
@@ -325,7 +333,9 @@ try {
           delete B.justPlaced
           B.score = ns
         }
-        for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
+        // a degraded first pass only ADDS — pruning waits for the full poll,
+        // so a slow spaces fetch can't blink player worlds out and back
+        if (!firstFill) for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
         U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
         if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true

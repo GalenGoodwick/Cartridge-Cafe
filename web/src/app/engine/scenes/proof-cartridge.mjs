@@ -56,6 +56,39 @@ fn visual_proof_pool(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f
     if (d < 5.0) { col = vec3f(2.0, 0.3, 0.2); }
   }
 
+
+  // ── the law book: four switches on the left edge. dim = repealed,
+  // burning = in force. uni(13+i) carries state (+0.4 while hovered) ──
+  for (var bi = 0; bi < 4; bi++) {
+    let fb = f32(bi);
+    let ctr = vec2f(41.0, 141.0 + fb * 77.0);
+    let bp = p - ctr;
+    if (abs(bp.x) < 26.0 && abs(bp.y) < 26.0) {
+      let st = uni(13 + bi);
+      let on = step(0.9, st);
+      let glow = 0.22 + 0.55 * on + 0.25 * (st - on);   // hover adds warmth
+      // the box
+      let bd = max(abs(bp.x), abs(bp.y)) - 18.0;
+      col += vec3f(0.75, 0.62, 0.35) * smoothstep(1.8, 0.2, abs(bd)) * glow;
+      // the glyph
+      if (bi == 0) {          // the well: a ringed point
+        col += vec3f(1.4, 1.0, 0.35) * smoothstep(1.6, 0.2, abs(length(bp) - 8.0)) * glow;
+        col += vec3f(1.4, 1.0, 0.35) * exp(-dot(bp, bp) * 0.12) * glow;
+      } else if (bi == 1) {   // the wind: three streaks
+        for (var k = -1; k <= 1; k++) {
+          let ly = abs(bp.y - f32(k) * 6.0);
+          col += vec3f(0.25, 0.65, 0.70) * smoothstep(1.6, 0.2, ly) * step(abs(bp.x + f32(k) * 2.0), 10.0) * glow;
+        }
+      } else if (bi == 2) {   // the gyre: a turning arm
+        let ang = atan2(bp.y, bp.x);
+        let arm = abs(fract(ang * 0.477 + length(bp) * 0.05 - t * 0.25) - 0.5);
+        col += vec3f(0.25, 0.55, 0.70) * smoothstep(0.14, 0.02, arm) * smoothstep(14.0, 6.0, length(bp)) * glow;
+      } else {                // the hunter: a red heart, beating
+        col += vec3f(1.6, 0.12, 0.10) * exp(-dot(bp, bp) * 0.06) * glow * (0.7 + 0.3 * sin(t * (3.0 + on * 6.0)));
+      }
+    }
+  }
+
   col *= 1.0 - 0.5 * pow(length(uv), 3.0);   // pool edge falls to dark
   return vec4f(col, 1.0);
 }
@@ -84,13 +117,45 @@ try {
     predator: 'something hunts the motes',
   }
   const rebuildInstructions = () => {
-    let s = 'No controls — this world is watched, not driven.\\n'
+    let s = 'FOUR SWITCHES on the left edge — click to ENACT a law, click again to REPEAL.\\n'
     s += 'Its laws arrive over HTTP as grafted rule fragments; forces superpose.\\n\\nLAWS IN FORCE:\\n'
     s += B.order.length
       ? B.order.map(n => '\\u00b7 ' + n + ' \\u2014 ' + ((B.laws[n] && (B.laws[n].desc || DESC[B.laws[n].type])) || '')).join('\\n')
       : '\\u00b7 none \\u2014 matter drifts free'
     wd.instructions = s
   }
+
+
+  // ── the law book as switches: hover names, click enacts or repeals ──
+  const PRESETS = [
+    ['gravity-well', { type: 'attract', x: 180, y: 220, g: 60, desc: 'matter falls toward the well' }],
+    ['east-wind',    { type: 'wind', ax: 34, ay: -6, desc: 'a current carries everything' }],
+    ['the-gyre',     { type: 'vortex', x: 330, y: 300, w: 70, desc: 'space turns around a center' }],
+    ['the-hunter',   { type: 'predator', speed: 70, desc: 'something hunts the motes' }],
+  ]
+  if (!wd.__ui) wd.__ui = { pmd: false, hov: -1 }
+  const UI = wd.__ui
+  const mx2 = ((wd.mouse_x ?? 256) - 256) / 256
+  const my2 = ((wd.mouse_y ?? 256) - 256) / 256
+  const md2 = !!wd.mouse_down
+  let bhov = -1
+  for (let i = 0; i < 4; i++) {
+    if (Math.abs(mx2 + 0.84) < 0.10 && Math.abs(my2 - (-0.45 + i * 0.30)) < 0.11) bhov = i
+  }
+  if (bhov !== UI.hov && typeof window !== 'undefined') {
+    UI.hov = bhov
+    if (bhov >= 0) {
+      const on = !!B.laws[PRESETS[bhov][0]]
+      window.dispatchEvent(new CustomEvent('cafe:caption', { detail: {
+        text: PRESETS[bhov][1].desc.toUpperCase() + ' \u00b7 click to ' + (on ? 'REPEAL' : 'ENACT'), kind: 'hint' } }))
+    }
+  }
+  if (md2 && !UI.pmd && bhov >= 0) {
+    const nm = PRESETS[bhov][0]
+    if (B.laws[nm]) wd.__ungraft = { name: nm }
+    else wd.__graft = { name: nm, law: PRESETS[bhov][1] }
+  }
+  UI.pmd = md2
 
   // ── graft / ungraft: the world accepts new law while running ──
   const g = wd.__graft
@@ -181,6 +246,9 @@ try {
     predLaw ? 1 : 0, wd.__pred ? wd.__pred.x : 0, wd.__pred ? wd.__pred.y : 0,
     V ? 1 : 0, V ? V.x : 0, V ? V.y : 0,
   ]
+  for (let i = 0; i < 4; i++) {
+    wd.gpuUniforms.push((B.laws[PRESETS[i][0]] ? 1 : 0) + (UI.hov === i ? 0.4 : 0))
+  }
   wd.hud = [
     { id: 'pf_t', type: 'text', x: '14px', y: '12px', text: 'PROOF \\u2014 laws in force: ' + (B.order.join(', ') || 'none'), color: '#c9b370', fontSize: '13px' },
   ]
@@ -209,7 +277,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'No controls — this world is watched, not driven.\nIts laws arrive over HTTP as grafted rule fragments; forces superpose.\n\nLAWS IN FORCE:\n· none — matter drifts free',
+    instructions: 'FOUR SWITCHES on the left edge — click to ENACT a law, click again to REPEAL. Forces superpose.\nLaws can also arrive over HTTP as grafted rule fragments.\n\nLAWS IN FORCE:\n· none — matter drifts free',
     postProcess: { bloomIntensity: 0.5, bloomThreshold: 0.6, exposure: 1.0, vignetteStrength: 0.35, vignetteRadius: 0.75 },
   },
   stepHooks: [{ id: 'pf_law', author: 'fable', description: 'PROOF: the law interpreter — executes whatever rule fragments the book holds; grafts arrive via worldData.', code: HOOK }],
