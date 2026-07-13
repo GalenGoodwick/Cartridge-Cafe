@@ -506,6 +506,18 @@ export class FieldRenderer {
       requiredLimits: wantStorage > 8 ? { maxStorageBuffersPerShaderStage: wantStorage } : undefined,
     })
     this.device = device
+    // a fresh device orphans every LAZILY-created GPU object (the eagerly
+    // created ones are rebuilt right below). A cached layout or buffer from
+    // a lost device poisons createPipelineLayout with "Pipeline layout is
+    // invalid" — so the lazy caches reset with the device.
+    this.stepHookBindGroupLayout = null
+    this.stepHookPipeline = null
+    this.stepUniformBuffer = null
+    this.renderTargetBindGroupLayout = null
+    this.iconBuffer = null
+    this.iconBufferCapacity = 0
+    this.worldUniBuffer = null
+    this.propagationPipeline = null
 
     // ── fault surface: a dead GPU must SAY SO. Device loss and uncaptured
     // errors dispatch 'cc:fault' — FieldEngine shows them to the player. ──
