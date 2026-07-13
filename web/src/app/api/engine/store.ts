@@ -705,7 +705,59 @@ export function appendMemory(fieldId: string, entry: FieldMemoryEntry): void {
 // ─── Scene Persistence ───
 
 /** Save a scene snapshot */
+// ── Scene versioning: every save snapshots what it replaces ──────────────────
+// Any edit (bridge, cartridge run, agent) that overwrites a scene first files
+// the outgoing version under .engine-versions/<name>/<timestamp>.json.
+// Nothing an AI does to a world is unrecoverable.
+import { mkdirSync, readdirSync, unlinkSync, existsSync } from 'fs'
+const VERSIONS_DIR = join(process.cwd(), '.engine-versions')
+const MAX_VERSIONS = 30
+
+function versionDir(name: string): string {
+  return join(VERSIONS_DIR, name.replace(/[^a-zA-Z0-9 _-]/g, '_'))
+}
+
+function snapshotVersion(name: string, scene: SceneSnapshot): void {
+  try {
+    const dir = versionDir(name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, Date.now() + '.json'), JSON.stringify(scene))
+    const files = readdirSync(dir).filter(f => f.endsWith('.json')).sort()
+    while (files.length > MAX_VERSIONS) unlinkSync(join(dir, files.shift()!))
+  } catch (e) {
+    console.error('[store] version snapshot failed:', e)
+  }
+}
+
+/** List a scene's saved versions (newest first) */
+export function listSceneVersions(name: string): { timestamp: number }[] {
+  try {
+    if (!existsSync(versionDir(name))) return []
+    return readdirSync(versionDir(name))
+      .filter(f => f.endsWith('.json'))
+      .map(f => ({ timestamp: parseInt(f) }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+  } catch { return [] }
+}
+
+/** Load one saved version of a scene */
+export function loadSceneVersion(name: string, timestamp: number): SceneSnapshot | undefined {
+  try {
+    return JSON.parse(readFileSync(join(versionDir(name), timestamp + '.json'), 'utf8'))
+  } catch { return undefined }
+}
+
+/** Revert a scene to a saved version (the current state is snapshotted first) */
+export function revertScene(name: string, timestamp: number): boolean {
+  const v = loadSceneVersion(name, timestamp)
+  if (!v) return false
+  saveScene(name, v)
+  return true
+}
+
 export function saveScene(name: string, scene: SceneSnapshot): void {
+  const prev = store.scenes.get(name)
+  if (prev) snapshotVersion(name, prev)
   store.scenes.set(name, scene)
   schedulePersist()
 }

@@ -125,6 +125,18 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrEdit, setInstrEdit] = useState(false)
   const [instrDraft, setInstrDraft] = useState('')
+  // ── branches: every world can be branched by anyone signed in; versions are
+  // cut by the EYE — a watcher that snapshots each settled burst of AI edits ──
+  const [me, setMe] = useState<string | null>(null)
+  const [aiPulse, setAiPulse] = useState(0)
+  const lastSceneRef = useRef<string>('')
+  const aiDirtyRef = useRef(false)
+  const aiLastEditRef = useRef(0)
+  const eyeCheckRef = useRef(0)
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => r.json())
+      .then(s => setMe(s?.user?.email || s?.user?.name || null)).catch(() => {})
+  }, [])
   // Focus throttle: a WATCHING viewer gets full rate (spectators give no input) —
   // only an unfocused-but-visible window drops to ~10fps. Hidden tabs pause free (rAF).
   const windowFocusedRef = useRef(typeof document !== 'undefined' ? document.hasFocus() : true)
@@ -369,6 +381,50 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [])
 
   // Save entire scene (all fields, effects, rules, hooks, world params)
+  /** Snapshot the live world under a given name — the branch/version writer */
+  const saveSceneAs = useCallback(async (sceneName: string) => {
+    const sim = simulationRef.current
+    const renderer = rendererRef.current
+    if (!sim) return false
+    const sceneData = {
+      name: sceneName,
+      fields: sim.generateSnapshots(),
+      worldParams: sim.getWorldParams(),
+      worldData: { ...sim.worldData },
+      stepHooks: sim.getStepHookSnapshots(),
+      interactionRules: [...sim.interactionRules],
+      interactionEffects: [...sim.interactionEffects],
+      visualTypes: renderer ? renderer.getAllVisualTypes().map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
+      modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
+      timestamp: Date.now(),
+    }
+    // no blank submissions — a branch version must contain a world
+    if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return false
+    try {
+      await fetch('/api/engine/scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', name: sceneName, scene: sceneData }),
+      })
+      return true
+    } catch { return false }
+  }, [])
+
+  /** BRANCH: signed-out → auth; signed-in → fork the current world as yours, v1 */
+  const handleBranch = useCallback(async () => {
+    if (!me) { window.location.href = '/auth/signin'; return }
+    const src = lastSceneRef.current || playScene || ''
+    if (!src) { showToast('load a world first', 'error'); return }
+    const base = src.split(' ⑂ ')[0]
+    const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+    const name = `${base} ⑂ ${user} · v1`
+    if (await saveSceneAs(name)) {
+      lastSceneRef.current = name
+      showToast(`branch opened: ${name} — the eye is watching`, 'success')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, playScene, saveSceneAs])
+
   const handleSaveScene = useCallback(async () => {
     const sim = simulationRef.current
     const renderer = rendererRef.current
@@ -406,6 +462,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer) return
+    lastSceneRef.current = sceneName
     try {
       const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
       const { scene } = await resp.json()
@@ -1319,6 +1376,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         else if (playMusic.url) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
       }
 
+      // the EYE cuts a version when an AI edit-burst settles on a branch
+      if (now - eyeCheckRef.current > 1000) {
+        eyeCheckRef.current = now
+        setAiPulse(p => p + 1)   // keeps the AI status dot honest
+        if (aiDirtyRef.current && Date.now() - aiLastEditRef.current > 4000 && lastSceneRef.current.includes(' ⑂ ')) {
+          aiDirtyRef.current = false
+          const cur = lastSceneRef.current
+          const m = cur.match(/· v(\d+)$/)
+          const next = m ? cur.replace(/· v\d+$/, `· v${+m[1] + 1}`) : `${cur} · v2`
+          lastSceneRef.current = next
+          saveSceneAs(next).then(ok => { if (ok) showToast(`eye: ${next.split(' ⑂ ')[1]} saved`, 'success') })
+        }
+      }
+
       // Hook-initiated room transition: worldData.__loadScene = 'SceneName' — the
       // door that actually leads somewhere (Zelda rooms from inside a running scene)
       const nextScene = sim.worldData['__loadScene']
@@ -2033,6 +2104,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         try {
           const data = JSON.parse(event.data)
           lastSSEMsgRef.current = Date.now()
+          // the EYE: any mutating AI traffic marks the branch dirty; a settled
+          // burst becomes a version (cut in the frame loop after 4s of quiet)
+          if (data && data.type && data.type !== 'connected' && data.type !== 'ping') {
+            aiLastEditRef.current = Date.now()
+            aiDirtyRef.current = true
+          }
 
           if (data.type === 'ping') return
           if (data.type === 'connected') {

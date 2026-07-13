@@ -15,7 +15,7 @@ async function sceneWriteAllowed(req: NextRequest): Promise<boolean> {
   const session = await getServerSession(authOptions)
   return !!session?.user?.email
 }
-import { saveScene, loadScene, listScenes, deleteScene } from '../store'
+import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene } from '../store'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +30,17 @@ export async function GET(req: NextRequest) {
 
   if (action === 'list') {
     return NextResponse.json({ scenes: listScenes() })
+  }
+
+  if (action === 'versions' && name) {
+    return NextResponse.json({ name, versions: listSceneVersions(name) })
+  }
+
+  if (action === 'version' && name) {
+    const ts = parseInt(searchParams.get('timestamp') || '')
+    const scene = loadSceneVersion(name, ts)
+    if (!scene) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
+    return NextResponse.json({ scene })
   }
 
   if (name) {
@@ -56,6 +67,11 @@ export async function POST(req: NextRequest) {
     if (body.action === 'save' && body.name && body.scene) {
       saveScene(body.name, body.scene)
       return NextResponse.json({ ok: true })
+    }
+    if (body.action === 'revert' && body.name && body.timestamp) {
+      const ok = revertScene(body.name, Number(body.timestamp))
+      if (!ok) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
+      return NextResponse.json({ ok: true, reverted: body.name, to: Number(body.timestamp) })
     }
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   } catch {
