@@ -132,6 +132,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugOpen, setPlugOpen] = useState(false)
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
+  // spectators can browse branches without signing in — looking is free
+  const [branchesOpen, setBranchesOpen] = useState(false)
+  const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
   const lastSceneRef = useRef<string>('')
   const aiDirtyRef = useRef(false)
   const aiLastEditRef = useRef(0)
@@ -3905,8 +3908,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             style={{ fontFamily: 'monospace' }}
           />
 
-          {/* Mandatory world instructions + branch + AI status — top right, every world */}
-          <div className="absolute top-3 right-3 z-40 flex flex-col items-end gap-1.5">
+          {/* Mandatory world instructions + branch + AI status — top right, every world.
+              On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
+          <div className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -3934,6 +3938,27 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
+            <button
+              onClick={async () => {
+                setBranchesOpen(v => !v)
+                const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+                if (!base) return
+                try {
+                  const { scenes } = await fetch('/api/engine/scene?action=list').then(r => r.json())
+                  const heads = new Map<string, { name: string; author: string; v: number }>()
+                  for (const n of scenes as string[]) {
+                    const m = n.match(/^(.+) ⑂ (.+) · v(\d+)$/)
+                    if (!m || m[1] !== base) continue
+                    const cur = heads.get(m[2])
+                    if (!cur || +m[3] > cur.v) heads.set(m[2], { name: n, author: m[2], v: +m[3] })
+                  }
+                  setBranchList([...heads.values()].sort((a, b) => b.v - a.v))
+                } catch { setBranchList([]) }
+              }}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+            >
+              ≡ BRANCHES
+            </button>
             <button
               onClick={async () => {
                 setPlugOpen(v => !v)
@@ -4019,6 +4044,48 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               </div>
             </div>
           )}
+
+          {/* BRANCHES — the spectator window: anyone may look; the cells will vote */}
+          {branchesOpen && (() => {
+            const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+            return (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBranchesOpen(false)}>
+                <div className="max-w-md w-[92%] max-h-[70%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[11px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
+                    <button
+                      aria-label="Close"
+                      className="text-white/40 hover:text-white text-[13px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors"
+                      onClick={() => setBranchesOpen(false)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/40 mb-3">looking is free · the top-voted branch becomes main · lineage is append-only</p>
+                  <button
+                    className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5"
+                    onClick={() => { setBranchesOpen(false); handleLoadScene(base) }}
+                  >
+                    <span className="text-emerald-300/90">main</span>
+                    <span className="text-white/40 text-[10px]"> — the world as it stands</span>
+                  </button>
+                  {branchList.map(b => (
+                    <button
+                      key={b.name}
+                      className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5"
+                      onClick={() => { setBranchesOpen(false); handleLoadScene(b.name) }}
+                    >
+                      <span className="text-amber-200/90">⑂ {b.author}</span>
+                      <span className="text-white/40 text-[10px]"> — at v{b.v} · click to ride it</span>
+                    </button>
+                  ))}
+                  {branchList.length === 0 && (
+                    <div className="text-white/35 text-[11px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* CONNECT AI — the plug box: everything an agent needs to edit this branch */}
           {plugOpen && (() => {

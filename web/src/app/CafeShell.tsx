@@ -31,6 +31,9 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [mute, setMute] = useState(false)
+  const [portals, setPortals] = useState<{ name: string; x: number; y: number; r: number }[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [vp, setVp] = useState({ w: 0, h: 0 })
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -86,12 +89,17 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       go(m ? decodeURIComponent(m[1]) : 'CAFE', false)
     }
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
+    const onPortals = (e: Event) => setPortals((e as CustomEvent).detail || [])
+    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
+    onResize()
     window.addEventListener('cafe:launch', onLaunch)
     window.addEventListener('cafe:hover', onHover)
     window.addEventListener('cafe:caption', onCaption)
     window.addEventListener('keydown', onKey)
     window.addEventListener('popstate', onPop)
     window.addEventListener('pointermove', onMove)
+    window.addEventListener('cafe:portals', onPortals)
+    window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('cafe:launch', onLaunch)
       window.removeEventListener('cafe:hover', onHover)
@@ -99,11 +107,46 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('cafe:portals', onPortals)
+      window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // presence: one heartbeat per person, one poll for the door counts
+  useEffect(() => {
+    let pid = ''
+    try {
+      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
+      localStorage.setItem('cc-pid', pid)
+    } catch { pid = Math.random().toString(36).slice(2, 12) }
+    const beat = () => {
+      fetch('/api/presence', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene, id: pid }),
+      }).catch(() => {})
+    }
+    const poll = () => {
+      if (sceneRef.current !== 'CAFE') return
+      fetch('/api/presence').then(r => r.ok ? r.json() : null)
+        .then(d => d && setCounts(d.counts || {})).catch(() => {})
+    }
+    // the door count is a live thing: beat fast, and say goodbye on the way out
+    const bye = () => {
+      try { navigator.sendBeacon('/api/presence', JSON.stringify({ id: pid, leave: true })) } catch { /* gone anyway */ }
+    }
+    beat()
+    poll()
+    const bi = setInterval(beat, 12000)
+    const ci = setInterval(poll, 6000)
+    window.addEventListener('pagehide', bye)
+    return () => { clearInterval(bi); clearInterval(ci); window.removeEventListener('pagehide', bye) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene])
+
   const inGame = scene !== 'CAFE'
+  // uv → screen for the contain-fit square (span = min(w,h), centered)
+  const span = Math.min(vp.w, vp.h)
 
   return (
     <>
@@ -121,6 +164,20 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
           </div>
         </div>
       )}
+
+      {/* who's inside: a head-count on every door */}
+      {!inGame && vp.w > 0 && portals.map(pt => {
+        const n = counts[pt.name] || 0
+        const px = vp.w / 2 + (pt.x + pt.r * 0.75) * span / 2
+        const py = vp.h / 2 + (pt.y + pt.r * 0.75) * span / 2
+        return (
+          <div key={pt.name}
+            className={`fixed z-40 pointer-events-none select-none font-mono text-[10px] rounded-full border px-1.5 py-0.5 backdrop-blur-sm ${n > 0 ? 'border-brass/60 bg-void/70 text-glow' : 'border-brass/20 bg-void/50 text-crema/30'}`}
+            style={{ left: px, top: py, transform: 'translate(-50%, -50%)' }}>
+            ◉ {n}
+          </div>
+        )
+      })}
 
       {/* a world's OSD — old TV set lettering, top-left of the glass */}
       {caption && (caption.text || caption.kind === 'typing') && (
