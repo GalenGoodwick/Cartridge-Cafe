@@ -83,7 +83,10 @@ function wrapInteractionWgsl(interactionWgsl: string): string {
   return `
 // Per-pixel overlap mask: 1.0 where both parent fields' dilated presence overlaps, 0.0 elsewhere.
 fn overlapMask(coord: vec2f) -> f32 {
-  return textureSample(fieldMask, texSampler, coord / frame.gridSize).r;
+  // textureSampleLevel: field effects run in a COMPUTE pipeline, where
+  // textureSample (implicit derivatives) is illegal — this was the silent
+  // killer that blacked out any world with an interaction effect.
+  return textureSampleLevel(fieldMask, texSampler, coord / frame.gridSize, 0.0).r;
 }
 
 ${interactionWgsl}
@@ -245,6 +248,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const lastSampleTimeRef = useRef<number>(0)
   const lastPresenceRef = useRef<number>(0)
   const cachedOverlapMasksRef = useRef<Map<string, Uint8Array>>(new Map())
+  const failedIxEffectsRef = useRef<Set<string>>(new Set())
   const renderedSamplesRef = useRef<Map<string, { width: number; height: number; pixels: number[] }>>(new Map())
   // Hook-initiated room transitions: hooks set worldData.__loadScene = 'Name';
   // the frame loop consumes it via this ref (assigned before the render loop starts)
@@ -268,6 +272,26 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const audio = audioRef.current
     return () => { audio.destroy() }
   }, [])
+  // ── fault surface: when the world goes down, SAY WHY on screen ──
+  const [fault, setFault] = useState<{ kind: string; message: string } | null>(null)
+  const frameCrashRef = useRef(false)
+  useEffect(() => {
+    const onFault = (e: Event) => {
+      const det = (e as CustomEvent).detail as { kind: string; message: string }
+      // FIRST fault wins the banner — later faults are usually echoes of it
+      setFault(prev => prev ?? det)
+      try {
+        const log = JSON.parse(localStorage.getItem('cc-fault-log') || '[]')
+        log.unshift({ ...det, scene: lastSceneRef.current || playScene || spaceSlug || 'unknown', at: new Date().toISOString() })
+        localStorage.setItem('cc-fault-log', JSON.stringify(log.slice(0, 8)))
+        localStorage.setItem('cc-last-fault', JSON.stringify(log[0]))
+      } catch { /* fine */ }
+    }
+    window.addEventListener('cc:fault', onFault)
+    return () => window.removeEventListener('cc:fault', onFault)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // the cafe mute switch rules world audio too — one button, all sound
   useEffect(() => {
     const audio = audioRef.current
@@ -1522,8 +1546,21 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // mount-time capture stays valid)
     loadSceneRef.current = handleLoadScene
 
-    // Render loop
+    // Render loop — crash-guarded: an exception must not silently freeze
+    // the canvas to black. The first crash is surfaced as a fault.
     function frame() {
+      try { frameBody() } catch (e) {
+        console.error('[Engine] frame crashed:', e)
+        if (!frameCrashRef.current) {
+          frameCrashRef.current = true
+          window.dispatchEvent(new CustomEvent('cc:fault', {
+            detail: { kind: 'frame-crash', message: String((e as Error)?.message || e).slice(0, 400) },
+          }))
+        }
+        animFrameRef.current = requestAnimationFrame(frame)
+      }
+    }
+    function frameBody() {
       const now = performance.now()
       // Cap at ~60fps: ProMotion displays otherwise drive the full compute
       // pipeline at 120Hz — double the GPU load (and laptop heat) for no
@@ -1766,12 +1803,23 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           // Per-pair program key (fixes wildcard mask overwrite bug)
           const pairKey = `ix_${effect.id}_${fieldA.id}_${fieldB.id}`
 
-          // Lazy compile (wrap interaction GLSL → fieldEffect)
+          // Lazy compile (wrap interaction GLSL → fieldEffect). A failed
+          // compile is remembered and never retried — one bad effect must
+          // not spam errors or poison the frame every tick.
+          if (failedIxEffectsRef.current.has(pairKey)) continue
           if (!renderer.hasFieldEffect(pairKey)) {
             const wrappedWgsl = wrapInteractionWgsl(effect.wgsl)
             // Fire-and-forget async compile — will be ready next frame
             renderer.compileFieldEffect(pairKey, pairKey, wrappedWgsl, getModCode())
-              .then(result => { if (!result.success) console.warn(`Interaction effect ${effect.id} compile error:`, result.error) })
+              .then(result => {
+                if (!result.success) {
+                  console.warn(`Interaction effect ${effect.id} compile error:`, result.error)
+                  failedIxEffectsRef.current.add(pairKey)
+                  window.dispatchEvent(new CustomEvent('cc:fault', {
+                    detail: { kind: 'ix-effect', message: `interaction effect '${effect.id}' failed to compile: ${String(result.error).slice(0, 300)}` },
+                  }))
+                }
+              })
             continue
           }
 
@@ -3984,6 +4032,30 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             onContextMenu={e => e.preventDefault()}
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
+
+          {/* fault banner: the world went down, and here is why */}
+          {fault && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[11px] text-red-100 shadow-2xl">
+              <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind}</div>
+              <div className="text-red-100/90 leading-relaxed break-words">{fault.message}</div>
+              <div className="flex gap-2 mt-2">
+                {(fault.kind === 'gpu-lost' || fault.kind === 'frame-crash') && (
+                  <button onClick={() => window.location.reload()}
+                    className="px-2 py-1 rounded bg-red-500/30 hover:bg-red-500/50 border border-red-400/40 text-red-50">RELOAD WORLD</button>
+                )}
+                <button
+                  onClick={(e) => {
+                    const detail = `[${fault.kind}] ${fault.message} — scene: ${lastSceneRef.current || playScene || spaceSlug || 'unknown'} — ${new Date().toISOString()}`
+                    navigator.clipboard?.writeText(detail).catch(() => {})
+                    const b = e.currentTarget; b.textContent = 'copied ✓'
+                    setTimeout(() => { if (b.isConnected) b.textContent = 'copy' }, 1500)
+                  }}
+                  className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/15 text-red-200/80">copy</button>
+                <button onClick={() => setFault(null)}
+                  className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/15 text-red-200/80">dismiss</button>
+              </div>
+            </div>
+          )}
 
           {/* other players, present as orbs — capped at 25 per viewing instance */}
           {presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {

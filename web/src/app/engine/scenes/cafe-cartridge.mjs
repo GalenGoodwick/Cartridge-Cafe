@@ -175,11 +175,14 @@ try {
   const dt2 = Math.min(dt, 0.05)
   // ── whose universe? MY WORLDS flips the door into a personal submain ──
   const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
-  // SUB-MAIN: the same navigation world as main, but its shelf is the
-  // branches — every fork anyone took, newest version of each
+  // SUB-MAIN: the group layer. Every user can found ONE named sub-main —
+  // a /group formation, not a world. The viewer shows only sub-mains (yours
+  // at the heart); entering one morphs this same universe into the group's
+  // shelf. window.__cafeSub carries the slug while inside a group.
   const SUB = !!wd.__submain
-  const mineKey = MF ? String(MF.ownerId || MF.who || '') : ''
-  if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10 }
+  const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
+  const mineKey = MF ? String(MF.ownerId || MF.who || '') : (SUB ? 'sub:' + subKey : '')
+  if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10; U.hintedEmpty = false }
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
   const hueOf = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
   const angOf = n => { let h = 0; for (const c of n) h = (h * 37 + c.charCodeAt(0)) % 9973; return (h % 628) / 100 }
@@ -191,12 +194,13 @@ try {
     ;(async () => {
       try {
         const now = Date.now()
-        const [sc, sp, sl, uvr, tvr] = await Promise.all([
+        const [sc, sp, sl, uvr, tvr, smr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
           fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
           (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
           (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null),
+          SUB ? fetch('/api/engine/save?slot=submains%3Aindex').then(r => r.json()).catch(() => null) : Promise.resolve(null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
@@ -210,19 +214,37 @@ try {
         if (mineKey !== U.mineKey) return   // filter flipped mid-flight; stale poll
         const want = {}
         if (SUB) {
-          // the branch shelf: every fork in the store, newest version each —
-          // the bubble wears the branch's name; clicking rides its latest cut
-          const best = {}
-          for (const n of (sc.scenes || [])) {
-            const f = n.indexOf(' ⑂ ')
-            const vAt = n.lastIndexOf(' · v')
-            if (f < 0 || vAt < f) continue
-            const v = parseInt(n.slice(vAt + 4), 10) || 0
-            const base = n.slice(0, vAt)
-            if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
+          const who = (typeof window !== 'undefined' && window.__cafeWho) || null
+          const idx = (smr && smr.data && smr.data.v === 1 && smr.data.subs) ? smr.data.subs : {}
+          if (!subKey) {
+            // the viewer: every sub-main is a bubble; yours sinks to the heart,
+            // the rest rank by how many have gathered there
+            for (const slug of Object.keys(idx)) {
+              const G2 = idx[slug]
+              if (!G2 || !G2.name) continue
+              want[String(G2.name).toUpperCase()] = { launch: 'sub:' + slug, style: 8,
+                mineSub: !!(who && G2.ownerId === who.id), heat: Object.keys(G2.members || {}).length }
+            }
+          } else {
+            // inside a group: its shelf — the worlds its members pinned
+            const G2 = idx[subKey]
+            const shelf = (G2 && G2.shelf) || {}
+            for (const n of Object.keys(shelf)) {
+              const e = shelf[n]
+              if (!e || !e.launch) continue
+              want[n] = { launch: e.launch, style: STYLE_OF[n] ?? 8 }
+            }
           }
-          for (const base of Object.keys(best)) {
-            want[base] = { launch: best[base].scene, style: best[base].style }
+          // tell the shell where we stand — it draws FOUND / JOIN / PIN
+          if (typeof window !== 'undefined') {
+            const G3 = subKey ? idx[subKey] : null
+            window.dispatchEvent(new CustomEvent('cafe:submode', { detail: {
+              mode: subKey ? 'group' : 'viewer',
+              slug: subKey || null,
+              name: G3 ? G3.name : null,
+              haveOwn: !!(who && Object.keys(idx).some(s3 => idx[s3] && idx[s3].ownerId === who.id)),
+              member: !!(who && G3 && G3.members && G3.members[who.id]),
+            } }))
           }
         } else if (MF) {
           // personal submain: only worlds on this player's deed —
@@ -287,7 +309,9 @@ try {
           const reach = T && T.reached ? (T.reached[n] || 0) : 0
           const champ = T && T.champion === n
           B.crown = !!champ
-          const ns = 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + (champ ? 6 : 0)
+          const ns = SUB
+            ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
+            : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + (champ ? 6 : 0)
           // chant shifts perturb — but a bubble just placed from the shared
           // universe getting its first real score is not a shift, it's arrival
           if (!B.justPlaced && Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)
@@ -298,7 +322,8 @@ try {
         U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
         if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
-          const emptyText = MF ? 'no worlds on your deed yet - brew yours' : 'no branches yet — fork a world with ⑂ BRANCH'
+          const emptyText = MF ? 'no worlds on your deed yet - brew yours'
+            : (subKey ? 'an empty shelf — members can pin worlds here' : 'no sub-mains yet — found yours')
           window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: emptyText, kind: 'hint' } }))
         }
         if (!MF && !SUB) U.hintedEmpty = false
@@ -381,8 +406,10 @@ try {
     if (hovered >= 0 && U.moved < 8 && typeof window !== 'undefined') {
       const B = U.bubbles[U.order[hovered]]
       if (B) {
-        U.launched = 1   // stepping through: say nothing more — a late portals
-                         // or hover dispatch would follow the player into the world
+        // stepping into a WORLD goes quiet (a late portals dispatch would
+        // follow the player in) — but entering a sub-main morphs this same
+        // scene, so the doors keep speaking
+        if (String(B.launch).slice(0, 4) !== 'sub:') U.launched = 1
         window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
       }
     }
@@ -472,7 +499,7 @@ const subScene = {
   worldData: {
     noPixelSampling: true,
     __submain: 1,
-    instructions: 'SUB-MAIN — the branch shelf\n\nEvery fork anyone took lives here, newest version of each.\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to ride the branch\n\n◂ or ESC climbs back to main.',
+    instructions: 'SUB-MAIN — the group layer\n\nEvery sub-main is a formation someone founded: a named gathering, not a world. Yours holds the center.\nHOVER a bubble to hear its name · CLICK to step into the group\nInside: its shelf — the worlds its members pinned. JOIN to belong, + PIN A WORLD to add to the shelf.\n\nOne sub-main per person — ⌂ FOUND YOURS starts it.\n◂ SUB-MAINS steps back out · ESC climbs home.',
   },
   timestamp: Date.now(),
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import TournamentBar from '@/app/TournamentBar'
 
 interface VersionMeta {
   id: string
@@ -22,6 +23,24 @@ interface SpaceToolbarProps {
 /** Floating world chrome: save points, history, remix, call-a-vote.
  *  Sits over the engine without touching it. */
 export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionView }: SpaceToolbarProps) {
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(name)
+  const [shownName, setShownName] = useState(name)
+  const saveName = async () => {
+    const want = nameDraft.trim()
+    setEditingName(false)
+    if (!want || want === shownName) return
+    const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: want, slugFromName: true }),
+    })
+    const d = await r.json().catch(() => null)
+    if (r.ok) {
+      setShownName(want)
+      // renaming can trade the slug for a real one — follow it
+      if (d?.space?.slug && d.space.slug !== slug) window.location.href = '/space/' + d.space.slug
+    }
+  }
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [versions, setVersions] = useState<VersionMeta[]>([])
@@ -47,6 +66,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   }, [slug])
 
   useEffect(() => { if (open) loadVersions() }, [open, loadVersions])
+  useEffect(() => { loadVersions() }, [loadVersions])   // the version arena needs the roster up front
 
   // AI presence heartbeat — token lastUsedAt ticks on every bridge call
   useEffect(() => {
@@ -158,12 +178,30 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   const btn = 'brass-tab px-2.5 py-1 text-[10px] disabled:opacity-30'
 
   return (
-    // left rail — the right rail belongs to the engine (instructions, AI lamp, branches)
+    <>
+    {/* the version arena: LIVE vs this world's save points — every page votes */}
+    <TournamentBar
+      visible
+      slot={`tournament:space:${slug}`}
+      worlds={versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+    />
+    {/* left rail — the right rail belongs to the engine (instructions, AI lamp, branches) */}
     <div className="fixed top-3 left-3 z-50 flex flex-col items-start gap-2 font-sans">
       {/* header chip */}
       <div className="flex items-center gap-2 rounded-lg bg-[#171009]/80 backdrop-blur px-3 py-2 border border-[#b97a2a]/25">
         <div className="text-sm text-white/90">
-          <span className="font-display italic text-[#ffdba8]">{name}</span>
+          {editingName ? (
+            <input autoFocus value={nameDraft} onChange={e => setNameDraft(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
+              className="bg-black/50 border border-[#b97a2a]/50 rounded px-2 py-0.5 font-display italic text-[#ffdba8] text-sm outline-none w-44" />
+          ) : (
+            <span className={"font-display italic text-[#ffdba8]" + (isOwner ? " cursor-text hover:underline decoration-dotted underline-offset-4" : "")}
+              title={isOwner ? 'click to rename your world' : undefined}
+              onClick={() => { if (isOwner) { setNameDraft(shownName); setEditingName(true) } }}>
+              {shownName}
+            </span>
+          )}
           {ownerName && <span className="text-white/50"> · {ownerName}</span>}
           {versionView !== undefined && (
             <span className="ml-2 rounded bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[11px]">save point v{versionView} · read-only</span>
@@ -296,5 +334,6 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
         </div>
       )}
     </div>
+    </>
   )
 }

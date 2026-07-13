@@ -51,6 +51,10 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // the group layer: the SUB-MAIN world reports where we stand (viewer or
+  // inside a group) and the shell draws FOUND / JOIN / PIN accordingly
+  const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean } | null>(null)
+  const [who, setWho] = useState<{ id: string; name: string } | null>(null)
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -81,6 +85,75 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
     setMine(null)
     try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
+  }
+
+  /** ── the group layer's pen: read-modify-write the sub-mains index.
+   *  v0 truth model — a save-slot doc, last-write-wins, reconciled here,
+   *  same law as the tournament until enforcement moves server-side. */
+  type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }> }
+  const mutateSubs = async (fn: (subs: Record<string, SubEntry>) => string | null): Promise<boolean> => {
+    const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('submains:index')).then(r => r.json()).catch(() => null)
+    const d = (j?.data && j.data.v === 1 && j.data.subs) ? j.data as { v: 1; subs: Record<string, SubEntry> } : { v: 1 as const, subs: {} }
+    const err = fn(d.subs)
+    if (err) { window.alert(err); return false }
+    await fetch('/api/engine/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: 'submains:index', data: d }),
+    }).catch(() => {})
+    return true
+  }
+
+  /** FOUND YOURS — one sub-main per person, named at birth */
+  const foundSub = async () => {
+    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/play/SUB-MAIN'); return }
+    const name = window.prompt('Name your sub-main:')
+    if (!name?.trim()) return
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    if (!slug) return
+    const ok = await mutateSubs(subs => {
+      if (Object.values(subs).some(s => s.ownerId === who.id)) return 'you already founded a sub-main — one per person'
+      if (subs[slug]) return 'that name is taken'
+      subs[slug] = { name: name.trim(), ownerId: who.id, ownerName: who.name, founded: Date.now(), members: { [who.id]: who.name }, shelf: {} }
+      return null
+    })
+    if (ok) (window as unknown as { __cafeSub?: string | null }).__cafeSub = slug   // step inside
+  }
+
+  const joinSub = async () => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      s.members[who.id] = who.name
+      return null
+    })
+  }
+
+  /** members pin worlds (or spaces) onto the group's shelf by name */
+  const pinWorld = async () => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    const name = window.prompt('Pin which world? (its name on main)')
+    if (!name?.trim()) return
+    const target = name.trim().toUpperCase()
+    const [sc, sp] = await Promise.all([
+      fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
+      fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
+    ])
+    let launch: string | null = ((sc.scenes || []) as string[]).find(n => n.toUpperCase() === target) || null
+    if (!launch) {
+      const s = ((sp.spaces || []) as { name?: string; slug: string }[]).find(s2 => (s2.name || s2.slug).toUpperCase() === target)
+      if (s) launch = 'space:' + s.slug
+    }
+    if (!launch) { window.alert('no world by that name on the shelf'); return }
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (!s.members[who.id]) return 'join first — only members pin'
+      s.shelf[target] = { launch: launch as string, addedBy: who.name, at: Date.now() }
+      return null
+    })
   }
 
   /** BREW YOURS — in the order that matters: the world is born immediately
@@ -177,6 +250,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     setModalUp(false)   // a panel left open in the old world must not latch shut the new one
     setPortals([])
     portalsBlockRef.current = Date.now() + 600
+    if (name !== 'SUB-MAIN') {   // leaving the group layer resets it to the viewer
+      ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = null
+      setSubMode(null)
+    }
     if (push && typeof window !== 'undefined') {
       window.history.pushState({ scene: name }, '', name === 'CAFE' ? '/' : `/play/${encodeURIComponent(name)}`)
     }
@@ -194,6 +271,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       const name = (e as CustomEvent).detail
       if (typeof name !== 'string' || !name) return
       if (name.startsWith('space:')) { window.location.href = '/space/' + name.slice(6); return }
+      if (name.startsWith('sub:')) {
+        // entering a group is an in-scene morph, not a departure — the
+        // SUB-MAIN world repolls its roster off this flag on its next frame
+        ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = name.slice(4)
+        return
+      }
       go(name)
     }
     // returning from auth with brewing intent
@@ -207,9 +290,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       myWorlds()
     } else {
       // still in your submain from earlier this session? re-enter it quietly —
-      // no redirects here: a stale flag without a session just clears itself
+      // no redirects here: a stale flag without a session just clears itself.
+      // NOT on back/forward: the back button means "return to the cafe dock",
+      // and quietly re-opening my-worlds there hijacks the journey.
+      const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type
       try {
-        if (sessionStorage.getItem('cafe-mine')) {
+        if (navType !== 'back_forward' && sessionStorage.getItem('cafe-mine')) {
           fetch('/api/auth/session').then(r => r.json()).then(sess => {
             if (sess?.user) {
               ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
@@ -244,8 +330,17 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       setPortals((e as CustomEvent).detail || [])
     }
     const onModal = (e: Event) => setModalUp(!!(e as CustomEvent).detail)
+    const onSubMode = (e: Event) => setSubMode((e as CustomEvent).detail)
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
+    // the group layer needs to know who's standing in it (found / join / pin)
+    fetch('/api/auth/session').then(r => r.json()).then(s => {
+      if (s?.user?.id) {
+        const w = { id: s.user.id as string, name: (s.user.name || '') as string }
+        ;(window as unknown as { __cafeWho?: typeof w }).__cafeWho = w
+        setWho(w)
+      }
+    }).catch(() => {})
     window.addEventListener('cafe:launch', onLaunch)
     window.addEventListener('cafe:hover', onHover)
     window.addEventListener('cafe:caption', onCaption)
@@ -254,6 +349,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     window.addEventListener('pointermove', onMove)
     window.addEventListener('cafe:portals', onPortals)
     window.addEventListener('cafe:modal', onModal)
+    window.addEventListener('cafe:submode', onSubMode)
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('cafe:launch', onLaunch)
@@ -264,6 +360,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('cafe:portals', onPortals)
       window.removeEventListener('cafe:modal', onModal)
+      window.removeEventListener('cafe:submode', onSubMode)
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -338,11 +435,25 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     <>
       <FieldEngine playScene={scene} />
 
-      {/* the rolling tournament of the commons — never over branches, never in submains */}
-      <TournamentBar
-        visible={scene === 'CAFE' && !mine && !modalUp}
-        worlds={portals.map(pt => pt.name)}
-      />
+      {/* the rolling tournament — every page is its own arena.
+          commons: all core worlds · MY WORLDS: your deeds · SUB-MAIN: the
+          branch shelf · a world: MAIN vs its branches (what promotion enacts) */}
+      {scene === 'CAFE' && !mine && (
+        <TournamentBar visible={!modalUp} slot="tournament:main" worlds={portals.map(pt => pt.name)} />
+      )}
+      {scene === 'CAFE' && mine && (
+        <TournamentBar visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)} />
+      )}
+      {scene === 'SUB-MAIN' && (
+        <TournamentBar visible={!modalUp} slot="tournament:submain" worlds={portals.map(pt => pt.name)} />
+      )}
+      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && (
+        <TournamentBar
+          visible={!modalUp && !confirmLeave}
+          slot={`tournament:world:${scene.split(' ⑂ ')[0]}`}
+          branchesOf={scene.split(' ⑂ ')[0]}
+        />
+      )}
 
       {/* a name surfaces where you're looking, then gets out of the way */}
       {portals.length > 0 && hover && !modalUp && (mouse.x !== 0 || mouse.y !== 0) && (
@@ -380,6 +491,22 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             textShadow: '0 0 8px rgba(80,255,140,0.8), 0 0 28px rgba(80,255,140,0.35)',
           }}>
           {caption.text}{caption.kind === 'typing' ? '▮' : ''}
+        </div>
+      )}
+
+      {/* the group layer's controls — found in the viewer, join/pin inside */}
+      {scene === 'SUB-MAIN' && !modalUp && subMode && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2">
+          {subMode.mode === 'group' && (<>
+            <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
+              className="brass-tab px-3 py-1.5 text-[10px]">◂ SUB-MAINS</button>
+            <span className="cafe-sign text-xl px-1">{(subMode.name || '').toLowerCase()}</span>
+            {who && !subMode.member && <button onClick={joinSub} className="brass-tab px-3 py-1.5 text-[10px]">JOIN</button>}
+            {who && subMode.member && <button onClick={pinWorld} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>}
+          </>)}
+          {subMode.mode === 'viewer' && !subMode.haveOwn && (
+            <button onClick={foundSub} className="brass-tab px-3 py-1.5 text-[10px]">⌂ FOUND YOURS</button>
+          )}
         </div>
       )}
 

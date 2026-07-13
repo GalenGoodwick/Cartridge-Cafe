@@ -476,6 +476,28 @@ export class FieldRenderer {
     })
     this.device = device
 
+    // ── fault surface: a dead GPU must SAY SO. Device loss and uncaptured
+    // errors dispatch 'cc:fault' — FieldEngine shows them to the player. ──
+    device.lost.then(info => {
+      console.error('[GPU] device lost:', info.reason, info.message)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cc:fault', {
+          detail: { kind: 'gpu-lost', message: `GPU device lost (${info.reason}): ${info.message || 'no detail'}` },
+        }))
+      }
+    }).catch(() => { /* never rejects in practice */ })
+    let uncapCount = 0
+    device.onuncapturederror = (e: GPUUncapturedErrorEvent) => {
+      uncapCount++
+      if (uncapCount > 3) return   // first faults tell the story; don't spam
+      console.error('[GPU] uncaptured error:', e.error.message)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cc:fault', {
+          detail: { kind: 'gpu-error', message: e.error.message.slice(0, 400) },
+        }))
+      }
+    }
+
     const ctx = canvas.getContext('webgpu')
     if (!ctx) {
       console.error('Failed to get webgpu context')
@@ -2303,6 +2325,11 @@ export class FieldRenderer {
         const quarantined = await this.quarantineBrokenVisuals(allVisuals, allModules, targetCount)
         if (quarantined.length > 0) {
           console.error(`[Super] QUARANTINED ${quarantined.length} broken visual(s): ${quarantined.join(', ')} — recompiling without them`)
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('cc:fault', {
+              detail: { kind: 'quarantine', message: `visual(s) failed to compile and were quarantined: ${quarantined.join(', ')}` },
+            }))
+          }
           this.superCompilationError = null
           this.super3DPipelineReady = false
           this.super3DPipeline = null
