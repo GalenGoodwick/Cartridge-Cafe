@@ -37,21 +37,13 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // ── the bubble universe: live positions, pressure-ranked, explorable ──
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 3);
-    let stRaw = i32(floor(sv));
-    let crowned = stRaw >= 16;
-    let st = stRaw % 16;
+    let st = i32(floor(sv)) % 16;
     let hue = fract(sv);
     let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm;
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
-    if (crowned) {
-      let ringR = rr * 1.22 + sin(t * 2.2) * 0.006;
-      let ring = smoothstep(0.010, 0.002, abs(d - ringR));
-      col += vec3f(1.0, 0.82, 0.32) * ring * 1.1;
-      col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - rr, 0.0) * 26.0) * 0.35;
-    }
     if (d < rr) {
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
@@ -141,6 +133,18 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     }
   }
 
+  // the crown, over everything — the champion's ring outshines its neighbors
+  for (var i = 0; i < i32(uni(3) + 0.5); i++) {
+    let sv = uni(8 + i * 3);
+    if (i32(floor(sv)) < 16) { continue; }
+    let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
+    let d = length(uv - ctr);
+    let R = 0.098 * zm;
+    let ringR = R * 1.24 + sin(t * 2.2) * 0.006;
+    col += vec3f(1.0, 0.82, 0.32) * smoothstep(0.012, 0.002, abs(d - ringR)) * 1.3;
+    col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
+  }
+
   // the cursor itself — a soft ember
   col += vec3f(1.4, 0.9, 0.4) * exp(-dot(uv - mp, uv - mp) * 900.0) * 0.8;
 
@@ -165,12 +169,15 @@ try {
   }
   // wake starts 0: a joining player adopts the shared universe at rest —
   // only real perturbations (a birth, a chant shift, a filter flip) wake it
-  if (!wd.__cu || wd.__cu.v !== 1) wd.__cu = { v: 1, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
+  if (!wd.__cu || wd.__cu.v !== 2) wd.__cu = { v: 2, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
     pollT: 0, wake: 0, mineKey: '', drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
   const U = wd.__cu
   const dt2 = Math.min(dt, 0.05)
   // ── whose universe? MY WORLDS flips the door into a personal submain ──
   const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
+  // SUB-MAIN: the same navigation world as main, but its shelf is the
+  // branches — every fork anyone took, newest version of each
+  const SUB = !!wd.__submain
   const mineKey = MF ? String(MF.ownerId || MF.who || '') : ''
   if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10 }
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
@@ -188,8 +195,8 @@ try {
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
           fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
-          MF ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
-          MF ? Promise.resolve(null) : fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null),
+          (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
+          (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
@@ -197,12 +204,27 @@ try {
         }
         // one universe, every screen: the shared layout is truth; adopt any
         // arrangement newer than the one we last saw (including our own saves)
-        const shared = (uvr && uvr.data && uvr.data.v === 1 && uvr.data.bubbles) ? uvr.data : null
+        const shared = (uvr && uvr.data && uvr.data.v === 2 && uvr.data.bubbles) ? uvr.data : null
         const adopt = (shared && shared.at > (U.sharedAt || 0)) ? shared : null
         if (adopt) U.sharedAt = adopt.at
         if (mineKey !== U.mineKey) return   // filter flipped mid-flight; stale poll
         const want = {}
-        if (MF) {
+        if (SUB) {
+          // the branch shelf: every fork in the store, newest version each —
+          // the bubble wears the branch's name; clicking rides its latest cut
+          const best = {}
+          for (const n of (sc.scenes || [])) {
+            const f = n.indexOf(' ⑂ ')
+            const vAt = n.lastIndexOf(' · v')
+            if (f < 0 || vAt < f) continue
+            const v = parseInt(n.slice(vAt + 4), 10) || 0
+            const base = n.slice(0, vAt)
+            if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
+          }
+          for (const base of Object.keys(best)) {
+            want[base] = { launch: best[base].scene, style: best[base].style }
+          }
+        } else if (MF) {
           // personal submain: only worlds on this player's deed —
           // their brews (blank drafts included) and their branches, newest version each
           const best = {}
@@ -225,7 +247,7 @@ try {
           }
         } else {
           for (const n of (sc.scenes || [])) {
-            if (n === 'CAFE' || n.includes('\u2402')) continue
+            if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
             if (n.includes(' \u2442 ')) continue
             want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
           }
@@ -274,11 +296,12 @@ try {
         }
         for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
         U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
-        if (MF && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
+        if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
-          window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'no worlds on your deed yet - brew yours', kind: 'hint' } }))
+          const emptyText = MF ? 'no worlds on your deed yet - brew yours' : 'no branches yet — fork a world with ⑂ BRANCH'
+          window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: emptyText, kind: 'hint' } }))
         }
-        if (!MF) U.hintedEmpty = false
+        if (!MF && !SUB) U.hintedEmpty = false
       } catch (e2) { /* shelf unreachable — the universe holds its shape */ }
     })()
   }
@@ -305,8 +328,8 @@ try {
         let sx = B.x - C.x, sy = B.y - C.y
         let sd = Math.hypot(sx, sy)
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
-        if (sd < 56) {
-          const push = (56 - sd) * 9 * dt2
+        if (sd < 76) {   // breathing room: bubbles repel inside 76, not 56
+          const push = (76 - sd) * 9 * dt2
           B.vx += sx / sd * push; B.vy += sy / sd * push
           C.vx -= sx / sd * push; C.vy -= sy / sd * push
         }
@@ -318,7 +341,7 @@ try {
       for (const n of U.order) { const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0 } }
       // the settled arrangement becomes everyone's: publish it to the shared
       // universe slot so every player (and every reload) sees this layout
-      if (!MF && U.order.length > 0) {
+      if (!MF && !SUB && U.order.length > 0) {
         const at = Date.now()
         U.sharedAt = at
         const out = {}
@@ -327,7 +350,7 @@ try {
           if (B) out[n] = { x: Math.round(B.x * 10) / 10, y: Math.round(B.y * 10) / 10, born: B.born }
         }
         fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slot: 'cafe:universe', data: { v: 1, at, bubbles: out } }) }).catch(() => {})
+          body: JSON.stringify({ slot: 'cafe:universe', data: { v: 2, at, bubbles: out } }) }).catch(() => {})
       }
     }
   }
@@ -439,3 +462,24 @@ const res = await fetch('http://localhost:3000/api/engine/scene', {
   body: JSON.stringify({ action: 'save', name: 'CAFE', scene }),
 })
 console.log('CAFE saved:', res.status, await res.text())
+
+// ── SUB-MAIN: the same navigation world, but its shelf is the branches.
+// One cartridge, two doors: worldData.__submain flips the hook's roster.
+const subScene = {
+  ...scene,
+  name: 'SUB-MAIN',
+  fields: [{ ...scene.fields[0], id: 'cf_submain_f', name: 'SUB-MAIN' }],
+  worldData: {
+    noPixelSampling: true,
+    __submain: 1,
+    instructions: 'SUB-MAIN — the branch shelf\n\nEvery fork anyone took lives here, newest version of each.\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to ride the branch\n\n◂ or ESC climbs back to main.',
+  },
+  timestamp: Date.now(),
+}
+writeFileSync(join(here, '../../../../public/cartridges/SUB-MAIN.json'), JSON.stringify(subScene, null, 1))
+const res2 = await fetch('http://localhost:3000/api/engine/scene', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+  body: JSON.stringify({ action: 'save', name: 'SUB-MAIN', scene: subScene }),
+})
+console.log('SUB-MAIN saved:', res2.status, await res2.text())

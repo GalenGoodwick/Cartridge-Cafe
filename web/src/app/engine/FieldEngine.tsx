@@ -754,15 +754,6 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => window.removeEventListener('cafe:portals', onPortals)
   }, [playScene])
 
-  // the SUB-MAIN door only opens if its space actually exists — a dead link
-  // drops the player on the 404 shelf ("nothing on this shelf")
-  const [subMainExists, setSubMainExists] = useState(false)
-  useEffect(() => {
-    fetch('/api/spaces/browse').then(r => r.json())
-      .then(d => setSubMainExists(((d.spaces || []) as { slug: string }[]).some(s => s.slug === 'sub-main')))
-      .catch(() => {})
-  }, [])
-
   // Play mode: the shell can freeze the world (back-button confirm dialog)
   useEffect(() => {
     if (!playScene) return
@@ -4073,14 +4064,15 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ⑂ BRANCH
             </button>}
-            {/* the hub carries ONE door to the sub-main space — branches live there */}
-            {isHub && subMainExists && (
-              <a
-                href="/space/sub-main"
+            {/* the hub carries ONE door to SUB-MAIN — a navigation world like
+                main whose shelf is the branches. In-shell travel, not a page. */}
+            {isHub && playScene !== 'SUB-MAIN' && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'SUB-MAIN' }))}
                 className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 ⑂ SUB-MAIN
-              </a>
+              </button>
             )}
             {/* version scroller — appears when riding a branch (never on hubs) */}
             {!isHub && lastSceneRef.current.includes(' ⑂ ') && (() => {

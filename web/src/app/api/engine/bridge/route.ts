@@ -9,6 +9,8 @@ interface BridgeAuth {
   authorized: boolean
   spaceId: string | null    // null = legacy global mode
   ownerId: string | null
+  slug?: string
+  spaceName?: string
 }
 
 // Auth: ENGINE_AGENT_TOKEN or uc_st_ space token
@@ -24,7 +26,7 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
   if (token.startsWith('uc_st_')) {
     const result = await validateSpaceToken(token)
     if (!result) return { authorized: false, spaceId: null, ownerId: null }
-    return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId }
+    return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName }
   }
 
   // Legacy global token path (admin)
@@ -107,6 +109,7 @@ export async function GET(req: NextRequest) {
   if (auth.spaceId) {
     const snapshot = await getSpaceSnapshot(auth.spaceId)
     return NextResponse.json({
+      space: { slug: auth.slug, name: auth.spaceName, viewUrl: req.nextUrl.origin + '/space/' + auth.slug },
       spaceId: auth.spaceId,
       fields: snapshot?.fields ?? [],
       fieldCount: snapshot?.fields?.length ?? 0,

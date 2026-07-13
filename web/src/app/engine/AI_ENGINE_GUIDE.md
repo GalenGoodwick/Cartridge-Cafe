@@ -67,6 +67,15 @@ without `worldData.brief_done`, BUILD THE BRIEF — not your own idea. When the
 first pass is delivered, `set_world_data {"brief_done": true}` and continue
 from the player's feedback.
 
+**Your own eyes.** Shader compilation and the live sim run in whatever browser
+has the world's page open — and it does NOT have to be the player's. If you can
+run a (headless) browser, open `space.viewUrl` (returned by GET on the bridge)
+as your own view: you get compileResults and can screenshot your work even
+while the player is off in other worlds. Your view doesn't take the player's
+seat (tab arbitration is per-browser) and doesn't count in presence. The slug —
+and therefore the URL — can change when the player names the world: re-read
+`space.viewUrl` rather than caching it.
+
 **Make things visible.** Fields with no visual render as NOTHING. Always pair `create_field`
 with `visualType`, or use `set_visual` on existing fields. A skeleton of bare fields is
 invisible — skin it.

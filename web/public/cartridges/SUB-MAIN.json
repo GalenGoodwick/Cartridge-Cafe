@@ -1,9 +1,9 @@
 {
- "name": "CAFE",
+ "name": "SUB-MAIN",
  "fields": [
   {
-   "id": "cf_world_f",
-   "name": "CAFE",
+   "id": "cf_submain_f",
+   "name": "SUB-MAIN",
    "color": [
     0.01,
     0.01,
@@ -39,7 +39,8 @@
  },
  "worldData": {
   "noPixelSampling": true,
-  "instructions": "THE CAFE — a universe of worlds\n\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to enter\n\nThe strongest chant sinks to the middle: bubbles cluster by participation, and newborn worlds glow hot before settling.\n\nMY WORLDS (top right) flips this into your own universe — every world on your deed, drafts included. BREW YOURS starts a new one."
+  "__submain": 1,
+  "instructions": "SUB-MAIN — the branch shelf\n\nEvery fork anyone took lives here, newest version of each.\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to ride the branch\n\n◂ or ESC climbs back to main."
  },
  "stepHooks": [
   {
@@ -58,5 +59,5 @@
   }
  ],
  "modules": [],
- "timestamp": 1783971941923
+ "timestamp": 1783971941958
 }

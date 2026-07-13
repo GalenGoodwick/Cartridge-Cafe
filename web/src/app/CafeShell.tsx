@@ -100,7 +100,10 @@ Before doing ANYTHING else:
 3. STAND BY. Do not build yet — I am writing your brief right now. It will
    appear in worldData.creation_brief. When it does: build exactly that,
    then set worldData.brief_done = true.
-worldData.player_focus is what I have selected — always follow it.`
+worldData.player_focus is what I have selected — always follow it.
+You may open your world's page in your own (headless) browser as your eyes —
+GET the bridge URL and use space.viewUrl (it can change when I name the world).
+Your view is yours: it never takes my seat and never counts in head-counts.`
   }
   const brew = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
@@ -127,7 +130,7 @@ worldData.player_focus is what I have selected — always follow it.`
         const d = await fetch('/api/spaces/' + brewSlugRef.current + '/token').then(r => r.json())
         if ((d.tokens || []).some((t: { lastUsedAt: string | null }) => t.lastUsedAt)) setBrewAi(true)
       } catch { /* keep waiting */ }
-    }, 3000)
+    }, 1200)
     return () => clearInterval(iv)
   }, [brewStep, brewAi])
   const brewSaveName = async () => {
@@ -171,6 +174,7 @@ worldData.player_focus is what I have selected — always follow it.`
     setHover(null)
     setCaption(null)
     setConfirmLeave(false)
+    setModalUp(false)   // a panel left open in the old world must not latch shut the new one
     setPortals([])
     portalsBlockRef.current = Date.now() + 600
     if (push && typeof window !== 'undefined') {
@@ -336,7 +340,7 @@ worldData.player_focus is what I have selected — always follow it.`
 
       {/* the rolling tournament of the commons — never over branches, never in submains */}
       <TournamentBar
-        visible={scene === 'CAFE' && !mine && !modalUp && portals.length > 1}
+        visible={scene === 'CAFE' && !mine && !modalUp}
         worlds={portals.map(pt => pt.name)}
       />
 
