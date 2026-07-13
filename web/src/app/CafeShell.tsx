@@ -251,10 +251,20 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
     setBrewErr(''); setBrewName(''); setBrewBrief('')
     setBrewAi(false); setBrewNamed(false); setBrewBriefed(false)
-    // the world is born now, so its AI key can exist before anything else
+    // sweep my own abandoned drafts first — unnamed, unbuilt, invisible
+    try {
+      const b = await fetch('/api/spaces/browse').then(r2 => r2.json())
+      for (const sp of (b.spaces || [])) {
+        if (sp.owner?.id === sess.user.id && sp.blank && sp.name === 'Untitled World') {
+          await fetch('/api/spaces/' + sp.slug, { method: 'DELETE' }).catch(() => {})
+        }
+      }
+    } catch { /* best effort */ }
+    // a DRAFT is born now — private, off every shelf — so its AI key can
+    // exist before anything else. ENTER WORLD is what makes it a world.
     const r = await fetch('/api/spaces', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Untitled World', slug: 'w-' + Math.random().toString(36).slice(2, 8) }),
+      body: JSON.stringify({ name: 'Untitled World', slug: 'w-' + Math.random().toString(36).slice(2, 8), draft: true }),
     })
     const d = await r.json()
     if (!r.ok || !d?.space?.slug) { window.alert(d?.error || 'could not brew'); return }
@@ -717,7 +727,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 </button>
               ) : (
                 <button disabled={!(brewAi && brewNamed && brewBriefed)}
-                  onClick={() => { window.location.href = '/space/' + brewSlug }}
+                  onClick={async () => {
+                    // all three gates passed — NOW the draft becomes a world
+                    await fetch('/api/spaces/' + brewSlugRef.current, {
+                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ isPublic: true }),
+                    }).catch(() => {})
+                    window.location.href = '/space/' + brewSlug
+                  }}
                   className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
                   {brewAi ? 'ENTER WORLD' : 'WAITING FOR YOUR AI TO CONNECT…'}
                 </button>

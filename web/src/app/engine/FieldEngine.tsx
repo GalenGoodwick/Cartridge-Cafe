@@ -302,8 +302,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const audio = audioRef.current
     try { if (localStorage.getItem('cc-mute')) audio.setVolume(0) } catch { /* fine */ }
     const onMute = (e: Event) => audio.setVolume((e as CustomEvent).detail ? 0 : 1)
+    // world sounds fire from the frame loop, where browsers refuse to birth an
+    // AudioContext — the player's first real gesture unlocks it here instead
+    const onGesture = () => audio.unlock()
+    window.addEventListener('pointerdown', onGesture, { capture: true })
+    window.addEventListener('keydown', onGesture, { capture: true })
     window.addEventListener('cafe:muted', onMute)
-    return () => window.removeEventListener('cafe:muted', onMute)
+    return () => {
+      window.removeEventListener('cafe:muted', onMute)
+      window.removeEventListener('pointerdown', onGesture, { capture: true })
+      window.removeEventListener('keydown', onGesture, { capture: true })
+    }
   }, [])
 
   // HUD elements (driven by worldData['hud'])

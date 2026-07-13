@@ -122,6 +122,12 @@ export class GameAudio {
     }
   }
 
+  /** Call from inside a real user-gesture handler: browsers refuse to start
+   *  an AudioContext born in a rAF loop, so the first click must adopt it. */
+  unlock(): void {
+    try { this.ensureContext() } catch { /* no audio device */ }
+  }
+
   /** Set master volume (0-1) */
   setVolume(volume: number): void {
     this.masterVolume = Math.max(0, Math.min(1, volume))

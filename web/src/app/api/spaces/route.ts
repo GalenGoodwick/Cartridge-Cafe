@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { name, slug: rawSlug, description, brief } = body
+  // draft: true — a brew in progress. The row must exist so the AI key can
+  // hang on something, but the world stays INVISIBLE (private) until the
+  // wizard's three gates pass and ENTER WORLD flips it public.
+  const draft = body.draft === true
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
@@ -92,6 +96,7 @@ export async function POST(req: NextRequest) {
       slug,
       description: description?.trim() || null,
       ownerId: user.id,
+      isPublic: !draft,
       ...(snapshot ? { snapshot } : {}),
     },
     select: {

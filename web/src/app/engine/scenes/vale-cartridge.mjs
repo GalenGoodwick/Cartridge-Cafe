@@ -20,94 +20,119 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
 const WORLD = /* wgsl */`
-// static terrain: hills, basins, dirt — the display floor and the flow map
+// ── the land, painted: relief light, hill shadows, strata, valley ambience ──
 fn vl_height(uv: vec2f) -> f32 {
   return fbm(uv * 2.1 + vec2f(7.3, 2.9), 4);
 }
 fn vl_terr(uv: vec2f) -> vec3f {
   let h = vl_height(uv);
-  var c = mix(vec3f(0.070, 0.052, 0.038), vec3f(0.115, 0.095, 0.065), h);      // valley dirt → dry ridge
-  c = mix(c, vec3f(0.055, 0.048, 0.050), smoothstep(0.62, 0.8, h) * 0.7);      // rocky tops
-  // slope shading from a fixed sky light
-  let e = 0.012;
+  var c = mix(vec3f(0.055, 0.042, 0.030), vec3f(0.135, 0.105, 0.068), smoothstep(0.25, 0.6, h));
+  c = mix(c, vec3f(0.10, 0.095, 0.10), smoothstep(0.60, 0.78, h));
+  c = mix(c, c * 0.75, smoothstep(0.62, 0.78, h) * step(0.5, fract(h * 26.0)));
+  c *= 0.88 + 0.24 * fbm(uv * 14.0, 3);
+  let e = 0.010;
   let gx = vl_height(uv + vec2f(e, 0.0)) - h;
   let gy = vl_height(uv + vec2f(0.0, e)) - h;
-  c *= 0.75 + 1.4 * clamp(0.5 - gx * 4.0 - gy * 2.0, 0.0, 1.0) * 0.5;
-  return c;
+  let n3 = normalize(vec3f(-gx * 6.0, -gy * 6.0, 1.0));
+  let l3 = normalize(vec3f(-0.55, -0.65, 0.55));
+  var lit = 0.35 + 0.85 * max(dot(n3, l3), 0.0);
+  var occ = 0.0;
+  for (var sm2 = 1; sm2 <= 3; sm2++) {
+    let hs = vl_height(uv + vec2f(0.03, 0.035) * f32(sm2));
+    occ = max(occ, (hs - h) - 0.05 * f32(sm2));
+  }
+  lit *= 1.0 - clamp(occ * 2.2, 0.0, 0.5);
+  return c * lit + vec3f(0.010, 0.014, 0.022) * smoothstep(0.4, 0.15, h);
+}
+
+// element color space: fire is ORANGE, growth is FOLIAGE, water is BASIN
+// BLUE — a fixed invertible matrix, decoded exactly through its inverse
+const VL_M = mat3x3f(
+  vec3f(1.05000, 0.42000, 0.06000),
+  vec3f(0.06000, 0.46000, 0.09000),
+  vec3f(0.02000, 0.12000, 0.50000));
+const VL_MI = mat3x3f(
+  vec3f(1.00460, -0.92944, 0.04675),
+  vec3f(-0.12924, 2.40059, -0.41660),
+  vec3f(-0.00917, -0.53896, 2.09811));
+
+// per-element texture — deterministic, divided right back out on decode
+fn vl_tex(uv: vec2f) -> vec3f {
+  let h = vl_height(uv);
+  let flameGrain = 0.85 + 0.35 * fbm(uv * 22.0 + 5.0, 2);
+  let canopy = 0.55 + 0.85 * smoothstep(0.25, 0.85, fbm(uv * 9.0 + 13.0, 3));
+  let depth = 0.65 + 0.9 * smoothstep(0.4, 0.18, h);
+  return vec3f(flameGrain, canopy, depth);
 }
 fn vl_dec(uv: vec2f, px: vec4f) -> vec3f {
-  let T = vl_terr(uv);
-  return vec3f(max(px.x - T.x, 0.0), max(px.z - T.z, 0.0) / 0.8, max(px.y - T.y, 0.0) / 0.6);  // H, W, G
+  let ee = VL_MI * (px.rgb - vl_terr(uv));
+  let tx = vl_tex(uv);
+  return max(vec3f(ee.x / tx.x, ee.y / tx.y, ee.z / tx.z), vec3f(0.0));   // H, G, W
+}
+fn vl_enc(uv: vec2f, H: f32, G: f32, W: f32) -> vec3f {
+  let tx = vl_tex(uv);
+  return vl_terr(uv) + VL_M * vec3f(H * tx.x, G * tx.y, W * tx.z);
 }
 
 fn visual_vale(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let t = time;
-  let T = vl_terr(uv);
   let booted = uni(3) > 0.5;
-  let upp = 2.0 / max(frame.resolution.y, 1.0);       // uv per pixel under contain
+  let upp = 2.0 / max(frame.resolution.y, 1.0);
 
   if (!booted) {
-    // first light: ponds in the basins, groves near the water line
     let h = vl_height(uv);
-    let W0 = smoothstep(0.34, 0.22, h) * 0.85;
-    let G0 = smoothstep(0.42, 0.34, h) * (1.0 - W0) * 0.8 * step(0.45, fbm(uv * 6.0, 3));
-    return vec4f(T.x, T.y + G0 * 0.6, T.z + W0 * 0.8, 1.0);
+    let W0 = smoothstep(0.34, 0.20, h) * 0.9;
+    let G0 = smoothstep(0.44, 0.33, h) * (1.0 - W0) * 0.85 * smoothstep(0.35, 0.6, fbm(uv * 6.0, 3));
+    return vec4f(vl_enc(uv, 0.0, G0, W0), 1.0);
   }
 
-  // ── decode self + neighbors (S=2 lattice) ──
   let cs = vl_dec(uv, prevHere());
   var H = cs.x;
-  var W = cs.y;
-  var G = cs.z;
+  var G = cs.y;
+  var W = cs.z;
   var lapH = -H;
   var lapW = -W;
   var lapG = -G;
-  var gradWx = 0.0;
-  var gradWy = 0.0;
   var NO = array<vec2f, 4>(vec2f(2.0, 0.0), vec2f(-2.0, 0.0), vec2f(0.0, 2.0), vec2f(0.0, -2.0));
   for (var j = 0; j < 4; j++) {
     let o = NO[j];
     let n = vl_dec(uv + o * upp, prevAt(o));
     lapH += 0.25 * n.x;
-    lapW += 0.25 * n.y;
-    lapG += 0.25 * n.z;
-    gradWx += n.y * sign(o.x) * 0.5;
-    gradWy += n.y * sign(o.y) * 0.5;
+    lapG += 0.25 * n.y;
+    lapW += 0.25 * n.z;
   }
-  // downhill direction from the terrain
   let e2 = 0.02;
   let hh = vl_height(uv);
   let dh = vec2f(vl_height(uv + vec2f(e2, 0.0)) - hh, vl_height(uv + vec2f(0.0, e2)) - hh);
-  // water advects downhill: take water from the uphill neighbor
   let up2 = normalize(dh + vec2f(1e-5)) * 2.0;
-  let uphill = vl_dec(uv + up2 * upp, prevAt(up2)).y;
+  let uphill = vl_dec(uv + up2 * upp, prevAt(up2)).z;
 
-  // ── the reactions ──
-  let burn = smoothstep(0.22, 0.5, H) * G;                    // fire eats the green
-  let quench = 2.4 * H * W;                                   // steam
-  let evap = 0.35 * H * W;
-  H = H + 0.55 * lapH + burn * 0.9 - 0.055 * H - quench * 0.016;
-  H = H + vl_dec(uv + vec2f(0.0, 2.0) * upp, prevAt(vec2f(0.0, 2.0))).x * 0.05;   // heat climbs
-  W = W + 0.32 * lapW + (uphill - W) * 0.10 * clamp(length(dh) * 18.0, 0.0, 1.0) - evap * 0.016 - 0.0012;
+  // reactions — the flame is alive: turbulence licks, embers crackle at fronts
+  let burn = smoothstep(0.20, 0.5, H) * G;
+  let quench = 2.4 * H * W;
+  let flick = (hash21(floor(uv * 260.0) + floor(t * 24.0)) - 0.5);
+  // fire needs fuel: on bare ground it starves fast — flicker is texture, not energy
+  let starve = 0.055 + 0.11 * (1.0 - smoothstep(0.0, 0.12, G));
+  H = H + 0.50 * lapH + burn * 0.9 - starve * H - quench * 0.016 + flick * min(H, 0.7) * 0.12;
+  H = H + vl_dec(uv + vec2f(0.0, 2.0) * upp, prevAt(vec2f(0.0, 2.0))).x * 0.04;
+  if (burn > 0.08 && hash21(floor(uv * 300.0) + floor(t * 9.0) * 3.7) > 0.997) { H += 0.25; }
+  W = W + 0.32 * lapW + (uphill - W) * 0.10 * clamp(length(dh) * 18.0, 0.0, 1.0) - 0.35 * H * W * 0.016 - 0.0012;
   G = G + 0.045 * lapG + 0.14 * W * (1.0 - G) * smoothstep(0.02, 0.10, G + lapG) * 0.16 - burn * 0.05 - 0.0004 * G;
-  // a seed of spontaneity: damp ground sprouts, very rarely
   if (hash21(floor(uv * 220.0) + floor(t * 0.5)) > 0.99993 && W > 0.15) { G = max(G, 0.25); }
 
-  // ── the keepers write their element by existing ──
   for (var k = 0; k < 3; k++) {
     let kp = vec2f(uni(4 + k * 3), uni(5 + k * 3));
-    let act = uni(6 + k * 3);                        // 0 travel · 1 acting
+    let act = uni(6 + k * 3);
     let d2 = dot(uv - kp, uv - kp);
-    if (k == 0) {                                     // rain sprite: drizzle beneath her
+    if (k == 0) {
       let rainCol = uv - kp - vec2f(sin(t * 7.0 + uv.y * 30.0) * 0.01, 0.05);
       W += (exp(-d2 * 900.0) * 0.010 + exp(-dot(rainCol, rainCol) * 300.0) * 0.028 * act);
-    } else if (k == 1) {                              // fire imp: his footsteps smoulder
+    } else if (k == 1) {
       H += exp(-d2 * 1400.0) * (0.006 + 0.05 * act);
-    } else {                                          // turtle: a wake of seeds
+    } else {
       G += exp(-d2 * 1600.0) * (0.004 + 0.03 * act) * step(0.03, W);
     }
   }
-  // ── your hand pours ──
   let m = vec2f(uni(0), uni(1));
   let pour = uni(2);
   if (pour > 0.5) {
@@ -117,12 +142,12 @@ fn visual_vale(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behi
     else { G += pd * 0.06 * step(0.02, W + 0.02); }
   }
 
-  H = clamp(H, 0.0, 2.2);
+  H = clamp(H, 0.0, 2.4);
   W = clamp(W, 0.0, 1.4);
   G = clamp(G, 0.0, 1.0);
-  var outp = vec3f(T.x + H, T.y + G * 0.6, T.z + W * 0.8);
-  if (outp.x != outp.x || outp.y != outp.y || outp.z != outp.z) { outp = T; }
-  return vec4f(clamp(outp, vec3f(0.0), vec3f(6.0)), 1.0);
+  var outp = vl_enc(uv, H, G, W);
+  if (outp.x != outp.x || outp.y != outp.y || outp.z != outp.z) { outp = vl_terr(uv); }
+  return vec4f(clamp(outp, vec3f(0.0), vec3f(8.0)), 1.0);
 }`
 
 const HOOK = `
@@ -234,8 +259,19 @@ try {
   const u = [mx, my, S.pour, S.age > 0.4 ? 1 : 0]
   for (const kp of K) u.push(kp.x, kp.y, kp.act)
   wd.gpuUniforms = u
-  wd.hud = [{ id: 'vl_e', type: 'text', x: '14px', y: '12px',
-    text: 'VALE \\u00b7 hand: ' + ['', 'FIRE', 'WATER', 'SEED'][S.elem] + ' (space cycles)', color: '#c9b370', fontSize: '13px' }]
+  // cursor glyph: overlay HUD, so it can never pollute the element fields
+  const iw = (typeof window !== 'undefined') ? window.innerWidth : 1024
+  const ih = (typeof window !== 'undefined') ? window.innerHeight : 1024
+  const side = Math.min(iw, ih)
+  const cxp = Math.round((iw - side) / 2 + ((mx + 1) / 2) * side)
+  const cyp = Math.round((ih - side) / 2 + ((my + 1) / 2) * side)
+  wd.hud = [
+    { id: 'vl_e', type: 'text', x: '14px', y: '12px',
+      text: 'VALE \\u00b7 hand: ' + ['', 'FIRE', 'WATER', 'SEED'][S.elem] + ' (space cycles)', color: '#c9b370', fontSize: '13px' },
+    { id: 'vl_cur', type: 'text', x: (cxp + 14) + 'px', y: (cyp - 22) + 'px',
+      text: ['', '\\ud83d\\udd25', '\\ud83d\\udca7', '\\ud83c\\udf31'][S.elem],
+      color: ['', '#ff8830', '#5ab8ff', '#7ade6a'][S.elem], fontSize: '17px' },
+  ]
 } catch (e) { /* the vale endures */ }
 `
 
