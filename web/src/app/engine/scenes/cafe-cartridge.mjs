@@ -5,7 +5,7 @@
 // ── the shelf ranks itself: most recently updated worlds sit closest to center ──
 const _list = await fetch('http://localhost:3000/api/engine/scene?action=list').then(r => r.json())
 const _stamped = []
-for (const n of _list.scenes.filter(n => n !== 'CAFE')) {
+for (const n of _list.scenes.filter(n => n !== 'CAFE' && !n.includes('⑂'))) {
   const { scene } = await fetch('http://localhost:3000/api/engine/scene?name=' + encodeURIComponent(n)).then(r => r.json())
   _stamped.push({ n, ts: (scene && scene.timestamp) || 0 })
 }

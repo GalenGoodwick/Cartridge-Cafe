@@ -129,6 +129,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // cut by the EYE — a watcher that snapshots each settled burst of AI edits ──
   const [me, setMe] = useState<string | null>(null)
   const [aiPulse, setAiPulse] = useState(0)
+  const [plugOpen, setPlugOpen] = useState(false)
+  const [plugToken, setPlugToken] = useState<string | null>(null)
+  const [plugBusy, setPlugBusy] = useState(false)
   const lastSceneRef = useRef<string>('')
   const aiDirtyRef = useRef(false)
   const aiLastEditRef = useRef(0)
@@ -421,6 +424,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     if (await saveSceneAs(name)) {
       lastSceneRef.current = name
       showToast(`branch opened: ${name} — the eye is watching`, 'success')
+      setPlugOpen(true)   // a branch without an AI is a car without keys
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, playScene, saveSceneAs])
@@ -914,6 +918,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       sim.worldData['mouse_x'] = grid0.x
       sim.worldData['mouse_y'] = grid0.y
       sim.worldData['mouse_down'] = true
+      // pulse counter — a click shorter than one sim frame still lands once
+      sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
     }
 
     // 3D mode: right-click or alt+click = orbit camera
@@ -929,6 +935,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       canvas.style.cursor = 'grabbing'
       return
     }
+
+    // Play mode: the pointer belongs to the game (hooks read mouse_*).
+    // Never start a field drag — a full-canvas game field would ride the
+    // cursor and pull the whole scene with it.
+    if (playScene) return
 
     // Hit-test: check if pointer is over a field
     if (sim) {
@@ -955,7 +966,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         return
       }
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const input = inputRef.current
@@ -1921,11 +1933,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
         const canvas = canvasRef.current
         if (canvas) {
-          const dpr = (window.devicePixelRatio || 1) * renderer.renderScale
-          const cw = canvas.clientWidth
-          const ch = canvas.clientHeight
-          const bw = Math.round(cw * dpr)
-          const bh = Math.round(ch * dpr)
+          // use the real buffer dims the renderer set this frame — dpr may be
+          // capped by the renderer's pixel budget (effectiveDpr)
+          const bw = canvas.width
+          const bh = canvas.height
           const aspect = bw / bh
           const gridRange = sim.gridSize / camera.zoom
 
@@ -3820,13 +3831,67 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             style={{ fontFamily: 'monospace' }}
           />
 
-          {/* Mandatory world instructions — top right, every world */}
-          <button
-            onClick={() => setInstrOpen(v => !v)}
-            className="absolute top-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-          >
-            ? INSTRUCTIONS
-          </button>
+          {/* Mandatory world instructions + branch + AI status — top right, every world */}
+          <div className="absolute top-3 right-3 z-40 flex flex-col items-end gap-1.5">
+            <button
+              onClick={() => setInstrOpen(v => !v)}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+            >
+              ? INSTRUCTIONS
+            </button>
+            <button
+              onClick={handleBranch}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              title={me ? 'fork this world as your branch — the eye versions every AI edit' : 'sign in to branch this world'}
+            >
+              ⑂ BRANCH
+            </button>
+            {/* version scroller — appears when riding a branch */}
+            {lastSceneRef.current.includes(' ⑂ ') && (() => {
+              const cur = lastSceneRef.current
+              const m = cur.match(/· v(\d+)$/)
+              const n = m ? +m[1] : 1
+              const at = (k: number) => cur.replace(/· v\d+$/, `· v${k}`)
+              return (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
+                  <button className="hover:text-white px-1" disabled={n <= 1} onClick={() => handleLoadScene(at(n - 1))}>◂</button>
+                  <span className="tracking-[0.1em]">v{n}</span>
+                  <button className="hover:text-white px-1" onClick={() => handleLoadScene(at(n + 1))}>▸</button>
+                </div>
+              )
+            })()}
+            <button
+              onClick={async () => {
+                setPlugOpen(v => !v)
+                if (!plugToken && spaceSlug) {
+                  setPlugBusy(true)
+                  try {
+                    const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name: 'AI agent' }),
+                    })
+                    const d = await r.json()
+                    if (r.ok) setPlugToken(d.token)
+                  } finally { setPlugBusy(false) }
+                }
+              }}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+            >
+              ⚡ CONNECT AI
+            </button>
+            {/* the AI, honestly: unplugged / live / processing */}
+            {(() => {
+              void aiPulse
+              const busy = agentConnected && Date.now() - aiLastEditRef.current < 2500
+              return (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
+                  <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                  {busy ? 'AI PROCESSING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'}
+                </div>
+              )
+            })()}
+          </div>
           {instrOpen && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInstrOpen(false); setInstrEdit(false) }}>
               <div
@@ -3880,6 +3945,42 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               </div>
             </div>
           )}
+
+          {/* CONNECT AI — the plug box: everything an agent needs to edit this branch */}
+          {plugOpen && (() => {
+            const origin = typeof window !== 'undefined' ? window.location.origin : ''
+            const tok = plugToken || (spaceSlug ? (plugBusy ? '…minting…' : '(minting failed — are you the owner?)') : '<your ENGINE_AGENT_TOKEN — branch-scoped tokens land with the registry>')
+            const briefing = `Connect to my cartridge.cafe world${lastSceneRef.current ? ` branch "${lastSceneRef.current}"` : ''}:
+POST commands to ${origin}/api/engine/bridge
+header: Authorization: Bearer ${tok}
+Full docs: GET ${origin}/api/engine/guide (markdown; instructions are MANDATORY — key entry + the point).
+GET the bridge URL returns world state. Fields are INVISIBLE until given a visualType.
+The eye versions your edits automatically after each settled burst — just build.`
+            return (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
+                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] tracking-[0.25em] text-white/50">⚡ CONNECT YOUR AI</div>
+                    <div className="flex items-center gap-1.5 text-[9px] tracking-[0.2em] text-white/50">
+                      <span className={`inline-block w-2 h-2 rounded-full ${agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                      {agentConnected ? 'LIVE' : 'WAITING'}
+                    </div>
+                  </div>
+                  <p className="text-white/60 mb-3 text-[11px]">Paste this to any AI (Claude, or anything that can speak HTTP). It will build in this world; the eye will version every settled edit.</p>
+                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[11px] text-emerald-200/90 select-all">{briefing}</pre>
+                  <div className="flex gap-2 mt-3 justify-end">
+                    <button
+                      className="text-[10px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                      onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
+                    >
+                      COPY
+                    </button>
+                    <button className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Virtual touch controls — writes the same worldData.key_* the keyboard
               does, so every cartridge gains touch support unchanged. Touch-only. */}

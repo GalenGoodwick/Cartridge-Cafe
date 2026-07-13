@@ -307,6 +307,19 @@ export class FieldRenderer {
     this.renderScale = Math.max(0.25, Math.min(2.0, scale))
   }
 
+  /** Compute-buffer pixel budget. Full-canvas raymarched worlds die by retina
+   * dpr (a 1512×982 window at dpr 2 is ~5.9M pixels per stacked visual);
+   * upscaling from ~2.2M pixels is invisible at play distance while the
+   * compute cost drops 2-3×. */
+  maxBufferPixels: number = 2_200_000
+
+  /** dpr × renderScale, capped so bufferW × bufferH stays under the budget. */
+  effectiveDpr(displayW: number, displayH: number): number {
+    const dpr = (window.devicePixelRatio || 1) * this.renderScale
+    const px = displayW * displayH * dpr * dpr
+    return px > this.maxBufferPixels ? dpr * Math.sqrt(this.maxBufferPixels / px) : dpr
+  }
+
   /** Update post-processing settings. Partial updates supported. */
   setPostProcess(settings: Partial<typeof FieldRenderer.prototype.postProcessSettings>): void {
     Object.assign(this.postProcessSettings, settings)
@@ -1383,9 +1396,9 @@ export class FieldRenderer {
     if (!device || !ctx || !this.basePipeline) return
 
     const canvas = ctx.canvas as HTMLCanvasElement
-    const dpr = (window.devicePixelRatio || 1) * this.renderScale
     const displayW = canvas.clientWidth
     const displayH = canvas.clientHeight
+    const dpr = this.effectiveDpr(displayW, displayH)
     const bufferW = Math.round(displayW * dpr)
     const bufferH = Math.round(displayH * dpr)
 
@@ -1661,9 +1674,9 @@ export class FieldRenderer {
     if (!device || !ctx) return
 
     const canvas = ctx.canvas as HTMLCanvasElement
-    const dpr = (window.devicePixelRatio || 1) * this.renderScale
     const displayW = canvas.clientWidth
     const displayH = canvas.clientHeight
+    const dpr = this.effectiveDpr(displayW, displayH)
     const bufferW = Math.round(displayW * dpr)
     const bufferH = Math.round(displayH * dpr)
 
