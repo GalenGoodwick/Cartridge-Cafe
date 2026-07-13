@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
+import TournamentBar from '@/app/TournamentBar'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -333,6 +334,12 @@ worldData.player_focus is what I have selected — always follow it.`
     <>
       <FieldEngine playScene={scene} />
 
+      {/* the rolling tournament of the commons — never over branches, never in submains */}
+      <TournamentBar
+        visible={scene === 'CAFE' && !mine && !modalUp && portals.length > 1}
+        worlds={portals.map(pt => pt.name)}
+      />
+
       {/* a name surfaces where you're looking, then gets out of the way */}
       {portals.length > 0 && hover && !modalUp && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
@@ -406,8 +413,9 @@ worldData.player_focus is what I have selected — always follow it.`
                   className="flex-1 rounded-lg bg-flame/90 hover:bg-glow py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
                   COPY CONNECTION PROMPT
                 </button>
-                <button onClick={() => setBrewStep(2)} className="flex-1 brass-tab py-2 text-[10px]">
-                  {brewAi ? 'NEXT → NAME IT' : 'WAITING FOR AI… SKIP AHEAD'}
+                <button disabled={!brewAi} onClick={() => setBrewStep(2)}
+                  className="flex-1 brass-tab py-2 text-[10px] disabled:opacity-35">
+                  {brewAi ? 'NEXT → NAME IT' : 'WAITING FOR AI…'}
                 </button>
               </div>
               <div className="font-mono text-[9px] tracking-[0.15em] mt-2 text-crema/40">

@@ -37,13 +37,21 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // ── the bubble universe: live positions, pressure-ranked, explorable ──
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 3);
-    let st = i32(floor(sv));
+    let stRaw = i32(floor(sv));
+    let crowned = stRaw >= 16;
+    let st = stRaw % 16;
     let hue = fract(sv);
     let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm;
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
+    if (crowned) {
+      let ringR = rr * 1.22 + sin(t * 2.2) * 0.006;
+      let ring = smoothstep(0.010, 0.002, abs(d - ringR));
+      col += vec3f(1.0, 0.82, 0.32) * ring * 1.1;
+      col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - rr, 0.0) * 26.0) * 0.35;
+    }
     if (d < rr) {
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
@@ -176,11 +184,12 @@ try {
     ;(async () => {
       try {
         const now = Date.now()
-        const [sc, sp, sl, uvr] = await Promise.all([
+        const [sc, sp, sl, uvr, tvr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
           fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
           MF ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
+          MF ? Promise.resolve(null) : fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
@@ -252,7 +261,11 @@ try {
           // participation pressure: cell activity + birth heat
           const cellAge = cellAt[n] ? (now - cellAt[n]) / 60000 : 999
           const bornHeat = Math.max(0, 1 - (now - B.born) / 120000)
-          const ns = 1 / (1 + cellAge / 20) + bornHeat
+          const T = (tvr && tvr.data && tvr.data.round) ? tvr.data : null
+          const reach = T && T.reached ? (T.reached[n] || 0) : 0
+          const champ = T && T.champion === n
+          B.crown = !!champ
+          const ns = 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + (champ ? 6 : 0)
           // chant shifts perturb — but a bubble just placed from the shared
           // universe getting its first real score is not a shift, it's arrival
           if (!B.justPlaced && Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)
@@ -382,7 +395,7 @@ try {
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
-    u.push(B.x, B.y, B.style + Math.min(0.999, B.hue))
+    u.push(B.x, B.y, (B.crown ? 16 : 0) + B.style + Math.min(0.999, B.hue))
   }
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
