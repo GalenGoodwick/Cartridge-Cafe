@@ -17,8 +17,7 @@ const BLURBS: Record<string, string> = {
   'ESPER': 'stealth on the hex lattice',
   'TV': 'channels that compute themselves',
   'PROOF': 'a world that accumulates law',
-  'HELIOS': 'carry the sun, hold for the moon',
-  'SELENE': 'the world under the lake — two acts',
+  'HELIOS': 'carry the sun — a story in chapters',
   'LIGHTHOUSE': 'your cursor is the hour',
 }
 
@@ -520,26 +519,30 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           While DOCKED, the main arena rides along into worlds (so a voter can
           see the contenders) and every other arena stands down. */}
       {((scene === 'CAFE' && !mine) || docked) && (
-        <TournamentBar visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
+        <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
+          rail={scene !== 'CAFE'}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}
       {scene === 'CAFE' && mine && !docked && (
-        <TournamentBar visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
+        <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
       {scene === 'SUB-MAIN' && !docked && (
-        <TournamentBar visible={!modalUp}
+        <TournamentBar key={subMode?.slug ? `arena-sub-${subMode.slug}` : 'arena-submain'} visible={!modalUp}
           slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
           worlds={portals.map(pt => pt.name)}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
       {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
         <TournamentBar
+          key={`arena-world-${scene.split(' ⑂ ')[0]}`}
           visible={!modalUp && !confirmLeave}
           slot={`tournament:world:${scene.split(' ⑂ ')[0]}`}
           branchesOf={scene.split(' ⑂ ')[0]}
+          sceneKey={scene}
+          rail
         />
       )}
 

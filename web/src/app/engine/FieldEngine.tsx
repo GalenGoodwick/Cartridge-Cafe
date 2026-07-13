@@ -888,11 +888,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
         if (scene.worldParams) sim.setWorldParams(scene.worldParams)
         if (scene.worldData) Object.assign(sim.worldData, scene.worldData)
-        // resume: this scene's stashed save data (best scores, builds) returns
+        // per-world settings live beside the cartridge (bundles stay pure):
+        // owner toggles like resetOnEntry land here and overlay the snapshot
         try {
-          const stash = localStorage.getItem(`cc-save-${playScene}`)
-          if (stash) Object.assign(sim.worldData, JSON.parse(stash))
-        } catch { /* no save, no problem */ }
+          const st = await fetch(`/api/engine/save?slot=${encodeURIComponent('world-settings:' + playScene)}`).then(r => r.json())
+          if (st?.data && typeof st.data === 'object' && !Array.isArray(st.data)) Object.assign(sim.worldData, st.data)
+        } catch { /* no settings, no problem */ }
+        if (sim.worldData.resetOnEntry) {
+          // this world restarts from the beginning: forget stashes and any
+          // run state a previous session left in memory
+          for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
+          try { localStorage.removeItem(`cc-save-${playScene}`) } catch { /* fine */ }
+        } else {
+          // resume: this scene's stashed save data (best scores, builds) returns
+          try {
+            const stash = localStorage.getItem(`cc-save-${playScene}`)
+            if (stash) Object.assign(sim.worldData, JSON.parse(stash))
+          } catch { /* no save, no problem */ }
+        }
         // session-start signal: hooks reset per-session state (timers, key latches)
         // while keeping restored save data
         sim.worldData.__fresh = true
@@ -4322,12 +4335,35 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   <div className="text-[11px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
                   <div className="flex items-center gap-2">
                     {(isOwner || !spaceId) && !instrEdit && (
-                      <button
-                        className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
-                        onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
-                      >
-                        EDIT
-                      </button>
+                      <>
+                        <button
+                          title="When ON, entering this world always starts from the beginning — no resuming"
+                          className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                          onClick={() => {
+                            const s = simulationRef.current
+                            if (!s) return
+                            const on = !s.worldData.resetOnEntry
+                            s.worldData.resetOnEntry = on
+                            setInstrDraft(d => d)   // nudge a re-render
+                            setAiPulse(v => v + 1)
+                            const key = spaceId ? undefined : playScene
+                            if (key) {
+                              fetch('/api/engine/save', {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on } }),
+                              }).catch(() => {})
+                            }
+                          }}
+                        >
+                          ↻ RESTART: {simulationRef.current?.worldData?.resetOnEntry ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                          onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
+                        >
+                          EDIT
+                        </button>
+                      </>
                     )}
                     <button
                       aria-label="Close instructions"

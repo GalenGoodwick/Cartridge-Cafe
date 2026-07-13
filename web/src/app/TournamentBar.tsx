@@ -77,7 +77,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome, sceneKey }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome, sceneKey, rail }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -88,6 +88,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   onTravel?: (world: string) => void   // clicking a contender's name loads it
   onCloseHome?: () => void       // ✕: undock and return to this arena's door
   sceneKey?: string              // the scene under the bar — changing it minimizes the panel
+  rail?: boolean                 // in-world: sit in the right rail under the AI lamp, not bottom-center
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
@@ -283,7 +284,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       : emptyHint
     if (!hint || roster.length >= 2) return null
     return (
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50">
+      <div className={rail ? 'fixed top-[205px] right-3 z-40' : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50'}>
         <div className={`${pill} rounded-full px-4 py-2 border border-white/15 bg-void/60 text-white/40 backdrop-blur`}>
           {hint}
         </div>
@@ -294,7 +295,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const standings = Object.entries(doc.reached).sort((a, b) => b[1] - a[1])
 
   return (
-    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
+    <div className={rail
+      ? 'fixed top-[205px] right-3 z-40 flex flex-col items-end gap-2'
+      : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2'}>
       {open && (
         <div className="w-[440px] max-w-[92vw] max-h-[52vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3">
           <div className="flex items-start justify-between gap-2">
@@ -421,11 +424,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
             : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
         }`}>
-        {docked
-          ? `⚔ DELIBERATING · TIER ${doc.tier} · YOUR CELL`
-          : doc.champion
-            ? `♛ ${doc.champion.toLowerCase()} · TIER ${doc.tier} · VOTE`
-            : `⚔ TOURNAMENT · TIER ${doc.tier} · VOTE`}
+        {rail
+          ? (docked ? `⚔ VOTING · T${doc.tier}` : `⚔ VOTE · T${doc.tier}`)
+          : docked
+            ? `⚔ DELIBERATING · TIER ${doc.tier} · YOUR CELL`
+            : doc.champion
+              ? `♛ ${doc.champion.toLowerCase()} · TIER ${doc.tier} · VOTE`
+              : `⚔ TOURNAMENT · TIER ${doc.tier} · VOTE`}
       </button>
     </div>
   )
