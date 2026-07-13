@@ -571,8 +571,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
         frameFingerprintRef.current = ''
         // every world opens with a fresh eye — a zoom left over from another
-        // scene must not follow the player through the door
-        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
+        // scene must not follow the player through the door. Play-mode opens at
+        // COVER zoom (world fills the viewport, no side voids). Measure the
+        // WINDOW, not the canvas: the canvas lies about its size mid-mount.
+        {
+          const asp = typeof window !== 'undefined' && window.innerHeight > 0
+            ? window.innerWidth / window.innerHeight : 1
+          cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: Math.min(2, Math.max(1, asp)) }
+        }
 
         // house cartridges ship as static files (CDN, stateless-server-proof);
         // the store API is the fallback for locally saved scenes

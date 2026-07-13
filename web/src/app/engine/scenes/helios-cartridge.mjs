@@ -71,6 +71,7 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
   var sun = vec2f(uni(0), uni(1));
   if (sun.x < 1.0) { sun = vec2f(150.0, 120.0); }        // pre-hook default: morning
   let m = hl_moonness(uni(2));
+  let gold = uni(4);
 
   var col: vec3f;
   let LAKE = 424.0;
@@ -133,6 +134,7 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
       let glint = smoothstep(0.45, 0.05, gd) * step(0.80, gh) * flash;
       col += vec3f(1.05, 1.12, 1.30) * glint * path * mglow * 2.8;   // the sparkle
       col += vec3f(0.35, 0.40, 0.55) * path * mglow * 0.20 * (0.6 + wob);  // silver sheen
+      col += vec3f(1.30, 0.95, 0.40) * path * gold * 0.55 * (0.7 + wob);   // the invitation
     }
   }
 
@@ -140,6 +142,12 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
   if (uni(3) > 0.01) {
     let ring = abs(length(vec2f(p.x - sun.x, (p.y - sun.y) / asp)) - (30.0 + fract(t * 0.8) * 26.0));
     col += vec3f(0.8, 0.8, 0.7) * uni(3) * smoothstep(3.0, 0.0, ring) * 0.5;
+  }
+
+  // the moon's reflection noticed you: the whole valley breathes gold
+  if (gold > 0.01) {
+    let breath = 0.5 + 0.5 * sin(t * 3.2);
+    col += vec3f(1.05, 0.78, 0.28) * gold * (0.10 + 0.11 * breath) * (1.25 - 0.5 * length(uv));
   }
 
   col *= 1.0 - 0.35 * pow(length(uv), 3.0);
@@ -156,10 +164,10 @@ try {
   const HORIZON = ${HORIZON}
 
   const md = wd.mouse_down, mx = wd.mouse_x, my = wd.mouse_y
+  const aspw = (typeof window !== 'undefined') ? Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1) : 1
   // HOVER carries the sun — no press needed; the light lives at your cursor
   if (typeof mx === 'number' && (mx !== S.lx || my !== S.ly)) {
     S.lx = mx; S.ly = my
-    const aspw = (typeof window !== 'undefined') ? Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1) : 1
     S.sx = Math.max(20, Math.min(492, mx))
     S.sy = Math.max(28, Math.min(HORIZON - 24, (my - 256) * aspw + 256))
   }
@@ -168,7 +176,20 @@ try {
   S.glow = md ? 1 : Math.max(0, S.glow - 1.5 * pdt)
 
   const moonness = 0.5 - 0.5 * Math.cos(2 * Math.PI * S.phase)
-  wd.gpuUniforms = [S.sx, S.sy, S.phase, S.glow]
+
+  // the secret: hover the moon's actual reflection on the lake
+  const pyRaw = (typeof my === 'number') ? (my - 256) * aspw + 256 : -999
+  const refY = 424 + (424 - S.sy) / 1.9
+  const hov = moonness > 0.5 && refY < 512 && pyRaw > refY - 22 && pyRaw < refY + 26 ? 1 : 0
+  S.gold = (S.gold || 0) + (hov - (S.gold || 0)) * Math.min(1, pdt * 5)
+  if (typeof window !== 'undefined') {
+    if (hov && !S.capd) { S.capd = true; window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'the moon invites you \u00b7 click', kind: 'hint' } })) }
+    if (!hov) S.capd = false
+    if (hov && md && !S.pmd) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'SELENE' }))
+  }
+  S.pmd = md
+
+  wd.gpuUniforms = [S.sx, S.sy, S.phase, S.glow, S.gold]
   wd.hud = [
     { id: 'hl_t', type: 'text', x: '14px', y: '12px', text: 'HELIOS \\u2014 ' + (moonness > 0.6 ? 'moonlight' : (moonness > 0.25 ? 'dusk' : 'daylight')), color: '#c9b370', fontSize: '13px' },
   ]
