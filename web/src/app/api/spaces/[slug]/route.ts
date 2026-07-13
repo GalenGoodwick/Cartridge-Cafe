@@ -134,12 +134,38 @@ export async function DELETE(
 
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
-    select: { id: true, ownerId: true },
+    select: {
+      id: true, ownerId: true, name: true,
+      _count: { select: { childSpaces: true, flags: true } },
+    },
   })
 
   if (!space || space.ownerId !== user.id) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
+
+  // Fairness gates: a world stops being only yours once others invest in it.
+  if (space._count.childSpaces > 0) {
+    return NextResponse.json({
+      error: `Cannot delete: ${space._count.childSpaces} branch${space._count.childSpaces > 1 ? 'es' : ''} grew from this world. Their roots live here.`,
+    }, { status: 409 })
+  }
+  if (space._count.flags > 0) {
+    return NextResponse.json({
+      error: 'Cannot delete: this world has been flagged into a vote. The community holds a stake until it resolves.',
+    }, { status: 409 })
+  }
+  // live in a cell: the engine save store keeps cell:<NAME> slots
+  try {
+    const saveRes = await fetch(`${_req.nextUrl.origin}/api/engine/save?action=list`)
+    const saves = await saveRes.json()
+    const key = 'cell:' + space.name.toUpperCase()
+    if ((saves.slots || []).some((sl: { slot: string }) => sl.slot.toUpperCase() === key)) {
+      return NextResponse.json({
+        error: 'Cannot delete: this world is live in a cell. Deleting a candidate mid-vote would be unfair.',
+      }, { status: 409 })
+    }
+  } catch { /* save store unavailable — do not block on it */ }
 
   invalidateSpaceCache(space.id)
 

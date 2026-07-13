@@ -25,15 +25,27 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *  side — same law as branch cells until enforcement moves server-side.
  */
 
-type Cell = { worlds: string[]; votes: Record<string, string> }
+type Cell = {
+  worlds: string[]
+  votes: Record<string, string>
+  // deliberation, just like UC: per-world comment threads inside the cell.
+  // They live and die with the tier — a fresh deal is a fresh conversation.
+  comments?: Record<string, { who: string; text: string; at: number }[]>
+}
 type TDoc = {
   round: number
   tier: number
   cells: Cell[]
+  tierAt?: number                 // when this tier was dealt — the deliberation clock
   reached: Record<string, number>
   champion: string | null
   championAt: number
 }
+
+// UC: one participant belongs to ONE cell per tier. Past the deliberation
+// window, a tier with at least one voice resolves anyway — silent cells fall
+// to the deterministic tie-break, so no empty cell can stall the chant.
+const TIER_MAX_MS = 3 * 60_000
 
 const hash = (s: string) => {
   let h = 2166136261
@@ -65,15 +77,22 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
   visible: boolean
+  emptyHint?: string             // what to say while the arena waits for two contenders
+  docked?: boolean               // deliberating: the bar rides along into worlds
+  onDock?: (d: boolean) => void  // the shell keeps the bar mounted while docked
+  onTravel?: (world: string) => void   // clicking a contender's name loads it
+  onCloseHome?: () => void       // ✕: undock and return to this arena's door
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
   const [who, setWho] = useState<string | null>(null)
+  const [threadFor, setThreadFor] = useState<string | null>(null)   // world whose comments are unfolded
+  const [draft, setDraft] = useState('')
   const [selfRoster, setSelfRoster] = useState<string[]>([])
   const roster = branchesOf ? selfRoster : (worlds || [])
   const rosterRef = useRef(roster)
@@ -121,20 +140,31 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
     const r = rosterRef.current
     if (!d || !d.round) {
       if (r.length < 2) return null
-      const seeded: TDoc = { round: 1, tier: 1, cells: deal(r, 1), reached: {}, champion: null, championAt: 0 }
+      const seeded: TDoc = { round: 1, tier: 1, cells: deal(r, 1), tierAt: Date.now(), reached: {}, champion: null, championAt: 0 }
       for (const w of r) seeded.reached[w] = 1
       save(seeded)
       return seeded
     }
     // a doc without cells rolls into its next round as soon as it can
     if (d.cells.length === 0 && r.length >= 2) {
-      const next: TDoc = { ...d, round: d.round + 1, tier: 1, cells: deal(r, d.round + 1), reached: {} }
+      const next: TDoc = { ...d, round: d.round + 1, tier: 1, cells: deal(r, d.round + 1), tierAt: Date.now(), reached: {} }
       for (const w of r) next.reached[w] = 1
       save(next)
       return next
     }
-    // tier resolves only when every cell has spoken
-    if (d.cells.length > 0 && d.cells.every(c => Object.keys(c.votes).length > 0)) {
+    // an older doc without a deliberation clock gets one now
+    if (d.cells.length > 0 && !d.tierAt) {
+      const next = { ...d, tierAt: Date.now() }
+      save(next)
+      return next
+    }
+    // tier resolves when every cell has spoken — or when the deliberation
+    // window closes with at least one voice in the tier (silent cells fall
+    // to the deterministic tie-break; an unmanned cell can't stall the chant)
+    const allSpoken = d.cells.length > 0 && d.cells.every(c => Object.keys(c.votes).length > 0)
+    const anyVoice = d.cells.some(c => Object.keys(c.votes).length > 0)
+    const windowClosed = !!d.tierAt && Date.now() - d.tierAt > TIER_MAX_MS
+    if (d.cells.length > 0 && (allSpoken || (anyVoice && windowClosed))) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
       const next = { ...d }
       for (const w of winners) next.reached = { ...next.reached, [w]: d.tier + 1 }
@@ -145,12 +175,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
         next.round = d.round + 1
         next.tier = 1
         next.cells = r.length >= 2 ? deal(r, next.round) : []
+        next.tierAt = Date.now()
         const fresh: Record<string, number> = {}
         for (const w of r) fresh[w] = 1
         next.reached = { ...fresh, [winners[0]]: d.tier + 1 }
       } else {
         next.tier = d.tier + 1
         next.cells = deal(winners, d.round * 100 + next.tier)
+        next.tierAt = Date.now()
       }
       save(next)
       return next
@@ -177,26 +209,68 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
     return () => { stop = true; clearInterval(t) }
   }, [visible, slot, reconcile])
 
+  // UC: you are dealt into ONE cell per tier — your voice lives there only
+  const myCellIdx = (d: TDoc): number =>
+    who && d.cells.length > 0 ? hash(who + ':' + d.round + ':' + d.tier) % d.cells.length : -1
+
   const vote = (cellIdx: number, world: string) => {
     if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
     if (!doc) return
+    if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
     const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx ? { ...c, votes: { ...c.votes, [who]: world } } : c) }
     const settled = reconcile(next) || next
     setDoc(settled)
     if (settled === next) save(next)   // reconcile saves when it changes things; otherwise persist the vote
   }
 
+  /** deliberation: a comment on a world, spoken inside your cell */
+  const comment = (cellIdx: number, world: string, text: string) => {
+    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
+    if (!doc || !text.trim()) return
+    if (cellIdx !== myCellIdx(doc)) return
+    const next = {
+      ...doc,
+      cells: doc.cells.map((c, i) => {
+        if (i !== cellIdx) return c
+        const thread = [...(c.comments?.[world] || []), { who, text: text.trim().slice(0, 280), at: Date.now() }].slice(-50)
+        return { ...c, comments: { ...(c.comments || {}), [world]: thread } }
+      }),
+    }
+    setDoc(next)
+    save(next)
+    setDraft('')
+  }
+
+  /** step into a contender to see it — the bar docks and rides along */
+  const travel = (world: string) => {
+    if (!onTravel) return
+    onDock?.(true)
+    setOpen(false)   // minimize for the trip; the pill stays within reach
+    onTravel(world)
+  }
+
+  /** ✕ — undock, close, go back to this arena's door */
+  const closeOut = () => {
+    setOpen(false)
+    setThreadFor(null)
+    onDock?.(false)
+    onCloseHome?.()
+  }
+
   if (!visible) return null
 
   const pill = 'font-mono text-[10px] tracking-[0.2em]'
 
-  // a world with no rivals yet: the arena exists, it's just waiting
+  // an arena short of two contenders says so instead of vanishing
   if (!doc) {
-    if (!branchesOf || selfRoster.length !== 0) return null
+    const hint = branchesOf
+      ? '⚔ NO RIVALS YET — ⑂ BRANCH TO CHALLENGE MAIN'
+      : emptyHint
+    if (!hint || roster.length >= 2) return null
     return (
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50">
         <div className={`${pill} rounded-full px-4 py-2 border border-white/15 bg-void/60 text-white/40 backdrop-blur`}>
-          ⚔ NO RIVALS YET — ⑂ BRANCH TO CHALLENGE MAIN
+          {hint}
         </div>
       </div>
     )
@@ -208,28 +282,81 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
       {open && (
         <div className="w-[440px] max-w-[92vw] max-h-[52vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3">
-          <div className={`${pill} text-white/50`}>
-            ROUND {doc.round} · TIER {doc.tier} — one voice per cell · every cell must speak before the tier resolves
+          <div className="flex items-start justify-between gap-2">
+            <div className={`${pill} text-white/50`}>
+              ROUND {doc.round} · TIER {doc.tier} — you are dealt into ONE cell; the rest deliberate without you.
+              Click a NAME to walk through the world · ○ casts your vote · 💬 speaks in your cell.
+            </div>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => setOpen(false)} title="minimize — the pill rides along"
+                className={`${pill} px-1.5 py-0.5 rounded border border-white/15 text-white/60 hover:text-white`}>—</button>
+              <button onClick={closeOut} title="leave the deliberation — back to the door"
+                className={`${pill} px-1.5 py-0.5 rounded border border-white/15 text-white/60 hover:text-white`}>✕</button>
+            </div>
           </div>
           {doc.cells.map((c, i) => {
-            const myVote = who ? c.votes[who] : undefined
+            const mine = i === myCellIdx(doc)
+            const myVote = who && mine ? c.votes[who] : undefined
             const tally: Record<string, number> = {}
             for (const w of Object.values(c.votes)) tally[w] = (tally[w] || 0) + 1
             return (
-              <div key={i} className="rounded-lg border border-white/10 p-2">
-                <div className={`${pill} text-brass mb-1.5`}>CELL {i + 1} {Object.keys(c.votes).length > 0 ? '· spoken' : '· waiting'}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {c.worlds.map(w => (
-                    <button key={w}
-                      onClick={() => vote(i, w)}
-                      className={`${pill} px-2 py-1 rounded border transition-colors ${
-                        myVote === w
-                          ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
-                          : 'border-white/15 text-white/70 hover:border-amber-400/40 hover:text-white'
-                      }`}>
-                      {w.toLowerCase()}{tally[w] ? ` ·${tally[w]}` : ''}
-                    </button>
-                  ))}
+              <div key={i} className={`rounded-lg border p-2 ${mine ? 'border-amber-400/40' : 'border-white/10'}`}>
+                <div className={`${pill} mb-1.5 ${mine ? 'text-amber-300' : 'text-brass'}`}>
+                  CELL {i + 1} {mine ? '· YOUR CELL' : ''} {Object.keys(c.votes).length > 0 ? '· spoken' : '· waiting'}
+                </div>
+                <div className="space-y-1">
+                  {c.worlds.map(w => {
+                    const thread = c.comments?.[w] || []
+                    const unfolded = threadFor === i + ':' + w
+                    return (
+                      <div key={w}>
+                        <div className="flex items-center gap-1.5">
+                          {mine && (
+                            <button onClick={() => vote(i, w)} title={myVote === w ? 'your vote' : 'cast your vote here'}
+                              className={`${pill} w-6 text-center py-1 rounded border transition-colors ${
+                                myVote === w
+                                  ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
+                                  : 'border-white/15 text-white/50 hover:border-amber-400/50 hover:text-amber-200'
+                              }`}>
+                              {myVote === w ? '●' : '○'}
+                            </button>
+                          )}
+                          <button onClick={() => travel(w)} title="walk through this world, bar in hand"
+                            className={`${pill} flex-1 text-left px-2 py-1 rounded border transition-colors ${
+                              mine ? 'border-white/15 text-white/80 hover:border-flame/50 hover:text-white'
+                                   : 'border-white/8 text-white/45 hover:border-white/25 hover:text-white/70'
+                            }`}>
+                            {w.toLowerCase()}{tally[w] ? ` ·${tally[w]}` : ''} <span className="opacity-50">↗</span>
+                          </button>
+                          <button onClick={() => { setThreadFor(unfolded ? null : i + ':' + w); setDraft('') }}
+                            className={`${pill} px-1.5 py-1 rounded border border-white/10 ${thread.length ? 'text-brass' : 'text-white/35'} hover:text-white`}>
+                            💬{thread.length > 0 ? thread.length : ''}
+                          </button>
+                        </div>
+                        {unfolded && (
+                          <div className="ml-7 mt-1 mb-1.5 space-y-1">
+                            {thread.map((m, k) => (
+                              <div key={k} className={`${pill} text-white/60 leading-relaxed`}>
+                                <span className="text-brass/80">{m.who}</span> — {m.text}
+                              </div>
+                            ))}
+                            {thread.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one</div>}
+                            {mine && who && (
+                              <div className="flex gap-1.5">
+                                <input value={draft} onChange={e => setDraft(e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') comment(i, w, draft) }}
+                                  placeholder="speak in your cell…" maxLength={280}
+                                  className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-2 py-1 text-white/80 outline-none focus:border-amber-400/40`} />
+                                <button onClick={() => comment(i, w, draft)}
+                                  className={`${pill} px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white`}>SAY</button>
+                              </div>
+                            )}
+                            {!mine && <div className={`${pill} text-white/25`}>not your cell — listening only</div>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )
@@ -258,9 +385,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible }: {
             ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
             : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
         }`}>
-        {doc.champion
-          ? `♛ ${doc.champion.toLowerCase()} · TIER ${doc.tier} · VOTE`
-          : `⚔ TOURNAMENT · TIER ${doc.tier} · VOTE`}
+        {docked
+          ? `⚔ DELIBERATING · TIER ${doc.tier} · YOUR CELL`
+          : doc.champion
+            ? `♛ ${doc.champion.toLowerCase()} · TIER ${doc.tier} · VOTE`
+            : `⚔ TOURNAMENT · TIER ${doc.tier} · VOTE`}
       </button>
     </div>
   )

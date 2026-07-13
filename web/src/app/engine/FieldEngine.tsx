@@ -369,6 +369,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // (the cap per viewing instance). Others also land in worldData.presence,
   // so a world's hook or shader can react to visitors without engine changes.
   const [presenceOthers, setPresenceOthers] = useState<Array<{ id: string; x: number; y: number; hue: number }>>([])
+  const [presenceOff, setPresenceOff] = useState(false)
+  const presenceOffRef = useRef(false)
+  const [, setToolsTick] = useState(0)
+  useEffect(() => {
+    try { const v = !!localStorage.getItem('cc-presence-off'); setPresenceOff(v); presenceOffRef.current = v } catch { /* fine */ }
+  }, [])
   const presenceIdRef = useRef<string>('')
   useEffect(() => {
     if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10)
@@ -387,6 +393,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (wdp && (wdp['singlePlayer'] === true || wdp['multiplayer'] === false)) {
         setPresenceOthers(prev => (prev.length ? [] : prev))
         if (wdp['presence']) delete wdp['presence']
+        return
+      }
+      // viewer's own choice: presence off means invisible both ways
+      if (presenceOffRef.current) {
+        setPresenceOthers(prev => (prev.length ? [] : prev))
         return
       }
       const mx = sim?.worldData['mouse_x'], my = sim?.worldData['mouse_y']
@@ -4100,6 +4111,60 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             </button>
           )}
 
+          {/* WORLD TOOLS — the space panel: contents + the two switches. */}
+          {spaceId && chromeVisible && (() => {
+            const wd = simulationRef.current?.worldData
+            const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
+            const toggleBtn = (on: boolean, onClick: () => void) => (
+              <button onClick={onClick}
+                className={`px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] transition-colors ${on
+                  ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200'
+                  : 'bg-white/5 border-white/15 text-white/40'}`}>
+                {on ? 'ON' : 'OFF'}
+              </button>
+            )
+            return (
+              <div className="absolute bottom-14 right-3 z-40 w-72 rounded-xl bg-black/75 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-white/10 text-[10px] tracking-[0.25em] text-white/50">WORLD TOOLS</div>
+                <div className="px-3 py-2.5 space-y-2.5 border-b border-white/10">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>multiplayer</span>
+                    {toggleBtn(mp, () => {
+                      const sim = simulationRef.current
+                      if (!sim) return
+                      sim.worldData['multiplayer'] = !mp
+                      sim.worldData['singlePlayer'] = mp
+                      setToolsTick(n => n + 1)
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>player presence</span>
+                    {toggleBtn(!presenceOff, () => {
+                      const v = !presenceOff
+                      setPresenceOff(v); presenceOffRef.current = v
+                      try { if (v) localStorage.setItem('cc-presence-off', '1'); else localStorage.removeItem('cc-presence-off') } catch { /* fine */ }
+                    })}
+                  </div>
+                  <div className="text-[9px] text-white/35 leading-relaxed">
+                    multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways.
+                  </div>
+                </div>
+                <div className="px-3 py-2">
+                  <div className="text-[9px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
+                  <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                    {[...fields.values()].map(f => (
+                      <div key={f.id} className="flex items-center justify-between text-[10px]">
+                        <span className="text-white/75 truncate">{f.name || f.id}</span>
+                        <span className="text-white/30 ml-2 flex-shrink-0">{f.shapeType || ''}</span>
+                      </div>
+                    ))}
+                    {fields.size === 0 && <div className="text-[10px] text-white/30">an empty world, waiting</div>}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {gpuFailed && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#0c0a09]">
               <div className="text-center font-mono px-6">
@@ -4451,7 +4516,7 @@ The eye versions your edits automatically after each settled burst — just buil
           )}
 
           {/* Info overlay */}
-          {chromeVisible && (
+          {chromeVisible && !spaceId && (
           <div className="absolute top-3 left-3 text-[10px] text-muted font-mono flex items-center gap-2">
             <span className="pointer-events-none">
               {gridSize}x{gridSize} | zoom: {cameraRef.current.zoom.toFixed(1)}x
@@ -4503,7 +4568,7 @@ The eye versions your edits automatically after each settled burst — just buil
         </div>
 
         {/* Field list panel — scrollable under the canvas */}
-        {chromeVisible && (
+        {chromeVisible && !spaceId && (
         <div className="h-40 flex-shrink-0 border-t border-border bg-background/95 overflow-y-auto">
           <div className="px-3 py-2">
             <div className="flex items-center justify-between mb-1">
@@ -4587,7 +4652,7 @@ The eye versions your edits automatically after each settled burst — just buil
       </div>
 
       {/* Designer sidebar */}
-      {chromeVisible && (
+      {chromeVisible && !spaceId && (
       <div className="w-96 flex-shrink-0 flex flex-col border-l border-border bg-background overflow-hidden">
         {/* Inspector Panel */}
         <div className="flex-shrink-0 overflow-y-auto" style={{ maxHeight: '50%' }}>

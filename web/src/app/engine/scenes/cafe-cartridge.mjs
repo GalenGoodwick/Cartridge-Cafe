@@ -435,10 +435,20 @@ try {
       window.dispatchEvent(new CustomEvent('cafe:portals', {
         detail: U.order.map(n => {
           const B = U.bubbles[n]
-          return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
+          return B && { name: n, launch: B.launch, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
         }).filter(Boolean),
       }))
     }
+  }
+
+  // the group layer speaks for itself when empty — with or without shell UI
+  if (SUB) {
+    wd.hud = U.order.length ? [] : [{
+      id: 'sm_empty', type: 'text', x: '22%', y: '46%',
+      text: subKey ? 'an empty shelf \u2014 JOIN, then + PIN A WORLD (top center)'
+                   : 'no sub-mains yet \u2014 \u2302 FOUND YOURS (top center) starts the first',
+      color: '#c9b370', fontSize: '14px',
+    }]
   }
 
   // ── publish: cam, count, cursor(uv), then (x, y, style+hue) per bubble ──

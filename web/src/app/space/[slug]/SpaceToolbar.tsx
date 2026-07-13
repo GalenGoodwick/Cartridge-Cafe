@@ -26,6 +26,15 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(name)
   const [shownName, setShownName] = useState(name)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [delErr, setDelErr] = useState('')
+  const deleteWorld = async () => {
+    setDelErr('')
+    const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+    if (r.ok) { window.location.href = '/' ; return }
+    const d = await r.json().catch(() => null)
+    setDelErr(d?.error || 'could not delete')
+  }
   const saveName = async () => {
     const want = nameDraft.trim()
     setEditingName(false)
@@ -184,7 +193,29 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
       visible
       slot={`tournament:space:${slug}`}
       worlds={versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+      emptyHint="⚔ SAVE A POINT TO OPEN THE VERSION ARENA"
     />
+    {confirmDel && (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setConfirmDel(false)}>
+        <div className="w-[380px] max-w-[92vw] border border-red-400/30 rounded-xl px-7 py-6 bg-[#120a08]/95 text-center" onClick={e => e.stopPropagation()}>
+          <div className="font-display italic text-xl text-[#ffdba8] mb-1">delete this world?</div>
+          <div className="font-mono text-[10px] tracking-[0.15em] text-white/50 uppercase mb-4">
+            gone for good — unless others hold a stake: branches, votes, or a live cell will refuse
+          </div>
+          {delErr && <div className="font-mono text-[11px] text-red-300 mb-3 leading-relaxed">{delErr}</div>}
+          <div className="flex gap-2 justify-center">
+            <button onClick={() => setConfirmDel(false)}
+              className="flex-1 rounded-lg bg-white/10 hover:bg-white/20 py-2 font-mono text-[10px] tracking-[0.15em] text-white/80 transition-colors">
+              KEEP IT
+            </button>
+            <button onClick={deleteWorld}
+              className="flex-1 rounded-lg bg-red-500/80 hover:bg-red-400 py-2 font-mono text-[10px] tracking-[0.15em] text-black transition-colors">
+              DELETE
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {/* left rail — the right rail belongs to the engine (instructions, AI lamp, branches) */}
     <div className="fixed top-3 left-3 z-50 flex flex-col items-start gap-2 font-sans">
       {/* header chip */}
@@ -203,6 +234,13 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
             </span>
           )}
           {ownerName && <span className="text-white/50"> · {ownerName}</span>}
+          {isOwner && (
+            <button onClick={() => { setDelErr(''); setConfirmDel(true) }}
+              title="delete this world"
+              className="ml-2 text-white/30 hover:text-red-400 text-[11px] transition-colors">
+              ✕
+            </button>
+          )}
           {versionView !== undefined && (
             <span className="ml-2 rounded bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[11px]">save point v{versionView} · read-only</span>
           )}

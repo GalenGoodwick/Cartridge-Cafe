@@ -68,6 +68,16 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   // tick a frame or two past go(), and its doors must not follow the player
   // into the next world. Hubs re-announce every 2s, so a dropped one returns.
   const portalsBlockRef = useRef(0)
+  // deliberation mode: the MAIN arena bar docks to the player and rides into
+  // worlds so they can see what they're voting on. The roster is frozen from
+  // main's doors (worlds' own portals must not become contestants), and every
+  // name→launch pair ever announced is kept so travel works from anywhere.
+  const [docked, setDocked] = useState(false)
+  const [mainRoster, setMainRoster] = useState<string[]>([])
+  const launchMapRef = useRef<Record<string, string>>({})
+  const travelTo = (name: string) => {
+    window.dispatchEvent(new CustomEvent('cafe:launch', { detail: launchMapRef.current[name] || name }))
+  }
   const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
@@ -91,16 +101,33 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
    *  v0 truth model — a save-slot doc, last-write-wins, reconciled here,
    *  same law as the tournament until enforcement moves server-side. */
   type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }> }
+  /** Optimistic write loop: stamp the doc, write, read back. If someone else
+   *  wrote in between (their stamp shows instead), replay our mutation on
+   *  THEIR state — concurrent pins/joins merge instead of erasing each other. */
   const mutateSubs = async (fn: (subs: Record<string, SubEntry>) => string | null): Promise<boolean> => {
-    const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('submains:index')).then(r => r.json()).catch(() => null)
-    const d = (j?.data && j.data.v === 1 && j.data.subs) ? j.data as { v: 1; subs: Record<string, SubEntry> } : { v: 1 as const, subs: {} }
-    const err = fn(d.subs)
-    if (err) { window.alert(err); return false }
-    await fetch('/api/engine/save', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot: 'submains:index', data: d }),
-    }).catch(() => {})
-    return true
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('submains:index')).then(r => r.json()).catch(() => null)
+      const d = (j?.data && j.data.v === 1 && j.data.subs)
+        ? j.data as { v: 1; subs: Record<string, SubEntry>; stamp?: string }
+        : { v: 1 as const, subs: {} as Record<string, SubEntry>, stamp: undefined as string | undefined }
+      const err = fn(d.subs)
+      if (err) { window.alert(err); return false }
+      const stamp = Math.random().toString(36).slice(2)
+      d.stamp = stamp
+      await fetch('/api/engine/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot: 'submains:index', data: d }),
+      }).catch(() => {})
+      await new Promise(res => setTimeout(res, 350))
+      const back = await fetch('/api/engine/save?slot=' + encodeURIComponent('submains:index')).then(r => r.json()).catch(() => null)
+      if (back?.data?.stamp === stamp) {
+        // the shelf changed — wake the door now, don't wait out its poll
+        ;(window as unknown as { __cafePoke?: number }).__cafePoke = Date.now()
+        return true
+      }
+    }
+    window.alert('the shelf is busy — try once more')
+    return false
   }
 
   /** FOUND YOURS — one sub-main per person, named at birth */
@@ -133,7 +160,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   /** members pin worlds (or spaces) onto the group's shelf by name */
   const pinWorld = async () => {
     const slug = subMode?.slug
-    if (!who || !slug) return
+    if (!who) { window.alert('sign in to pin'); return }
+    if (!slug) { window.alert('step inside a sub-main first — pins land on its shelf'); return }
     const name = window.prompt('Pin which world? (its name on main)')
     if (!name?.trim()) return
     const target = name.trim().toUpperCase()
@@ -327,7 +355,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
     const onPortals = (e: Event) => {
       if (Date.now() < portalsBlockRef.current) return   // a door slamming behind us
-      setPortals((e as CustomEvent).detail || [])
+      const ps = ((e as CustomEvent).detail || []) as { name: string; launch?: string; x: number; y: number; r: number }[]
+      setPortals(ps)
+      for (const p of ps) if (p.launch) launchMapRef.current[p.name] = p.launch
+      // the MAIN arena's roster freezes from main's own doors only
+      if (sceneRef.current === 'CAFE' && ps.length > 1 && !(window as unknown as { __cafeMine?: { on?: boolean } }).__cafeMine?.on) {
+        setMainRoster(ps.map(p => p.name))
+      }
     }
     const onModal = (e: Event) => setModalUp(!!(e as CustomEvent).detail)
     const onSubMode = (e: Event) => setSubMode((e as CustomEvent).detail)
@@ -437,17 +471,26 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
 
       {/* the rolling tournament — every page is its own arena.
           commons: all core worlds · MY WORLDS: your deeds · SUB-MAIN: the
-          branch shelf · a world: MAIN vs its branches (what promotion enacts) */}
-      {scene === 'CAFE' && !mine && (
-        <TournamentBar visible={!modalUp} slot="tournament:main" worlds={portals.map(pt => pt.name)} />
+          branch shelf · a world: MAIN vs its branches (what promotion enacts).
+          While DOCKED, the main arena rides along into worlds (so a voter can
+          see the contenders) and every other arena stands down. */}
+      {((scene === 'CAFE' && !mine) || docked) && (
+        <TournamentBar visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
+          docked={docked} onDock={setDocked} onTravel={travelTo}
+          onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
+          emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}
-      {scene === 'CAFE' && mine && (
-        <TournamentBar visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)} />
+      {scene === 'CAFE' && mine && !docked && (
+        <TournamentBar visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
+          emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
-      {scene === 'SUB-MAIN' && (
-        <TournamentBar visible={!modalUp} slot="tournament:submain" worlds={portals.map(pt => pt.name)} />
+      {scene === 'SUB-MAIN' && !docked && (
+        <TournamentBar visible={!modalUp}
+          slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
+          worlds={portals.map(pt => pt.name)}
+          emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
-      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && (
+      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
         <TournamentBar
           visible={!modalUp && !confirmLeave}
           slot={`tournament:world:${scene.split(' ⑂ ')[0]}`}
@@ -494,18 +537,21 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* the group layer's controls — found in the viewer, join/pin inside */}
-      {scene === 'SUB-MAIN' && !modalUp && subMode && (
+      {/* the group layer's controls — found in the viewer, join/pin inside.
+          Before the world's first report arrives, assume the viewer: the
+          FOUND door must never be invisible on an empty group layer. */}
+      {scene === 'SUB-MAIN' && !modalUp && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2">
-          {subMode.mode === 'group' && (<>
+          {subMode?.mode === 'group' ? (<>
             <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
               className="brass-tab px-3 py-1.5 text-[10px]">◂ SUB-MAINS</button>
             <span className="cafe-sign text-xl px-1">{(subMode.name || '').toLowerCase()}</span>
             {who && !subMode.member && <button onClick={joinSub} className="brass-tab px-3 py-1.5 text-[10px]">JOIN</button>}
             {who && subMode.member && <button onClick={pinWorld} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>}
-          </>)}
-          {subMode.mode === 'viewer' && !subMode.haveOwn && (
-            <button onClick={foundSub} className="brass-tab px-3 py-1.5 text-[10px]">⌂ FOUND YOURS</button>
+          </>) : (
+            !subMode?.haveOwn && (
+              <button onClick={foundSub} className="brass-tab px-3 py-1.5 text-[10px]">⌂ FOUND YOURS</button>
+            )
           )}
         </div>
       )}

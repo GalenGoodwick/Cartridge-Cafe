@@ -32,6 +32,9 @@ type BlendMode = 'alpha' | 'additive' | 'multiply' | 'screen' | 'softlight' | 'o
 /** Shared compiled pipeline — deduplicated by WGSL source hash + blend mode */
 interface SharedPipeline {
   pipeline: GPURenderPipeline
+  /** rgba32float-target variant — REQUIRED for the presence-map pass (the
+   *  presence texture is float; a canvas-format pipeline is incompatible) */
+  presencePipeline?: GPURenderPipeline
   refCount: number
 }
 
@@ -1276,8 +1279,17 @@ export class FieldRenderer {
           blendState('alpha'),
           [this.effectUniformBindGroupLayout!],
         )
+        // the presence pass draws into an rgba32float texture — it needs its
+        // own pipeline variant (this was built but never wired: every effect
+        // hitting the presence path raised an attachment-format error)
+        const presencePipeline = await this.createPresenceRenderPipeline(
+          fragModule,
+          this.effectTextureBindGroupLayout!,
+          undefined,   // rgba32float is not blendable — presence is a footprint, not a composite
+          [this.effectUniformBindGroupLayout!],
+        )
 
-        shared = { pipeline, refCount: 1 }
+        shared = { pipeline, presencePipeline, refCount: 1 }
         this.sharedPipelines.set(hash, shared)
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : 'Pipeline creation failed' }
@@ -2167,7 +2179,7 @@ export class FieldRenderer {
         const entry = this.fieldEntries.get(effect.programKey)
         if (!entry) continue
         const shared = this.sharedPipelines.get(entry.wgslHash)
-        if (!shared) continue
+        if (!shared?.presencePipeline) continue   // float-target variant only
 
         // Copy this effect's uniforms from staging → active buffer
         encoder.copyBufferToBuffer(
@@ -2182,7 +2194,7 @@ export class FieldRenderer {
             storeOp: 'store',
           }],
         })
-        pass.setPipeline(shared.pipeline)
+        pass.setPipeline(shared.presencePipeline)
         pass.setBindGroup(0, frameBG)
         pass.setBindGroup(1, this.getEffectTextureBindGroup(effect.fieldId))
         pass.setBindGroup(2, effectUniformBG)
