@@ -240,6 +240,24 @@ Step hooks run in the browser and have access to field state, world data, and ca
 |---------|-----------|-------------|
 | `set_world_data` | `data: Record<string, unknown>, fieldId?` | Merge into global worldData object (set key to null to delete) |
 
+### Player Presence (multiplayer context)
+
+Every viewing tab is an orb on everyone else's screen — capped at 25 per
+viewing instance. Rooms are scoped per space / per cartridge / global.
+Other players also land in `worldData.presence` each tick
+(`[{ id, x, y, hue }]` in grid coords), so a hook or shader can react to
+visitors natively.
+
+**Games declare their context.** A single-player world opts out entirely —
+no orbs shown, and its player is not broadcast:
+
+```json
+{"type": "set_world_data", "data": {"singlePlayer": true}}
+```
+
+(`multiplayer: false` also works. Checked live, so it can be toggled at
+runtime — e.g. presence in the lobby, solitude in the run.)
+
 ### Field Links (Visual Beams)
 
 | Command | Parameters | Description |

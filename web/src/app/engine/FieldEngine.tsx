@@ -237,6 +237,51 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // Pointer state for panning (Space + drag to pan)
   const pointerDown = useRef(false)
   const isPanning = useRef(false)
+
+  // ── Player presence: every viewer is an orb on everyone else's screen. ──
+  // Tabs report their cursor ~4×/s; the server answers with up to 25 others
+  // (the cap per viewing instance). Others also land in worldData.presence,
+  // so a world's hook or shader can react to visitors without engine changes.
+  const [presenceOthers, setPresenceOthers] = useState<Array<{ id: string; x: number; y: number; hue: number }>>([])
+  const presenceIdRef = useRef<string>('')
+  useEffect(() => {
+    if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10)
+    const id = presenceIdRef.current
+    let hue = 0
+    for (let i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360
+    const world = spaceId || playScene || 'global'
+    let alive = true
+    const tick = async () => {
+      const sim = simulationRef.current
+      // single-player context: the world declares it in its own data
+      // (worldData.singlePlayer: true, or multiplayer: false) — no orbs shown,
+      // and this player is not broadcast. Checked per-tick so it holds across
+      // async scene loads and live set_world_data changes.
+      const wdp = sim?.worldData
+      if (wdp && (wdp['singlePlayer'] === true || wdp['multiplayer'] === false)) {
+        setPresenceOthers(prev => (prev.length ? [] : prev))
+        if (wdp['presence']) delete wdp['presence']
+        return
+      }
+      const mx = sim?.worldData['mouse_x'], my = sim?.worldData['mouse_y']
+      const x = typeof mx === 'number' ? mx : gridSize / 2
+      const y = typeof my === 'number' ? my : gridSize / 2
+      try {
+        const r = await fetch('/api/engine/presence', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ world, id, x, y, hue }),
+        })
+        if (!alive) return
+        const data = await r.json()
+        const others = Array.isArray(data.others) ? data.others.slice(0, 25) : []
+        setPresenceOthers(prev => (prev.length === 0 && others.length === 0) ? prev : others)
+        if (sim) sim.worldData['presence'] = others
+      } catch { /* offline is fine — presence is a live signal, not a record */ }
+    }
+    const iv = setInterval(tick, 250)
+    return () => { alive = false; clearInterval(iv) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, playScene])
   const spaceHeld = useRef(false)
   const lastPointer = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
@@ -3801,6 +3846,35 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             onContextMenu={e => e.preventDefault()}
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
+
+          {/* other players, present as orbs — capped at 25 per viewing instance */}
+          {presenceOthers.length > 0 && canvasRef.current && (() => {
+            const cv = canvasRef.current
+            const w = cv.clientWidth || 1, h = cv.clientHeight || 1
+            const cam = cameraRef.current
+            const gridRange = gridSize / cam.zoom
+            const aspect = w / h
+            const toScreen = (gx: number, gy: number) => aspect > 1
+              ? { left: ((gx - cam.x) / (gridRange * aspect) + 0.5) * w, top: ((gy - cam.y) / gridRange + 0.5) * h }
+              : { left: ((gx - cam.x) / gridRange + 0.5) * w, top: ((gy - cam.y) / (gridRange / aspect) + 0.5) * h }
+            return (
+              <div className="absolute inset-0 pointer-events-none z-30">
+                {presenceOthers.map(o => {
+                  const p = toScreen(o.x, o.y)
+                  if (p.left < -20 || p.left > w + 20 || p.top < -20 || p.top > h + 20) return null
+                  return (
+                    <div key={o.id} className="absolute rounded-full"
+                      style={{
+                        left: p.left - 7, top: p.top - 7, width: 14, height: 14,
+                        background: `radial-gradient(circle at 35% 35%, hsl(${o.hue} 90% 82%), hsl(${o.hue} 85% 55%) 60%, transparent 78%)`,
+                        boxShadow: `0 0 12px 2px hsl(${o.hue} 90% 60% / 0.55)`,
+                        transition: 'left 0.25s linear, top 0.25s linear',
+                      }} />
+                  )
+                })}
+              </div>
+            )
+          })()}
 
           {spaceId && (
             <button
