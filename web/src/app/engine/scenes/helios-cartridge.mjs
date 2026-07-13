@@ -15,7 +15,7 @@ const HL_HOR: f32 = ${HORIZON}.0;
 fn hl_moonness(ph: f32) -> f32 { return 0.5 - 0.5 * cos(6.2831853 * ph); }
 
 // sky + orb, callable so the lake can mirror it
-fn hl_sky(p: vec2f, sun: vec2f, m: f32, t: f32) -> vec3f {
+fn hl_sky(p: vec2f, sun: vec2f, m: f32, t: f32, a: f32) -> vec3f {
   let up = clamp(1.0 - p.y / HL_HOR, 0.0, 1.0);
   // day palette → night palette
   let dayZen = vec3f(0.16, 0.34, 0.62);
@@ -24,8 +24,10 @@ fn hl_sky(p: vec2f, sun: vec2f, m: f32, t: f32) -> vec3f {
   let nightHor = vec3f(0.05, 0.06, 0.13);
   var col = mix(mix(dayHor, dayZen, pow(up, 0.6)), mix(nightHor, nightZen, pow(up, 0.6)), m);
 
-  // light breathes from wherever the orb is
-  let d = length(p - sun);
+  // light breathes from wherever the orb is (screen-round despite the
+  // vertical compression that fits the painting to wide viewports)
+  let rel = vec2f(p.x - sun.x, (p.y - sun.y) / a);
+  let d = length(rel);
   let warm = mix(vec3f(1.1, 0.7, 0.35), vec3f(0.55, 0.62, 0.80), m);
   col += warm * exp(-d * 0.012) * mix(0.5, 0.28, m);
 
@@ -34,10 +36,10 @@ fn hl_sky(p: vec2f, sun: vec2f, m: f32, t: f32) -> vec3f {
   if (d < r) {
     var oc = mix(vec3f(3.2, 2.4, 1.1), vec3f(1.6, 1.7, 1.9), m);
     // craters surface only as it becomes moon
-    let cr = vnoise((p - sun) * 0.22 + 7.0);
+    let cr = vnoise(rel * 0.22 + 7.0);
     oc *= 1.0 - m * 0.35 * smoothstep(0.45, 0.8, cr);
     // crescent: a dark disk slides across as moonness grows past half
-    let bite = length(p - sun - vec2f(r * 0.85 * smoothstep(0.35, 1.0, m), -4.0));
+    let bite = length(rel - vec2f(r * 0.85 * smoothstep(0.35, 1.0, m), -4.0));
     if (m > 0.35 && bite < r * 0.98) { oc *= 0.12; }
     col = oc;
   }
@@ -62,7 +64,9 @@ fn hl_ridge(x: f32, seed: f32, amp: f32, base: f32) -> f32 {
 }
 
 fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  let p = (uv + vec2f(1.0)) * 256.0;
+  // wide viewports crop the 512-row painting — compress it into what's visible
+  let asp = max(frame.resolution.x / max(frame.resolution.y, 1.0), 1.0);
+  let p = vec2f((uv.x + 1.0) * 256.0, (uv.y * asp + 1.0) * 256.0);
   let t = time;
   var sun = vec2f(uni(0), uni(1));
   if (sun.x < 1.0) { sun = vec2f(150.0, 120.0); }        // pre-hook default: morning
@@ -72,7 +76,7 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
   let LAKE = 424.0;
 
   if (p.y < LAKE) {
-    col = hl_sky(p, sun, m, t);
+    col = hl_sky(p, sun, m, t, asp);
 
     // three ridgelines, lit from wherever the orb hangs
     let warm = mix(vec3f(1.0, 0.75, 0.45), vec3f(0.5, 0.58, 0.75), m);
@@ -110,13 +114,31 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
     let ry = LAKE - (p.y - LAKE) * 1.9;
     let wob = vnoise(vec2f(p.x * 0.05, p.y * 0.3 - t * 0.8)) - 0.5;
     var rp = vec2f(p.x + wob * 9.0, ry + wob * 5.0);
-    col = hl_sky(rp, sun, m, t) * mix(0.62, 0.5, m);
+    col = hl_sky(rp, sun, m, t, asp) * mix(0.62, 0.5, m);
     col += vec3f(0.04, 0.05, 0.06) * (0.5 + wob);
+
+    // moon-glitter: when the moon is out and its face lies on the lake,
+    // the water sparkles along the reflection path
+    let refY = LAKE + (LAKE - sun.y) / 1.9;
+    let mglow = smoothstep(0.35, 0.75, m) * smoothstep(620.0, 500.0, refY);
+    if (mglow > 0.01) {
+      let depth = clamp((p.y - LAKE) / (512.0 - LAKE), 0.0, 1.0);
+      let spread = 16.0 + 100.0 * depth;                 // the glade widens toward you
+      let path = smoothstep(spread, spread * 0.2, abs(p.x - sun.x + wob * 14.0));
+      // glint cells — little horizontal flecks, twinkling out of phase
+      let gp = vec2f(p.x * 0.12, p.y * 0.3 - t * 0.55);
+      let gh = hash21(floor(gp));
+      let gd = length((fract(gp) - 0.5) * vec2f(0.9, 2.2));
+      let flash = pow(0.5 + 0.5 * sin(t * (2.0 + gh * 6.0) + gh * 47.0), 6.0);
+      let glint = smoothstep(0.45, 0.05, gd) * step(0.80, gh) * flash;
+      col += vec3f(1.05, 1.12, 1.30) * glint * path * mglow * 2.8;   // the sparkle
+      col += vec3f(0.35, 0.40, 0.55) * path * mglow * 0.20 * (0.6 + wob);  // silver sheen
+    }
   }
 
   // hold feedback: a slow pulse ring while the orb is aging
   if (uni(3) > 0.01) {
-    let ring = abs(length(p - sun) - (30.0 + fract(t * 0.8) * 26.0));
+    let ring = abs(length(vec2f(p.x - sun.x, (p.y - sun.y) / asp)) - (30.0 + fract(t * 0.8) * 26.0));
     col += vec3f(0.8, 0.8, 0.7) * uni(3) * smoothstep(3.0, 0.0, ring) * 0.5;
   }
 
@@ -137,8 +159,9 @@ try {
   // HOVER carries the sun — no press needed; the light lives at your cursor
   if (typeof mx === 'number' && (mx !== S.lx || my !== S.ly)) {
     S.lx = mx; S.ly = my
+    const aspw = (typeof window !== 'undefined') ? Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1) : 1
     S.sx = Math.max(20, Math.min(492, mx))
-    S.sy = Math.max(28, Math.min(HORIZON - 24, my))
+    S.sy = Math.max(28, Math.min(HORIZON - 24, (my - 256) * aspw + 256))
   }
   // aging is ambient (full cycle ~70s); CLICKING makes time race (~7s)
   S.phase = (S.phase + pdt / (md ? 7 : 70)) % 1
@@ -176,6 +199,13 @@ const scene = {
   modules: [],
   timestamp: Date.now(),
 }
+
+import { writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+const here = dirname(fileURLToPath(import.meta.url))
+writeFileSync(join(here, '../../../../public/cartridges/HELIOS.json'), JSON.stringify(scene, null, 1))
+console.log('HELIOS bundled')
 
 const res = await fetch('http://localhost:3000/api/engine/scene', {
   method: 'POST',

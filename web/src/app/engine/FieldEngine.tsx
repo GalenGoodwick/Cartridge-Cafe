@@ -3056,6 +3056,16 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 sim.collisionCallbacks.clear()
                 cachedOverlapMasksRef.current = new Map()
 
+                // a loaded scene starts framed whole, not wherever the camera was
+                {
+                  const cv = canvasRef.current
+                  const w = cv?.clientWidth || window.innerWidth
+                  const h = cv?.clientHeight || window.innerHeight
+                  cameraRef.current.x = gridSize / 2
+                  cameraRef.current.y = gridSize / 2
+                  cameraRef.current.zoom = Math.min(w, h) / gridSize
+                }
+
                 // Restore visual types and modules first
                 if (scene.visualTypes) {
                   for (const vt of scene.visualTypes) {
