@@ -288,6 +288,13 @@ const scene = {
   timestamp: Date.now(),
 }
 
+import { writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+const here = dirname(fileURLToPath(import.meta.url))
+writeFileSync(join(here, '../../../../public/cartridges/PROOF.json'), JSON.stringify(scene, null, 1))
+console.log('PROOF bundled to public/cartridges/PROOF.json')
+
 const res = await fetch('http://localhost:3000/api/engine/scene', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
