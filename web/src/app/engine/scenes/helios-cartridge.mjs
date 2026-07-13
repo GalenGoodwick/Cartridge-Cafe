@@ -64,8 +64,7 @@ fn hl_ridge(x: f32, seed: f32, amp: f32, base: f32) -> f32 {
 }
 
 fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  // wide viewports crop the 512-row painting — compress it into what's visible
-  let asp = max(frame.resolution.x / max(frame.resolution.y, 1.0), 1.0);
+  let asp = 1.0;   // contain-fit shows the whole painting
   let p = vec2f((uv.x + 1.0) * 256.0, (uv.y * asp + 1.0) * 256.0);
   let t = time;
   var sun = vec2f(uni(0), uni(1));
@@ -164,7 +163,7 @@ try {
   const HORIZON = ${HORIZON}
 
   const md = wd.mouse_down, mx = wd.mouse_x, my = wd.mouse_y
-  const aspw = (typeof window !== 'undefined') ? Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1) : 1
+  const aspw = 1
   // HOVER carries the sun — no press needed; the light lives at your cursor
   if (typeof mx === 'number' && (mx !== S.lx || my !== S.ly)) {
     S.lx = mx; S.ly = my

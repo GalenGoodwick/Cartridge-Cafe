@@ -194,10 +194,7 @@ fn visual_od_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 
   let bob = sin(t * 0.5) * 0.06;
   let ro = vec3f(0.0, 3.4 + bob, 0.0);
-  // wide viewports crop the field vertically — widen the vertical FOV to keep
-  // the whole lighthouse in frame at any aspect
-  let visH = clamp(frame.resolution.y / max(frame.resolution.x, 1.0), 0.45, 1.0);
-  var rd = normalize(vec3f(p.x, (p.y * 0.72) / visH - 0.14 * visH, 1.75));
+  var rd = normalize(vec3f(p.x, p.y * 0.72 - 0.14, 1.75));
   let rxy = rotate(rd.xy, sin(t * 0.35) * 0.012);
   rd = normalize(vec3f(rxy.x, rxy.y, rd.z));
 
@@ -474,10 +471,7 @@ fn visual_od_lh(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
   // the same eye as the world field — the two compose pixel-perfectly
   let bob = sin(t * 0.5) * 0.06;
   let ro = vec3f(0.0, 3.4 + bob, 0.0);
-  // wide viewports crop the field vertically — widen the vertical FOV to keep
-  // the whole lighthouse in frame at any aspect
-  let visH = clamp(frame.resolution.y / max(frame.resolution.x, 1.0), 0.45, 1.0);
-  var rd = normalize(vec3f(p.x, (p.y * 0.72) / visH - 0.14 * visH, 1.75));
+  var rd = normalize(vec3f(p.x, p.y * 0.72 - 0.14, 1.75));
   let rxy = rotate(rd.xy, sin(t * 0.35) * 0.012);
   rd = normalize(vec3f(rxy.x, rxy.y, rd.z));
 

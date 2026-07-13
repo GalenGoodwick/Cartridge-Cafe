@@ -538,25 +538,25 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => window.removeEventListener('cafe:pause', onPause)
   }, [playScene])
 
-  // Play mode: the world IS the screen. Fit the 512 grid to the viewport
-  // (contain: the whole world visible, void beyond it) on mount and resize.
+  // Play mode and spaces: the world IS the screen. Fit the 512 grid to the
+  // viewport (contain: the whole world visible, void beyond it) on mount and
+  // resize. zoom is world-cells-per-short-axis (gridRange = gridSize / zoom),
+  // resolution-independent — contain is zoom = 1 on every screen; the old
+  // Math.min(w,h)/gridSize treated zoom as pixels-per-cell and cropped ~40%
+  // on any viewport taller than the grid.
   useEffect(() => {
-    if (!playScene) return
+    if (!playScene && !spaceId) return
     const fit = () => {
-      const cv = canvasRef.current
-      if (!cv) return
-      const w = cv.clientWidth || window.innerWidth
-      const h = cv.clientHeight || window.innerHeight
       cameraRef.current.x = gridSize / 2
       cameraRef.current.y = gridSize / 2
-      cameraRef.current.zoom = Math.min(w, h) / gridSize
+      cameraRef.current.zoom = 1
     }
     fit()
     const t = setTimeout(fit, 300)   // after the canvas settles
     window.addEventListener('resize', fit)
     return () => { clearTimeout(t); window.removeEventListener('resize', fit) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playScene])
+  }, [playScene, spaceId])
 
   // Play mode: load a saved scene into the local sim and run it.
   // Reacts to playScene changes — the world swaps in place (portal travel).
@@ -986,8 +986,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const dy = e.clientY - lastPointer.current.y
     const delta = input.screenDeltaToGridDelta(dx, dy, rect, camera.zoom)
 
-    camera.x -= delta.dx
-    camera.y -= delta.dy
+    // bound the grid to the viewport: the camera center never leaves the
+    // world, so at most half the view can be void in any direction
+    camera.x = Math.max(0, Math.min(gridSize, camera.x - delta.dx))
+    camera.y = Math.max(0, Math.min(gridSize, camera.y - delta.dy))
     lastPointer.current = { x: e.clientX, y: e.clientY }
   }, [syncFields])
 
@@ -3099,15 +3101,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 sim.collisionCallbacks.clear()
                 cachedOverlapMasksRef.current = new Map()
 
-                // a loaded scene starts framed whole, not wherever the camera was
-                {
-                  const cv = canvasRef.current
-                  const w = cv?.clientWidth || window.innerWidth
-                  const h = cv?.clientHeight || window.innerHeight
-                  cameraRef.current.x = gridSize / 2
-                  cameraRef.current.y = gridSize / 2
-                  cameraRef.current.zoom = Math.min(w, h) / gridSize
-                }
+                // a loaded scene starts framed whole, not wherever the camera
+                // was. CONTAIN, not cover: zoom = 1 shows the full grid on the
+                // short axis at any resolution (see the fit effect above).
+                cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
 
                 // Restore visual types and modules first
                 if (scene.visualTypes) {

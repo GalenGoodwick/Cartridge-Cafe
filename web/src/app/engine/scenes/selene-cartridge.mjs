@@ -26,7 +26,7 @@ fn se_moon(rel: vec2f, r: f32, ph: f32) -> f32 {
 }
 
 fn visual_selene(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  let asp = max(frame.resolution.x / max(frame.resolution.y, 1.0), 1.0);
+  let asp = 1.0;   // contain-fit shows the whole deep
   let t = time;
   let mc = vec2f(uni(0), uni(1));
   let ph = uni(2);
@@ -108,7 +108,7 @@ try {
   // (a slow ambient drift keeps it alive: full loop ~90s, held ~9s)
   S.ph = (S.ph + pdt / (md ? 9 : 90)) % 1
 
-  const aspw = (typeof window !== 'undefined') ? Math.max(window.innerWidth / Math.max(window.innerHeight, 1), 1) : 1
+  const aspw = 1
   const R = 0.68 / aspw
   const cap = (text, kind) => { if (typeof window !== 'undefined' && S.capd !== text) { S.capd = text; window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text, kind } })) } }
 
