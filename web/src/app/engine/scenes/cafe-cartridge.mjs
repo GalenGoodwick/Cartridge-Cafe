@@ -2,11 +2,39 @@
 // living miniature of its game. Your cursor is a lens; hover blooms a portal;
 // click steps through it. No webpage. Save+load: node cafe-cartridge.mjs
 
+// ── the shelf ranks itself: most recently updated worlds sit closest to center ──
+const _list = await fetch('http://localhost:3000/api/engine/scene?action=list').then(r => r.json())
+const _stamped = []
+for (const n of _list.scenes.filter(n => n !== 'CAFE')) {
+  const { scene } = await fetch('http://localhost:3000/api/engine/scene?name=' + encodeURIComponent(n)).then(r => r.json())
+  _stamped.push({ n, ts: (scene && scene.timestamp) || 0 })
+}
+_stamped.sort((a, b) => b.ts - a.ts)
+const NAMES = _stamped.map(x => x.n)
+const N = NAMES.length
+const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
+const _hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
+const POS = NAMES.map((n, i) => {
+  const r = 0.155 * Math.sqrt(i + 0.35)
+  const a = i * 2.39996 + 0.65
+  return [+(r * Math.cos(a)).toFixed(3), +(r * Math.sin(a) * 0.74 - 0.02).toFixed(3)]
+})
+const POS_WGSL = POS.map(([x, y], i) => `  if (i == ${i}) { return vec2f(${x}, ${y}); }`).join('\n')
+const STYLE_WGSL = NAMES.map((n, i) => `  if (i == ${i}) { return ${STYLE_OF[n] ?? 8}; }`).join('\n')
+const HUE_WGSL = NAMES.map((n, i) => `  if (i == ${i}) { return ${_hue(n).toFixed(3)}; }`).join('\n')
+
 const WORLD = /* wgsl */`
 fn cf_portal_pos(i: i32) -> vec2f {
-  // an easy arc across the room
-  let fx = f32(i) - 3.5;
-  return vec2f(fx * 0.25, -0.02 + abs(fx) * abs(fx) * 0.014);
+${POS_WGSL}
+  return vec2f(0.0, 0.0);
+}
+fn cf_style(i: i32) -> i32 {
+${STYLE_WGSL}
+  return 8;
+}
+fn cf_hue(i: i32) -> f32 {
+${HUE_WGSL}
+  return 0.5;
 }
 
 fn cf_stars(p: vec2f, t: f32) -> vec3f {
@@ -38,17 +66,18 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // warm hearth-light from below — this is a cafe, not a void
   col += vec3f(0.10, 0.055, 0.02) * pow(max(0.0, uv.y + 0.2), 2.0) * (0.8 + 0.2 * sin(t * 0.7));
 
-  // ── eight cartridges, each a living miniature ──
-  for (var i = 0; i < 8; i++) {
+  // ── every cartridge on the shelf, newest nearest the center ──
+  for (var i = 0; i < ${N}; i++) {
     let ctr = cf_portal_pos(i);
     let d = length(uv - ctr);
-    let R = 0.105;
+    let R = 0.088;
     let hov = uni(2 + i);                          // 0..1 hover bloom from the hook
     let rr = R * (1.0 + hov * 0.12);
     if (d < rr) {
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
-      if (i == 0) {
+      let st = cf_style(i);
+      if (st == 0) {
         // FABRIC — a lens wandering through stars
         var pp = q * 2.0;
         let lc = vec2f(sin(t * 0.6) * 0.5, cos(t * 0.47) * 0.4);
@@ -56,7 +85,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         pp -= ld * (0.16 / max(dot(ld, ld), 0.02));
         g = cf_stars(pp * 1.6, t) * 2.2;
         g += vec3f(0.5, 0.9, 1.1) * exp(-dot(ld, ld) * 14.0) * 0.4;
-      } else if (i == 1) {
+      } else if (st == 1) {
         // ORRERY — three worlds around a coal
         g = vec3f(0.02, 0.015, 0.03);
         g += vec3f(3.0, 1.7, 0.5) * exp(-dot(q, q) * 30.0);
@@ -69,7 +98,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
           if (k == 3) { pc = vec3f(0.8, 0.5, 0.25); }
           g += pc * exp(-dot(pp, pp) * 260.0) * 1.6;
         }
-      } else if (i == 2) {
+      } else if (st == 2) {
         // GARNET — the crystal
         let qa = rotate(q, t * 0.4);
         let cd = abs(qa.x) * 0.866 + abs(qa.y) * 0.5;
@@ -77,7 +106,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let facet = 0.6 + 0.4 * sin(qa.x * 9.0 + qa.y * 7.0 + t * 0.8);
         g = mix(vec3f(0.02, 0.01, 0.02), vec3f(0.75, 0.18, 0.25) * facet, inside);
         g += vec3f(1.6, 0.9, 0.7) * pow(max(0.0, facet - 0.75) * 4.0, 2.0) * inside;
-      } else if (i == 3) {
+      } else if (st == 3) {
         // ONE DAY — a sky that keeps its whole day
         let ph = fract(t * 0.05);
         let el = sin(ph * 6.28318) * 0.8;
@@ -87,14 +116,14 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let sun = vec2f(cos(ph * 6.28318 - 1.57) * 0.6, -el * 0.55 + 0.1);
         g += vec3f(3.0, 2.0, 0.9) * exp(-dot(q - sun, q - sun) * 60.0) * max(day, 0.15);
         if (q.y > 0.25) { g = mix(g, g * vec3f(0.5, 0.6, 0.8), 0.6); }   // the sea below
-      } else if (i == 4) {
+      } else if (st == 4) {
         // SAIL — one boat, one sea
         g = mix(vec3f(0.35, 0.5, 0.65), vec3f(0.05, 0.14, 0.2), smoothstep(-0.1, 0.5, q.y));
         let w = sin(q.x * 9.0 + t * 1.4) * 0.05;
         g = mix(g, vec3f(0.03, 0.10, 0.14), smoothstep(w + 0.02, w - 0.02, -q.y + 0.1) * 0.0 + smoothstep(w - 0.02, w + 0.06, q.y - 0.05));
         let sail = max(max(-(q.x + 0.05) * 3.0, q.y + 0.15), (q.x * 0.9 + q.y * 0.8) - 0.28);
         g = mix(g, vec3f(1.0, 0.96, 0.88), smoothstep(0.02, -0.02, sail));
-      } else if (i == 5) {
+      } else if (st == 5) {
         // SOLSTICE — a sun you carry over a valley
         g = vec3f(0.03, 0.04, 0.09);
         let sp = vec2f(sin(t * 0.5) * 0.45, -0.3 + cos(t * 0.5) * 0.12);
@@ -102,19 +131,28 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let hill = q.y - (0.25 + 0.15 * sin(q.x * 3.0 + 1.0));
         let lit = max(0.0, 1.0 - length(q - sp) * 1.4);
         g = mix(g, mix(vec3f(0.03, 0.05, 0.02), vec3f(0.15, 0.3, 0.08), lit), smoothstep(-0.02, 0.02, hill));
-      } else if (i == 6) {
+      } else if (st == 6) {
         // TIDERUNNER — wind over water
         let band = sin(q.y * 14.0 - t * 1.1 + sin(q.x * 4.0) * 0.7);
         g = mix(vec3f(0.05, 0.13, 0.17), vec3f(0.12, 0.25, 0.3), 0.5 + 0.5 * band);
         g += vec3f(0.8, 0.85, 0.85) * pow(max(0.0, band - 0.8) * 5.0, 2.0) * 0.4;
         let bt = q - vec2f(sin(t * 0.4) * 0.4, 0.0);
         g += vec3f(0.9, 0.85, 0.75) * exp(-dot(bt, bt) * 300.0) * 1.2;
-      } else {
+      } else if (st == 7) {
         // SIGNAL — a television waiting for a word
         let sn = hash21(floor(q * 24.0) + floor(t * 9.0));
         g = vec3f(sn * 0.5);
         g += vec3f(0.3, 1.0, 0.45) * exp(-dot(q, q) * 8.0) * (0.28 + 0.14 * sin(t * 2.0));
         g *= 0.82 + 0.18 * sin(q.y * 60.0 - t * 8.0);
+      } else {
+        // a young world — a banded seed-planet in its own hue
+        let hue = cf_hue(i);
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = cA * (0.22 + 0.5 * fbm3(q * 3.0 + vec2f(t * 0.08, f32(i) * 3.7)));
+        g += cA * 0.4 * smoothstep(0.6, 1.0, 1.0 - abs(q.y * 2.2 + 0.3 * sin(q.x * 3.0 + t * 0.4)));
+        let mn = q - vec2f(cos(t * 0.5 + f32(i) * 1.9), sin(t * 0.5 + f32(i) * 1.9) * 0.6) * 0.78;
+        g += vec3f(0.85) * exp(-dot(mn, mn) * 260.0);
+        g *= 0.85 + 0.3 * (1.0 - length(q));
       }
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
@@ -136,7 +174,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 const HOOK = `
 try {
   const wd = sim.worldData
-  if (!wd.__cf || !wd.__cf.hov || wd.__cf.hov.length !== 8) wd.__cf = { hov: [0,0,0,0,0,0,0,0], prevDown: false, mx: 0, my: 0 }
+  if (!wd.__cf || !wd.__cf.hov || wd.__cf.hov.length !== ${N}) wd.__cf = { hov: Array(${N}).fill(0), prevDown: false, mx: 0, my: 0 }
   const C = wd.__cf
   const dt2 = Math.min(dt, 0.05)
 
@@ -146,14 +184,15 @@ try {
   C.mx += (tx - C.mx) * Math.min(1, dt2 * 12)
   C.my += (ty - C.my) * Math.min(1, dt2 * 12)
 
-  const GAMES = ['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL']
-  const pos = i => { const fx = i - 3.5; return [fx * 0.25, -0.02 + Math.abs(fx) * Math.abs(fx) * 0.014] }
+  const GAMES = ${JSON.stringify(NAMES)}
+  const POSA = ${JSON.stringify(POS)}
+  const pos = i => POSA[i]
 
   let hovered = -1
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < ${N}; i++) {
     const [px, py] = pos(i)
     const d = Math.hypot(tx - px, ty - py)
-    const want = hasMouse && d < 0.13 ? 1 : 0
+    const want = hasMouse && d < 0.10 ? 1 : 0
     if (want) hovered = i
     C.hov[i] += (want - C.hov[i]) * Math.min(1, dt2 * 8)
   }

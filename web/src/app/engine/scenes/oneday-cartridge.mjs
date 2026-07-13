@@ -187,85 +187,6 @@ fn od_seacol(p: vec3f, n: vec3f, sd: vec3f, md: vec3f, eye: vec3f, dist: vec3f, 
   return col;
 }
 
-fn od_lh_sdf(p: vec3f) -> vec2f {
-  let ic = od_ic();
-  let q = p - vec3f(ic.x, 0.0, ic.y);
-  var d = length(q * vec3f(1.0, 1.25, 1.08)) - 6.4;
-  d = d - (vnoise3(q * 0.55) - 0.5) * 2.6 - (vnoise3(q * 1.9) - 0.5) * 0.9;
-  var m = 0.0;
-  let ty = clamp((p.y - 4.0) / 7.5, 0.0, 1.0);
-  let dTower = max(length(q.xz) - mix(1.35, 0.85, ty), abs(p.y - 7.75) - 3.75);
-  if (dTower < d) { d = dTower; m = 1.0; }
-  let dGal = max(length(q.xz) - 1.45, abs(p.y - 11.7) - 0.28);
-  if (dGal < d) { d = dGal; m = 2.0; }
-  let dLan = max(length(q.xz) - 0.8, abs(p.y - 12.45) - 0.75);
-  if (dLan < d) { d = dLan; m = 3.0; }
-  let ry = clamp((p.y - 13.2) / 1.3, 0.0, 1.0);
-  let dRoof = max(length(q.xz) - mix(1.0, 0.05, ry), abs(p.y - 13.85) - 0.65);
-  if (dRoof < d) { d = dRoof; m = 2.0; }
-  return vec2f(d, m);
-}
-
-fn od_lh_trace(ro: vec3f, rd: vec3f) -> vec3f {
-  let ic = od_ic();
-  let oc = ro - vec3f(ic.x, 6.0, ic.y);
-  let b = dot(oc, rd);
-  let c = dot(oc, oc) - 156.25;
-  let disc = b * b - c;
-  if (disc < 0.0) { return vec3f(0.0, 0.0, -1.0); }
-  let sq = sqrt(disc);
-  let t1 = -b + sq;
-  var tt = max(-b - sq, 0.0);
-  for (var i = 0; i < 48; i++) {
-    let dm = od_lh_sdf(ro + rd * tt);
-    if (dm.x < 0.025) { return vec3f(tt, dm.y, 1.0); }
-    tt = tt + dm.x * 0.75;
-    if (tt > t1) { break; }
-  }
-  return vec3f(0.0, 0.0, -1.0);
-}
-
-fn od_lh_shade(p: vec3f, n: vec3f, rd: vec3f, m: f32, sd: vec3f, t: f32, st: f32) -> vec3f {
-  let el = uni(1);
-  let day = smoothstep(-0.10, 0.35, el);
-  let night = smoothstep(0.05, -0.18, el);
-  var alb = vec3f(0.0);
-  var emis = vec3f(0.0);
-
-  if (m < 0.5) {
-    let vn = vnoise3(p * 1.7);
-    alb = mix(vec3f(0.085, 0.085, 0.09), vec3f(0.14, 0.135, 0.13), vn);
-    let wet = smoothstep(2.4, 0.6, p.y);
-    alb = alb * (1.0 - wet * 0.55);
-  } else if (m < 1.5) {
-    let seg = floor((p.y - 4.0) / 1.9);
-    alb = select(vec3f(0.85, 0.86, 0.88), vec3f(0.55, 0.08, 0.06), glsl_mod(seg, 2.0) < 0.5);
-  } else if (m < 2.5) {
-    alb = vec3f(0.10, 0.10, 0.12);
-  } else {
-    alb = vec3f(0.3, 0.3, 0.3);
-    emis = vec3f(5.0, 3.8, 2.2) * (0.18 + 0.82 * uni(4));   // lantern wakes at dusk
-  }
-
-  let dif = max(dot(n, sd), 0.0) * smoothstep(-0.05, 0.05, el);
-  let ambSky = mix(vec3f(0.05, 0.06, 0.10), vec3f(0.30, 0.34, 0.48), day) * (0.35 + 0.25 * max(n.y, 0.0));
-  let sunCol = od_suncol(el) * 1.4;
-  var col = alb * (ambSky + sunCol * dif);
-  // cool moonlight fill at night
-  col = col + alb * vec3f(0.10, 0.12, 0.17) * max(dot(n, vec3f(0.3, 0.8, -0.5)), 0.0) * night;
-
-  let rim = pow(clamp(1.0 + dot(rd, n), 0.0, 1.0), 3.0);
-  col = col + sunCol * rim * 0.15 * day;
-
-  if (m < 0.5) {
-    let surgePh = max(sin(st * 1.4), 0.0);
-    let sprayN = vnoise(vec2f(p.x * 1.3 + p.z * 1.1, p.y * 1.8) + vec2f(st * 0.9, -st * 0.6));
-    let spray = smoothstep(3.4, 0.8, p.y) * smoothstep(0.15, 0.8, sprayN) * (0.4 + 0.6 * surgePh);
-    col = mix(col, vec3f(0.88, 0.90, 0.92) * (0.3 + 0.7 * day + 0.3 * night), clamp(spray, 0.0, 1.0) * 0.8);
-  }
-  return col + emis;
-}
-
 fn visual_od_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let p = vec2f(uv.x, -uv.y);
   let t = time;
@@ -273,7 +194,10 @@ fn visual_od_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 
   let bob = sin(t * 0.5) * 0.06;
   let ro = vec3f(0.0, 3.4 + bob, 0.0);
-  var rd = normalize(vec3f(p.x, p.y * 0.72 - 0.14, 1.75));
+  // wide viewports crop the field vertically — widen the vertical FOV to keep
+  // the whole lighthouse in frame at any aspect
+  let visH = clamp(frame.resolution.y / max(frame.resolution.x, 1.0), 0.45, 1.0);
+  var rd = normalize(vec3f(p.x, (p.y * 0.72) / visH - 0.14 * visH, 1.75));
   let rxy = rotate(rd.xy, sin(t * 0.35) * 0.012);
   rd = normalize(vec3f(rxy.x, rxy.y, rd.z));
 
@@ -334,25 +258,263 @@ fn visual_od_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     }
   }
 
-  // ---- island + lighthouse ----
-  let lh = od_lh_trace(ro, rd);
-  if (lh.z > 0.0 && lh.x < tScene) {
+  return vec4f(col, 1.0);
+}`
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE LIGHTHOUSE — its own field, selectable, portable to any scene.
+// Reads the same whiteboard (sun uni(0,1), beam uni(4)); composites over
+// whatever is behind it, so it can be lifted into a different world whole.
+const LIGHTHOUSE = /* wgsl */`
+fn od2_ic() -> vec2f { return vec2f(-9.0, 32.0); }
+fn od2_suncol(el: f32) -> vec3f {
+  return mix(vec3f(1.30, 0.45, 0.16), vec3f(1.15, 1.05, 0.90), smoothstep(0.02, 0.55, el));
+}
+fn od2_box(p: vec3f, b: vec3f) -> f32 {
+  let d = abs(p) - b;
+  return length(max(d, vec3f(0.0))) + min(max(d.x, max(d.y, d.z)), 0.0);
+}
+
+// materials: 0 rock · 1 whitewash tower · 2 ironwork · 3 lantern glass
+//            4 copper cupola · 5 cottage wall · 6 cottage roof · 7 chimney · 8 door
+fn od2_sdf(p: vec3f) -> vec2f {
+  let ic = od2_ic();
+  let q = p - vec3f(ic.x, 0.0, ic.y);
+
+  // the rock
+  var d = length(q * vec3f(1.0, 1.25, 1.08)) - 6.4;
+  d = d - (vnoise3(q * 0.55) - 0.5) * 2.6 - (vnoise3(q * 1.9) - 0.5) * 0.9;
+  var m = 0.0;
+
+  // tapered masonry tower with a wider plinth — colonial whitewash
+  let ty = clamp((p.y - 4.0) / 7.5, 0.0, 1.0);
+  let taper = mix(1.42, 0.88, pow(ty, 0.85));
+  let plinth = 1.0 + 0.35 * smoothstep(5.2, 4.0, p.y);
+  let dTower = max(length(q.xz) - taper * plinth, abs(p.y - 7.75) - 3.75);
+  if (dTower < d) { d = dTower; m = 1.0; }
+
+  // gallery deck + railing: handrail ring and a circle of balusters
+  let dDeck = max(length(q.xz) - 1.52, abs(p.y - 11.62) - 0.14);
+  if (dDeck < d) { d = dDeck; m = 2.0; }
+  let dRail = max(abs(length(q.xz) - 1.44) - 0.035, abs(p.y - 12.42) - 0.045);
+  if (dRail < d) { d = dRail; m = 2.0; }
+  let phi = atan2(q.z, q.x);
+  let seg = 6.28318 / 20.0;
+  let aphi = (glsl_mod(phi + seg * 0.5, seg) - seg * 0.5) * 1.44;
+  let dBal = max(length(vec2f(length(q.xz) - 1.44, aphi)) - 0.035, abs(p.y - 12.02) - 0.42);
+  if (dBal < d) { d = dBal; m = 2.0; }
+
+  // octagonal lantern room
+  var oct = abs(q.x);
+  oct = max(oct, abs(q.z));
+  oct = max(oct, abs(q.x * 0.7071 + q.z * 0.7071));
+  oct = max(oct, abs(q.x * 0.7071 - q.z * 0.7071));
+  let dLan = max(oct - 0.82, abs(p.y - 12.55) - 0.72);
+  if (dLan < d) { d = dLan; m = 3.0; }
+
+  // copper cupola with finial
+  let ry = clamp((p.y - 13.27) / 1.15, 0.0, 1.0);
+  let dRoof = max(length(q.xz) - mix(1.06, 0.06, pow(ry, 0.72)), abs(p.y - 13.84) - 0.58);
+  if (dRoof < d) { d = dRoof; m = 4.0; }
+  let dFin = length(vec3f(q.x, (p.y - 14.72) * 0.8, q.z)) - 0.14;
+  if (dFin < d) { d = dFin; m = 2.0; }
+
+  // the keeper's cottage: clapboard saltbox, gable roof, brick chimney
+  let qc = q - vec3f(3.1, 4.45, 0.6);
+  let dHouse = od2_box(qc, vec3f(1.55, 0.95, 1.15));
+  if (dHouse < d) { d = dHouse; m = 5.0; }
+  let dRoofH = max(max(abs(qc.z) * 0.92 + (qc.y - 1.72), -(qc.y - 0.75)), max(abs(qc.x) - 1.72, abs(qc.z) - 1.32));
+  if (dRoofH < d) { d = dRoofH; m = 6.0; }
+  let dChim = od2_box(qc - vec3f(0.55, 1.85, 0.0), vec3f(0.22, 0.65, 0.22));
+  if (dChim < d) { d = dChim; m = 7.0; }
+
+  return vec2f(d, m);
+}
+
+fn od2_trace(ro: vec3f, rd: vec3f) -> vec3f {
+  let ic = od2_ic();
+  let oc = ro - vec3f(ic.x, 6.5, ic.y);
+  let b = dot(oc, rd);
+  let c = dot(oc, oc) - 182.25;
+  let disc = b * b - c;
+  if (disc < 0.0) { return vec3f(0.0, 0.0, -1.0); }
+  let sq = sqrt(disc);
+  let t1 = -b + sq;
+  var tt = max(-b - sq, 0.0);
+  for (var i = 0; i < 60; i++) {
+    let dm = od2_sdf(ro + rd * tt);
+    if (dm.x < 0.02) { return vec3f(tt, dm.y, 1.0); }
+    tt = tt + dm.x * 0.7;
+    if (tt > t1) { break; }
+  }
+  return vec3f(0.0, 0.0, -1.0);
+}
+
+// arched-window mask on the tower shaft, facing the sea (toward the viewer)
+fn od2_window(phi: f32, y: f32, yc: f32) -> f32 {
+  let PHIC = -1.296;   // bearing from island to the home shore
+  var ang = phi - PHIC;
+  ang = glsl_mod(ang + 3.14159, 6.28318) - 3.14159;
+  let aw = ang * 1.15;
+  let wy = y - yc;
+  let rect = step(abs(aw), 0.145) * step(-0.26, wy) * step(wy, 0.13);
+  let arch = step(length(vec2f(aw, wy - 0.13)), 0.145);
+  return max(rect, arch);
+}
+
+fn od2_shade(p: vec3f, n: vec3f, rd: vec3f, m: f32, sd: vec3f, t: f32, st: f32) -> vec3f {
+  let el = uni(1);
+  let day = smoothstep(-0.10, 0.35, el);
+  let night = smoothstep(0.05, -0.18, el);
+  let ic = od2_ic();
+  let q = p - vec3f(ic.x, 0.0, ic.y);
+  let phi = atan2(q.z, q.x);
+  var alb = vec3f(0.0);
+  var emis = vec3f(0.0);
+  var spec = 0.0;
+
+  if (m < 0.5) {
+    // rock: strata, wet dark base, lichen where it faces the sky
+    let strat = sin(p.y * 2.1 + (vnoise3(p * 0.4) - 0.5) * 5.0);
+    alb = mix(vec3f(0.055, 0.052, 0.058), vec3f(0.125, 0.115, 0.10), 0.5 + 0.5 * strat);
+    alb = mix(alb, vec3f(0.14, 0.13, 0.10), vnoise3(p * 1.7) * 0.4);
+    let wet = smoothstep(2.6, 0.5, p.y);
+    alb = alb * (1.0 - wet * 0.6);
+    spec = wet * 0.5;
+    let lich = smoothstep(0.45, 0.75, vnoise3(p * 2.3)) * smoothstep(0.35, 0.7, n.y) * smoothstep(3.2, 4.4, p.y);
+    alb = mix(alb, vec3f(0.16, 0.17, 0.08), lich * 0.7);
+  } else if (m < 1.5) {
+    // whitewashed masonry: courses, joints, weather streaks
+    alb = vec3f(0.86, 0.85, 0.81);
+    let course = smoothstep(0.055, 0.02, abs(fract(p.y / 0.58) - 0.5) * 0.58);
+    let joint = smoothstep(0.05, 0.02, abs(fract(phi * 1.15 / 0.85 + floor(p.y / 0.58) * 0.5) - 0.5) * 0.85);
+    alb = alb * (1.0 - course * 0.10 - joint * course * 0.05);
+    let streak = smoothstep(0.55, 0.9, vnoise(vec2f(phi * 6.0, p.y * 0.22)));
+    alb = alb * (1.0 - streak * 0.16 * smoothstep(4.5, 10.5, p.y));
+    alb = alb * (1.0 - smoothstep(5.4, 4.2, p.y) * 0.18);   // grime at the plinth
+    // three arched windows climbing the shaft + the door
+    var win = 0.0;
+    win = max(win, od2_window(phi, p.y, 6.3));
+    win = max(win, od2_window(phi, p.y, 8.5));
+    win = max(win, od2_window(phi, p.y, 10.5));
+    let doorM = od2_window(phi, p.y * 0.72, 3.42);
+    alb = mix(alb, vec3f(0.05, 0.05, 0.06), win);
+    alb = mix(alb, vec3f(0.06, 0.13, 0.09), doorM);        // colonial green door
+    let lit = 0.35 + 0.65 * smoothstep(0.4, 0.9, hash11(floor(p.y / 2.0)));
+    emis = emis + vec3f(2.0, 1.25, 0.45) * win * night * lit;
+  } else if (m < 2.5) {
+    alb = vec3f(0.055, 0.058, 0.068);   // wrought iron
+    spec = 0.35;
+  } else if (m < 3.5) {
+    // lantern glazing: mullions read dark, panes catch sky and hold the lamp
+    let mseg = 6.28318 / 8.0;
+    let mphi = abs(glsl_mod(phi + mseg * 0.5, mseg) - mseg * 0.5);
+    let mull = step(mphi, 0.09);
+    let bands = step(abs(p.y - 12.55), 0.06) + step(0.60, abs(p.y - 12.55));
+    if (mull + bands > 0.5) {
+      alb = vec3f(0.055, 0.058, 0.068);
+      spec = 0.35;
+    } else {
+      alb = vec3f(0.02, 0.025, 0.035);
+      spec = 1.2;
+      let lampP = vec3f(ic.x, 12.55, ic.y);
+      let lampD = length(p - lampP);
+      emis = vec3f(6.5, 4.9, 2.6) * exp(-lampD * lampD * 0.9) * (0.15 + 0.85 * uni(4)) * 2.2;
+      emis = emis + vec3f(1.4, 1.05, 0.55) * (0.10 + 0.90 * uni(4)) * 0.35;
+    }
+  } else if (m < 4.5) {
+    // copper gone to patina
+    let pat = vnoise3(p * 3.1);
+    alb = mix(vec3f(0.30, 0.20, 0.12), vec3f(0.24, 0.40, 0.33), smoothstep(0.35, 0.7, pat));
+    spec = 0.6;
+  } else if (m < 5.5) {
+    // clapboard: fine horizontal shadow lines
+    alb = vec3f(0.82, 0.80, 0.74);
+    let lap = smoothstep(0.10, 0.02, abs(fract(p.y / 0.16) - 0.5) * 0.16);
+    alb = alb * (1.0 - lap * 0.13);
+    // two warm windows on the seaward face
+    let qc = q - vec3f(3.1, 4.45, 0.6);
+    let front = step(qc.z, -1.05);
+    let wmask = front * step(abs(abs(qc.x) - 0.62), 0.26) * step(abs(qc.y + 0.05), 0.30);
+    alb = mix(alb, vec3f(0.05, 0.05, 0.06), wmask);
+    emis = emis + vec3f(2.2, 1.35, 0.5) * wmask * night;
+  } else if (m < 6.5) {
+    alb = vec3f(0.16, 0.15, 0.15) * (0.8 + 0.4 * vnoise(vec2f(p.x * 6.0, p.z * 6.0)));  // shingles
+  } else if (m < 7.5) {
+    let brick = smoothstep(0.06, 0.02, abs(fract(p.y / 0.14) - 0.5) * 0.14);
+    alb = vec3f(0.38, 0.16, 0.11) * (1.0 - brick * 0.35);   // brick chimney
+  } else {
+    alb = vec3f(0.06, 0.13, 0.09);
+  }
+
+  let dif = max(dot(n, sd), 0.0) * smoothstep(-0.05, 0.05, el);
+  let ambSky = mix(vec3f(0.05, 0.06, 0.10), vec3f(0.30, 0.34, 0.48), day) * (0.35 + 0.25 * max(n.y, 0.0));
+  let sunCol = od2_suncol(el) * 1.4;
+  var col = alb * (ambSky + sunCol * dif);
+  col = col + alb * vec3f(0.10, 0.12, 0.17) * max(dot(n, vec3f(0.3, 0.8, -0.5)), 0.0) * night;
+  let rim = pow(clamp(1.0 + dot(rd, n), 0.0, 1.0), 3.0);
+  col = col + sunCol * rim * 0.15 * day;
+  col = col + sunCol * pow(max(dot(reflect(rd, n), sd), 0.0), 24.0) * spec * day;
+
+  if (m < 0.5) {
+    let surgePh = max(sin(st * 1.4), 0.0);
+    let sprayN = vnoise(vec2f(p.x * 1.3 + p.z * 1.1, p.y * 1.8) + vec2f(st * 0.9, -st * 0.6));
+    let spray = smoothstep(2.1, 0.9, p.y) * smoothstep(0.35, 0.9, sprayN) * (0.4 + 0.6 * surgePh);
+    col = mix(col, vec3f(0.88, 0.90, 0.92) * (0.3 + 0.7 * day + 0.3 * night), clamp(spray, 0.0, 1.0) * 0.45);
+  }
+  return col + emis;
+}
+
+fn visual_od_lh(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
+  let p = vec2f(uv.x, -uv.y);
+  let t = time;
+  let st = 1.0 + t * 0.8;
+
+  // the same eye as the world field — the two compose pixel-perfectly
+  let bob = sin(t * 0.5) * 0.06;
+  let ro = vec3f(0.0, 3.4 + bob, 0.0);
+  // wide viewports crop the field vertically — widen the vertical FOV to keep
+  // the whole lighthouse in frame at any aspect
+  let visH = clamp(frame.resolution.y / max(frame.resolution.x, 1.0), 0.45, 1.0);
+  var rd = normalize(vec3f(p.x, (p.y * 0.72) / visH - 0.14 * visH, 1.75));
+  let rxy = rotate(rd.xy, sin(t * 0.35) * 0.012);
+  rd = normalize(vec3f(rxy.x, rxy.y, rd.z));
+
+  let saz = uni(0);
+  let sel = uni(1);
+  let sd = normalize(vec3f(cos(saz) * cos(sel), sin(sel), sin(saz) * cos(sel)));
+
+  var col = behind.rgb;
+
+  // the sea is not ours, but it still hides our feet: approximate the water
+  // plane so rock below a swell yields to the world behind
+  var tSea = 100000.0;
+  if (rd.y < -0.001) { tSea = (0.85 - ro.y) / rd.y; }
+
+  let lh = od2_trace(ro, rd);
+  var tScene = 100000.0;
+  if (lh.z > 0.0) {
     let pr = ro + rd * lh.x;
-    let e = 0.035;
-    let d0 = od_lh_sdf(pr).x;
+    let e = 0.03;
+    let d0 = od2_sdf(pr).x;
     let nr = normalize(vec3f(
-      od_lh_sdf(pr + vec3f(e, 0.0, 0.0)).x - d0,
-      od_lh_sdf(pr + vec3f(0.0, e, 0.0)).x - d0,
-      od_lh_sdf(pr + vec3f(0.0, 0.0, e)).x - d0));
-    col = od_lh_shade(pr, nr, rd, lh.y, sd, t, st);
-    col = mix(col, vec3f(0.45, 0.33, 0.30) * (0.2 + 0.8 * smoothstep(-0.1, 0.3, uni(1))), clamp(lh.x * 0.004, 0.0, 0.4));
+      od2_sdf(pr + vec3f(e, 0.0, 0.0)).x - d0,
+      od2_sdf(pr + vec3f(0.0, e, 0.0)).x - d0,
+      od2_sdf(pr + vec3f(0.0, 0.0, e)).x - d0));
+    var sc = od2_shade(pr, nr, rd, lh.y, sd, t, st);
+    sc = mix(sc, vec3f(0.45, 0.33, 0.30) * (0.2 + 0.8 * smoothstep(-0.1, 0.3, uni(1))), clamp(lh.x * 0.004, 0.0, 0.4));
+    // let the sea's own surf/foam (already in behind) claim the waterline
+    let waterVeil = smoothstep(1.15, 0.45, pr.y);
+    col = mix(sc, behind.rgb, waterVeil);
     tScene = lh.x;
   }
 
-  // ---- twin beams, awake after sunset (uni 4) ----
+  // ── the beam as a force field: hard-edged cone, diagonal energy hatch ──
   let beamI = uni(4);
   if (beamI > 0.01) {
-    let lamp = vec3f(od_ic().x, 12.45, od_ic().y);
+    let ic = od2_ic();
+    let lamp = vec3f(ic.x, 12.55, ic.y);
     for (var k = 0; k < 2; k++) {
       let ba = t * 0.55 + f32(k) * 3.14159;
       let Ld = normalize(vec3f(cos(ba), -0.02, sin(ba)));
@@ -364,30 +526,41 @@ fn visual_od_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       if (den > 0.0001) {
         let sRay = (a1 * c1 - b1) / den;
         let sBeam = (c1 - a1 * b1) / den;
-        if (sRay > 0.0 && sRay < tScene && sBeam > 1.0) {
+        if (sRay > 0.0 && sRay < min(tScene, tSea) && sBeam > 1.2) {
           let dd = length((ro + rd * sRay) - (lamp + Ld * sBeam));
-          col = col + vec3f(2.6, 2.05, 1.35) * exp(-dd * dd * 0.30) * exp(-sBeam * 0.05) * 1.35 * beamI;
+          let w = 0.32 + sBeam * 0.035;            // the cone opens with distance
+          let shell = smoothstep(w, w * 0.78, dd); // hard wall, not a gaussian
+          let edge = exp(-pow((dd - w * 0.92) * 5.5, 2.0)) * 0.8;   // bright skin
+          // one family of diagonal interference — a field, not a net
+          let hatch = pow(0.5 + 0.5 * sin(sBeam * 2.2 - dd * 7.0 - t * 6.0), 3.0);
+          let breathe = 0.93 + 0.07 * sin(t * 22.0 + sBeam * 0.7);
+          let body = shell * (0.34 + 0.66 * hatch);
+          let fall = exp(-sBeam * 0.042);
+          // when the beam points at the eye its cross-section is half the sky — dim it
+          let headOn = 1.0 - pow(abs(a1), 10.0);
+          col = col + mix(vec3f(2.5, 1.95, 1.15), vec3f(3.1, 2.95, 2.45), shell * hatch)
+                      * (body + edge) * fall * 1.5 * beamI * breathe * headOn;
         }
       }
     }
+    // lamp flare when the beam sweeps you
     let toLamp = lamp - ro;
     let lampDist = length(toLamp);
-    if (lampDist < tScene + 2.5) {
-      let ba0 = t * 0.55;
-      let alignK = pow(abs(dot(vec2f(cos(ba0), sin(ba0)), normalize(ro.xz - lamp.xz))), 24.0);
-      let flare = pow(max(dot(rd, toLamp / lampDist), 0.0), 700.0);
-      col = col + vec3f(4.5, 3.4, 2.0) * flare * (0.5 + 4.5 * alignK) * beamI;
-    }
+    let ba0 = t * 0.55;
+    let alignK = pow(abs(dot(vec2f(cos(ba0), sin(ba0)), normalize(ro.xz - lamp.xz))), 24.0);
+    let flare = pow(max(dot(rd, toLamp / lampDist), 0.0), 700.0);
+    col = col + vec3f(4.5, 3.4, 2.0) * flare * (0.5 + 4.5 * alignK) * beamI;
   }
 
-  return vec4f(col, 1.0);
+  if (col.x != col.x || col.y != col.y || col.z != col.z) { col = behind.rgb; }
+  return vec4f(clamp(col, vec3f(0.0), vec3f(60.0)), 1.0);
 }`
 
 const FLIES = /* wgsl */`
 fn visual_od_flies(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   // fireflies over the island after dark — existence itself read off the whiteboard
   let night = smoothstep(0.02, -0.14, uni(1));
-  if (night < 0.02) { return vec4f(0.0); }
+  if (night < 0.02) { return vec4f(behind.rgb, 1.0); }
   let wind = uni(3);
   var c = vec3f(0.0);
   var a = 0.0;
@@ -406,7 +579,7 @@ fn visual_od_flies(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     c += vec3f(0.9, 0.6, 0.15) * exp(-d2 * 2600.0) * blink * 0.35;
     a = max(a, clamp(g * 1.6 + exp(-d2 * 2600.0) * 0.3, 0.0, 1.0));
   }
-  return vec4f(c * night, a * night * 0.95);
+  return vec4f(behind.rgb + c * night, 1.0);
 }`
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -441,9 +614,9 @@ try {
 } catch (e) { /* keep the sim alive */ }
 `
 
-const field = (id, name, color, x, y, shape, visualTypeName, vp) => ({
+const field = (id, name, color, x, y, shape, visualTypeName, vp, props) => ({
   id, name, color,
-  effects: [], memory: [], proximity: [], properties: {},
+  effects: [], memory: [], proximity: [], properties: props || {},
   transform: { x, y, rotation: 0, scale: 1, vx: 0, vy: 0, vr: 0 },
   ...shape,
   visualTypeName,
@@ -454,20 +627,30 @@ const scene = {
   name: 'ONE DAY',
   fields: [
     field('od_world_f', 'One Day', [0.05, 0.08, 0.14, 1], 256, 256, { shapeType: 'rect', w: 512, h: 512 }, 'od_world'),
-    field('od_flies_f', 'Fireflies', [1, 0.8, 0.3, 1], 256, 256, { shapeType: 'rect', w: 512, h: 512 }, 'od_flies'),
+    field('od_lh_f', 'The Lighthouse', [0.9, 0.85, 0.7, 1], 256, 256, { shapeType: 'rect', w: 512, h: 512 }, 'od_lh', null, { superimpose: 1 }),
+    field('od_flies_f', 'Fireflies', [1, 0.8, 0.3, 1], 256, 256, { shapeType: 'rect', w: 512, h: 512 }, 'od_flies', null, { superimpose: 1 }),
   ],
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
-  worldData: { noPixelSampling: true },
+  worldData: { noPixelSampling: true, instructions:
+    'ONE DAY — a colonial lighthouse island living through a real day (~150s): dawn, noon, sunset, stars, moonrise. The keeper lights the lamp at dusk; its beam is a force field over the fog. Nothing to press. Watch.\n\nThe lighthouse and its rock are their own field (The Lighthouse) — select it, or carry it into another world.' },
   stepHooks: [{ id: 'oneday_clock', author: 'fable', description: 'ONE DAY: writes sun/moon/wind/beam/sailboat onto the world-uniform whiteboard', code: HOOK }],
   interactionRules: [],
   interactionEffects: [],
   visualTypes: [
     { name: 'od_world', wgsl: WORLD },
+    { name: 'od_lh', wgsl: LIGHTHOUSE },
     { name: 'od_flies', wgsl: FLIES },
   ],
   modules: [],
   timestamp: Date.now(),
 }
+
+import { writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+const here = dirname(fileURLToPath(import.meta.url))
+writeFileSync(join(here, '../../../../public/cartridges/ONE DAY.json'), JSON.stringify(scene, null, 1))
+console.log('ONE DAY bundled')
 
 const res = await fetch('http://localhost:3000/api/engine/scene', {
   method: 'POST',

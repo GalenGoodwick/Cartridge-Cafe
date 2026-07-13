@@ -698,26 +698,22 @@ One orb owns the world's light. Every shader derives its sky, rim light, reflect
 and palette from TWO whiteboard values: the orb's position and its PHASE. The input
 grammar (pointer state is already in `worldData.mouse_x/mouse_y/mouse_down`):
 
-- **DRAG** — the orb follows the pointer across the sky, and every downstream effect
-  (light direction, haze, reflections, shadows) moves with it, because they all read
-  the same uniforms.
-- **HOLD** (pressed, not moving) — the orb AGES: phase loops day → moonlight → day
-  (~6s per cycle) while held.
-- **RELEASE** — position and phase freeze. The sky keeps the player's choice.
+- **HOVER / MOVE** — the orb follows the pointer across the sky, no press needed;
+  every downstream effect (light direction, haze, reflections, shadows) moves with
+  it, because they all read the same uniforms.
+- **AMBIENT AGING** — time passes by default: phase loops day → moonlight → day
+  slowly (~70s per cycle) on its own.
+- **CLICK & HOLD** — time races (~10x). Release returns to ambient speed.
 
 Hook skeleton:
 
 ```js
 const md = wd.mouse_down, mx = wd.mouse_x, my = wd.mouse_y
-if (md && !S.held) { S.held = 1; S.hx = mx; S.hy = my }
-if (!md) S.held = 0
-if (S.held) {
-  if (Math.hypot(mx - S.hx, my - S.hy) > 6) {           // drag: carry the sun
-    S.sx = mx; S.sy = Math.min(my, HORIZON - 20); S.hx = mx; S.hy = my
-  } else {
-    S.phase = (S.phase + dt / 6) % 1                    // hold: age toward moonlight and back
-  }
+if (typeof mx === 'number' && (mx !== S.lx || my !== S.ly)) {   // hover: carry the sun
+  S.lx = mx; S.ly = my
+  S.sx = mx; S.sy = Math.min(my, HORIZON - 20)
 }
+S.phase = (S.phase + dt / (md ? 7 : 70)) % 1                    // ambient aging; click races
 wd.gpuUniforms = [S.sx, S.sy, S.phase]
 ```
 

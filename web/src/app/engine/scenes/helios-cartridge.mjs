@@ -45,11 +45,13 @@ fn hl_sky(p: vec2f, sun: vec2f, m: f32, t: f32) -> vec3f {
 
   // stars belong to the moon
   if (m > 0.25) {
-    let cell = floor(p * 0.14);
+    let sp2 = p * 0.14;
+    let cell = floor(sp2);
     let st = hash21(cell);
-    if (st > 0.985 && p.y < HL_HOR - 10.0) {
+    if (st > 0.975 && p.y < HL_HOR - 10.0) {
+      let d2 = length(fract(sp2) - 0.5);
       let tw = 0.5 + 0.5 * sin(t * 3.0 + st * 40.0);
-      col += vec3f(0.9, 0.92, 1.0) * (st - 0.985) * 60.0 * tw * smoothstep(0.25, 0.6, m);
+      col += vec3f(0.9, 0.92, 1.0) * smoothstep(0.16, 0.02, d2) * tw * smoothstep(0.25, 0.6, m);
     }
   }
   return col;
@@ -94,11 +96,13 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
 
     // fireflies rise at night over the near meadow
     if (m > 0.5 && p.y > HL_HOR) {
-      let fc = floor(p * 0.06 + vec2f(0.0, t * 0.06));
+      let fp2 = p * 0.06 + vec2f(0.0, t * 0.06);
+      let fc = floor(fp2);
       let fh = hash21(fc + 31.0);
-      if (fh > 0.965) {
+      if (fh > 0.955) {
+        let fd = length(fract(fp2) - 0.5);
         let blink = pow(0.5 + 0.5 * sin(t * 2.5 + fh * 60.0), 3.0);
-        col += vec3f(0.9, 1.4, 0.3) * blink * (m - 0.5) * 2.0 * (fh - 0.965) * 40.0;
+        col += vec3f(0.9, 1.4, 0.3) * smoothstep(0.10, 0.02, fd) * blink * (m - 0.5) * 2.4;
       }
     }
   } else {
@@ -124,29 +128,21 @@ fn visual_helios(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
 const HOOK = `
 try {
   const wd = sim.worldData
-  if (!wd.__hel || wd.__hel.v !== 1) wd.__hel = { v: 1, sx: 150, sy: 120, phase: 0, held: 0, hx: 0, hy: 0, glow: 0 }
+  if (!wd.__hel || wd.__hel.v !== 2) wd.__hel = { v: 2, sx: 150, sy: 120, phase: 0, lx: -1, ly: -1, glow: 0 }
   const S = wd.__hel
   const pdt = Math.min(dt, 0.05)
   const HORIZON = ${HORIZON}
 
   const md = wd.mouse_down, mx = wd.mouse_x, my = wd.mouse_y
-  if (md && !S.held && typeof mx === 'number') { S.held = 1; S.hx = mx; S.hy = my }
-  if (!md) S.held = 0
-
-  if (S.held && typeof mx === 'number') {
-    if (Math.hypot(mx - S.hx, my - S.hy) > 6) {
-      // drag: carry the sun — and all of its light — across the sky
-      S.sx = Math.max(20, Math.min(492, mx))
-      S.sy = Math.max(28, Math.min(HORIZON - 24, my))
-      S.hx = mx; S.hy = my
-      S.glow = Math.max(S.glow, 0.35)
-    } else {
-      // hold: the orb ages toward moonlight and back, looping
-      S.phase = (S.phase + pdt / 6) % 1
-      S.glow = 1
-    }
+  // HOVER carries the sun — no press needed; the light lives at your cursor
+  if (typeof mx === 'number' && (mx !== S.lx || my !== S.ly)) {
+    S.lx = mx; S.ly = my
+    S.sx = Math.max(20, Math.min(492, mx))
+    S.sy = Math.max(28, Math.min(HORIZON - 24, my))
   }
-  S.glow = Math.max(0, S.glow - 1.5 * pdt)
+  // aging is ambient (full cycle ~70s); CLICKING makes time race (~7s)
+  S.phase = (S.phase + pdt / (md ? 7 : 70)) % 1
+  S.glow = md ? 1 : Math.max(0, S.glow - 1.5 * pdt)
 
   const moonness = 0.5 - 0.5 * Math.cos(2 * Math.PI * S.phase)
   wd.gpuUniforms = [S.sx, S.sy, S.phase, S.glow]
@@ -170,7 +166,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'DRAG \\u2014 carry the sun (and all of its light) across the sky.\nHOLD (press, don\\u2019t move) \\u2014 the sun ages to moonlight and back, looping.\nRELEASE \\u2014 the sky keeps your choice.\n\nThe point: there is no goal. The valley is yours to light \\u2014 stars and fireflies come with the moon.',
+    instructions: 'MOVE \\u2014 the sun follows your cursor; all of its light comes with it.\nTime passes on its own \\u2014 the sun slowly ages to moonlight and back.\nCLICK & HOLD \\u2014 time races.\n\nThe point: there is no goal. The valley is yours to light \\u2014 stars and fireflies come with the moon.',
     postProcess: { bloomIntensity: 0.5, bloomThreshold: 0.6, exposure: 1.0, vignetteStrength: 0.3, vignetteRadius: 0.8 },
   },
   stepHooks: [{ id: 'hl_sun', author: 'fable', description: 'HELIOS: the Held Sun — drag carries it, holding ages it day\\u2194moon, release freezes the sky.', code: HOOK }],

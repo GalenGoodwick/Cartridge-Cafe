@@ -809,6 +809,18 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     pointerDown.current = true
     lastPointer.current = { x: e.clientX, y: e.clientY }
 
+    // A still press must be visible to hooks (the Held Sun pattern): write
+    // mouse_down on DOWN, not only in the move handler — real fingers tremble,
+    // automated and deliberate ones don't.
+    if (sim) {
+      const rect0 = canvas.getBoundingClientRect()
+      const cam0 = cameraRef.current
+      const grid0 = screenToGrid(e.clientX, e.clientY, rect0, cam0, cam0.zoom)
+      sim.worldData['mouse_x'] = grid0.x
+      sim.worldData['mouse_y'] = grid0.y
+      sim.worldData['mouse_down'] = true
+    }
+
     // 3D mode: right-click or alt+click = orbit camera
     if (renderModeRef.current === '3d' && (e.button === 2 || e.altKey)) {
       isOrbiting.current = true
@@ -942,6 +954,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [syncFields])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    // release must be visible to hooks even without a final move event
+    { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
     if (draggingFieldId.current) {
       const sim = simulationRef.current
       const fieldId = draggingFieldId.current

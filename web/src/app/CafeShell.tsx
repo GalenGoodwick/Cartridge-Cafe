@@ -12,6 +12,13 @@ const BLURBS: Record<string, string> = {
   'SOLSTICE': 'you are the sun',
   'TIDERUNNER': 'sail against the wind',
   'SIGNAL': 'speak a world into being',
+  'NOCTURNE': 'a night drive, neon and rain',
+  'NOCTURNE DISTRICT': 'the city as a pinball table',
+  'ESPER': 'stealth on the hex lattice',
+  'TV': 'channels that compute themselves',
+  'PROOF': 'a world that accumulates law',
+  'HELIOS': 'carry the sun, hold for the moon',
+  'LIGHTHOUSE': 'your cursor is the hour',
 }
 
 /** The world IS the interface. The only HTML: the sign, two small doors,
