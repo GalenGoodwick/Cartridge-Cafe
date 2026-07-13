@@ -30,9 +30,13 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [mute, setMute] = useState(false)
+  const [blocked, setBlocked] = useState(false)
+  const activeTabRef = useRef(true)
+  const claimRef = useRef<() => void>(() => {})
   const [portals, setPortals] = useState<{ name: string; x: number; y: number; r: number }[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [vp, setVp] = useState({ w: 0, h: 0 })
+  const [mine, setMine] = useState<string | null>(null)   // display name while in your submain
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -47,6 +51,18 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
+
+  /** MY WORLDS: the same universe, filtered to your own deeds — a personal submain */
+  const myWorlds = async () => {
+    const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+    if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?mine=1'); return }
+    ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
+    setMine(sess.user.name || 'your')
+  }
+  const commons = () => {
+    ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
+    setMine(null)
+  }
 
   /** BREW YOURS: signed out → auth (and resume); signed in → name it, make it, enter it */
   const brew = async () => {
@@ -97,6 +113,11 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       window.history.replaceState({}, '', '/')
       brew()
     }
+    // returning from auth headed for your own submain
+    if (new URLSearchParams(window.location.search).get('mine')) {
+      window.history.replaceState({}, '', '/')
+      myWorlds()
+    }
     const onHover = (e: Event) => setHover((e as CustomEvent).detail)
     // worlds can put a line of phosphor text on the glass — SIGNAL shows the word you type
     const onCaption = (e: Event) => {
@@ -141,16 +162,42 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // one table per player: the newest tab claims the seat; any other tab is
+  // blocked (world paused, no heartbeats) until the player reclaims it there
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const tabId = Math.random().toString(36).slice(2)
+    const bc = new BroadcastChannel('cc-tab')
+    const claim = () => {
+      activeTabRef.current = true
+      setBlocked(false)
+      pause(false)
+      bc.postMessage({ type: 'claim', tabId })
+    }
+    claimRef.current = claim
+    bc.onmessage = (e) => {
+      if (e.data?.type === 'claim' && e.data.tabId !== tabId && activeTabRef.current) {
+        activeTabRef.current = false
+        setBlocked(true)
+        pause(true)
+      }
+    }
+    claim()
+    return () => bc.close()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // presence: one heartbeat per person, one poll for the door counts
   useEffect(() => {
     let pid = ''
     try {
-      // per-TAB body: localStorage is shared across tabs, and one id beating
-      // from two tabs flip-flops between rooms — ghosts everywhere
-      pid = sessionStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
-      sessionStorage.setItem('cc-pid', pid)
+      // browser-level body: single-active-tab arbitration means only one tab
+      // ever beats, so one id = one person = one place
+      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
+      localStorage.setItem('cc-pid', pid)
     } catch { pid = Math.random().toString(36).slice(2, 12) }
     const beat = () => {
+      if (!activeTabRef.current) return   // blocked tabs are ghosts; they don't beat
       fetch('/api/presence', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scene, id: pid }),
@@ -232,6 +279,22 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
         {mute ? '∅' : '♪'}
       </button>
 
+      {/* one table per player — this tab lost the seat */}
+      {blocked && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-void/85 backdrop-blur-sm">
+          <div className="border border-brass/40 rounded-xl px-8 py-6 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]">
+            <div className="cafe-sign text-2xl mb-1">you&rsquo;re seated elsewhere</div>
+            <div className="font-mono text-[10px] tracking-[0.2em] text-crema/50 uppercase mb-5">
+              the cafe allows one table at a time · this tab is paused
+            </div>
+            <button onClick={() => claimRef.current()}
+              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
+              PLAY HERE
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* every level: a way back, top-left. It pauses and asks. */}
       {inGame && (
         <button
@@ -282,8 +345,22 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             <div className="font-mono text-[9px] tracking-[0.18em] text-glow/50 mt-1">
               Instant natural language to game world framework.
             </div>
+            {mine && (
+              <div className="font-mono text-[10px] tracking-[0.3em] text-brass uppercase mt-2">
+                {mine}&apos;s worlds
+              </div>
+            )}
           </div>
           <div className="fixed top-5 right-6 z-50 flex gap-2">
+            {mine ? (
+              <button onClick={commons} className="rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all">
+                ⟵ THE COMMONS
+              </button>
+            ) : (
+              <button onClick={myWorlds} className="rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all">
+                MY WORLDS
+              </button>
+            )}
             <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
               BREW YOURS
             </button>

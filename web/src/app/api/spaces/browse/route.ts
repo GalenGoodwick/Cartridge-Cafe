@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-/** GET /api/spaces/browse — Public worlds gallery (no auth) */
+/** GET /api/spaces/browse — Public worlds gallery; signed-in callers also see
+ *  their own private/blank worlds (fuel for the MY WORLDS submain) */
 export async function GET() {
+  const session = await getServerSession(authOptions).catch(() => null)
+  const uid = session?.user?.id
   const spaces = await prisma.playerSpace.findMany({
-    where: { isPublic: true },
+    where: uid ? { OR: [{ isPublic: true }, { ownerId: uid }] } : { isPublic: true },
     select: {
       id: true,
       slug: true,

@@ -721,7 +721,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // A world that publishes portals declares itself a hub.
   const [isHub, setIsHub] = useState(false)
   useEffect(() => {
-    setIsHub(false)
+    // the main door is ALWAYS a hub — no branch or version chrome there,
+    // only the sub-main space link. Other worlds declare hubness via portals.
+    setIsHub(playScene === 'CAFE')
     const onPortals = () => setIsHub(true)
     window.addEventListener('cafe:portals', onPortals)
     return () => window.removeEventListener('cafe:portals', onPortals)
@@ -4027,8 +4029,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ⑂ BRANCH
             </button>}
-            {/* version scroller — appears when riding a branch */}
-            {lastSceneRef.current.includes(' ⑂ ') && (() => {
+            {/* the hub carries ONE door to the sub-main space — branches live there */}
+            {isHub && (
+              <a
+                href="/space/sub-main"
+                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ⑂ SUB-MAIN
+              </a>
+            )}
+            {/* version scroller — appears when riding a branch (never on hubs) */}
+            {!isHub && lastSceneRef.current.includes(' ⑂ ') && (() => {
               const cur = lastSceneRef.current
               const m = cur.match(/· v(\d+)$/)
               const n = m ? +m[1] : 1

@@ -143,10 +143,19 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 const HOOK = `
 try {
   const wd = sim.worldData
+  // a fresh session must not inherit a stashed universe: the engine restores
+  // cc-save worldData on every load, and an old __cu carries a portalSig that
+  // matches its own frozen layout — the doors would never be re-announced.
+  // Rebuild instead; the bubbles bloom from the heart again, live.
+  if (wd.__fresh) { delete wd.__fresh; delete wd.__cu }
   if (!wd.__cu || wd.__cu.v !== 1) wd.__cu = { v: 1, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
     pollT: 0, wake: 12, drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
   const U = wd.__cu
   const dt2 = Math.min(dt, 0.05)
+  // ── whose universe? MY WORLDS flips the door into a personal submain ──
+  const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
+  const mineKey = MF ? String(MF.ownerId || MF.who || '') : ''
+  if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10 }
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
   const hueOf = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
   const angOf = n => { let h = 0; for (const c of n) h = (h * 37 + c.charCodeAt(0)) % 9973; return (h % 628) / 100 }
@@ -167,16 +176,40 @@ try {
         for (const s of (sl.slots || [])) {
           if (s.slot.startsWith('cell:')) cellAt[s.slot.slice(5)] = s.savedAt
         }
+        if (mineKey !== U.mineKey) return   // filter flipped mid-flight; stale poll
         const want = {}
-        for (const n of (sc.scenes || [])) {
-          if (n === 'CAFE' || n.includes('\u2402')) continue
-          if (n.includes(' \u2442 ')) continue
-          want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
-        }
-        for (const s of (sp.spaces || [])) {
-          if (s.blank) continue
-          const disp = (s.name || s.slug).toUpperCase()
-          if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+        if (MF) {
+          // personal submain: only worlds on this player's deed —
+          // their brews (blank drafts included) and their branches, newest version each
+          const best = {}
+          for (const n of (sc.scenes || [])) {
+            const f = n.indexOf(' \u2442 ')
+            const vAt = n.lastIndexOf(' \u00b7 v')
+            if (f < 0 || vAt < f) continue
+            if (n.slice(f + 3, vAt) !== MF.who) continue
+            const v = parseInt(n.slice(vAt + 4), 10) || 0
+            const base = n.slice(0, vAt)
+            if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
+          }
+          for (const base of Object.keys(best)) {
+            want[base] = { launch: best[base].scene, style: best[base].style }
+          }
+          for (const s of (sp.spaces || [])) {
+            if (!s.owner || s.owner.id !== MF.ownerId) continue
+            const disp = (s.name || s.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+          }
+        } else {
+          for (const n of (sc.scenes || [])) {
+            if (n === 'CAFE' || n.includes('\u2402')) continue
+            if (n.includes(' \u2442 ')) continue
+            want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+          }
+          for (const s of (sp.spaces || [])) {
+            if (s.blank) continue
+            const disp = (s.name || s.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+          }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -198,6 +231,11 @@ try {
         }
         for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
         U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
+        if (MF && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
+          U.hintedEmpty = true
+          window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'no worlds on your deed yet - brew yours', kind: 'hint' } }))
+        }
+        if (!MF) U.hintedEmpty = false
       } catch (e2) { /* shelf unreachable — the universe holds its shape */ }
     })()
   }
