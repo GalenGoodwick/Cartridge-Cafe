@@ -40,7 +40,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   sceneRef.current = scene
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
-  const lastHubRef = useRef('CAFE')
+  const crumbRef = useRef<string[]>([])       // hubs we entered through, in order
+  const skipCrumbRef = useRef(false)
   const portalsRef = useRef(portals)
   portalsRef.current = portals
   const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
@@ -60,8 +61,11 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   }
 
   const go = (name: string, push = true) => {
-    // remember the hub we launched from — leaving a world climbs back to it
-    if (portalsRef.current.length > 0 && name !== sceneRef.current) lastHubRef.current = sceneRef.current
+    // entering anywhere FROM a hub leaves a crumb — back climbs the trail
+    if (!skipCrumbRef.current && portalsRef.current.length > 0 && name !== sceneRef.current) {
+      crumbRef.current.push(sceneRef.current)
+    }
+    skipCrumbRef.current = false
     if (name !== sceneRef.current) { if (name === 'CAFE') sfx.leave(); else sfx.launch(name) }
     setAudioScene(name)
     setScene(name)
@@ -141,8 +145,10 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   useEffect(() => {
     let pid = ''
     try {
-      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
-      localStorage.setItem('cc-pid', pid)
+      // per-TAB body: localStorage is shared across tabs, and one id beating
+      // from two tabs flip-flops between rooms — ghosts everywhere
+      pid = sessionStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
+      sessionStorage.setItem('cc-pid', pid)
     } catch { pid = Math.random().toString(36).slice(2, 12) }
     const beat = () => {
       fetch('/api/presence', {
@@ -151,7 +157,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       }).catch(() => {})
     }
     const poll = () => {
-      if (sceneRef.current !== 'CAFE') return
+      // chips live on any hub, not just the main cafe
+      if (sceneRef.current !== 'CAFE' && portalsRef.current.length === 0) return
       fetch('/api/presence').then(r => r.ok ? r.json() : null)
         .then(d => d && setCounts(d.counts || {})).catch(() => {})
     }
@@ -161,10 +168,11 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     }
     beat()
     poll()
+    const pt = setTimeout(poll, 1500)   // chips refresh right after arriving
     const bi = setInterval(beat, 12000)
     const ci = setInterval(poll, 6000)
     window.addEventListener('pagehide', bye)
-    return () => { clearInterval(bi); clearInterval(ci); window.removeEventListener('pagehide', bye) }
+    return () => { clearInterval(bi); clearInterval(ci); clearTimeout(pt); window.removeEventListener('pagehide', bye) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene])
 
@@ -248,7 +256,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
                 className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
                 STAY
               </button>
-              <button onClick={() => { pause(false); go(lastHubRef.current) }}
+              <button onClick={() => { pause(false); skipCrumbRef.current = true; go(crumbRef.current.pop() || 'CAFE') }}
                 className="brass-tab px-5 py-2 text-[11px]">
                 LEAVE
               </button>
