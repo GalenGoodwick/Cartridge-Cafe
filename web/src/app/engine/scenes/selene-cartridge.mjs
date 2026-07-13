@@ -143,6 +143,8 @@ try {
 
   let all = true
   for (let i = 0; i < 6; i++) {
+    // latch: a stone past 85% is lit — no invisible 0.9999 purgatory
+    if (S.lit[i] >= 0.85 && S.lit[i] < 1) { S.lit[i] = 1; cap('the stone drinks the light', 'tuned') }
     const a = Math.PI * 2 * i / 6 - Math.PI / 2
     const dx = mx - Math.cos(a) * R
     const dy = my - Math.sin(a) * R
@@ -151,7 +153,6 @@ try {
     if (hover && S.lit[i] < 1) {
       if (circ < 0.06) {
         S.lit[i] = Math.min(1, S.lit[i] + pdt / 0.9)
-        if (S.lit[i] >= 1) cap('the stone drinks the light', 'tuned')
       } else {
         cap('the crescents must match \\u00b7 hold to turn the moon', 'hint')
       }

@@ -740,6 +740,24 @@ In the shader, derive `moonness = 0.5 - 0.5 * cos(6.2831 * phase)` — 0 is full
 
 ---
 
+## Triggers Are State, Not Events
+
+Worlds persist: save data restores `__`-prefixed worldData across sessions, so
+your hook can wake up in ANY state — mid-progress, already-won, one pixel from
+a threshold. Rules:
+
+- **Derive one-shot flags from state every frame** (`won = stones.every(lit)`),
+  never only from the transition that first made them true. A player restoring
+  an already-won save must still get the win.
+- **Latch near-complete progress.** Analog fills (`v += dt/T; min(1, v)`) can
+  strand at 0.9999 if the input drops on the finishing frame — visually done,
+  logically not. Snap past a threshold: `if (v >= 0.85) v = 1`.
+- **Reset per-session state on `worldData.__fresh`** (the loader sets it after
+  restoring a save): timers, key latches, boot flags — while keeping the
+  restored progress itself.
+- One-shot *celebrations* (captions, sounds) may be edge-fired — but gate them
+  on the state check, so they re-announce correctly for restored winners.
+
 ## Performance Guidelines
 
 1. **Field size matters most** — pixel count is the primary cost driver. A 500x500 field = 250k pixels per frame. Use the smallest field that looks good.
