@@ -505,6 +505,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, refreshSceneList])
 
+  // Play mode: the shell can freeze the world (back-button confirm dialog)
+  useEffect(() => {
+    if (!playScene) return
+    const onPause = (e: Event) => {
+      const sim = simulationRef.current
+      if (sim) sim.running = !(e as CustomEvent).detail
+    }
+    window.addEventListener('cafe:pause', onPause)
+    return () => window.removeEventListener('cafe:pause', onPause)
+  }, [playScene])
+
   // Play mode: the world IS the screen. Fit the 512 grid to the viewport
   // (contain: the whole world visible, void beyond it) on mount and resize.
   useEffect(() => {
@@ -559,6 +570,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         sim.interactionEffects = []
         for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
         frameFingerprintRef.current = ''
+        // every world opens with a fresh eye — a zoom left over from another
+        // scene must not follow the player through the door
+        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
 
         // house cartridges ship as static files (CDN, stateless-server-proof);
         // the store API is the fallback for locally saved scenes

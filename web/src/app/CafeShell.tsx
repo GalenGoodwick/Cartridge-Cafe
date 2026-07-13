@@ -29,13 +29,23 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [hover, setHover] = useState<string | null>(null)
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const sceneRef = useRef(scene)
+  sceneRef.current = scene
+  const confirmRef = useRef(confirmLeave)
+  confirmRef.current = confirmLeave
+  const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
+  const openConfirm = () => { setConfirmLeave(true); pause(true) }
+  const stay = () => { setConfirmLeave(false); pause(false) }
 
   const go = (name: string, push = true) => {
     setScene(name)
     setHover(null)
     setCaption(null)
+    setConfirmLeave(false)
     if (push && typeof window !== 'undefined') {
       window.history.pushState({ scene: name }, '', name === 'CAFE' ? '/' : `/play/${encodeURIComponent(name)}`)
     }
@@ -60,7 +70,12 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       setCaption(d)
       if (d.kind !== 'typing') captionTimer.current = setTimeout(() => setCaption(null), d.kind === 'hint' ? 6000 : 3200)
     }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') go('CAFE') }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || sceneRef.current === 'CAFE') return
+      // leaving pauses the world and asks — a mid-game ESC costs nothing
+      if (confirmRef.current) { setConfirmLeave(false); pause(false) }
+      else { setConfirmLeave(true); pause(true) }
+    }
     const onPop = () => {
       const m = window.location.pathname.match(/^\/play\/(.+)$/)
       go(m ? decodeURIComponent(m[1]) : 'CAFE', false)
@@ -111,6 +126,39 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             textShadow: '0 0 8px rgba(80,255,140,0.8), 0 0 28px rgba(80,255,140,0.35)',
           }}>
           {caption.text}{caption.kind === 'typing' ? '▮' : ''}
+        </div>
+      )}
+
+      {/* every level: a way back, top-left. It pauses and asks. */}
+      {inGame && (
+        <button
+          onClick={() => (confirmLeave ? stay() : openConfirm())}
+          aria-label="Back to the cafe"
+          className="fixed top-4 left-4 z-50 w-9 h-9 rounded-full border border-brass/50 bg-void/70 backdrop-blur-sm text-glow/80 hover:text-glow hover:border-brass font-mono text-sm transition-colors"
+        >
+          ◂
+        </button>
+      )}
+      {inGame && confirmLeave && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-void/60 backdrop-blur-[2px]"
+          onClick={stay}>
+          <div className="border border-brass/40 rounded-xl px-8 py-6 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+            onClick={e => e.stopPropagation()}>
+            <div className="cafe-sign text-2xl mb-1">leave this world?</div>
+            <div className="font-mono text-[10px] tracking-[0.2em] text-crema/50 uppercase mb-5">
+              the world is paused · your save keeps
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button onClick={stay}
+                className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
+                STAY
+              </button>
+              <button onClick={() => { pause(false); go('CAFE') }}
+                className="brass-tab px-5 py-2 text-[11px]">
+                LEAVE
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
