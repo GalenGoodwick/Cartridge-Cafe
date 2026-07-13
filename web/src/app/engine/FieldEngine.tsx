@@ -245,6 +245,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const lastSSEMsgRef = useRef(Date.now())
   const lastParticleRef = useRef(0)
   const rendererRef = useRef<FieldRenderer | null>(null)
+  const pendingAtlasRef = useRef<Uint32Array | null>(null)   // door bubble-face atlas, re-applied on renderer (re)init
   const simulationRef = useRef<FieldSimulation | null>(null)
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
@@ -308,10 +309,27 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     window.addEventListener('pointerdown', onGesture, { capture: true })
     window.addEventListener('keydown', onGesture, { capture: true })
     window.addEventListener('cafe:muted', onMute)
+    // the door's bubble faces: the shell builds a packed screenshot atlas and
+    // hands it here; the renderer folds it into the super pass so faces are
+    // drawn by the same shader as the bubbles (never a detachable overlay).
+    // Late arrivals + late-mounted renderer both covered: cache and re-apply.
+    const applyAtlas = (data: Uint32Array) => {
+      pendingAtlasRef.current = data
+      rendererRef.current?.uploadIconAtlas(data)
+    }
+    const onAtlas = (e: Event) => {
+      const d = (e as CustomEvent).detail as Uint32Array | undefined
+      if (d && d.length) applyAtlas(d)
+    }
+    // a just-mounted door may have missed the shell's one-shot dispatch
+    const staged = (window as unknown as { __cafeIconAtlas?: Uint32Array }).__cafeIconAtlas
+    if (staged && staged.length) applyAtlas(staged)
+    window.addEventListener('cafe:icon-atlas', onAtlas)
     return () => {
       window.removeEventListener('cafe:muted', onMute)
       window.removeEventListener('pointerdown', onGesture, { capture: true })
       window.removeEventListener('keydown', onGesture, { capture: true })
+      window.removeEventListener('cafe:icon-atlas', onAtlas)
     }
   }, [])
 
@@ -1450,6 +1468,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (!cancelled) setGpuFailed(true)
       return
     }
+    // a bubble-face atlas that arrived before this renderer existed gets applied now
+    if (pendingAtlasRef.current) renderer.uploadIconAtlas(pendingAtlasRef.current)
 
     // Upload initial empty textures
     renderer.uploadColorData(sim.world.colorData)

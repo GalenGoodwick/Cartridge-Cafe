@@ -304,6 +304,11 @@ export async function applyCommandToSnapshot(
       break
     }
 
+    case 'remove_step_hook': {
+      snap.stepHooks = snap.stepHooks.filter(h => h.id !== (cmd.hookId as string))
+      break
+    }
+
     case 'add_step_hook': {
       snap.stepHooks.push({
         id: (cmd.hookId as string) ?? `hook_${Date.now()}`,

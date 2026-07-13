@@ -498,8 +498,12 @@ export class FieldRenderer {
     if (this.hasFloat32Filterable) {
       features.push('float32-filterable')
     }
+    // the uber-shader binds up to 9 storage buffers per stage; WebGPU's
+    // DEFAULT limit is 8 — ask for what the adapter actually supports
+    const wantStorage = Math.min(adapter.limits.maxStorageBuffersPerShaderStage, 12)
     const device = await adapter.requestDevice({
       requiredFeatures: features,
+      requiredLimits: wantStorage > 8 ? { maxStorageBuffersPerShaderStage: wantStorage } : undefined,
     })
     this.device = device
 
@@ -1195,6 +1199,33 @@ export class FieldRenderer {
   }
 
   // --- Public texture upload methods ---
+
+  /** Guarantee the icon buffer exists (min 1 u32) so the super bind group is
+   *  always valid, even before any atlas is uploaded. */
+  private ensureIconBuffer(): void {
+    if (!this.device || this.iconBuffer) return
+    this.iconBuffer = this.device.createBuffer({
+      size: 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+    this.iconBufferCapacity = 4
+  }
+
+  /** Upload the packed RGBA8 icon atlas (one u32 per texel, 64x64 per slot).
+   *  Grows the buffer if needed and invalidates the super bind group so the
+   *  new buffer is picked up. Cheap and rare — called when thumbnails change. */
+  uploadIconAtlas(data: Uint32Array): void {
+    if (!this.device) return
+    const bytes = Math.max(4, data.byteLength)
+    if (!this.iconBuffer || this.iconBufferCapacity < bytes) {
+      this.iconBuffer?.destroy()
+      this.iconBuffer = this.device.createBuffer({
+        size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      })
+      this.iconBufferCapacity = bytes
+      this._cachedSuperBG = null   // new buffer → the cached bind group is stale
+    }
+    this.device.queue.writeBuffer(this.iconBuffer, 0, data.buffer as ArrayBuffer, data.byteOffset, data.byteLength)
+  }
 
   uploadColorData(data: Float32Array): void {
     if (!this.device || !this.colorTex) return
@@ -2655,6 +2686,7 @@ export class FieldRenderer {
     this.ensureIxBuf(bufferW, bufferH)
     this.ensureIxTypeBuf(bufferW, bufferH)
     this.ensureRenderTargets(pixelCount)
+    this.ensureIconBuffer()
     this.hitMapWidth = bufferW
     this.hitMapHeight = bufferH
 

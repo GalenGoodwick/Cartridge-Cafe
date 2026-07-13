@@ -591,36 +591,65 @@ worldData.instructions is mandatory: key entry + the point.`
   // uv → screen for the contain-fit square (span = min(w,h), centered)
   const span = Math.min(vp.w, vp.h)
 
-  // the thumbnail layer's own clock: every frame, weld each world-face img to
-  // its bubble's live geometry (the door hook writes window.__cafeBubbles per
-  // tick). Direct DOM writes — no React re-render, no event latency.
+  // Bubble faces are FOLDED INTO the shader, not overlaid. We load every
+  // world's screenshot once, pack them into one RGBA8 atlas (64x64 per slot),
+  // and hand it to the engine's icon buffer. The door shader samples a world's
+  // slot directly inside its bubble disc — one render pass, zero drift on
+  // pan/zoom, no second DOM layer. The name→slot map lets the door hook tell
+  // the shader which slot each bubble wears.
   useEffect(() => {
-    let raf = 0
-    const tick = () => {
-      const bubbles = (window as unknown as { __cafeBubbles?: Array<{ name: string; x: number; y: number; r: number }> }).__cafeBubbles
-      const w = window.innerWidth, hgt = window.innerHeight
-      const spanNow = Math.min(w, hgt)
-      const byName: Record<string, { x: number; y: number; r: number }> = {}
-      if (bubbles) for (const bb of bubbles) byName[bb.name] = bb
-      document.querySelectorAll<HTMLImageElement>('img[data-bubble]').forEach(img => {
-        if (img.dataset.dead === '1') return
-        const bb = byName[img.dataset.bubble || '']
-        if (!bb) { img.style.display = 'none'; return }
-        // inset well within the glass: the shader's rim and hover bloom frame
-        // the face instead of being covered by it
-        const d = bb.r * spanNow * 0.76
-        if (d < 8) { img.style.display = 'none'; return }
-        img.style.display = ''
-        img.style.left = (w / 2 + bb.x * spanNow / 2) + 'px'
-        img.style.top = (hgt / 2 + bb.y * spanNow / 2) + 'px'
-        img.style.width = d + 'px'
-        img.style.height = d + 'px'
+    if (scene !== 'CAFE') return
+    let cancelled = false
+    ;(async () => {
+      const [sc, sp] = await Promise.all([
+        fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
+        fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
+      ])
+      const names = new Set<string>()
+      for (const n of (sc.scenes || []) as string[]) {
+        if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ')) continue
+        names.add(n.toUpperCase())
+      }
+      for (const s of (sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean }>) {
+        if (!s.blank) names.add((s.name || s.slug).toUpperCase())
+      }
+      const ICON = 64, list = [...names].slice(0, 64)   // atlas cap
+      const cv = document.createElement('canvas')
+      cv.width = ICON; cv.height = ICON
+      const ctx = cv.getContext('2d', { willReadFrequently: true })!
+      const atlas = new Uint32Array(list.length * ICON * ICON)
+      const slotMap: Record<string, number> = {}
+      let slot = 0
+      const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
+        const im = new Image()
+        im.onload = () => res(im)
+        im.onerror = () => res(null)
+        im.src = src
       })
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [])
+      for (const name of list) {
+        const im = await loadImg(`/thumbs/${encodeURIComponent(name)}.jpg`)
+        if (cancelled) return
+        if (!im) continue   // no thumb (house minis) — no slot; shader keeps its live mini
+        ctx.clearRect(0, 0, ICON, ICON)
+        // cover-crop the square screenshot into the icon cell
+        const s = Math.min(im.width, im.height)
+        ctx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, ICON, ICON)
+        const px = ctx.getImageData(0, 0, ICON, ICON).data
+        const base = slot * ICON * ICON
+        for (let i = 0; i < ICON * ICON; i++) {
+          atlas[base + i] = px[i * 4] | (px[i * 4 + 1] << 8) | (px[i * 4 + 2] << 16) | 0xff000000
+        }
+        slotMap[name] = slot
+        slot++
+      }
+      if (cancelled) return
+      const packed = atlas.subarray(0, slot * ICON * ICON)
+      ;(window as unknown as { __cafeIconAtlas?: Uint32Array; __cafeIconSlots?: Record<string, number> }).__cafeIconAtlas = packed
+      ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = slotMap
+      window.dispatchEvent(new CustomEvent('cafe:icon-atlas', { detail: packed }))
+    })()
+    return () => { cancelled = true }
+  }, [scene])
 
   return (
     <>
@@ -672,23 +701,8 @@ worldData.instructions is mandatory: key entry + the point.`
         </div>
       )}
 
-      {/* every bubble wears its world's true face: a screenshot the Eye took,
-          inlaid under the shader's glass edge. React only mounts the imgs —
-          POSITION comes from a rAF loop reading window.__cafeBubbles (written
-          by the door hook every tick), so faces stay welded to the shader's
-          bubbles through pans and zooms. Missing thumb → 404 → hides itself. */}
-      {!modalUp && portals.map(pt => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img key={'thumb-' + pt.name}
-          data-bubble={pt.name}
-          src={`/thumbs/${encodeURIComponent(pt.name)}.jpg`}
-          alt=""
-          className="fixed z-30 pointer-events-none select-none rounded-full object-cover"
-          style={{ left: -9999, top: -9999, width: 1, height: 1, transform: 'translate(-50%, -50%)',
-                   opacity: 0.92, boxShadow: 'inset 0 0 18px rgba(0,0,0,0.8)' }}
-          onError={e => { const el = e.currentTarget as HTMLImageElement; el.dataset.dead = '1'; el.style.display = 'none' }}
-        />
-      ))}
+      {/* (bubble faces are drawn INSIDE the door shader now — see the icon-atlas
+          effect above; no DOM overlay layer exists to drift) */}
 
       {/* who's inside: a head-count on every door */}
       {vp.w > 0 && !modalUp && portals.map(pt => {
