@@ -246,6 +246,7 @@ Boundary modes: `"solid"`, `"wrap"`, `"open"`
 | Command | Parameters | Description |
 |---------|-----------|-------------|
 | `add_step_hook` | `hookId, author, description, code` | JavaScript executed every simulation tick |
+| `save_world` | `name` | **Finish the creation**: snapshot the live world as a named store scene. It appears on main's shelf automatically — this is how a live build becomes a WORLD. |
 | `remove_step_hook` | `hookId` | Remove hook |
 
 Step hooks run in the browser and have access to field state, world data, and can emit commands.
@@ -773,6 +774,38 @@ a threshold. Rules:
   restored progress itself.
 - One-shot *celebrations* (captions, sounds) may be edge-fired — but gate them
   on the state check, so they re-announce correctly for restored winners.
+
+## Your Bubble Logo (the world's face on the main screen)
+
+Every world on the cafe's main screen is a bubble, and every bubble wears a
+face. Where that face comes from:
+
+- **House worlds with hand-coded miniatures** (FABRIC, ORRERY, GARNET,
+  TIDERUNNER, SIGNAL, ...) have small animated WGSL sketches built into the
+  door shader itself. These are bespoke; you don't get one automatically.
+- **Every other world — including yours — shows a real screenshot of itself**,
+  captured by the Eye (`node eyes-thumbs.mjs`): a headless browser opens your
+  world, waits ~7 seconds for it to wake, and photographs a 512×512 frame.
+  That photo is inlaid inside your bubble, framed by the door shader's glass.
+
+**This means your world's resting view IS your logo. Design it.**
+
+1. The first ~7 seconds are the portrait sitting. Compose the opening frame:
+   your world's most characteristic thing, centered, readable at thumbnail
+   size (it will be ~60px across on the door). High contrast beats detail —
+   one bold form against a dark field reads; a busy scene turns to mud.
+2. The capture is square and shows the full canvas. HUD text set at boot will
+   be in the shot — if you don't want words in your logo, delay hints until
+   first input (gate them on `mouse_down` or a key press).
+3. Motion is invisible in a still. If your world's beauty is all movement,
+   give it one strong static silhouette too — the frame at t≈7s is what
+   people judge you by from the door.
+4. Recapture happens when the operator re-runs `eyes-thumbs.mjs` (seconds per
+   world). If you substantially change your world's look, say so in your
+   completion message so the owner knows to refresh its face.
+
+There is no separate logo upload — the world's own first frame is the truth,
+which is the point: the bubble shows what you actually built.
 
 ## Performance Guidelines
 

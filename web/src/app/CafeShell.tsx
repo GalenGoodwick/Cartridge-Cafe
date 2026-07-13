@@ -316,12 +316,23 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     setBrewBriefed(true)
     setBrewStep(4)   // now the AI takes over — wake it and watch for the first build
   }
-  /** all gates passed and the AI has begun — the draft becomes a world */
+  /** all gates passed and the AI has begun — the draft becomes a world.
+   *  It joins main automatically (public spaces are shelf bubbles), and if
+   *  you founded a sub-main it lands on your shelf there too. */
   const enterWorld = async () => {
     await fetch('/api/spaces/' + brewSlugRef.current, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isPublic: true }),
     }).catch(() => {})
+    if (who && brewName.trim()) {
+      await mutateSubs(subs => {
+        const mineSub = Object.keys(subs).find(k => subs[k].ownerId === who.id)
+        if (!mineSub) return null
+        subs[mineSub].shelf[brewName.trim().toUpperCase()] =
+          { launch: 'space:' + brewSlugRef.current, addedBy: who.name, at: Date.now() }
+        return null
+      }).catch(() => {})
+    }
     window.location.href = '/space/' + brewSlugRef.current
   }
   /** step 4: watch the world through the AI's own key — the moment its first
@@ -376,7 +387,7 @@ worldData.instructions is mandatory: key entry + the point.`
     setAudioScene(name)
     setScene(name)
     setHover(null)
-    hoverBlockRef.current = Date.now() + 600   // a dying frame's last hover event must not resurrect the tooltip
+    hoverBlockRef.current = Date.now() + 250   // swallow the dying frame's stale hover (expiry is the real safety net)
     setCaption(null)
     setConfirmLeave(false)
     setModalUp(false)   // a panel left open in the old world must not latch shut the new one

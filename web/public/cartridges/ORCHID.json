@@ -1,0 +1,71 @@
+{
+ "name": "ORCHID",
+ "fields": [
+  {
+   "id": "or_f",
+   "name": "The Orchid",
+   "color": [
+    0.05,
+    0.08,
+    0.05,
+    1
+   ],
+   "effects": [],
+   "memory": [],
+   "proximity": [],
+   "properties": {},
+   "transform": {
+    "x": 256,
+    "y": 256,
+    "rotation": 0,
+    "scale": 1,
+    "vx": 0,
+    "vy": 0,
+    "vr": 0
+   },
+   "shapeType": "rect",
+   "w": 512,
+   "h": 512,
+   "visualTypeName": "orchid",
+   "noHit": true,
+   "noCollide": true
+  }
+ ],
+ "worldParams": {
+  "gravity": 0,
+  "friction": 1.0,
+  "collisionForce": 0,
+  "boundaryMode": "open",
+  "bounciness": 0,
+  "gravitationalConstant": 0
+ },
+ "worldData": {
+  "noPixelSampling": true,
+  "instructions": "No controls \u2014 lean close.\nThe orchid sways on its own wind; MOVING YOUR CURSOR near it is a breath of air, and it answers.\n\nThe point: it is beautiful, and it is alive. That is the whole point.",
+  "postProcess": {
+   "bloomIntensity": 0.45,
+   "bloomThreshold": 0.65,
+   "exposure": 1.0,
+   "vignetteStrength": 0.3,
+   "vignetteRadius": 0.85
+  }
+ },
+ "stepHooks": [
+  {
+   "id": "or_wind",
+   "author": "claude",
+   "description": "ORCHID: standing wind, arriving gusts, and the cursor as a breath of air",
+   "code": "try {\n  const wd = sim.worldData\n  if (!wd.__or) wd.__or = { w: 0, g: 0, gT: 0, br: 0, lmx: 0, lmy: 0 }\n  const O = wd.__or\n  const pdt = Math.min(dt, 0.05)\n  const mx = ((wd.mouse_x ?? 256) - 256) / 256\n  const my = ((wd.mouse_y ?? 256) - 256) / 256\n  // the standing wind: slow breathing sway\n  O.w = Math.sin(Date.now ? 0 : 0) // placeholder no-op\n  O.w = Math.sin((wd.__t = (wd.__t || 0) + pdt) * 0.5) * 0.6 + Math.sin(wd.__t * 0.23 + 1.7) * 0.4\n  // gusts arrive, hold, let go\n  O.gT -= pdt\n  if (O.gT <= 0) { O.gT = 4 + (wd.__t % 5); O.gTarget = (wd.__t * 7 % 1) * 0.9 }\n  O.g += ((O.gTarget || 0) - O.g) * Math.min(1, pdt * 0.8)\n  // your cursor is a breath: moving near the plant stirs it\n  const speed = Math.hypot(mx - O.lmx, my - O.lmy) / Math.max(pdt, 0.001)\n  const near = Math.exp(-Math.abs(mx + 0.05) * 2.0) * Math.exp(-Math.abs(my) * 1.2)\n  O.br += (Math.min(1, speed * 0.5) * near - O.br) * Math.min(1, pdt * 3)\n  O.lmx = mx; O.lmy = my\n  wd.gpuUniforms = [O.w, O.g, mx, my, O.br]\n} catch (e) { /* the orchid keeps its poise */ }"
+  }
+ ],
+ "interactionRules": [],
+ "interactionEffects": [],
+ "visualTypes": [
+  {
+   "name": "orchid",
+   "wgsl": "fn orc_ell(p: vec2f, c: vec2f, r: vec2f, ang: f32) -> f32 {\n  let q = rotate(p - c, ang);\n  return length(q / r) - 1.0;\n}\n\n// one phalaenopsis bloom, facing the viewer. bp: local coords \u00b7 s: scale\nfn orc_bloom(bp: vec2f, s: f32, flutter: f32, seed: f32) -> vec4f {\n  var col = vec4f(0.0);\n  let p = bp / s;\n  // five petals: dorsal, two laterals (wide), two sepals (low)\n  for (var i = 0; i < 5; i++) {\n    let fi = f32(i);\n    var ang = 0.0;\n    var rad = vec2f(0.34, 0.62);\n    var off = vec2f(0.0);\n    if (i == 0) { ang = 0.0; off = vec2f(0.0, -0.52); rad = vec2f(0.30, 0.55); }         // dorsal\n    else if (i == 1) { ang = 1.15; off = vec2f(-0.58, -0.02); rad = vec2f(0.62, 0.40); } // left wing\n    else if (i == 2) { ang = -1.15; off = vec2f(0.58, -0.02); rad = vec2f(0.62, 0.40); } // right wing\n    else if (i == 3) { ang = 0.55; off = vec2f(-0.30, 0.44); rad = vec2f(0.30, 0.46); }  // sepals\n    else { ang = -0.55; off = vec2f(0.30, 0.44); rad = vec2f(0.30, 0.46); }\n    let fl = flutter * (0.5 + 0.5 * sin(seed * 7.0 + fi * 2.4));\n    let d = orc_ell(p, off * (1.0 + fl * 0.05), rad * (1.0 + fl * 0.06), ang + fl * 0.08);\n    if (d < 0.0) {\n      // petal body: near-white heart flushing magenta at the rim\n      let rimm = clamp(-d * 2.2, 0.0, 1.0);\n      var pc = mix(vec3f(0.98, 0.62, 0.86), vec3f(0.995, 0.94, 0.975), rimm);\n      // radial veins, magenta, finer toward the edge\n      let va = atan2(p.y - off.y, p.x - off.x);\n      let vein = pow(abs(sin(va * 11.0 + seed * 3.0)), 24.0);\n      pc = mix(pc, vec3f(0.86, 0.30, 0.62), vein * (1.0 - rimm) * 0.55);\n      // edge translucency: light leaks through the thin rim\n      pc += vec3f(0.10, 0.06, 0.09) * (1.0 - rimm) * 0.6;\n      // soft top-left light\n      pc *= 0.92 + 0.14 * clamp(-(p.x + p.y) * 0.4 + 0.5, 0.0, 1.0);\n      col = vec4f(pc, 1.0);\n    }\n  }\n  // the lip (labellum): deep magenta tongue with a gold throat\n  let ld = orc_ell(p, vec2f(0.0, 0.16), vec2f(0.17, 0.24), 0.0);\n  if (ld < 0.0) {\n    var lc = mix(vec3f(0.72, 0.12, 0.38), vec3f(0.92, 0.30, 0.55), clamp(-ld * 3.0, 0.0, 1.0));\n    lc = mix(lc, vec3f(0.98, 0.78, 0.25), smoothstep(0.10, 0.0, length(p - vec2f(0.0, 0.05))));\n    // throat speckles\n    let sp = hash21(floor(p * 40.0) + seed);\n    lc = mix(lc, vec3f(0.55, 0.08, 0.28), step(0.82, sp) * 0.7);\n    col = vec4f(lc, 1.0);\n  }\n  // the column: a small pale hood at the center\n  let cd = orc_ell(p, vec2f(0.0, -0.04), vec2f(0.08, 0.11), 0.0);\n  if (cd < 0.0) { col = vec4f(mix(vec3f(0.99, 0.95, 0.9), vec3f(0.9, 0.7, 0.8), clamp(-cd * 4.0, 0.0, 1.0)), 1.0); }\n  return col;\n}\n\nfn visual_orchid(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  let t = time;\n  let sway = uni(0);\n  let gust = uni(1);\n  let mc = vec2f(uni(2), uni(3));\n  let breeze = uni(4);\n\n  // \u2500\u2500 the greenhouse: warm depth, soft bokeh lights, falling dust of pollen \u2500\u2500\n  var col = mix(vec3f(0.055, 0.075, 0.055), vec3f(0.10, 0.13, 0.10), 0.5 - 0.5 * uv.y);\n  col += vec3f(0.16, 0.15, 0.10) * smoothstep(0.9, 0.0, length(uv - vec2f(-0.55, -0.55))) * 0.5;\n  for (var b = 0; b < 3; b++) {\n    let fb = f32(b);\n    let bc = vec2f(sin(fb * 2.7) * 0.7, -0.3 + fb * 0.28);\n    col += vec3f(0.10, 0.11, 0.07) * exp(-dot(uv - bc, uv - bc) * (7.0 + fb * 4.0));\n  }\n  let pm = vec2f(uv.x * 8.0 + sin(t * 0.3 + uv.y * 3.0) * 0.3, uv.y * 8.0 + t * 0.06);\n  let ph = hash21(floor(pm));\n  col += vec3f(0.55, 0.5, 0.35) * step(0.985, ph) * smoothstep(0.3, 0.05, length(fract(pm) - 0.5)) * 0.25;\n\n  // \u2500\u2500 the sway: wind + your breath, bending more with height \u2500\u2500\n  let hgt = clamp((0.55 - uv.y) / 1.1, 0.0, 1.0);\n  let bend = (sway * 0.5 + gust * 0.9 + breeze * 0.9) * 0.14;\n  // work in plant coords: unbend the world instead of bending the plant\n  var pp = uv - vec2f(-0.05, 0.62);\n  pp = rotate(pp, -bend * hgt * hgt * 2.2);\n\n  // \u2500\u2500 leaves at the root: broad, glossy, veined \u2500\u2500\n  for (var lf = 0; lf < 3; lf++) {\n    let f2 = f32(lf);\n    let la = -0.9 + f2 * 0.85 + sin(t * 0.6 + f2) * 0.015;\n    let ld2 = orc_ell(pp, vec2f(cos(la) * 0.34, -0.02 + abs(sin(la)) * 0.05), vec2f(0.36, 0.13), la * 0.55);\n    if (ld2 < 0.0) {\n      var lc2 = mix(vec3f(0.05, 0.20, 0.08), vec3f(0.13, 0.38, 0.15), clamp(-ld2 * 2.0, 0.0, 1.0));\n      let mid = abs(sin(atan2(pp.y + 0.02, pp.x - cos(la) * 0.34) - la * 0.55));\n      lc2 += vec3f(0.10, 0.16, 0.10) * pow(1.0 - mid, 6.0) * 0.5;       // center vein gloss\n      lc2 *= 0.85 + 0.3 * clamp(-(pp.x + pp.y), 0.0, 1.0);\n      col = mix(col, lc2, smoothstep(0.01, -0.02, ld2));\n    }\n  }\n\n  // \u2500\u2500 the stem: one clean arc climbing to the blooms \u2500\u2500\n  {\n    let sx = pow(clamp(-pp.y / 1.05, 0.0, 1.0), 1.7) * 0.34\n      + sin(pp.y * 2.2 + t * 0.7) * 0.004;\n    let sd = abs(pp.x - sx) - (0.016 - clamp(-pp.y, 0.0, 1.0) * 0.008);\n    if (pp.y < 0.05 && pp.y > -1.12 && sd < 0.0) {\n      var sc = mix(vec3f(0.16, 0.34, 0.12), vec3f(0.30, 0.5, 0.2), clamp(-sd * 30.0, 0.0, 1.0));\n      sc *= 0.8 + 0.4 * clamp(-pp.x + sx + 0.01, 0.0, 1.0) * 30.0 * 0.03;\n      col = mix(col, sc, smoothstep(0.004, -0.004, sd));\n    }\n  }\n\n  // \u2500\u2500 the blooms: four faces along the arc, each swaying on its own pedicel \u2500\u2500\n  for (var k = 0; k < 4; k++) {\n    let fk = f32(k);\n    let by = -0.42 - fk * 0.235;\n    let bx = pow(clamp(-by / 1.05, 0.0, 1.0), 1.7) * 0.34 + 0.10 + sin(fk * 2.1) * 0.05;\n    let bs = 0.155 - fk * 0.012;\n    let flut = 0.4 + gust * 1.2 + breeze * 0.8;\n    let bp = rotate(pp - vec2f(bx, by), sin(t * (0.9 + fk * 0.13) + fk * 1.7) * 0.05 * flut + bend * 0.6);\n    let bloom = orc_bloom(bp, bs, flut, fk * 3.7 + 1.0);\n    col = mix(col, bloom.rgb, bloom.a);\n  }\n  // two buds at the tip, jade teardrops blushing at the seam\n  for (var bu = 0; bu < 2; bu++) {\n    let fb2 = f32(bu);\n    let by2 = -1.02 - fb2 * 0.09;\n    let bx2 = pow(clamp(-by2 / 1.05, 0.0, 1.0), 1.7) * 0.34 + 0.045 + fb2 * 0.03;\n    let bd = orc_ell(pp, vec2f(bx2, by2), vec2f(0.030 - fb2 * 0.008, 0.045 - fb2 * 0.010), 0.4);\n    if (bd < 0.0) {\n      var bc2 = mix(vec3f(0.30, 0.45, 0.22), vec3f(0.55, 0.60, 0.35), clamp(-bd * 5.0, 0.0, 1.0));\n      bc2 = mix(bc2, vec3f(0.85, 0.5, 0.65), smoothstep(0.02, 0.0, abs(pp.x - bx2)) * 0.4);\n      col = mix(col, bc2, smoothstep(0.006, -0.006, bd));\n    }\n  }\n\n  // your breath: the faintest shimmer where the air moves\n  col += vec3f(0.5, 0.55, 0.45) * exp(-dot(uv - mc, uv - mc) * 500.0) * breeze * 0.12;\n\n  col *= 1.0 - 0.35 * pow(length(uv) * 0.75, 3.0);\n  if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.05); }\n  return vec4f(clamp(col, vec3f(0.0), vec3f(30.0)), 1.0);\n}"
+  }
+ ],
+ "modules": [],
+ "timestamp": 1783984000000
+}

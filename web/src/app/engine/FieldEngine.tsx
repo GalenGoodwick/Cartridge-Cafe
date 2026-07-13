@@ -3213,6 +3213,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               break
             }
 
+            case 'save_world': {
+              // finish-the-creation: snapshot the live world as a NAMED store
+              // scene. Main's shelf polls the store, so the new world appears
+              // there automatically — no manual promotion step.
+              const nm = String((cmd as { name?: string }).name || '').trim().toUpperCase()
+              if (!nm) { pushTerminal('save_world', cmd.author, 'ERROR: name required', undefined, cmdAuthor); break }
+              saveSceneAs(nm).then(ok => pushTerminal('save_world', cmd.author,
+                ok ? `world "${nm}" saved — it joins main's shelf on its next breath` : 'ERROR: nothing to save', undefined, cmdAuthor))
+              break
+            }
+
             case 'add_gpu_step_hook': {
               if (!cmd.hookId && cmd.name) cmd.hookId = cmd.name
               const wgsl = cmd.wgsl as string
