@@ -95,6 +95,9 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             <div className="cafe-sign text-2xl">
               cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
             </div>
+            <div className="font-mono text-[9px] tracking-[0.18em] text-glow/50 mt-1">
+              Instant natural language to game world framework.
+            </div>
           </div>
           <div className="fixed top-5 right-6 z-50 flex gap-2">
             <a href="/worlds" className="brass-tab px-3 py-1.5 text-[10px]">THE SHELF</a>

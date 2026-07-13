@@ -524,6 +524,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const playLoadedRef = useRef<string | null>(null)
   useEffect(() => {
     if (!playScene || playLoadedRef.current === playScene) return
+    const prevScene = playLoadedRef.current
     playLoadedRef.current = playScene
 
     const loadPlayScene = async () => {
@@ -531,8 +532,22 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
       try {
-        // teardown the previous scene completely — fresh world, fresh state
-        sim.restoreFromSnapshots([])
+        // save data survives the swap: stash the departing scene's game state
+        // (the __-prefixed worldData blobs) so re-entering a game resumes it
+        if (prevScene) {
+          const stash: Record<string, unknown> = {}
+          for (const k of Object.keys(sim.worldData)) {
+            if (k.startsWith('__')) stash[k] = sim.worldData[k]
+          }
+          try { localStorage.setItem(`cc-save-${prevScene}`, JSON.stringify(stash)) } catch { /* full/blocked */ }
+        }
+
+        // teardown the previous scene COMPLETELY — restoreFromSnapshots only
+        // adds, so every old field must be removed by hand
+        for (const id of Array.from(sim.fields.keys())) {
+          renderer.removeAllFieldEffects(id)
+          sim.removeField(id)
+        }
         sim.stepHooks.clear()
         sim.interactionRules = []
         sim.interactionEffects = []
@@ -557,6 +572,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
         if (scene.worldParams) sim.setWorldParams(scene.worldParams)
         if (scene.worldData) Object.assign(sim.worldData, scene.worldData)
+        // resume: this scene's stashed save data (best scores, builds) returns
+        try {
+          const stash = localStorage.getItem(`cc-save-${playScene}`)
+          if (stash) Object.assign(sim.worldData, JSON.parse(stash))
+        } catch { /* no save, no problem */ }
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
         }

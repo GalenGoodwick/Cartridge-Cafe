@@ -105,6 +105,7 @@ for (const [id, m] of Object.entries(MAPS)) {
       const [vbx, vby] = polar(h.px[0], h.px[1], S, 60 * (d + 1))
       const M = put(mx, my, 1), VA = put(vax, vay, 2), VB = put(vbx, vby, 2)
       link(C, M); link(M, VA); link(M, VB)
+      link(C, VA)                     // the kite SIDE center–vertex (Kite.ts corners)
     }
   }
   for (const n of nodes) {                                    // forest cover per node
@@ -152,9 +153,9 @@ const coneWGSL = Object.values(rooms).map(rm =>
         var diff = atan2(dd.y, dd.x) - uni(${14 + i * 4});
         diff = abs(atan2(sin(diff), cos(diff)));
         if (diff < ${num(e.half)} && hex_los(px_hex(eo), gh, room) > 0.5) {
-          var cc = vec3f(0.10, 0.13, 0.15);
-          if (st > 0.5) { cc = vec3f(0.30, 0.13, 0.40); }
-          if (st > 1.5) { cc = vec3f(0.55, 0.06, 0.08); }
+          var cc = vec3f(0.17, 0.22, 0.25);
+          if (st > 0.5) { cc = vec3f(0.38, 0.16, 0.50); }
+          if (st > 1.5) { cc = vec3f(0.65, 0.07, 0.09); }
           col += cc * (1.0 - rr / ${num(e.range * S * SQ3)}) * (0.55 + 0.20 * sin(time * 3.0 + f32(${i})));
         }
       }
@@ -168,7 +169,7 @@ const EX0: f32 = ${num(X0)};
 const EY0: f32 = ${num(Y0)};
 const ISY: f32 = ${num(ISY)};
 const IYOFF: f32 = ${num(IYOFF)};
-const ZOOM: f32 = 2.0;
+const ZOOM: f32 = 1.4;
 
 fn hex_px(h: vec2i) -> vec2f {
   return vec2f(EX0 + ES * 1.5 * f32(h.x), EY0 + ES * (0.8660254 * f32(h.x) + 1.7320508 * f32(h.y)));
@@ -194,9 +195,10 @@ fn hex_los(a: vec2i, b: vec2i, room: i32) -> f32 {
   let pa = hex_px(a); let pb = hex_px(b);
   let n = hex_dist(a, b);
   if (n <= 1) { return 1.0; }
-  for (var i = 1; i < 8; i++) {
-    if (i >= n) { break; }
-    let h = px_hex(mix(pa, pb, f32(i) / f32(n)));
+  let steps = n * 2;
+  for (var i = 1; i < 15; i++) {
+    if (i >= steps) { break; }
+    let h = px_hex(mix(pa, pb, f32(i) / f32(steps)));
     if (all(h == a) || all(h == b)) { continue; }
     let l = esp_land(room, h.x, h.y);
     if (l == 1 || l == 2 || l == 9) { return 0.0; }
@@ -503,8 +505,9 @@ try {
     const n = hexDist(a, b)
     if (n <= 1) return true
     const pa = hexPx(a[0], a[1]), pb = hexPx(b[0], b[1])
-    for (let i = 1; i < n; i++) {
-      const t = i / n
+    const steps = n * 2                            // 2 samples/hex — a single sample can thread between trees
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps
       const h = pxHex(pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t)
       if ((h[0] === a[0] && h[1] === a[1]) || (h[0] === b[0] && h[1] === b[1])) continue
       const l = landAt(room, h[0], h[1])
@@ -624,8 +627,8 @@ try {
         else { G.stepReq = 1 }
       }
     } else if (typeof mx0 === 'number') {
-      const mx = G.camx + (mx0 - 256) / 2
-      const my = G.camy + (my0 - 256) / 2
+      const mx = G.camx + (mx0 - 256) / 1.4
+      const my = G.camy + (my0 - 256) / 1.4
       const gpy = (my - IYOFF) / ISY
       let hitE = -1
       for (let i = 0; i < G.en.length; i++) {
@@ -736,7 +739,8 @@ try {
 
   // ── enemies ──
   const cfgs = ROOMS[G.room].enemies
-  const covered = NODES[G.node] ? NODES[G.node].c === 1 : false
+  const hh0 = pxHex(G.x, G.y)
+  const covered = (NODES[G.node] ? NODES[G.node].c === 1 : false) || landAt(G.room, hh0[0], hh0[1]) === 1
   let exposed = 0
   for (let i = 0; i < G.en.length; i++) {
     const cfg = cfgs[i], e = G.en[i]
@@ -797,8 +801,8 @@ try {
   // cursor in world coords, for node hover
   let mwx = -999, mwy = -999
   if (typeof wd.mouse_x === 'number') {
-    mwx = G.camx + (wd.mouse_x - 256) / 2
-    mwy = (G.camy + (wd.mouse_y - 256) / 2 - IYOFF) / ISY
+    mwx = G.camx + (wd.mouse_x - 256) / 1.4
+    mwy = (G.camy + (wd.mouse_y - 256) / 1.4 - IYOFF) / ISY
   }
 
   const u = [G.room, G.x, G.y, G.face, covered ? 1 : 0, G.shadow, G.charges, G.alarm, G.flare, exposed, G.hasKey, G.chest]
