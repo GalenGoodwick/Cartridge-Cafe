@@ -717,6 +717,16 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene])
 
+  // Hubs (main and sub-mains) are navigation, not worlds: no branching there.
+  // A world that publishes portals declares itself a hub.
+  const [isHub, setIsHub] = useState(false)
+  useEffect(() => {
+    setIsHub(false)
+    const onPortals = () => setIsHub(true)
+    window.addEventListener('cafe:portals', onPortals)
+    return () => window.removeEventListener('cafe:portals', onPortals)
+  }, [playScene])
+
   // Play mode: the shell can freeze the world (back-button confirm dialog)
   useEffect(() => {
     if (!playScene) return
@@ -4010,13 +4020,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ? INSTRUCTIONS
             </button>
-            <button
+            {!isHub && <button
               onClick={handleBranch}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               title={me ? 'fork this world as your branch — the eye versions every AI edit' : 'sign in to branch this world'}
             >
               ⑂ BRANCH
-            </button>
+            </button>}
             {/* version scroller — appears when riding a branch */}
             {lastSceneRef.current.includes(' ⑂ ') && (() => {
               const cur = lastSceneRef.current
@@ -4031,7 +4041,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
-            <button
+            {!isHub && <button
               onClick={async () => {
                 setBranchesOpen(v => !v)
                 const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
@@ -4051,7 +4061,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               ≡ BRANCHES
-            </button>
+            </button>}
             <button
               onClick={async () => {
                 setPlugOpen(v => !v)

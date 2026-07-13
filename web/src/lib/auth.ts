@@ -114,11 +114,6 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id
         if (user.image) token.picture = user.image
         if (user.name) token.name = user.name
-
-        // Check if this is a temp anonymous account (no challenge passed)
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-        })
       }
 
       // When session is updated (e.g. onboarding name change, account upgrade), persist to token

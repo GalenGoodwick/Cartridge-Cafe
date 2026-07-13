@@ -12,7 +12,11 @@ function createPrismaClient() {
     connectionString: process.env.DATABASE_URL,
     max: 5,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    // Neon over home networks: connects can take seconds after an idle window,
+    // and NAT silently kills idle TCP — keepalive + a generous timeout ride it out
+    connectionTimeoutMillis: 15000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 5000,
   })
 
   if (!globalForPrisma.pool) {

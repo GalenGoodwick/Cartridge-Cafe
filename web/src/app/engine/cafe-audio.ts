@@ -34,7 +34,6 @@ let ambDuck = 0   // starts silent; entering a world raises it
 const ROOTS: Record<string, number> = {
   CAFE: 110.0, HELIOS: 130.8, SELENE: 73.4, SIGNAL: 98.0, 'ONE DAY': 87.3,
   SAIL: 116.5, ORRERY: 65.4, GARNET: 146.8, FABRIC: 82.4, SOLSTICE: 123.5,
-  TIDERUNNER: 103.8,
 }
 const PENTA = [65.4, 73.4, 82.4, 98.0, 110.0, 130.8, 146.8]
 

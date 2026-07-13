@@ -10,7 +10,6 @@ const BLURBS: Record<string, string> = {
   'GARNET': 'build a ship of crystals',
   'ONE DAY': 'a lighthouse keeps its whole day',
   'SAIL': 'one boat, real water',
-  'TIDERUNNER': 'sail against the wind',
   'SIGNAL': 'speak a world into being',
   'NOCTURNE': 'a night drive, neon and rain',
   'NOCTURNE DISTRICT': 'the city as a pinball table',
@@ -41,6 +40,9 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   sceneRef.current = scene
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
+  const lastHubRef = useRef('CAFE')
+  const portalsRef = useRef(portals)
+  portalsRef.current = portals
   const pause = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
@@ -58,12 +60,15 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   }
 
   const go = (name: string, push = true) => {
+    // remember the hub we launched from — leaving a world climbs back to it
+    if (portalsRef.current.length > 0 && name !== sceneRef.current) lastHubRef.current = sceneRef.current
     if (name !== sceneRef.current) { if (name === 'CAFE') sfx.leave(); else sfx.launch(name) }
     setAudioScene(name)
     setScene(name)
     setHover(null)
     setCaption(null)
     setConfirmLeave(false)
+    setPortals([])
     if (push && typeof window !== 'undefined') {
       window.history.pushState({ scene: name }, '', name === 'CAFE' ? '/' : `/play/${encodeURIComponent(name)}`)
     }
@@ -172,7 +177,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       <FieldEngine playScene={scene} />
 
       {/* a name surfaces where you're looking, then gets out of the way */}
-      {!inGame && hover && (mouse.x !== 0 || mouse.y !== 0) && (
+      {portals.length > 0 && hover && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
           className="fixed z-50 pointer-events-none select-none rounded-xl bg-black/60 backdrop-blur-sm border border-brass/20 px-3.5 py-2.5"
           style={{ left: mouse.x + 18, top: mouse.y - 8 }}
@@ -185,7 +190,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       )}
 
       {/* who's inside: a head-count on every door */}
-      {!inGame && vp.w > 0 && portals.map(pt => {
+      {vp.w > 0 && portals.map(pt => {
         const n = counts[pt.name] || 0
         const px = vp.w / 2 + (pt.x + pt.r * 0.75) * span / 2
         const py = vp.h / 2 + (pt.y + pt.r * 0.75) * span / 2
@@ -243,7 +248,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
                 className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
                 STAY
               </button>
-              <button onClick={() => { pause(false); go('CAFE') }}
+              <button onClick={() => { pause(false); go(lastHubRef.current) }}
                 className="brass-tab px-5 py-2 text-[11px]">
                 LEAVE
               </button>

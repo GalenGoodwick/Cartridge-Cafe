@@ -144,7 +144,7 @@ const HOOK = `
 try {
   const wd = sim.worldData
   if (!wd.__cu || wd.__cu.v !== 1) wd.__cu = { v: 1, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
-    pollT: 0, drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
+    pollT: 0, wake: 12, drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
   const U = wd.__cu
   const dt2 = Math.min(dt, 0.05)
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
@@ -180,18 +180,21 @@ try {
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
-            // born at the edge of the universe
-            const edge = 92 * Math.sqrt(Object.keys(U.bubbles).length + 3)
+            // born around the heart — their true place is live: packing
+            // pressure and participation sort them outward from here
             const a2 = angOf(n)
-            U.bubbles[n] = { x: 256 + Math.cos(a2) * edge, y: 256 + Math.sin(a2) * edge * 0.74,
+            U.bubbles[n] = { x: 256 + Math.cos(a2) * 26, y: 256 + Math.sin(a2) * 26 * 0.74, vx: 0, vy: 0,
               born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+            U.wake = 10   // a birth perturbs the whole field
           }
           const B = U.bubbles[n]
           B.launch = want[n].launch
           // participation pressure: cell activity + birth heat
           const cellAge = cellAt[n] ? (now - cellAt[n]) / 60000 : 999
           const bornHeat = Math.max(0, 1 - (now - B.born) / 120000)
-          B.score = 1 / (1 + cellAge / 20) + bornHeat
+          const ns = 1 / (1 + cellAge / 20) + bornHeat
+          if (Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)   // chant shifts perturb
+          B.score = ns
         }
         for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
         U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
@@ -199,26 +202,39 @@ try {
     })()
   }
 
-  // ── pressure physics: rank pulls inward; neighbors repel; drift is gentle ──
-  for (let i = 0; i < U.order.length; i++) {
-    const B = U.bubbles[U.order[i]]
-    if (!B) continue
-    const ring = 88 * Math.sqrt(i + 0.35)
-    const a2 = angOf(U.order[i]) + Math.sin((B.born % 10000) / 1000 + i) * 0.04
-    const tx = 256 + Math.cos(a2) * ring
-    const ty = 256 + Math.sin(a2) * ring * 0.74
-    B.x += (tx - B.x) * Math.min(1, dt2 * 0.5)
-    B.y += (ty - B.y) * Math.min(1, dt2 * 0.5)
-    for (let j = i + 1; j < U.order.length; j++) {
-      const C = U.bubbles[U.order[j]]
-      if (!C) continue
-      const ddx = B.x - C.x, ddy = B.y - C.y
-      const dd = Math.hypot(ddx, ddy)
-      if (dd > 1 && dd < 64) {
-        const push = (64 - dd) * dt2 * 1.6
-        B.x += ddx / dd * push; B.y += ddy / dd * push
-        C.x -= ddx / dd * push; C.y -= ddy / dd * push
+  // ── gravity with friction: everyone falls toward the middle, packing
+  // pressure sorts them — the strongest chant sinks deepest. The sim only
+  // runs while perturbed (a birth, a score shift); then friction locks it. ──
+  if (U.wake > 0) {
+    U.wake -= dt2
+    const fr = Math.exp(-3.4 * dt2)
+    for (let i = 0; i < U.order.length; i++) {
+      const B = U.bubbles[U.order[i]]
+      if (!B) continue
+      const dx = 256 - B.x, dy = 256 - B.y
+      const dd = Math.hypot(dx, dy)
+      if (dd > 2) {
+        const g = 26 * (0.5 + B.score * 2.2)   // participation breaks past friction
+        B.vx += dx / dd * g * dt2
+        B.vy += dy / dd * g * dt2
       }
+      for (let j = i + 1; j < U.order.length; j++) {
+        const C = U.bubbles[U.order[j]]
+        if (!C) continue
+        let sx = B.x - C.x, sy = B.y - C.y
+        let sd = Math.hypot(sx, sy)
+        if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
+        if (sd < 56) {
+          const push = (56 - sd) * 9 * dt2
+          B.vx += sx / sd * push; B.vy += sy / sd * push
+          C.vx -= sx / sd * push; C.vy -= sy / sd * push
+        }
+      }
+      B.vx *= fr; B.vy *= fr
+      B.x += B.vx * dt2; B.y += B.vy * dt2
+    }
+    if (U.wake <= 0) for (const n of U.order) {   // friction locks them in place
+      const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0 }
     }
   }
 
@@ -255,6 +271,22 @@ try {
   if (hovered !== U.lastHover && typeof window !== 'undefined') {
     U.lastHover = hovered
     window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? U.order[hovered] : null }))
+  }
+
+  // ── tell the shell where the doors are (uv space) — it pins the hover
+  // tooltip and live head-counts there; re-sent whenever cam or layout moves ──
+  if (typeof window !== 'undefined') {
+    let sig = ((U.cam.x * 10) | 0) + '|' + ((U.cam.y * 10) | 0) + '|' + ((U.cam.z * 100) | 0)
+    for (const n of U.order) { const B = U.bubbles[n]; if (B) sig += '|' + n + ':' + ((B.x * 10) | 0) + ',' + ((B.y * 10) | 0) }
+    if (sig !== U.portalSig) {
+      U.portalSig = sig
+      window.dispatchEvent(new CustomEvent('cafe:portals', {
+        detail: U.order.map(n => {
+          const B = U.bubbles[n]
+          return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
+        }).filter(Boolean),
+      }))
+    }
   }
 
   // ── publish: cam, count, cursor(uv), then (x, y, style+hue) per bubble ──
