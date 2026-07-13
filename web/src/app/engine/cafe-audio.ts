@@ -210,6 +210,8 @@ export function startCafeAudio(initialScene: string) {
   }, { capture: true })
   window.addEventListener('keydown', e => {
     if (e.repeat) return
+    const t = e.target as HTMLElement | null
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
     resume()
     const now = performance.now()
     if (now - lastKeyAt < 40) return

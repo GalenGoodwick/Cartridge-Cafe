@@ -401,7 +401,10 @@ const scene = {
     },
   ],
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
-  worldData: { noPixelSampling: true },
+  worldData: {
+    noPixelSampling: true,
+    instructions: 'THE CAFE — a universe of worlds\n\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to enter\n\nThe strongest chant sinks to the middle: bubbles cluster by participation, and newborn worlds glow hot before settling.\n\nMY WORLDS (top right) flips this into your own universe — every world on your deed, drafts included. BREW YOURS starts a new one.',
+  },
   stepHooks: [{ id: 'cafe_door', author: 'fable', description: 'CAFE: hover-bloom portals, click to step through', code: HOOK }],
   interactionRules: [],
   interactionEffects: [],

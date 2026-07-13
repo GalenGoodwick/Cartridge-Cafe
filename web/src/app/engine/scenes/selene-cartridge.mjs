@@ -81,7 +81,7 @@ fn visual_selene(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
     }
   }
 
-  // ── the way home: when the ring is lit, the MOON-TREE grows ──
+  // ── the chapter door: when the ring is lit, the MOON-TREE grows ──
   let wt = clamp(uni(11), 0.0, 1.0);
   if (wt > 0.005) {
     let g1 = clamp(wt * 3.0, 0.0, 1.0);
@@ -163,11 +163,12 @@ try {
   if (all && !S.won) { S.won = 1; cap('the moon-tree grows \\u00b7 step through it', 'tuned') }
   S.wonT = S.won ? Math.min(1, (S.wonT || 0) + pdt / 3.0) : 0
 
-  // the golden door home
+  // the story goes forward: the moon-tree opens CHAPTER III — the lighthouse.
+  // ESC / back is always the way home; a chapter door never points backward.
   if (S.won && typeof window !== 'undefined') {
     const nearDoor = (mx * mx + my * my < 0.03) || (Math.abs(mx) < 0.12 && my > -0.15 && my < 0.45)
-    if (nearDoor) cap('step through the moon-tree', 'hint')
-    if (nearDoor && md && !S.pmd) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'HELIOS' }))
+    if (nearDoor) cap('step through the moon-tree \\u00b7 CHAPTER III \\u2014 the lighthouse', 'hint')
+    if (nearDoor && md && !S.pmd) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'LIGHTHOUSE' }))
   }
   S.pmd = md
 
@@ -186,7 +187,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
-    instructions: 'SELENE — the world under the lake, reached through the moon’s reflection.\\n\\nMOVE — carry the drowned moon.\\nCLICK & HOLD — age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH — an amber rim means the phase is right — and the stone drinks the light. Light all six and the MOON-TREE grows \\u2014 step through it to go home.\\n\\nThe deep remembers: lit stones stay lit.',
+    instructions: 'SELENE — the world under the lake, reached through the moon’s reflection.\\n\\nMOVE — carry the drowned moon.\\nCLICK & HOLD — age its phase: watch the bite swing around the disc.\\n\\nSix phase-stones ring the deep, each carved with one crescent. Bring your moon to a stone while the crescents MATCH — an amber rim means the phase is right — and the stone drinks the light. Light all six and the MOON-TREE grows \\u2014 step through it into CHAPTER III: the lighthouse.\\n\\nThe deep remembers: lit stones stay lit. ESC climbs back the way you came.',
     postProcess: { bloomIntensity: 0.6, bloomThreshold: 0.55, exposure: 1.0, vignetteStrength: 0.35, vignetteRadius: 0.85 },
   },
   stepHooks: [{ id: 'se_tide', author: 'fable', description: 'SELENE: phase-matching puzzle — carry the drowned moon, match crescents, light the ring', code: HOOK }],

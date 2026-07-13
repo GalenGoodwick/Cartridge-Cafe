@@ -150,6 +150,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     window.addEventListener('keydown', onEsc, { capture: true })
     return () => window.removeEventListener('keydown', onEsc, { capture: true })
   }, [plugOpen, instrOpen, branchesOpen])
+
+  // tell the shell when a panel is up so its overlays (count pills, hover
+  // cards) duck out from under the modal
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen }))
+  }, [plugOpen, instrOpen, branchesOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
   // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
   type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
@@ -1315,7 +1321,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // the whole alphabet — worlds that listen to language need every letter
     for (let c = 97; c <= 122; c++) keyMap[String.fromCharCode(c)] = 'key_' + String.fromCharCode(c)
     for (let c = 48; c <= 57; c++) keyMap[String.fromCharCode(c)] = 'key_' + String.fromCharCode(c)   // digits — cards, slots, channels
+    const typing = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    }
     const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e)) return   // form fields own the keyboard
       const sim = simulationRef.current
       if (!sim) return
       if (e.key === ' ') spaceHeld.current = true
@@ -1329,6 +1340,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
+      if (typing(e)) return
       const sim = simulationRef.current
       if (!sim) return
       if (e.key === ' ') spaceHeld.current = false

@@ -37,12 +37,17 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [brewToken, setBrewToken] = useState('')
   const [brewSlug, setBrewSlug] = useState('')
   const [brewErr, setBrewErr] = useState('')
+  const [brewAi, setBrewAi] = useState(false)
+  const [brewNamed, setBrewNamed] = useState(false)
+  const [brewBriefed, setBrewBriefed] = useState(false)
+  const brewSlugRef = useRef('')
   const activeTabRef = useRef(true)
   const claimRef = useRef<() => void>(() => {})
   const [portals, setPortals] = useState<{ name: string; x: number; y: number; r: number }[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [vp, setVp] = useState({ w: 0, h: 0 })
   const [mine, setMine] = useState<string | null>(null)   // display name while in your submain
+  const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -62,36 +67,95 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
 
-  /** MY WORLDS: the same universe, filtered to your own deeds — a personal submain */
+  /** MY WORLDS: the same universe, filtered to your own deeds — a personal submain.
+   *  Sticky for the session: entering a world and coming back lands you here again. */
   const myWorlds = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?mine=1'); return }
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
     setMine(sess.user.name || 'your')
+    try { sessionStorage.setItem('cafe-mine', '1') } catch { /* private mode */ }
   }
   const commons = () => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
     setMine(null)
+    try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
   }
 
-  /** BREW YOURS: signed out → auth (and resume); signed in → the wizard:
-   *  connect your AI first, then name the world, then tell the AI what to
-   *  build — the brief travels inside the world so the AI can't run off */
+  /** BREW YOURS — in the order that matters: the world is born immediately
+   *  (placeholder name), its first AI key is minted, and step 1 hands your AI
+   *  the FULL connection prompt (key + guide + standby orders). Only after the
+   *  AI has actually connected, the world is named, and the brief is delivered
+   *  does ENTER WORLD unlock. */
+  const connectPrompt = (token: string) => {
+    const o = window.location.origin
+    return `Connect to my cartridge.cafe world.
+POST commands to ${o}/api/engine/bridge
+Header: Authorization: Bearer ${token}
+
+Before doing ANYTHING else:
+1. GET ${o}/api/engine/guide and read it fully (markdown).
+2. GET ${o}/api/engine/bridge (same auth header) to see the world state.
+3. STAND BY. Do not build yet — I am writing your brief right now. It will
+   appear in worldData.creation_brief. When it does: build exactly that,
+   then set worldData.brief_done = true.
+worldData.player_focus is what I have selected — always follow it.`
+  }
   const brew = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
-    setBrewName(''); setBrewBrief(''); setBrewToken(''); setBrewErr('')
-    setBrewStep(1)
-  }
-  const brewCreate = async () => {
-    setBrewErr('')
+    setBrewErr(''); setBrewName(''); setBrewBrief('')
+    setBrewAi(false); setBrewNamed(false); setBrewBriefed(false)
+    // the world is born now, so its AI key can exist before anything else
     const r = await fetch('/api/spaces', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: brewName.trim(), brief: brewBrief.trim() }),
+      body: JSON.stringify({ name: 'Untitled World', slug: 'w-' + Math.random().toString(36).slice(2, 8) }),
     })
     const d = await r.json()
-    if (r.ok && d?.space?.slug) { setBrewToken(d.token || ''); setBrewSlug(d.space.slug); setBrewStep(4) }
-    else setBrewErr(d?.error || 'could not brew')
+    if (!r.ok || !d?.space?.slug) { window.alert(d?.error || 'could not brew'); return }
+    brewSlugRef.current = d.space.slug
+    setBrewSlug(d.space.slug)
+    setBrewToken(d.token || '')
+    setBrewStep(1)
+  }
+  // has the AI actually logged in? the token's lastUsedAt says so
+  useEffect(() => {
+    if (brewStep < 1 || brewAi) return
+    const iv = setInterval(async () => {
+      try {
+        const d = await fetch('/api/spaces/' + brewSlugRef.current + '/token').then(r => r.json())
+        if ((d.tokens || []).some((t: { lastUsedAt: string | null }) => t.lastUsedAt)) setBrewAi(true)
+      } catch { /* keep waiting */ }
+    }, 3000)
+    return () => clearInterval(iv)
+  }, [brewStep, brewAi])
+  const brewSaveName = async () => {
+    setBrewErr('')
+    const r = await fetch('/api/spaces/' + brewSlugRef.current, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: brewName.trim(), slugFromName: true }),
+    })
+    const d = await r.json()
+    if (!r.ok) { setBrewErr(d?.error || 'could not name it'); return }
+    if (d?.space?.slug) { brewSlugRef.current = d.space.slug; setBrewSlug(d.space.slug) }
+    setBrewNamed(true)
+    setBrewStep(3)
+  }
+  const brewSaveBrief = async () => {
+    setBrewErr('')
+    const r = await fetch('/api/spaces/' + brewSlugRef.current, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brief: brewBrief.trim() }),
+    })
+    if (!r.ok) { setBrewErr('could not deliver the brief'); return }
+    setBrewBriefed(true)
+  }
+  const brewCancel = async () => {
+    // abandoning an unnamed world removes it — no junk on the shelf
+    if (!brewNamed && brewSlugRef.current) {
+      fetch('/api/spaces/' + brewSlugRef.current, { method: 'DELETE' }).catch(() => {})
+    }
+    setBrewStep(0)
   }
 
   const go = (name: string, push = true) => {
@@ -136,6 +200,19 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     if (new URLSearchParams(window.location.search).get('mine')) {
       window.history.replaceState({}, '', '/')
       myWorlds()
+    } else {
+      // still in your submain from earlier this session? re-enter it quietly —
+      // no redirects here: a stale flag without a session just clears itself
+      try {
+        if (sessionStorage.getItem('cafe-mine')) {
+          fetch('/api/auth/session').then(r => r.json()).then(sess => {
+            if (sess?.user) {
+              ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
+              setMine(sess.user.name || 'your')
+            } else sessionStorage.removeItem('cafe-mine')
+          }).catch(() => { /* offline is fine */ })
+        }
+      } catch { /* private mode */ }
     }
     const onHover = (e: Event) => setHover((e as CustomEvent).detail)
     // worlds can put a line of phosphor text on the glass — SIGNAL shows the word you type
@@ -161,6 +238,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       if (Date.now() < portalsBlockRef.current) return   // a door slamming behind us
       setPortals((e as CustomEvent).detail || [])
     }
+    const onModal = (e: Event) => setModalUp(!!(e as CustomEvent).detail)
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     window.addEventListener('cafe:launch', onLaunch)
@@ -170,6 +248,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     window.addEventListener('popstate', onPop)
     window.addEventListener('pointermove', onMove)
     window.addEventListener('cafe:portals', onPortals)
+    window.addEventListener('cafe:modal', onModal)
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('cafe:launch', onLaunch)
@@ -179,6 +258,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('cafe:portals', onPortals)
+      window.removeEventListener('cafe:modal', onModal)
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -254,10 +334,10 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       <FieldEngine playScene={scene} />
 
       {/* a name surfaces where you're looking, then gets out of the way */}
-      {portals.length > 0 && hover && (mouse.x !== 0 || mouse.y !== 0) && (
+      {portals.length > 0 && hover && !modalUp && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
           className="fixed z-50 pointer-events-none select-none rounded-xl bg-black/60 backdrop-blur-sm border border-brass/20 px-3.5 py-2.5"
-          style={{ left: mouse.x + 18, top: mouse.y - 8 }}
+          style={{ left: Math.min(mouse.x + 18, Math.max(0, vp.w - 250)), top: Math.max(8, mouse.y - 8) }}
         >
           <div className="cafe-sign text-xl leading-none">{hover.toLowerCase()}</div>
           <div className="font-mono text-[9px] tracking-[0.25em] text-crema/60 uppercase mt-1.5">
@@ -267,7 +347,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       )}
 
       {/* who's inside: a head-count on every door */}
-      {vp.w > 0 && portals.map(pt => {
+      {vp.w > 0 && !modalUp && portals.map(pt => {
         const n = counts[pt.name] || 0
         const px = vp.w / 2 + (pt.x + pt.r * 0.75) * span / 2
         const py = vp.h / 2 + (pt.y + pt.r * 0.75) * span / 2
@@ -301,31 +381,47 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
         {mute ? '∅' : '♪'}
       </button>
 
-      {/* BREW: connect AI → name → brief → key */}
+      {/* BREW: key first → name → brief → enter (all three gates) */}
       {brewStep > 0 && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/80 backdrop-blur-sm"
-          onClick={() => brewStep < 4 && setBrewStep(0)}>
-          <div className="w-[420px] max-w-[92vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+          onClick={brewCancel}>
+          <div className="w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
             onClick={e => e.stopPropagation()}>
+            <div className="flex gap-3 mb-4 font-mono text-[9px] tracking-[0.2em]">
+              <span className={brewAi ? 'text-glow' : 'text-crema/40'}>{brewAi ? '✓' : '1'} AI CONNECTED</span>
+              <span className={brewNamed ? 'text-glow' : 'text-crema/40'}>{brewNamed ? '✓' : '2'} NAMED</span>
+              <span className={brewBriefed ? 'text-glow' : 'text-crema/40'}>{brewBriefed ? '✓' : '3'} BRIEFED</span>
+            </div>
             {brewStep === 1 && (<>
-              <div className="cafe-sign text-2xl mb-2">first: your AI</div>
-              <div className="font-mono text-[11px] leading-relaxed text-crema/70 mb-5">
-                Worlds here are built by an AI companion — Claude, or any agent that can
-                make HTTP calls. When your world is born you&rsquo;ll get a key to hand it,
-                and it will receive your brief as its first instruction.
+              <div className="cafe-sign text-2xl mb-2">connect your AI</div>
+              <div className="font-mono text-[10px] leading-relaxed text-crema/70 mb-3">
+                Paste this to your AI — it logs in with the key, reads the guide,
+                and stands by for your brief:
               </div>
-              <button onClick={() => setBrewStep(2)}
-                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
-                I HAVE AN AI → NAME THE WORLD
-              </button>
+              <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[10px] leading-relaxed text-glow/90 whitespace-pre-wrap break-all select-all max-h-44 overflow-y-auto mb-3">
+                {connectPrompt(brewToken)}
+              </div>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => navigator.clipboard?.writeText(connectPrompt(brewToken))}
+                  className="flex-1 rounded-lg bg-flame/90 hover:bg-glow py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+                  COPY CONNECTION PROMPT
+                </button>
+                <button onClick={() => setBrewStep(2)} className="flex-1 brass-tab py-2 text-[10px]">
+                  {brewAi ? 'NEXT → NAME IT' : 'WAITING FOR AI… SKIP AHEAD'}
+                </button>
+              </div>
+              <div className="font-mono text-[9px] tracking-[0.15em] mt-2 text-crema/40">
+                {brewAi ? 'your AI is in the world, reading the guide' : 'watching for its first login…'}
+              </div>
             </>)}
             {brewStep === 2 && (<>
               <div className="cafe-sign text-2xl mb-2">name your world</div>
               <input autoFocus value={brewName} onChange={e => setBrewName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && brewName.trim()) setBrewStep(3) }}
+                onKeyDown={e => { if (e.key === 'Enter' && brewName.trim()) brewSaveName() }}
                 placeholder="e.g. Tidepool Abbey"
-                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-sm text-glow outline-none focus:border-brass mb-4" />
-              <button disabled={!brewName.trim()} onClick={() => setBrewStep(3)}
+                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-sm text-glow outline-none focus:border-brass mb-3" />
+              {brewErr && <div className="font-mono text-[10px] text-red-400 mb-2">{brewErr}</div>}
+              <button disabled={!brewName.trim()} onClick={brewSaveName}
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
                 NEXT → THE BRIEF
               </button>
@@ -333,35 +429,25 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             {brewStep === 3 && (<>
               <div className="cafe-sign text-2xl mb-2">tell it what to build</div>
               <div className="font-mono text-[10px] tracking-wide text-crema/60 mb-3">
-                your AI reads this first — it builds YOUR idea, not its own
+                delivered straight into the world — your AI builds THIS, not its own idea
               </div>
               <textarea autoFocus value={brewBrief} onChange={e => setBrewBrief(e.target.value)}
                 placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
                 rows={4}
-                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-xs text-glow outline-none focus:border-brass mb-4 resize-none" />
+                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-xs text-glow outline-none focus:border-brass mb-3 resize-none" />
               {brewErr && <div className="font-mono text-[10px] text-red-400 mb-2">{brewErr}</div>}
-              <button disabled={!brewBrief.trim()} onClick={brewCreate}
-                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
-                BREW IT
-              </button>
-            </>)}
-            {brewStep === 4 && (<>
-              <div className="cafe-sign text-2xl mb-2">hand your AI this key</div>
-              <div className="font-mono text-[10px] leading-relaxed text-crema/70 mb-3">
-                Paste this to your AI with: &ldquo;connect to my world&rdquo;. Your brief is already
-                inside the world — it&rsquo;s the first thing the AI will read.
-              </div>
-              <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[11px] text-glow break-all select-all mb-3">
-                {brewToken}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => navigator.clipboard?.writeText(brewToken)}
-                  className="flex-1 brass-tab py-2 text-[10px]">COPY KEY</button>
-                <button onClick={() => { window.location.href = '/space/' + brewSlug }}
-                  className="flex-1 rounded-lg bg-flame/90 hover:bg-glow py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
-                  ENTER WORLD
+              {!brewBriefed ? (
+                <button disabled={!brewBrief.trim()} onClick={brewSaveBrief}
+                  className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
+                  DELIVER THE BRIEF
                 </button>
-              </div>
+              ) : (
+                <button disabled={!(brewAi && brewNamed && brewBriefed)}
+                  onClick={() => { window.location.href = '/space/' + brewSlug }}
+                  className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
+                  {brewAi ? 'ENTER WORLD' : 'WAITING FOR YOUR AI TO CONNECT…'}
+                </button>
+              )}
             </>)}
           </div>
         </div>

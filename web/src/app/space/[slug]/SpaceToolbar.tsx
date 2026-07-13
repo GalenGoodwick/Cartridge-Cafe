@@ -64,6 +64,21 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
 
   const aiSeenAgo = aiStatus.lastSeen ? Math.round((Date.now() - new Date(aiStatus.lastSeen).getTime()) / 60000) : null
 
+  // ESC closes the topmost open drawer — never falls through to anything else
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (aiOpen) setAiOpen(false)
+      else if (flagOpen) setFlagOpen(false)
+      else if (open) setOpen(false)
+      else return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', onEsc, { capture: true })
+    return () => window.removeEventListener('keydown', onEsc, { capture: true })
+  }, [aiOpen, flagOpen, open])
+
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(null), 3500) }
 
   const savePoint = async () => {

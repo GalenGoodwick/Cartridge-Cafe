@@ -38,7 +38,8 @@
   "gravitationalConstant": 0
  },
  "worldData": {
-  "noPixelSampling": true
+  "noPixelSampling": true,
+  "instructions": "THE CAFE — a universe of worlds\n\nDRAG empty space to pan · Z / X to zoom\nHOVER a bubble to hear its name · CLICK to enter\n\nThe strongest chant sinks to the middle: bubbles cluster by participation, and newborn worlds glow hot before settling.\n\nMY WORLDS (top right) flips this into your own universe — every world on your deed, drafts included. BREW YOURS starts a new one."
  },
  "stepHooks": [
   {
@@ -57,5 +58,5 @@
   }
  ],
  "modules": [],
- "timestamp": 1783970266265
+ "timestamp": 1783970977769
 }

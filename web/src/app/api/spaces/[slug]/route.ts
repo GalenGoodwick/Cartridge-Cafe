@@ -85,6 +85,26 @@ export async function PATCH(
   if (body.description !== undefined) update.description = body.description?.trim() || null
   if (typeof body.isPublic === 'boolean') update.isPublic = body.isPublic
 
+  // wizard: once the world is truly named, trade the placeholder slug for a real one
+  if (body.slugFromName && body.name?.trim()) {
+    const want = body.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+    if (want) {
+      const taken = await prisma.playerSpace.findUnique({ where: { slug: want } })
+      if (!taken || taken.id === space.id) update.slug = want
+    }
+  }
+
+  // the brief lives INSIDE the world: first thing a connected AI reads
+  if (typeof body.brief === 'string' && body.brief.trim()) {
+    const cur = await prisma.playerSpace.findUnique({ where: { id: space.id }, select: { snapshot: true } })
+    const snap = (cur?.snapshot as Record<string, unknown>) || { fields: [] }
+    const wd = (snap.worldData as Record<string, unknown>) || {}
+    wd.creation_brief = { prompt: body.brief.trim(), by: user.id, at: Date.now() }
+    delete wd.brief_done
+    snap.worldData = wd
+    update.snapshot = snap
+  }
+
   const updated = await prisma.playerSpace.update({
     where: { id: space.id },
     data: update,
