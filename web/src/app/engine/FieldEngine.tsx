@@ -110,7 +110,7 @@ interface FieldEngineProps {
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
  *  can PROVE which build it holds (shown in the fault banner + console). */
-const ENGINE_BUILD = 'e2-graveyard'
+const ENGINE_BUILD = 'e4-bindgroup'
 
 export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
@@ -4061,7 +4061,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 )}
                 <button
                   onClick={(e) => {
-                    const detail = `[${fault.kind}] ${fault.message} — scene: ${lastSceneRef.current || playScene || spaceSlug || 'unknown'} — ${new Date().toISOString()}`
+                    const detail = `[${fault.kind}] ${fault.message} — scene: ${lastSceneRef.current || playScene || spaceSlug || 'unknown'} — engine ${ENGINE_BUILD} — ${new Date().toISOString()}`
                     navigator.clipboard?.writeText(detail).catch(() => {})
                     const b = e.currentTarget; b.textContent = 'copied ✓'
                     setTimeout(() => { if (b.isConnected) b.textContent = 'copy' }, 1500)

@@ -138,6 +138,14 @@ export async function applyCommandToSnapshot(
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
+  // snapshots built up from a blank brew (or written by older code) may lack
+  // whole sections — every array the commands push into must exist
+  const blank = emptySnapshot()
+  const s = snap as unknown as Record<string, unknown>
+  for (const k of ['fields', 'stepHooks', 'interactionRules', 'interactionEffects', 'visualTypes', 'modules'] as const) {
+    if (!Array.isArray(s[k])) s[k] = (blank as unknown as Record<string, unknown>)[k]
+  }
+  if (!snap.worldData || typeof snap.worldData !== 'object') snap.worldData = blank.worldData
   const result: Record<string, unknown> = { type: cmd.type }
 
   switch (cmd.type) {

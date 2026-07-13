@@ -18,6 +18,7 @@ const BLURBS: Record<string, string> = {
   'TV': 'channels that compute themselves',
   'PROOF': 'a world that accumulates law',
   'HELIOS': 'carry the sun, hold for the moon',
+  'SELENE': 'the world under the lake — two acts',
   'LIGHTHOUSE': 'your cursor is the hour',
 }
 
@@ -53,7 +54,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // the group layer: the SUB-MAIN world reports where we stand (viewer or
   // inside a group) and the shell draws FOUND / JOIN / PIN accordingly
-  const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean } | null>(null)
+  const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean; owner?: boolean; pinsLocked?: boolean; members?: Record<string, string>; shelf?: string[] } | null>(null)
+  const [subTools, setSubTools] = useState(false)          // founder's moderation panel
   const [who, setWho] = useState<{ id: string; name: string } | null>(null)
 
   const sceneRef = useRef(scene)
@@ -100,7 +102,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   /** ── the group layer's pen: read-modify-write the sub-mains index.
    *  v0 truth model — a save-slot doc, last-write-wins, reconciled here,
    *  same law as the tournament until enforcement moves server-side. */
-  type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }> }
+  type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }>; pinsLocked?: boolean }
   /** Optimistic write loop: stamp the doc, write, read back. If someone else
    *  wrote in between (their stamp shows instead), replay our mutation on
    *  THEIR state — concurrent pins/joins merge instead of erasing each other. */
@@ -179,10 +181,47 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       const s = subs[slug]
       if (!s) return 'this sub-main dissolved'
       if (!s.members[who.id]) return 'join first — only members pin'
+      if (s.pinsLocked && s.ownerId !== who.id) return 'the founder closed the shelf — pinning is founder-only right now'
       s.shelf[target] = { launch: launch as string, addedBy: who.name, at: Date.now() }
       return null
     }).then(ok => {
       if (ok) window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'pinned ' + target, kind: 'tuned' } }))
+    })
+  }
+
+  /** ── founder moderation: kick members, unpin worlds, open/close the shelf ── */
+  const kickMember = async (uid: string) => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (s.ownerId !== who.id) return 'only the founder moderates'
+      if (uid === s.ownerId) return 'the founder cannot kick themselves'
+      delete s.members[uid]
+      return null
+    })
+  }
+  const unpinWorld = async (name: string) => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (s.ownerId !== who.id) return 'only the founder moderates'
+      delete s.shelf[name]
+      return null
+    })
+  }
+  const togglePins = async () => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (s.ownerId !== who.id) return 'only the founder sets the rules'
+      s.pinsLocked = !s.pinsLocked
+      return null
     })
   }
 
@@ -314,8 +353,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.history.replaceState({}, '', '/')
       brew()
     }
+    // the Cafe button means the commons — explicit intent beats stickiness
+    if (new URLSearchParams(window.location.search).get('commons')) {
+      window.history.replaceState({}, '', '/')
+      try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
     // returning from auth headed for your own submain
-    if (new URLSearchParams(window.location.search).get('mine')) {
+    } else if (new URLSearchParams(window.location.search).get('mine')) {
       window.history.replaceState({}, '', '/')
       myWorlds()
     } else {
@@ -549,12 +592,53 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               className="brass-tab px-3 py-1.5 text-[10px]">◂ SUB-MAINS</button>
             <span className="cafe-sign text-xl px-1">{(subMode.name || '').toLowerCase()}</span>
             {who && !subMode.member && <button onClick={joinSub} className="brass-tab px-3 py-1.5 text-[10px]">JOIN</button>}
-            {who && subMode.member && <button onClick={pinWorld} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>}
+            {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
+              <button onClick={pinWorld} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>
+            )}
+            {who && subMode.member && !subMode.owner && subMode.pinsLocked && (
+              <span className="font-mono text-[9px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
+            )}
+            {who && subMode.owner && (
+              <button onClick={() => setSubTools(o => !o)} className="brass-tab px-3 py-1.5 text-[10px]">⚙ TOOLS</button>
+            )}
           </>) : (
             !subMode?.haveOwn && (
               <button onClick={foundSub} className="brass-tab px-3 py-1.5 text-[10px]">⌂ FOUND YOURS</button>
             )
           )}
+        </div>
+      )}
+
+      {/* founder's moderation desk: members, pins, and the shelf rule */}
+      {scene === 'SUB-MAIN' && !modalUp && subTools && subMode?.mode === 'group' && subMode.owner && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[90vw] max-h-[55vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3 font-mono text-[10px] tracking-[0.15em]">
+          <div className="flex items-center justify-between">
+            <span className="text-brass">SHELF RULE</span>
+            <button onClick={togglePins} className="brass-tab px-2 py-1">
+              {subMode.pinsLocked ? 'PINNING: FOUNDER ONLY' : 'PINNING: ALL MEMBERS'}
+            </button>
+          </div>
+          <div>
+            <div className="text-brass mb-1">MEMBERS · {Object.keys(subMode.members || {}).length}</div>
+            {Object.entries(subMode.members || {}).map(([uid, mName]) => (
+              <div key={uid} className="flex justify-between items-center py-0.5">
+                <span className="text-white/70">{mName}{uid === who?.id ? ' · founder' : ''}</span>
+                {uid !== who?.id && (
+                  <button onClick={() => kickMember(uid)} className="text-flame/80 hover:text-flame">KICK</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="text-brass mb-1">PINNED WORLDS · {(subMode.shelf || []).length}</div>
+            {(subMode.shelf || []).length === 0 && <div className="text-white/35">nothing pinned yet</div>}
+            {(subMode.shelf || []).map(n => (
+              <div key={n} className="flex justify-between items-center py-0.5">
+                <span className="text-white/70">{n.toLowerCase()}</span>
+                <button onClick={() => unpinWorld(n)} className="text-flame/80 hover:text-flame">UNPIN</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

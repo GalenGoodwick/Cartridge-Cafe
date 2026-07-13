@@ -570,12 +570,12 @@ export class FieldRenderer {
     this.vertexModule = device.createShaderModule({ code: vertexShaderSource })
 
     // Create textures
-    this.colorTex = this.createDataTexture()
-    this.stateTex = this.createDataTexture()
-    this.stateTex2 = this.createDataTexture()
-    this.selectionTex = this.createDataTexture()
-    this.effectTex = this.createDataTexture()
-    this.presenceTex = this.createDataTexture()
+    this.colorTex = this.createDataTexture('colorTex')
+    this.stateTex = this.createDataTexture('stateTex')
+    this.stateTex2 = this.createDataTexture('stateTex2')
+    this.selectionTex = this.createDataTexture('selectionTex')
+    this.effectTex = this.createDataTexture('effectTex')
+    this.presenceTex = this.createDataTexture('presenceTex')
 
     // Presence staging buffer — created dynamically in schedulePresenceReadback
     // sized to numFields * bytesPerRow * gridSize for per-field rendering
@@ -905,8 +905,9 @@ export class FieldRenderer {
     })
   }
 
-  private createDataTexture(): GPUTexture {
+  private createDataTexture(label = 'data'): GPUTexture {
     return this.device!.createTexture({
+      label,   // a fault must NAME its corpse — "(unlabeled)" taught us that
       size: [this.gridSize, this.gridSize],
       format: 'rgba32float',
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING,
@@ -1177,7 +1178,10 @@ export class FieldRenderer {
   }
 
   private createEmptyMaskTexture(fieldId: string): GPUTexture {
-    const tex = this.createDataTexture()
+    // a NEW mask means any cached bind group views the OLD one — invalidate
+    this._cachedEffectTexBGs.delete(fieldId)
+    this._cachedEffectTexBGs.delete(fieldId + '_fb')
+    const tex = this.createDataTexture(`mask:${fieldId}`)
     // Already zeroed — GPUTexture initial contents are 0
     this.fieldMaskTextures.set(fieldId, tex)
     return tex
@@ -1412,6 +1416,8 @@ export class FieldRenderer {
     if (maskTex) {
       this.retireTexture(maskTex)
       this.fieldMaskTextures.delete(fieldId)
+      this._cachedEffectTexBGs.delete(fieldId)
+      this._cachedEffectTexBGs.delete(fieldId + '_fb')
     }
   }
 
@@ -1424,6 +1430,10 @@ export class FieldRenderer {
     if (tex) {
       this.retireTexture(tex)   // deferred: an in-flight submit may still hold it
       this.fieldMaskTextures.delete(fieldId)
+      // the cached bind group holds a VIEW of the dead texture — it must die
+      // with it, or every later pass submits the corpse (the ix-mask fault)
+      this._cachedEffectTexBGs.delete(fieldId)
+      this._cachedEffectTexBGs.delete(fieldId + '_fb')
     }
   }
 

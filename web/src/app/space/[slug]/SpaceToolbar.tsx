@@ -283,7 +283,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
             <button className={btn} onClick={() => setOpen(o => !o)}>History</button>
             <button className={btn} disabled={busy} onClick={remix}>Remix</button>
             <button className={btn} disabled={busy} onClick={() => setFlagOpen(o => !o)}>Call a vote</button>
-            <a href="/" className={btn}>Cafe</a>
+            <a href="/?commons=1" className={btn}>Cafe</a>
           </>
         )}
       </div>

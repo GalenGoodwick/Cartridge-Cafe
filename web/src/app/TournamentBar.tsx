@@ -315,15 +315,30 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                 className={`${pill} px-1.5 py-0.5 rounded border border-white/15 text-white/60 hover:text-white`}>✕</button>
             </div>
           </div>
+          {/* UC law: you are dealt into ONE cell — you sit in yours; the other
+              cells of the tier are a pulse (spoken / deliberating), not a window. */}
+          {doc.cells.length > 1 && (
+            <div className={`${pill} flex items-center gap-1.5 text-white/40`}>
+              TIER CELLS
+              {doc.cells.map((c, i) => (
+                <span key={i}
+                  title={`cell ${i + 1} — ${Object.keys(c.votes).length > 0 ? 'spoken' : 'deliberating'}${i === myCellIdx(doc) ? ' — yours' : ''}`}
+                  className={`inline-block w-2 h-2 rounded-full ${Object.keys(c.votes).length > 0 ? 'bg-emerald-400/80' : 'bg-white/25'} ${i === myCellIdx(doc) ? 'ring-2 ring-amber-300/80' : ''}`} />
+              ))}
+              {myCellIdx(doc) < 0 && <span className="ml-1 text-white/30">sign in to take a seat</span>}
+            </div>
+          )}
           {doc.cells.map((c, i) => {
             const mine = i === myCellIdx(doc)
+            // one cell on screen: yours. (Signed-out visitors may listen to cell 1.)
+            if (myCellIdx(doc) >= 0 ? !mine : i > 0) return null
             const myVote = who && mine ? c.votes[who] : undefined
             const tally: Record<string, number> = {}
             for (const w of Object.values(c.votes)) tally[w] = (tally[w] || 0) + 1
             return (
               <div key={i} className={`rounded-lg border p-2 ${mine ? 'border-amber-400/40' : 'border-white/10'}`}>
                 <div className={`${pill} mb-1.5 ${mine ? 'text-amber-300' : 'text-brass'}`}>
-                  CELL {i + 1} {mine ? '· YOUR CELL' : ''} {Object.keys(c.votes).length > 0 ? '· spoken' : '· waiting'}
+                  {mine ? 'YOUR CELL' : 'CELL 1 · listening'} {Object.keys(c.votes).length > 0 ? '· spoken' : '· deliberating'}
                 </div>
                 <div className="space-y-1">
                   {c.worlds.map(w => {

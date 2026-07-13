@@ -247,6 +247,10 @@ try {
               name: G3 ? G3.name : null,
               haveOwn: !!(who && Object.keys(idx).some(s3 => idx[s3] && idx[s3].ownerId === who.id)),
               member: !!(who && G3 && G3.members && G3.members[who.id]),
+              owner: !!(who && G3 && G3.ownerId === who.id),
+              pinsLocked: !!(G3 && G3.pinsLocked),
+              members: G3 ? (G3.members || {}) : {},
+              shelf: G3 ? Object.keys(G3.shelf || {}) : [],
             } }))
           }
         } else if (MF) {
