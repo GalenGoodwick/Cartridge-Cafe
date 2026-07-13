@@ -304,14 +304,57 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     })
     if (!r.ok) { setBrewErr('could not deliver the brief'); return }
     setBrewBriefed(true)
+    setBrewStep(4)   // now the AI takes over — wake it and watch for the first build
+  }
+  /** all gates passed and the AI has begun — the draft becomes a world */
+  const enterWorld = async () => {
+    await fetch('/api/spaces/' + brewSlugRef.current, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isPublic: true }),
+    }).catch(() => {})
+    window.location.href = '/space/' + brewSlugRef.current
+  }
+  /** step 4: watch the world through the AI's own key — the moment its first
+   *  build lands (a field, a visual, a hook, or brief_done), walk the player in */
+  useEffect(() => {
+    if (brewStep !== 4 || !brewToken) return
+    let stop = false
+    const iv = setInterval(async () => {
+      try {
+        const d = await fetch('/api/engine/bridge', { headers: { Authorization: 'Bearer ' + brewToken } }).then(r => r.json())
+        if (stop) return
+        const started = (d.fields || []).length > 0 || (d.visualTypes || []).length > 0 ||
+          (d.stepHooks || []).length > 0 || d.worldData?.ai_focus || d.worldData?.brief_done
+        if (started) { stop = true; enterWorld() }
+      } catch { /* keep watching */ }
+    }, 2000)
+    return () => { stop = true; clearInterval(iv) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brewStep, brewToken])
+  const reupPrompt = (token: string) => {
+    const o = window.location.origin
+    return `Your brief is in the world now. GET ${o}/api/engine/bridge
+Header: Authorization: Bearer ${token}
+Read worldData.creation_brief and BUILD EXACTLY THAT — not your own idea.
+When the first pass stands, set worldData.brief_done = true.
+worldData.instructions is mandatory: key entry + the point.`
   }
   const brewCancel = async () => {
-    // abandoning an unnamed world removes it — no junk on the shelf
-    if (!brewNamed && brewSlugRef.current) {
-      fetch('/api/spaces/' + brewSlugRef.current, { method: 'DELETE' }).catch(() => {})
-    }
     setBrewStep(0)
+    // backing out removes the draft — unless the AI already built something,
+    // in which case it survives as a private draft (find it in MY WORLDS)
+    const slug = brewSlugRef.current
+    if (!slug) return
+    try {
+      const b = await fetch('/api/spaces/browse').then(r => r.json())
+      const mine2 = ((b.spaces || []) as { slug: string; blank?: boolean }[]).find(sp => sp.slug === slug)
+      if (mine2 && mine2.blank) fetch('/api/spaces/' + slug, { method: 'DELETE' }).catch(() => {})
+    } catch { /* the sweep will catch it */ }
   }
+  const brewCancelRef = useRef(brewCancel)
+  brewCancelRef.current = brewCancel
+  const brewStepRef = useRef(brewStep)
+  brewStepRef.current = brewStep
 
   const go = (name: string, push = true) => {
     // entering anywhere FROM a hub leaves a crumb — back climbs the trail
@@ -397,7 +440,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       if (d.kind !== 'typing') captionTimer.current = setTimeout(() => setCaption(null), d.kind === 'hint' ? 6000 : 3200)
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || sceneRef.current === 'CAFE') return
+      if (e.key !== 'Escape') return
+      // ESC backs out of the brew wizard first
+      if (brewStepRef.current > 0) { brewCancelRef.current(); return }
+      if (sceneRef.current === 'CAFE') return
       // leaving pauses the world and asks — a mid-game ESC costs nothing
       if (confirmRef.current) { setConfirmLeave(false); pause(false) }
       else { setConfirmLeave(true); pause(true) }
@@ -668,12 +714,15 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {brewStep > 0 && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/80 backdrop-blur-sm"
           onClick={brewCancel}>
-          <div className="w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+          <div className="relative w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
             onClick={e => e.stopPropagation()}>
+            <button onClick={brewCancel} aria-label="back out"
+              className="absolute top-2.5 right-3.5 font-mono text-sm text-crema/40 hover:text-glow transition-colors">✕</button>
             <div className="flex gap-3 mb-4 font-mono text-[9px] tracking-[0.2em]">
               <span className={brewAi ? 'text-glow' : 'text-crema/40'}>{brewAi ? '✓' : '1'} AI CONNECTED</span>
               <span className={brewNamed ? 'text-glow' : 'text-crema/40'}>{brewNamed ? '✓' : '2'} NAMED</span>
               <span className={brewBriefed ? 'text-glow' : 'text-crema/40'}>{brewBriefed ? '✓' : '3'} BRIEFED</span>
+              <span className={brewStep === 4 ? 'text-glow' : 'text-crema/40'}>{brewStep === 4 ? '⚒' : '4'} BUILDING</span>
             </div>
             {brewStep === 1 && (<>
               <div className="cafe-sign text-2xl mb-2">connect your AI</div>
@@ -720,25 +769,33 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 rows={4}
                 className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-xs text-glow outline-none focus:border-brass mb-3 resize-none" />
               {brewErr && <div className="font-mono text-[10px] text-red-400 mb-2">{brewErr}</div>}
-              {!brewBriefed ? (
-                <button disabled={!brewBrief.trim()} onClick={brewSaveBrief}
-                  className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
-                  DELIVER THE BRIEF
+              <button disabled={!brewBrief.trim()} onClick={brewSaveBrief}
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
+                DELIVER THE BRIEF
+              </button>
+            </>)}
+            {brewStep === 4 && (<>
+              <div className="cafe-sign text-2xl mb-2">wake your AI</div>
+              <div className="font-mono text-[10px] leading-relaxed text-crema/70 mb-3">
+                The brief is in the world. If your AI is still standing by, it will begin on
+                its own — the door opens the moment its first build lands. If its session
+                ended, paste this to wake it:
+              </div>
+              <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[10px] leading-relaxed text-glow/90 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto mb-3">
+                {reupPrompt(brewToken)}
+              </div>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => navigator.clipboard?.writeText(reupPrompt(brewToken))}
+                  className="flex-1 rounded-lg bg-flame/90 hover:bg-glow py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+                  COPY WAKE-UP PROMPT
                 </button>
-              ) : (
-                <button disabled={!(brewAi && brewNamed && brewBriefed)}
-                  onClick={async () => {
-                    // all three gates passed — NOW the draft becomes a world
-                    await fetch('/api/spaces/' + brewSlugRef.current, {
-                      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ isPublic: true }),
-                    }).catch(() => {})
-                    window.location.href = '/space/' + brewSlug
-                  }}
-                  className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[11px] tracking-[0.15em] text-void transition-colors disabled:opacity-40">
-                  {brewAi ? 'ENTER WORLD' : 'WAITING FOR YOUR AI TO CONNECT…'}
+                <button onClick={enterWorld} className="flex-1 brass-tab py-2 text-[10px]">
+                  STEP IN NOW
                 </button>
-              )}
+              </div>
+              <div className="font-mono text-[9px] tracking-[0.15em] mt-2 text-crema/40 animate-pulse">
+                watching for its first build — the door opens itself…
+              </div>
             </>)}
           </div>
         </div>
