@@ -177,6 +177,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   // Audio system
   const audioRef = useRef<GameAudio>(new GameAudio())
+  // audio dies with its world: Web Audio sources keep playing after React
+  // unmounts, so leaving the page must close the context explicitly
+  useEffect(() => {
+    const audio = audioRef.current
+    return () => { audio.destroy() }
+  }, [])
 
   // HUD elements (driven by worldData['hud'])
   const hudContainerRef = useRef<HTMLDivElement>(null)
@@ -520,7 +526,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const { scene } = await resp.json()
       if (!scene) { showToast(`Scene "${sceneName}" not found`, 'error'); return }
 
-      // Clear current state
+      // Clear current state — including the old world's audio
+      audioRef.current.stopMusic(0.2)
+      delete sim.worldData['__play_sound']
+      delete sim.worldData['__play_music']
       for (const field of sim.fields.values()) {
         renderer.removeAllFieldEffects(field.id)
       }
@@ -685,13 +694,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         if (prevScene) {
           const stash: Record<string, unknown> = {}
           for (const k of Object.keys(sim.worldData)) {
+            // pending audio triggers are transient — never stash a sound
+            if (k === '__play_sound' || k === '__play_music') continue
             if (k.startsWith('__')) stash[k] = sim.worldData[k]
           }
           try { localStorage.setItem(`cc-save-${prevScene}`, JSON.stringify(stash)) } catch { /* full/blocked */ }
         }
 
         // teardown the previous scene COMPLETELY — restoreFromSnapshots only
-        // adds, so every old field must be removed by hand
+        // adds, so every old field must be removed by hand. The old world's
+        // music must not follow the player through the door.
+        audioRef.current.stopMusic(0.2)
         for (const id of Array.from(sim.fields.keys())) {
           renderer.removeAllFieldEffects(id)
           sim.removeField(id)
@@ -1193,6 +1206,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     // the whole alphabet — worlds that listen to language need every letter
     for (let c = 97; c <= 122; c++) keyMap[String.fromCharCode(c)] = 'key_' + String.fromCharCode(c)
+    for (let c = 48; c <= 57; c++) keyMap[String.fromCharCode(c)] = 'key_' + String.fromCharCode(c)   // digits — cards, slots, channels
     const onKeyDown = (e: KeyboardEvent) => {
       const sim = simulationRef.current
       if (!sim) return
