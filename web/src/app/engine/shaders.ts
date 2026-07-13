@@ -1566,7 +1566,9 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
   let p = iconBuf[idx];
   let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
-  return pow(c, vec3f(2.2));
+  // sRGB→linear, then expose up so ACES (applied downstream) lands the photo
+  // near its original display brightness instead of crushing it to black
+  return pow(c, vec3f(2.2)) * 4.5;
 }
 
 // ─── Cell shaders: the previous frame is the world's memory ───
@@ -2061,7 +2063,9 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
   let p = iconBuf[idx];
   let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
-  return pow(c, vec3f(2.2));
+  // sRGB→linear, then expose up so ACES (applied downstream) lands the photo
+  // near its original display brightness instead of crushing it to black
+  return pow(c, vec3f(2.2)) * 4.5;
 }
 
 // ─── Cell shaders: the previous frame is the world's memory ───

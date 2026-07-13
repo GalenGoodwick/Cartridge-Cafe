@@ -37,7 +37,8 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // ── the bubble universe: live positions, pressure-ranked, explorable ──
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 3);
-    let st = i32(floor(sv)) % 16;
+    let stRaw = i32(floor(sv));
+    let st = stRaw % 200;
     let hue = fract(sv);
     let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
@@ -114,6 +115,10 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g = vec3f(sn * 0.5);
         g += vec3f(0.3, 1.0, 0.45) * exp(-dot(q, q) * 8.0) * (0.28 + 0.14 * sin(t * 2.0));
         g *= 0.82 + 0.18 * sin(q.y * 60.0 - t * 8.0);
+      } else if (st >= 9) {
+        // a real world — its screenshot, folded into the bubble by the shader
+        g = cafeIcon(st - 9, q);
+        g *= 0.9 + 0.2 * (1.0 - length(q));   // gentle spherical shading
       } else {
         // a young world — a banded seed-planet in its own hue
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
@@ -136,7 +141,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // the crown, over everything — the champion's ring outshines its neighbors
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 3);
-    if (i32(floor(sv)) < 16) { continue; }
+    if (i32(floor(sv)) < 200) { continue; }
     let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm;
@@ -324,6 +329,10 @@ try {
           const reach = T && T.reached ? (T.reached[n] || 0) : 0
           const champ = T && T.champion === n
           B.crown = !!champ
+          // the shell packs each world's screenshot into an atlas slot; a world
+          // WITH a slot shows its real face (drawn in-shader), else a house mini
+          const slots = (typeof window !== 'undefined' && window.__cafeIconSlots) || null
+          B.iconSlot = slots && slots[n] != null ? slots[n] : (slots && slots[n.toUpperCase && n.toUpperCase()] != null ? slots[n.toUpperCase()] : null)
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + (champ ? 6 : 0)
@@ -481,7 +490,9 @@ try {
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
-    u.push(B.x, B.y, (B.crown ? 16 : 0) + B.style + Math.min(0.999, B.hue))
+    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : B.style
+    const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue)
+    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac)
   }
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
