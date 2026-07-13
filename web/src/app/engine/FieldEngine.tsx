@@ -196,6 +196,16 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     fetch('/api/auth/session').then(r => r.json())
       .then(s => setMe(s?.user?.email || s?.user?.name || null)).catch(() => {})
   }, [])
+  // a freshly brewed (blank) world greets its owner with the how-to
+  useEffect(() => {
+    if (!spaceId || !isOwner) return
+    const t = setTimeout(() => {
+      const sim = simulationRef.current
+      if (sim && sim.fields.size === 0) setInstrOpen(true)
+    }, 1800)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, isOwner])
   // Focus throttle: a WATCHING viewer gets full rate (spectators give no input) —
   // only an unfocused-but-visible window drops to ~10fps. Hidden tabs pause free (rAF).
   const windowFocusedRef = useRef(typeof document !== 'undefined' ? document.hasFocus() : true)
@@ -235,6 +245,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   useEffect(() => {
     const audio = audioRef.current
     return () => { audio.destroy() }
+  }, [])
+  // the cafe mute switch rules world audio too — one button, all sound
+  useEffect(() => {
+    const audio = audioRef.current
+    try { if (localStorage.getItem('cc-mute')) audio.setVolume(0) } catch { /* fine */ }
+    const onMute = (e: Event) => audio.setVolume((e as CustomEvent).detail ? 0 : 1)
+    window.addEventListener('cafe:muted', onMute)
+    return () => window.removeEventListener('cafe:muted', onMute)
   }, [])
 
   // HUD elements (driven by worldData['hud'])
@@ -3921,7 +3939,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           />
 
           {/* other players, present as orbs — capped at 25 per viewing instance */}
-          {presenceOthers.length > 0 && canvasRef.current && (() => {
+          {presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {
             const cv = canvasRef.current
             const w = cv.clientWidth || 1, h = cv.clientHeight || 1
             const cam = cameraRef.current
@@ -3937,7 +3955,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   if (p.left < -20 || p.left > w + 20 || p.top < -20 || p.top > h + 20) return null
                   return (
                     <div key={o.id} className="absolute rounded-full"
-                      style={{
+                      style={playScene ? {
+                        // in a world: a presence is a quiet dot, not a lamp — no bloom on the art
+                        left: p.left - 4, top: p.top - 4, width: 8, height: 8, opacity: 0.7,
+                        background: `hsl(${o.hue} 70% 65%)`,
+                        transition: 'left 0.25s linear, top 0.25s linear',
+                      } : {
                         left: p.left - 7, top: p.top - 7, width: 14, height: 14,
                         background: `radial-gradient(circle at 35% 35%, hsl(${o.hue} 90% 82%), hsl(${o.hue} 85% 55%) 60%, transparent 78%)`,
                         boxShadow: `0 0 12px 2px hsl(${o.hue} 90% 60% / 0.55)`,
@@ -4130,7 +4153,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   </>
                 ) : (
                   <div className="whitespace-pre-line">
-                    {String(simulationRef.current?.worldData?.instructions || 'No instructions written for this world yet.')}
+                    {String(simulationRef.current?.worldData?.instructions ||
+                      ((simulationRef.current?.fields?.size ?? 0) === 0
+                        ? 'This world is BLANK — here is how to make it real:\n\n1 · ⚡ CONNECT AI — copy the briefing to any AI and tell it what to build. It works over plain HTTP; the world updates live.\n2 · Or build by hand in the workshop tools (⚙).\n3 · The world saves itself as you make it. The moment it is not blank, it joins the cafe\u2019s main screen.\n\nWrite these instructions properly (EDIT, above) once your world knows what it is: key entry first, then the point.'
+                        : 'No instructions written for this world yet.'))}
                   </div>
                 )}
               </div>

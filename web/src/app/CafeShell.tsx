@@ -45,6 +45,18 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const openConfirm = () => { setConfirmLeave(true); pause(true) }
   const stay = () => { setConfirmLeave(false); pause(false) }
 
+  /** BREW YOURS: signed out → auth (and resume); signed in → name it, make it, enter it */
+  const brew = async () => {
+    const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+    if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
+    const name = window.prompt('Name your world:')
+    if (!name?.trim()) return
+    const r = await fetch('/api/spaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) })
+    const d = await r.json()
+    if (r.ok && d?.space?.slug) window.location.href = '/space/' + d.space.slug
+    else window.alert(d?.error || 'could not brew')
+  }
+
   const go = (name: string, push = true) => {
     if (name !== sceneRef.current) { if (name === 'CAFE') sfx.leave(); else sfx.launch(name) }
     setAudioScene(name)
@@ -67,7 +79,14 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     setMute(isMuted())
     const onLaunch = (e: Event) => {
       const name = (e as CustomEvent).detail
-      if (typeof name === 'string' && name) go(name)
+      if (typeof name !== 'string' || !name) return
+      if (name.startsWith('space:')) { window.location.href = '/space/' + name.slice(6); return }
+      go(name)
+    }
+    // returning from auth with brewing intent
+    if (new URLSearchParams(window.location.search).get('brew')) {
+      window.history.replaceState({}, '', '/')
+      brew()
     }
     const onHover = (e: Event) => setHover((e as CustomEvent).detail)
     // worlds can put a line of phosphor text on the glass — SIGNAL shows the word you type
@@ -252,9 +271,9 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
             </div>
           </div>
           <div className="fixed top-5 right-6 z-50 flex gap-2">
-            <a href="/auth/signin" className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+            <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
               BREW YOURS
-            </a>
+            </button>
           </div>
         </>
       )}

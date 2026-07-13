@@ -200,11 +200,42 @@ try {
     if (typeof window !== 'undefined')
       window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text, kind } }))
   }
+  // real semantics: word vectors (the Cradle's GloVe space) load once and any
+  // word projects onto anchor concepts by cosine similarity — semantic
+  // NEIGHBORS get neighboring physics without ever being written down
+  if (typeof window !== 'undefined' && !window.__ccSemantic && !window.__ccSemLoading) {
+    window.__ccSemLoading = 1
+    fetch('/semantic-50d.json').then(r => r.json()).then(d => { window.__ccSemantic = d }).catch(() => {})
+  }
+  const ANCHORS = ['life', 'coral', 'worm', 'maze', 'star', 'storm', 'ocean', 'calm', 'death', 'light', 'blood', 'forest', 'ghost', 'fire', 'rain', 'night', 'love', 'war', 'home', 'dream']
   const tune = (word) => {
-    let reg, pal
+    let reg, pal, via = ''
     const hit = LEX[word]
+    const V = (typeof window !== 'undefined') ? window.__ccSemantic : null
     if (hit) {
       const [r, c] = hit.split('/'); reg = REG[r]; pal = PAL[c]
+    } else if (V && V[word]) {
+      // cosine to each anchor, blend the top three
+      const wv = V[word]
+      const cos = (a, b) => {
+        let d = 0, na = 0, nb = 0
+        for (let k = 0; k < 50; k++) { d += a[k] * b[k]; na += a[k] * a[k]; nb += b[k] * b[k] }
+        return d / Math.sqrt(na * nb + 1e-9)
+      }
+      const sims = ANCHORS.filter(a => V[a] && LEX[a]).map(a => ({ a, s: cos(wv, V[a]) }))
+      sims.sort((x, y) => y.s - x.s)
+      const top = sims.slice(0, 3)
+      const wts = top.map(t => Math.exp((t.s - top[0].s) / 0.08))
+      const wsum = wts.reduce((a, b) => a + b, 0)
+      reg = [0, 0]; pal = [0, 0, 0]
+      top.forEach((t, j) => {
+        const [r, c] = LEX[t.a].split('/')
+        const w = wts[j] / wsum
+        reg[0] += REG[r][0] * w; reg[1] += REG[r][1] * w
+        for (let k2 = 0; k2 < 3; k2++) pal[k2] += PAL[c][k2] * w
+      })
+      via = top[0].a
+      caption(word + ' \u00b7 feels like ' + via, 'hint')
     } else {
       // unheard words still land somewhere in parameter space, deterministically
       let h = 2166136261
@@ -213,6 +244,7 @@ try {
       const keys = Object.keys(PAL); pal = PAL[keys[(h >>> 20) % keys.length]]
     }
     G.tF = reg[0]; G.tk = reg[1]; G.tA = pal[0]; G.tB = pal[1]; G.tC = pal[2]
+    if (typeof window !== 'undefined') window.__sgState = { word, via, F: reg[0], k: reg[1], A: pal[0], B: pal[1], C: pal[2] }
   }
 
   // typing — every letter is an input to the world

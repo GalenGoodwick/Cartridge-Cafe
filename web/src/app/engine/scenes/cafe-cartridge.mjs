@@ -2,41 +2,7 @@
 // living miniature of its game. Your cursor is a lens; hover blooms a portal;
 // click steps through it. No webpage. Save+load: node cafe-cartridge.mjs
 
-// ── the shelf ranks itself: most recently updated worlds sit closest to center ──
-const _list = await fetch('http://localhost:3000/api/engine/scene?action=list').then(r => r.json())
-const _stamped = []
-for (const n of _list.scenes.filter(n => n !== 'CAFE' && !n.includes('⑂'))) {
-  const { scene } = await fetch('http://localhost:3000/api/engine/scene?name=' + encodeURIComponent(n)).then(r => r.json())
-  _stamped.push({ n, ts: (scene && scene.timestamp) || 0 })
-}
-_stamped.sort((a, b) => b.ts - a.ts)
-const NAMES = _stamped.map(x => x.n)
-const N = NAMES.length
-const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
-const _hue = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
-const POS = NAMES.map((n, i) => {
-  const r = 0.155 * Math.sqrt(i + 0.35)
-  const a = i * 2.39996 + 0.65
-  return [+(r * Math.cos(a)).toFixed(3), +(r * Math.sin(a) * 0.74 - 0.02).toFixed(3)]
-})
-const POS_WGSL = POS.map(([x, y], i) => `  if (i == ${i}) { return vec2f(${x}, ${y}); }`).join('\n')
-const STYLE_WGSL = NAMES.map((n, i) => `  if (i == ${i}) { return ${STYLE_OF[n] ?? 8}; }`).join('\n')
-const HUE_WGSL = NAMES.map((n, i) => `  if (i == ${i}) { return ${_hue(n).toFixed(3)}; }`).join('\n')
-
 const WORLD = /* wgsl */`
-fn cf_portal_pos(i: i32) -> vec2f {
-${POS_WGSL}
-  return vec2f(0.0, 0.0);
-}
-fn cf_style(i: i32) -> i32 {
-${STYLE_WGSL}
-  return 8;
-}
-fn cf_hue(i: i32) -> f32 {
-${HUE_WGSL}
-  return 0.5;
-}
-
 fn cf_stars(p: vec2f, t: f32) -> vec3f {
   var c = vec3f(0.008, 0.007, 0.016);
   c += vec3f(0.05, 0.025, 0.09) * smoothstep(0.4, 0.9, fbm(p * 1.5 + vec2f(t * 0.004, 0.0), 4));
@@ -54,7 +20,9 @@ fn cf_stars(p: vec2f, t: f32) -> vec3f {
 
 fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let t = time;
-  let mp = vec2f(uni(0), uni(1));     // cursor in field coords
+  let mp = vec2f(uni(4), uni(5));     // cursor (uv coords)
+  let cam = vec2f(uni(0), uni(1));
+  let zm = uni(2);
 
   // ── the room: stars seen through curved space (your cursor is a lens) ──
   var p = uv;
@@ -66,17 +34,19 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // warm hearth-light from below — this is a cafe, not a void
   col += vec3f(0.10, 0.055, 0.02) * pow(max(0.0, uv.y + 0.2), 2.0) * (0.8 + 0.2 * sin(t * 0.7));
 
-  // ── every cartridge on the shelf, newest nearest the center ──
-  for (var i = 0; i < ${N}; i++) {
-    let ctr = cf_portal_pos(i);
+  // ── the bubble universe: live positions, pressure-ranked, explorable ──
+  for (var i = 0; i < i32(uni(3) + 0.5); i++) {
+    let sv = uni(8 + i * 3);
+    let st = i32(floor(sv));
+    let hue = fract(sv);
+    let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
-    let R = 0.088;
-    let hov = uni(2 + i);                          // 0..1 hover bloom from the hook
+    let R = 0.098 * zm;
+    let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
     if (d < rr) {
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
-      let st = cf_style(i);
       if (st == 0) {
         // FABRIC — a lens wandering through stars
         var pp = q * 2.0;
@@ -146,7 +116,6 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g *= 0.82 + 0.18 * sin(q.y * 60.0 - t * 8.0);
       } else {
         // a young world — a banded seed-planet in its own hue
-        let hue = cf_hue(i);
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
         g = cA * (0.22 + 0.5 * fbm3(q * 3.0 + vec2f(t * 0.08, f32(i) * 3.7)));
         g += cA * 0.4 * smoothstep(0.6, 1.0, 1.0 - abs(q.y * 2.2 + 0.3 * sin(q.x * 3.0 + t * 0.4)));
@@ -174,41 +143,127 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 const HOOK = `
 try {
   const wd = sim.worldData
-  if (!wd.__cf || !wd.__cf.hov || wd.__cf.hov.length !== ${N}) wd.__cf = { hov: Array(${N}).fill(0), prevDown: false, mx: 0, my: 0 }
-  const C = wd.__cf
+  if (!wd.__cu || wd.__cu.v !== 1) wd.__cu = { v: 1, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
+    pollT: 0, drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
+  const U = wd.__cu
   const dt2 = Math.min(dt, 0.05)
+  const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
+  const hueOf = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
+  const angOf = n => { let h = 0; for (const c of n) h = (h * 37 + c.charCodeAt(0)) % 9973; return (h % 628) / 100 }
 
-  const hasMouse = wd.mouse_x !== undefined
-  const tx = ((wd.mouse_x ?? 256) - 256) / 256
-  const ty = ((wd.mouse_y ?? 256) - 256) / 256
-  C.mx += (tx - C.mx) * Math.min(1, dt2 * 12)
-  C.my += (ty - C.my) * Math.min(1, dt2 * 12)
-
-  const GAMES = ${JSON.stringify(NAMES)}
-  const POSA = ${JSON.stringify(POS)}
-  const pos = i => POSA[i]
-
-  let hovered = -1
-  for (let i = 0; i < ${N}; i++) {
-    const [px, py] = pos(i)
-    const d = Math.hypot(tx - px, ty - py)
-    const want = hasMouse && d < 0.10 ? 1 : 0
-    if (want) hovered = i
-    C.hov[i] += (want - C.hov[i]) * Math.min(1, dt2 * 8)
+  // ── the universe breathes: poll the shelf; newborns arrive at the edge ──
+  U.pollT -= dt2
+  if (U.pollT <= 0) {
+    U.pollT = 8
+    ;(async () => {
+      try {
+        const now = Date.now()
+        const [sc, sp, sl] = await Promise.all([
+          fetch('/api/engine/scene?action=list').then(r => r.json()),
+          fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
+          fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })),
+        ])
+        const cellAt = {}
+        for (const s of (sl.slots || [])) {
+          if (s.slot.startsWith('cell:')) cellAt[s.slot.slice(5)] = s.savedAt
+        }
+        const want = {}
+        for (const n of (sc.scenes || [])) {
+          if (n === 'CAFE' || n.includes('\u2402')) continue
+          if (n.includes(' \u2442 ')) continue
+          want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+        }
+        for (const s of (sp.spaces || [])) {
+          if (s.blank) continue
+          const disp = (s.name || s.slug).toUpperCase()
+          if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+        }
+        for (const n of Object.keys(want)) {
+          if (!U.bubbles[n]) {
+            // born at the edge of the universe
+            const edge = 92 * Math.sqrt(Object.keys(U.bubbles).length + 3)
+            const a2 = angOf(n)
+            U.bubbles[n] = { x: 256 + Math.cos(a2) * edge, y: 256 + Math.sin(a2) * edge * 0.74,
+              born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+          }
+          const B = U.bubbles[n]
+          B.launch = want[n].launch
+          // participation pressure: cell activity + birth heat
+          const cellAge = cellAt[n] ? (now - cellAt[n]) / 60000 : 999
+          const bornHeat = Math.max(0, 1 - (now - B.born) / 120000)
+          B.score = 1 / (1 + cellAge / 20) + bornHeat
+        }
+        for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
+        U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 19)
+      } catch (e2) { /* shelf unreachable — the universe holds its shape */ }
+    })()
   }
 
-  if (hovered !== (C.lastHover ?? -1) && typeof window !== 'undefined') {
-    C.lastHover = hovered
-    window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? GAMES[hovered] : null }))
+  // ── pressure physics: rank pulls inward; neighbors repel; drift is gentle ──
+  for (let i = 0; i < U.order.length; i++) {
+    const B = U.bubbles[U.order[i]]
+    if (!B) continue
+    const ring = 88 * Math.sqrt(i + 0.35)
+    const a2 = angOf(U.order[i]) + Math.sin((B.born % 10000) / 1000 + i) * 0.04
+    const tx = 256 + Math.cos(a2) * ring
+    const ty = 256 + Math.sin(a2) * ring * 0.74
+    B.x += (tx - B.x) * Math.min(1, dt2 * 0.5)
+    B.y += (ty - B.y) * Math.min(1, dt2 * 0.5)
+    for (let j = i + 1; j < U.order.length; j++) {
+      const C = U.bubbles[U.order[j]]
+      if (!C) continue
+      const ddx = B.x - C.x, ddy = B.y - C.y
+      const dd = Math.hypot(ddx, ddy)
+      if (dd > 1 && dd < 64) {
+        const push = (64 - dd) * dt2 * 1.6
+        B.x += ddx / dd * push; B.y += ddy / dd * push
+        C.x -= ddx / dd * push; C.y -= ddy / dd * push
+      }
+    }
   }
 
+  // ── exploring: drag empty space to pan · Z/X to zoom ──
+  const kE = k => { const n = wd['key_' + k + '_n'] || 0; const was = U.kN[k] || 0; U.kN[k] = n; return n > was }
+  if (kE('z')) U.cam.z = Math.min(2.4, U.cam.z * 1.25)
+  if (kE('x')) U.cam.z = Math.max(0.35, U.cam.z / 1.25)
+  const hasM = wd.mouse_x !== undefined
+  const mgx = wd.mouse_x ?? 256, mgy = wd.mouse_y ?? 256
   const down = !!wd.mouse_down
-  if (down && !C.prevDown && hovered >= 0 && typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('cafe:launch', { detail: GAMES[hovered] }))
+  // cursor in universe coords
+  const cux = U.cam.x + (mgx - 256) / U.cam.z
+  const cuy = U.cam.y + (mgy - 256) / U.cam.z
+  let hovered = -1
+  for (let i = 0; i < U.order.length; i++) {
+    const B = U.bubbles[U.order[i]]
+    if (B && Math.hypot(cux - B.x, cuy - B.y) < 30 / Math.max(U.cam.z, 0.001) * U.cam.z ? Math.hypot(cux - B.x, cuy - B.y) < 30 : false) hovered = i
   }
-  C.prevDown = down
+  if (down && !U.prevDown) { U.downX = mgx; U.downY = mgy; U.dx = mgx; U.dy = mgy; U.moved = 0; U.drag = hovered < 0 ? 1 : 0 }
+  if (down && U.drag) {
+    U.cam.x -= (mgx - U.dx) / U.cam.z
+    U.cam.y -= (mgy - U.dy) / U.cam.z
+    U.moved += Math.abs(mgx - U.dx) + Math.abs(mgy - U.dy)
+  }
+  U.dx = mgx; U.dy = mgy
+  if (!down && U.prevDown) {
+    if (hovered >= 0 && U.moved < 8 && typeof window !== 'undefined') {
+      const B = U.bubbles[U.order[hovered]]
+      if (B) window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
+    }
+    U.drag = 0
+  }
+  U.prevDown = down
+  if (hovered !== U.lastHover && typeof window !== 'undefined') {
+    U.lastHover = hovered
+    window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? U.order[hovered] : null }))
+  }
 
-  wd.gpuUniforms = [C.mx, C.my, ...C.hov]
+  // ── publish: cam, count, cursor(uv), then (x, y, style+hue) per bubble ──
+  const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
+  for (const n of U.order) {
+    const B = U.bubbles[n]
+    u.push(B.x, B.y, B.style + Math.min(0.999, B.hue))
+  }
+  wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
 `
 

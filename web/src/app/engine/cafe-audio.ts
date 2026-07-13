@@ -72,59 +72,11 @@ function noiseBuffer(c: AudioContext): AudioBuffer {
 }
 
 function buildAmbient() {
-  if (!ctx || !master) return
-  ambGain = ctx.createGain()
-  ambGain.gain.value = 0
-  lowpass = ctx.createBiquadFilter()
-  lowpass.type = 'lowpass'
-  lowpass.frequency.value = 700
-  lowpass.Q.value = 0.6
-  ambGain.connect(lowpass)
-  lowpass.connect(master)
-
-  const mk = (freq: number, type: OscillatorType, g: number) => {
-    const o = ctx!.createOscillator()
-    o.type = type
-    o.frequency.value = freq
-    const og = ctx!.createGain()
-    og.gain.value = g
-    o.connect(og)
-    og.connect(ambGain!)
-    o.start()
-    return { o, og }
-  }
-  const root = mk(110, 'triangle', 0.5)
-  const fifth = mk(110 * 1.4983, 'sine', 0.28)
-  const third = mk(110 * 2.52, 'sine', 0.0)
-  oscRoot = root.o; oscFifth = fifth.o; oscThird = third.o
-  thirdGain = third.og
-  oscFifth.detune.value = 4
-
-  // slow breath on the drone
-  const lfo = ctx.createOscillator()
-  lfo.frequency.value = 0.08
-  const lfoG = ctx.createGain()
-  lfoG.gain.value = 0.045
-  lfo.connect(lfoG)
-  lfoG.connect(ambGain.gain)
-  lfo.start()
-
-  // the busy-ness bed: pink noise through a wandering bandpass
-  const src = ctx.createBufferSource()
-  src.buffer = noiseBuffer(ctx)
-  src.loop = true
-  noiseBand = ctx.createBiquadFilter()
-  noiseBand.type = 'bandpass'
-  noiseBand.frequency.value = 700
-  noiseBand.Q.value = 1.1
-  noiseGain = ctx.createGain()
-  noiseGain.gain.value = 0.0
-  src.connect(noiseBand)
-  noiseBand.connect(noiseGain)
-  noiseGain.connect(master)
-  src.start()
-
-  ambGain.gain.setTargetAtTime(0.16, ctx.currentTime, 2.5)
+  // AMBIENT REMOVED (Jul 13): the cafe is quiet, and a world's own audio is
+  // the only audio — no drone or noise bed under the main screen or inside
+  // worlds. Interaction sfx (plucks, whooshes) still play through `master`.
+  // The drone/noise graph used to be built here; oscRoot/ambGain/noiseGain
+  // stay null and every consumer already guards for that.
 }
 
 // ── one-shot voices ──────────────────────────────────────────────────────────
@@ -228,6 +180,10 @@ export function setMuted(m: boolean) {
   muted = m
   try { localStorage.setItem('cc-mute', m ? '1' : '') } catch { /* private mode */ }
   if (ctx && master) master.gain.setTargetAtTime(m ? 0 : 0.14, ctx.currentTime, 0.2)
+  // one switch rules ALL sound: world audio (GameAudio) listens for this
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cafe:muted', { detail: m }))
+  }
 }
 
 /** Wire every listener once. Safe to call repeatedly. */

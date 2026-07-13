@@ -16,9 +16,16 @@ export async function GET() {
       owner: { select: { id: true, name: true, image: true } },
       forkOf: { select: { slug: true, name: true } },
       _count: { select: { versions: true, forks: true, flags: true } },
+      snapshot: true,
     },
     orderBy: { updatedAt: 'desc' },
     take: 60,
   })
-  return NextResponse.json({ spaces })
+  // a world is BLANK until it holds something; only unblank worlds join the door
+  const out = spaces.map(({ snapshot, ...rest }) => {
+    const sn = snapshot as { fields?: unknown[]; stepHooks?: unknown[]; visualTypes?: unknown[] } | null
+    const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
+    return { ...rest, blank }
+  })
+  return NextResponse.json({ spaces: out })
 }
