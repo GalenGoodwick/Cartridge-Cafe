@@ -443,6 +443,15 @@ try {
   // re-announced every 2s regardless: the shell drops portal events during
   // scene changes, so a one-shot could be lost forever ──
   U.portalT = (U.portalT || 0) - dt2
+  if (typeof window !== 'undefined') {
+    // live geometry EVERY tick: the shell's thumbnail layer reads this in its
+    // own rAF loop so world-face inlays stay welded to the shader's bubbles
+    // through pans and zooms (events are too slow — they ride React state)
+    window.__cafeBubbles = U.launched ? [] : U.order.map(n => {
+      const B = U.bubbles[n]
+      return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
+    }).filter(Boolean)
+  }
   if (!U.launched && typeof window !== 'undefined') {
     let sig = ((U.cam.x * 10) | 0) + '|' + ((U.cam.y * 10) | 0) + '|' + ((U.cam.z * 100) | 0)
     for (const n of U.order) { const B = U.bubbles[n]; if (B) sig += '|' + n + ':' + ((B.x * 10) | 0) + ',' + ((B.y * 10) | 0) }

@@ -28,6 +28,15 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [hint, setHint] = useState(false)
   const [hover, setHover] = useState<string | null>(null)
   const hoverBlockRef = useRef(0)
+  const hoverAtRef = useRef(0)
+  // a tooltip lives only as long as the world keeps affirming it (the cafe
+  // heartbeats hover twice a second) — unaffirmed names expire in 1.4s
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setHover(prev => (prev && Date.now() - hoverAtRef.current > 1400) ? null : prev)
+    }, 400)
+    return () => clearInterval(iv)
+  }, [])
   const [mouse, setMouse] = useState({ x: 0, y: 0 })
   const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
   const [confirmLeave, setConfirmLeave] = useState(false)
@@ -434,6 +443,7 @@ worldData.instructions is mandatory: key entry + the point.`
     }
     const onHover = (e: Event) => {
       if (Date.now() < hoverBlockRef.current) return   // scene just changed — stale hover
+      hoverAtRef.current = Date.now()
       setHover((e as CustomEvent).detail)
     }
     // worlds can put a line of phosphor text on the glass — SIGNAL shows the word you type
@@ -570,6 +580,37 @@ worldData.instructions is mandatory: key entry + the point.`
   // uv → screen for the contain-fit square (span = min(w,h), centered)
   const span = Math.min(vp.w, vp.h)
 
+  // the thumbnail layer's own clock: every frame, weld each world-face img to
+  // its bubble's live geometry (the door hook writes window.__cafeBubbles per
+  // tick). Direct DOM writes — no React re-render, no event latency.
+  useEffect(() => {
+    let raf = 0
+    const tick = () => {
+      const bubbles = (window as unknown as { __cafeBubbles?: Array<{ name: string; x: number; y: number; r: number }> }).__cafeBubbles
+      const w = window.innerWidth, hgt = window.innerHeight
+      const spanNow = Math.min(w, hgt)
+      const byName: Record<string, { x: number; y: number; r: number }> = {}
+      if (bubbles) for (const bb of bubbles) byName[bb.name] = bb
+      document.querySelectorAll<HTMLImageElement>('img[data-bubble]').forEach(img => {
+        if (img.dataset.dead === '1') return
+        const bb = byName[img.dataset.bubble || '']
+        if (!bb) { img.style.display = 'none'; return }
+        // inset well within the glass: the shader's rim and hover bloom frame
+        // the face instead of being covered by it
+        const d = bb.r * spanNow * 0.76
+        if (d < 8) { img.style.display = 'none'; return }
+        img.style.display = ''
+        img.style.left = (w / 2 + bb.x * spanNow / 2) + 'px'
+        img.style.top = (hgt / 2 + bb.y * spanNow / 2) + 'px'
+        img.style.width = d + 'px'
+        img.style.height = d + 'px'
+      })
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
   return (
     <>
       <FieldEngine playScene={scene} />
@@ -621,25 +662,22 @@ worldData.instructions is mandatory: key entry + the point.`
       )}
 
       {/* every bubble wears its world's true face: a screenshot the Eye took,
-          inlaid under the shader's glass edge. Worlds with living WGSL
-          miniatures have no thumb file, so the img 404s and hides itself. */}
-      {vp.w > 0 && !modalUp && portals.map(pt => {
-        const px = vp.w / 2 + pt.x * span / 2
-        const py = vp.h / 2 + pt.y * span / 2
-        const d = pt.r * span * 0.88
-        if (d < 8) return null
-        return (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={'thumb-' + pt.name}
-            src={`/thumbs/${encodeURIComponent(pt.name)}.jpg`}
-            alt=""
-            className="fixed z-30 pointer-events-none select-none rounded-full object-cover"
-            style={{ left: px, top: py, width: d, height: d, transform: 'translate(-50%, -50%)',
-                     opacity: 0.92, boxShadow: 'inset 0 0 18px rgba(0,0,0,0.8)' }}
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        )
-      })}
+          inlaid under the shader's glass edge. React only mounts the imgs —
+          POSITION comes from a rAF loop reading window.__cafeBubbles (written
+          by the door hook every tick), so faces stay welded to the shader's
+          bubbles through pans and zooms. Missing thumb → 404 → hides itself. */}
+      {!modalUp && portals.map(pt => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={'thumb-' + pt.name}
+          data-bubble={pt.name}
+          src={`/thumbs/${encodeURIComponent(pt.name)}.jpg`}
+          alt=""
+          className="fixed z-30 pointer-events-none select-none rounded-full object-cover"
+          style={{ left: -9999, top: -9999, width: 1, height: 1, transform: 'translate(-50%, -50%)',
+                   opacity: 0.92, boxShadow: 'inset 0 0 18px rgba(0,0,0,0.8)' }}
+          onError={e => { const el = e.currentTarget as HTMLImageElement; el.dataset.dead = '1'; el.style.display = 'none' }}
+        />
+      ))}
 
       {/* who's inside: a head-count on every door */}
       {vp.w > 0 && !modalUp && portals.map(pt => {
