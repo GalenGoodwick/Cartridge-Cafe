@@ -181,6 +181,8 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       if (!s.members[who.id]) return 'join first — only members pin'
       s.shelf[target] = { launch: launch as string, addedBy: who.name, at: Date.now() }
       return null
+    }).then(ok => {
+      if (ok) window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'pinned ' + target, kind: 'tuned' } }))
     })
   }
 
@@ -476,7 +478,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           see the contenders) and every other arena stands down. */}
       {((scene === 'CAFE' && !mine) || docked) && (
         <TournamentBar visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
-          docked={docked} onDock={setDocked} onTravel={travelTo}
+          docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}

@@ -183,6 +183,9 @@ try {
   const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
   const mineKey = MF ? String(MF.ownerId || MF.who || '') : (SUB ? 'sub:' + subKey : '')
   if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10; U.hintedEmpty = false }
+  // a poke = the shell just changed a shelf; re-poll now instead of waiting
+  const poke = (typeof window !== 'undefined' && window.__cafePoke) || 0
+  if (poke > (U.pokeAt || 0)) { U.pokeAt = poke; U.pollT = 0 }
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
   const hueOf = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
   const angOf = n => { let h = 0; for (const c of n) h = (h * 37 + c.charCodeAt(0)) % 9973; return (h % 628) / 100 }

@@ -108,7 +108,12 @@ interface FieldEngineProps {
   playScene?: string
 }
 
+/** Engine build marker — bump when engine-level fixes land, so a running tab
+ *  can PROVE which build it holds (shown in the fault banner + console). */
+const ENGINE_BUILD = 'e2-graveyard'
+
 export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene }: FieldEngineProps = {}) {
+  useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -4047,7 +4052,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           {/* fault banner: the world went down, and here is why */}
           {fault && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[11px] text-red-100 shadow-2xl">
-              <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind}</div>
+              <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind} <span className="text-red-300/50">({ENGINE_BUILD})</span></div>
               <div className="text-red-100/90 leading-relaxed break-words">{fault.message}</div>
               <div className="flex gap-2 mt-2">
                 {(fault.kind === 'gpu-lost' || fault.kind === 'frame-crash') && (
@@ -4126,6 +4131,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             return (
               <div className="absolute bottom-14 right-3 z-40 w-72 rounded-xl bg-black/75 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl overflow-hidden">
                 <div className="px-3 py-2 border-b border-white/10 text-[10px] tracking-[0.25em] text-white/50">WORLD TOOLS</div>
+                {isOwner && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
+                    className="w-full text-left px-3 py-2 border-b border-white/10 text-[11px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
+                    ✕ delete this world
+                  </button>
+                )}
                 <div className="px-3 py-2.5 space-y-2.5 border-b border-white/10">
                   <div className="flex items-center justify-between text-[11px]">
                     <span>multiplayer</span>

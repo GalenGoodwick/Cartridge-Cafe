@@ -97,6 +97,24 @@ export class FieldRenderer {
 
   // Shared pipelines: hash(wgsl+blend) → pipeline
   private sharedPipelines: Map<string, SharedPipeline> = new Map()
+  /** Textures retired from the maps but possibly referenced by in-flight
+   *  command buffers (async presence readbacks span frames). They are
+   *  destroyed a few frames later — never at the moment of removal. */
+  private retiredTextures: Array<{ tex: GPUTexture; frame: number }> = []
+  private frameCounter = 0
+  private retireTexture(tex: GPUTexture): void {
+    this.retiredTextures.push({ tex, frame: this.frameCounter })
+  }
+  private reapRetiredTextures(): void {
+    this.frameCounter++
+    if (this.retiredTextures.length === 0) return
+    const keep: Array<{ tex: GPUTexture; frame: number }> = []
+    for (const r of this.retiredTextures) {
+      if (this.frameCounter - r.frame > 6) { try { r.tex.destroy() } catch { /* already gone */ } }
+      else keep.push(r)
+    }
+    this.retiredTextures = keep
+  }
   private fieldEntries: Map<string, FieldPipelineEntry> = new Map()
 
   // Textures
@@ -1374,8 +1392,8 @@ export class FieldRenderer {
 
     const fb = this.feedbackBuffers.get(programKey)
     if (fb) {
-      fb.texA.destroy()
-      fb.texB.destroy()
+      this.retireTexture(fb.texA)
+      this.retireTexture(fb.texB)
       this.feedbackBuffers.delete(programKey)
     }
   }
@@ -1392,7 +1410,7 @@ export class FieldRenderer {
     }
     const maskTex = this.fieldMaskTextures.get(fieldId)
     if (maskTex) {
-      maskTex.destroy()
+      this.retireTexture(maskTex)
       this.fieldMaskTextures.delete(fieldId)
     }
   }
@@ -1404,7 +1422,7 @@ export class FieldRenderer {
   removeFieldMask(fieldId: string): void {
     const tex = this.fieldMaskTextures.get(fieldId)
     if (tex) {
-      tex.destroy()
+      this.retireTexture(tex)   // deferred: an in-flight submit may still hold it
       this.fieldMaskTextures.delete(fieldId)
     }
   }
@@ -1429,6 +1447,7 @@ export class FieldRenderer {
     const ctx = this.context
     if (!device || !ctx || !this.basePipeline) return
 
+    this.reapRetiredTextures()
     const canvas = ctx.canvas as HTMLCanvasElement
     const displayW = canvas.clientWidth
     const displayH = canvas.clientHeight

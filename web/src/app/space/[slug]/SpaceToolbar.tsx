@@ -28,6 +28,11 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   const [shownName, setShownName] = useState(name)
   const [confirmDel, setConfirmDel] = useState(false)
   const [delErr, setDelErr] = useState('')
+  useEffect(() => {
+    const onDel = () => { setDelErr(''); setConfirmDel(true) }
+    window.addEventListener('cafe:delete-world', onDel)
+    return () => window.removeEventListener('cafe:delete-world', onDel)
+  }, [])
   const deleteWorld = async () => {
     setDelErr('')
     const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}`, { method: 'DELETE' })

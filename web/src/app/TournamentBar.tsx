@@ -77,7 +77,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome, sceneKey }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -87,12 +87,27 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   onDock?: (d: boolean) => void  // the shell keeps the bar mounted while docked
   onTravel?: (world: string) => void   // clicking a contender's name loads it
   onCloseHome?: () => void       // ✕: undock and return to this arena's door
+  sceneKey?: string              // the scene under the bar — changing it minimizes the panel
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
   const [who, setWho] = useState<string | null>(null)
   const [threadFor, setThreadFor] = useState<string | null>(null)   // world whose comments are unfolded
   const [draft, setDraft] = useState('')
+  const [now, setNow] = useState(0)   // 1s tick for the deliberation countdown
+
+  // stepping into any world minimizes the panel — the pill rides along
+  const sceneSeen = useRef(sceneKey)
+  useEffect(() => {
+    if (sceneKey !== sceneSeen.current) { sceneSeen.current = sceneKey; setOpen(false) }
+  }, [sceneKey])
+
+  useEffect(() => {
+    if (!open) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [open])
   const [selfRoster, setSelfRoster] = useState<string[]>([])
   const roster = branchesOf ? selfRoster : (worlds || [])
   const rosterRef = useRef(roster)
@@ -158,13 +173,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       save(next)
       return next
     }
-    // tier resolves when every cell has spoken — or when the deliberation
-    // window closes with at least one voice in the tier (silent cells fall
-    // to the deterministic tie-break; an unmanned cell can't stall the chant)
-    const allSpoken = d.cells.length > 0 && d.cells.every(c => Object.keys(c.votes).length > 0)
+    // the tier resolves ONLY when the deliberation window closes (with at
+    // least one voice in it). Never early: a cast vote can be moved and the
+    // conversation keeps going until the clock runs out — deliberation is the
+    // point, not a race to speak first. Silent cells fall to the tie-break.
     const anyVoice = d.cells.some(c => Object.keys(c.votes).length > 0)
     const windowClosed = !!d.tierAt && Date.now() - d.tierAt > TIER_MAX_MS
-    if (d.cells.length > 0 && (allSpoken || (anyVoice && windowClosed))) {
+    if (d.cells.length > 0 && anyVoice && windowClosed) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
       const next = { ...d }
       for (const w of winners) next.reached = { ...next.reached, [w]: d.tier + 1 }
@@ -284,8 +299,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         <div className="w-[440px] max-w-[92vw] max-h-[52vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className={`${pill} text-white/50`}>
-              ROUND {doc.round} · TIER {doc.tier} — you are dealt into ONE cell; the rest deliberate without you.
-              Click a NAME to walk through the world · ○ casts your vote · 💬 speaks in your cell.
+              ROUND {doc.round} · TIER {doc.tier}
+              {doc.tierAt && !doc.champion && (() => {
+                const left = Math.max(0, doc.tierAt + TIER_MAX_MS - (now || Date.now()))
+                const m = Math.floor(left / 60000), s2 = Math.floor((left % 60000) / 1000)
+                return <span className="text-amber-300/80"> · resolves in {m}:{String(s2).padStart(2, '0')}</span>
+              })()}
+              {' '}— you are dealt into ONE cell; until the window closes your vote can move and the
+              conversation keeps going. Click a NAME to walk through the world · ○ casts your vote · 💬 speaks in your cell.
             </div>
             <div className="flex gap-1 shrink-0">
               <button onClick={() => setOpen(false)} title="minimize — the pill rides along"
