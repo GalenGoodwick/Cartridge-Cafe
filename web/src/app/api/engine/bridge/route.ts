@@ -234,6 +234,20 @@ export async function POST(req: NextRequest) {
     const results: unknown[] = []
     const isSpaceScoped = !!auth.spaceId
 
+    // Provenance cross-check: stamp the User-Agent of the FIRST agent to post a
+    // build command to this world (self-reported worldData.built_by is separate,
+    // and can be spoofed; this is the unspoofed hint). Best-effort — never blocks.
+    if (isSpaceScoped) {
+      try {
+        const snap = await getSpaceSnapshot(auth.spaceId!)
+        const wd = (snap?.worldData ?? {}) as Record<string, unknown>
+        if (!wd.__built_ua) {
+          const ua = (req.headers.get('user-agent') || 'unknown').slice(0, 200)
+          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __built_ua: ua, __built_at: Date.now() } })
+        }
+      } catch { /* provenance is best-effort */ }
+    }
+
     for (const cmd of commands) {
       // Add delay between commands so the engine page can process each one
       if (results.length > 0) {

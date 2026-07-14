@@ -156,6 +156,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugOpen, setPlugOpen] = useState(false)
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
+  // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
+  // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
+  const [mkIconOpen, setMkIconOpen] = useState(false)
+  const [mkIconDesc, setMkIconDesc] = useState('')
+  const [mkIconCopied, setMkIconCopied] = useState(false)
+  const [mkIconSet, setMkIconSet] = useState(false)
   // spectators can browse branches without signing in — looking is free
   const [branchesOpen, setBranchesOpen] = useState(false)
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
@@ -451,17 +457,44 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL || 'http://localhost:8080'
     const instance = 'cursors:' + world
     const hueOf = (pid: string) => { let h = 0; for (let i = 0; i < pid.length; i++) h = (h * 31 + pid.charCodeAt(i)) % 360; return h }
-    const players = new Map<string, { rx: number; ry: number }>()
-    const publish = () => {
-      const sim = simulationRef.current
-      const others: Array<{ id: string; x: number; y: number; hue: number }> = []
-      for (const [pid, p] of players) {
-        if (pid === id) continue
-        others.push({ id: pid, x: p.rx * gridSize, y: p.ry * gridSize, hue: hueOf(pid) })
-        if (others.length >= 25) break
+    // Entity interpolation: buffer timestamped samples per player, then each frame
+    // render each one ~INTERP_DELAY ms in the PAST, blending the two samples that
+    // straddle that time. Sparse network updates → perfectly smooth curved motion
+    // (the standard game networking approach).
+    const INTERP_DELAY = 110
+    type Sample = { t: number; rx: number; ry: number }
+    const buffers = new Map<string, Sample[]>()
+    const pushSample = (pid: string, rx: number, ry: number) => {
+      const now = Date.now()
+      let buf = buffers.get(pid)
+      if (!buf) { buf = []; buffers.set(pid, buf) }
+      buf.push({ t: now, rx, ry })
+      const cutoff = now - 1000
+      while (buf.length > 2 && buf[0].t < cutoff) buf.shift()   // keep ~1s of history
+    }
+    const sampleAt = (buf: Sample[], t: number): { rx: number; ry: number } => {
+      const n = buf.length
+      if (n === 1 || t >= buf[n - 1].t) return buf[n - 1]   // ahead of newest → hold
+      if (t <= buf[0].t) return buf[0]
+      for (let i = n - 1; i > 0; i--) {
+        if (buf[i - 1].t <= t) {
+          const a = buf[i - 1], b = buf[i], span = b.t - a.t
+          const f = span > 0 ? (t - a.t) / span : 0
+          return { rx: a.rx + (b.rx - a.rx) * f, ry: a.ry + (b.ry - a.ry) * f }
+        }
       }
-      setPresenceOthers(prev => (prev.length === 0 && others.length === 0) ? prev : others)
-      if (sim) sim.worldData['presence'] = others
+      return buf[0]
+    }
+    // DOM-pip path (non-cafe worlds, already CSS-smoothed): latest sample per player.
+    const publish = () => {
+      const arr: Array<{ id: string; x: number; y: number; hue: number }> = []
+      for (const [pid, buf] of buffers) {
+        if (pid === id || buf.length === 0) continue
+        const last = buf[buf.length - 1]
+        arr.push({ id: pid, x: last.rx * gridSize, y: last.ry * gridSize, hue: hueOf(pid) })
+        if (arr.length >= 25) break
+      }
+      setPresenceOthers(prev => (prev.length === 0 && arr.length === 0) ? prev : arr)
     }
     console.log('[cursors] connecting to', PRESENCE_URL, 'room', instance, 'as', id)
     const socket: Socket = io(PRESENCE_URL, { transports: ['websocket', 'polling'], reconnection: true })
@@ -472,18 +505,37 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     })
     socket.on('connect_error', (e: Error) => console.warn('[cursors] connect_error →', PRESENCE_URL, e.message))
     socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number }> }) => {
-      players.clear()
-      for (const p of list) players.set(p.id, { rx: p.rx ?? 0.5, ry: p.ry ?? 0.5 })
+      const ids = new Set(list.map(p => p.id))
+      for (const pid of Array.from(buffers.keys())) if (!ids.has(pid)) buffers.delete(pid)
+      for (const p of list) pushSample(p.id, p.rx ?? 0.5, p.ry ?? 0.5)
       publish()
     })
-    socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number } }) => {
-      players.set(player.id, { rx: player.rx ?? 0.5, ry: player.ry ?? 0.5 }); publish()
-    })
-    socket.on('player-left', ({ playerId }: { playerId: string }) => { players.delete(playerId); publish() })
-    socket.on('player-moved', ({ playerId, rx, ry }: { playerId: string; rx: number; ry: number }) => {
-      const p = players.get(playerId); if (p) { p.rx = rx; p.ry = ry; publish() }
-    })
-    // broadcast our cursor a few times a second — gated by single-player / off.
+    socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number } }) => { pushSample(player.id, player.rx ?? 0.5, player.ry ?? 0.5); publish() })
+    socket.on('player-left', ({ playerId }: { playerId: string }) => { buffers.delete(playerId); publish() })
+    socket.on('player-moved', ({ playerId, rx, ry }: { playerId: string; rx: number; ry: number }) => { pushSample(playerId, rx, ry); publish() })
+    // per-frame: write the INTERPOLATED positions to worldData.presence for the
+    // cafe shader (no React state here — safe at 60fps).
+    let raf = 0
+    const interp = () => {
+      const sim = simulationRef.current
+      const wdp = sim?.worldData
+      if (sim && wdp && !(wdp['singlePlayer'] === true || wdp['multiplayer'] === false) && !presenceOffRef.current) {
+        const renderT = Date.now() - INTERP_DELAY
+        const others: Array<{ id: string; x: number; y: number; hue: number }> = []
+        for (const [pid, buf] of buffers) {
+          if (pid === id || buf.length === 0) continue
+          const s = sampleAt(buf, renderT)
+          others.push({ id: pid, x: s.rx * gridSize, y: s.ry * gridSize, hue: hueOf(pid) })
+          if (others.length >= 25) break
+        }
+        wdp['presence'] = others
+      }
+      raf = requestAnimationFrame(interp)
+    }
+    raf = requestAnimationFrame(interp)
+    // broadcast our cursor often (only when it moves) — dense samples let the
+    // receiver interpolate a smooth curve instead of jumping. Gated by single/off.
+    let lastX = -1, lastY = -1
     const iv = setInterval(() => {
       const sim = simulationRef.current
       const wdp = sim?.worldData
@@ -496,9 +548,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const mx = sim?.worldData['mouse_x'], my = sim?.worldData['mouse_y']
       const x = typeof mx === 'number' ? mx : gridSize / 2
       const y = typeof my === 'number' ? my : gridSize / 2
+      if (x === lastX && y === lastY) return   // idle → don't spam the socket
+      lastX = x; lastY = y
       socket.emit('position', { rx: x / gridSize, ry: y / gridSize })
-    }, 250)
-    return () => { clearInterval(iv); socket.disconnect() }
+    }, 66)
+    return () => { clearInterval(iv); cancelAnimationFrame(raf); socket.disconnect() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, playScene])
   const spaceHeld = useRef(false)
@@ -1788,6 +1842,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         else if (playMusic.score) audio.playScore(playMusic.score as Parameters<typeof audio.playScore>[0])
         else if (playMusic.url) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
       }
+
+      // Reactive score: the world sweeps its own music live (audio as a second
+      // rendering of world state). Continuous value — read every frame, not a
+      // one-shot command, so it's not deleted.
+      const musicMod = sim.worldData['music_mod'] as { brightness?: number; gain?: number } | undefined
+      if (musicMod) audioRef.current.setScoreMod(musicMod)
 
       // the EYE cuts a version when an AI edit-burst settles on a branch
       if (now - eyeCheckRef.current > 1000) {
@@ -4176,6 +4236,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => clearInterval(interval)
   }, [])
 
+  // MAKE ICON: the AI writes worldData.icon_wgsl over the bridge (this browser's
+  // sim receives it) — flip the panel to ICON SET the moment it lands.
+  useEffect(() => {
+    if (!mkIconOpen) return
+    const iv = setInterval(() => {
+      const w = simulationRef.current?.worldData?.icon_wgsl
+      setMkIconSet(typeof w === 'string' && /fn\s+visual_\w+\s*\(/.test(w))
+    }, 1000)
+    return () => clearInterval(iv)
+  }, [mkIconOpen])
+
   // Door bubbles wear each world's OWN look: fetch the roster's dominant-visual
   // WGSL and render each into the icon atlas the door samples. No screenshots,
   // nothing stored — the shader text comes straight from each world's snapshot.
@@ -4188,29 +4259,55 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const f = (n: number) => { const k = (n + h * 6) % 6; return 0.92 - 0.92 * 0.65 * Math.max(0, Math.min(k, 4 - k, 1)) }
       return [f(5), f(3), f(1)]
     }
-    const refresh = async () => {
+    let lastSig = ''
+    const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
+    const tick = async () => {
       const sp = await fetch('/api/spaces/browse').then(x => x.json()).catch(() => null)
       if (!sp || stop) return
       const worlds = ((sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean; hue?: number; iconWgsl?: string }>)
         .filter(s => !s.blank && s.iconWgsl).slice(0, 64)
-      const slots: Record<string, number> = {}
+      const nameOfSlot: Record<number, string> = {}
       const next: typeof items = []
+      for (const k of Object.keys(byName)) delete byName[k]
       worlds.forEach((s, i) => {
         const nm = (s.name || s.slug).toUpperCase()
-        slots[nm] = i
-        next.push({ slot: i, wgsl: s.iconWgsl as string, color: hsv(s.hue ?? 0.6) })
+        nameOfSlot[i] = nm
+        const it = { slot: i, wgsl: s.iconWgsl as string, color: hsv(s.hue ?? 0.6) }
+        next.push(it); byName[nm] = it
       })
       items = next
+      // only re-render the atlas when the roster or a world's shader changed —
+      // icons are cheap stills, not a per-frame GPU cost. (Scales to any count:
+      // only the ≤64 on-shelf worlds ever render, and only once each.)
+      const sig = next.map(i => `${i.slot}:${i.wgsl.length}`).join('|')
+      if (sig === lastSig) return
+      lastSig = sig
+      const r = rendererRef.current
+      // ONLY worlds whose shader actually rendered (non-black) get an atlas slot;
+      // state/feedback worlds render black in isolation → no slot → living emblem.
+      const okSlots = (r && items.length) ? await r.renderWorldIconAtlas(items, 0.5).catch(() => [] as number[]) : []
+      const slots: Record<string, number> = {}
+      for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
       ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = slots
     }
-    const draw = async () => {
+    tick()
+    const iv = setInterval(() => { if (!stop) tick() }, 4000)
+    // ANIMATE ON HOVER: only the bubble under the cursor re-renders (~30fps);
+    // everything else stays a cheap still. On leave, snap it back to its still.
+    let hovered: string | null = null
+    let animName: string | null = null
+    const onHover = (e: Event) => { hovered = ((e as CustomEvent).detail as string) || null }
+    window.addEventListener('cafe:hover', onHover)
+    const animIv = setInterval(() => {
       const r = rendererRef.current
-      if (r && items.length) await r.renderWorldIconAtlas(items, performance.now() / 1000).catch(() => {})
-    }
-    refresh().then(draw)
-    const refreshIv = setInterval(() => { if (!stop) refresh() }, 4000)
-    const drawIv = setInterval(() => { if (!stop) draw() }, 600)
-    return () => { stop = true; clearInterval(refreshIv); clearInterval(drawIv) }
+      if (stop || !r) return
+      const live = (window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots || {}
+      // only animate a bubble that actually has a rendered icon (emblem worlds skip)
+      const cur = hovered && live[hovered] != null ? byName[hovered] : null
+      if (cur) { animName = hovered; r.renderOneIcon(cur.slot, cur.wgsl, cur.color, performance.now() / 1000) }
+      else if (animName) { const it = byName[animName]; animName = null; if (it) r.renderOneIcon(it.slot, it.wgsl, it.color, 0.5) }
+    }, 33)
+    return () => { stop = true; clearInterval(iv); clearInterval(animIv); window.removeEventListener('cafe:hover', onHover) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene])
 
@@ -4547,6 +4644,28 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ⚡ CONNECT AI
             </button>
+            {(isOwner || !spaceId) && spaceSlug && (
+              <button
+                onClick={async () => {
+                  setMkIconOpen(v => !v)
+                  if (!plugToken && spaceSlug) {
+                    setPlugBusy(true)
+                    try {
+                      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: 'AI agent' }),
+                      })
+                      const d = await r.json()
+                      if (r.ok) setPlugToken(d.token)
+                    } finally { setPlugBusy(false) }
+                  }
+                }}
+                title="have your AI author a tiny shader icon for this world's shelf bubble"
+                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ◆ MAKE ICON
+              </button>
+            )}
             {/* juror mode: riding a branch, the viewer votes and speaks from the saddle */}
             {riding && (() => {
               const author = (riding.split(' ⑂ ')[1] || '').split(' · ')[0]
@@ -4776,6 +4895,49 @@ The eye versions your edits automatically after each settled burst — just buil
                     </button>
                     <button className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
                   </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {mkIconOpen && (() => {
+            const origin = typeof window !== 'undefined' ? window.location.origin : ''
+            const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — are you the owner?)')
+            const d = mkIconDesc.trim()
+            const prompt = `Author my cartridge.cafe world ICON — a tiny LIVING shader for this world's shelf bubble.
+POST to ${origin}/api/engine/bridge   header: Authorization: Bearer ${tok}
+Store it with ONE command:
+{"type":"set_world_data","data":{"icon_wgsl":"fn visual_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f { /* your art */ }"}}
+HARD RULES — it renders alone in a 64px disc with NOTHING but its inputs:
+· use ONLY uv (-1..1), time, and built-in helpers (fbm, fbm4, voronoi, sdCircle, hsv2rgb, palette, rot2, smoothstep, mix…)
+· NO @group/@binding, NO textures, NO uni()/prevAt/fields, NO extra bindings — it runs in isolation or it's dropped
+· return rgb in 0..1, alpha 1.0; keep it calm — no strobing or flashing
+Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see what it is)'}. Reply to confirm once set.`
+            return (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMkIconOpen(false)}>
+                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] tracking-[0.25em] text-white/50">◆ MAKE YOUR ICON</div>
+                    <div className="flex items-center gap-1.5 text-[9px] tracking-[0.2em] text-white/50">
+                      <span className={`inline-block w-2 h-2 rounded-full ${mkIconSet ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                      {mkIconSet ? 'ICON SET' : 'WAITING'}
+                    </div>
+                  </div>
+                  <p className="text-white/60 mb-2 text-[11px]">Describe the icon (optional), then hand this to your AI. It writes a small self-contained shader for your shelf bubble — no image, nothing stored but the code.</p>
+                  <input value={mkIconDesc} onChange={e => setMkIconDesc(e.target.value)} maxLength={120}
+                    placeholder="e.g. a dusk tidepool, anemones glowing"
+                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[12px] text-white/90 outline-none focus:border-white/35 mb-3" />
+                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[10.5px] text-emerald-200/90 select-all max-h-48 overflow-y-auto">{prompt}</pre>
+                  <div className="flex gap-2 mt-3 justify-end">
+                    <button
+                      className="text-[10px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                      onClick={() => { navigator.clipboard?.writeText(prompt); setMkIconCopied(true); setTimeout(() => setMkIconCopied(false), 1600) }}
+                    >
+                      {mkIconCopied ? 'COPIED ✓' : 'COPY PROMPT'}
+                    </button>
+                    <button className="text-[10px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setMkIconOpen(false)}>CLOSE</button>
+                  </div>
+                  <p className="text-white/40 mt-2 text-[10px]">{mkIconSet ? 'Your AI set the icon — it appears on the shelf shortly.' : 'The moment your AI stores it, this flips to ICON SET.'}</p>
                 </div>
               </div>
             )

@@ -164,6 +164,10 @@ export class GameAudio {
   //         'x' for a drum hit, '.'/'-' for a rest. Loop = longest track.
   // ═══════════════════════════════════════════════════════════════════════
   private score: { stop: () => void } | null = null
+  // the reactive bus: the whole score runs through one lowpass + gain the WORLD
+  // can sweep live (wd.music_mod = { brightness, gain }). Audio becomes a second
+  // rendering of world state — the sound darkens/opens with what's on screen.
+  private scoreBus: { filter: BiquadFilterNode; gain: GainNode } | null = null
 
   private noteFreq(name: string): number {
     const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(name.trim())
@@ -185,7 +189,7 @@ export class GameAudio {
   }
 
   private voice(ctx: AudioContext, inst: string, note: string, t: number, g: number, cutoff?: number, a = 0.005, dec = 0.25): void {
-    const out = this.masterGain!
+    const out: AudioNode = this.scoreBus ? this.scoreBus.filter : this.masterGain!
     if (inst === 'kick' || inst === 'snare' || inst === 'hat' || inst === 'clap') {
       const env = ctx.createGain(); env.connect(out)
       if (inst === 'kick') {
@@ -229,6 +233,12 @@ export class GameAudio {
   }): void {
     this.stopScore()
     const ctx = this.ensureContext()
+    // reactive bus — voices route through this so the world can sweep the whole
+    // track live (starts fully open; wd.music_mod modulates it)
+    const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 9000; filter.Q.value = 0.4
+    const busGain = ctx.createGain(); busGain.gain.value = 1
+    filter.connect(busGain); busGain.connect(this.masterGain!)
+    this.scoreBus = { filter, gain: busGain }
     const drums = new Set(['kick', 'snare', 'hat', 'clap'])
     const tracks = (score.tracks || []).map(tr => ({
       inst: String(tr.inst || 'sine'), drum: drums.has(String(tr.inst)),
@@ -271,6 +281,26 @@ export class GameAudio {
   /** Stop the composed score. */
   stopScore(): void {
     if (this.score) { this.score.stop(); this.score = null }
+    if (this.scoreBus) {
+      try { this.scoreBus.filter.disconnect(); this.scoreBus.gain.disconnect() } catch { /* already gone */ }
+      this.scoreBus = null
+    }
+  }
+
+  /** Sweep the live score bus — the world's own state, rendered as sound.
+   *  brightness 0..1 → lowpass 200Hz..9kHz (dark→open); gain 0..1 scales it.
+   *  Glides smoothly (no zipper) so it breathes with the world, not steps. */
+  setScoreMod(mod: { brightness?: number; gain?: number }): void {
+    if (!this.scoreBus || !this.ctx) return
+    const now = this.ctx.currentTime
+    if (typeof mod.brightness === 'number') {
+      const b = Math.max(0, Math.min(1, mod.brightness))
+      const cutoff = 200 * Math.pow(45, b)   // 200Hz (muffled) → 9kHz (open)
+      this.scoreBus.filter.frequency.setTargetAtTime(cutoff, now, 0.25)
+    }
+    if (typeof mod.gain === 'number') {
+      this.scoreBus.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, mod.gain)), now, 0.25)
+    }
   }
 
   /** Destroy the audio context */

@@ -9,10 +9,12 @@ How to programmatically create fields, visuals, interactions, and effects via th
 ```python
 import json, urllib.request
 
-URL = "http://localhost:3000/api/engine/bridge"
+# Use the bridge URL + token FROM THE CONNECT PROMPT you were given. Do NOT assume
+# localhost — production is https://cartridge.cafe/api/engine/bridge.
+URL = "<BRIDGE_URL from the connect prompt>"
 HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": "Bearer <ENGINE_AGENT_TOKEN>",
+    "Authorization": "Bearer <YOUR_WORLD_TOKEN>",
 }
 
 def send(body):
@@ -20,11 +22,14 @@ def send(body):
     req = urllib.request.Request(URL, data=data, headers=HEADERS, method="POST")
     return json.loads(urllib.request.urlopen(req).read().decode())
 
-# Create a field with a custom visual
+# 1) Say who you are — self-reported, shown as the world's builder.
+send({"type": "set_world_data", "data": {"built_by": "<your model, e.g. GPT-5 / Claude>"}})
+
+# 2) EVERY field needs a visual or it renders as NOTHING. Define one, then attach it.
 send({"type": "define_visual", "name": "my_visual", "wgsl": SHADER_CODE})
 send({"type": "create_field", "name": "MyField", "shape": "rect",
       "x": 256, "y": 256, "width": 300, "height": 300,
-      "visualType": "my_visual", "color": [1.0, 0.5, 0.0, 1.0]})
+      "visualType": "my_visual", "color": [1.0, 0.5, 0.0, 1.0]})  # visualType REQUIRED to be seen
 ```
 
 ---
@@ -60,11 +65,22 @@ in the viewer's browser. `define_visual` persists either way, but you only get a
 `compileResult` back when someone has the world's page open — if it times out, your WGSL is
 saved but unverified. Ask the owner to keep the world page open while you do shader work.
 
+**You do NOT need to open, render, or "view" the page to build.** Every command above
+persists into the world snapshot the instant you POST it to the bridge. The page/tab is only
+for shader compilation and for *your own eyes* — it is optional. If your headless browser errors
+while loading the page (a `next-auth` CLIENT_FETCH_ERROR, "Unexpected end of script", a truncated
+dev-server chunk), that is a *viewing* problem, not a *building* one — keep POSTing to the bridge
+and ignore the page-render noise. To just look, prefer the production URL over a local dev server.
+
+**Announce yourself (one line, first).** Before building, `set_world_data {"data": {"built_by":
+"<your model name>"}}`. It's self-reported provenance, shown as the world's builder — the server
+also records the User-Agent of your first command as a cross-check.
+
 **The creation brief comes first.** A newly created world carries
 `worldData.creation_brief = { prompt, by, at }` — the player's own words for
 what this world should be. On connecting: GET the state, and if a brief exists
 without `worldData.brief_done`, BUILD THE BRIEF — not your own idea. When the
-first pass is delivered, `set_world_data {"brief_done": true}` and continue
+first pass is delivered, `set_world_data {"data": {"brief_done": true}}` and continue
 from the player's feedback.
 
 **Your own eyes.** Shader compilation and the live sim run in whatever browser
@@ -76,13 +92,18 @@ seat (tab arbitration is per-browser) and doesn't count in presence. The slug �
 and therefore the URL — can change when the player names the world: re-read
 `space.viewUrl` rather than caching it.
 
-**Make things visible.** Fields with no visual render as NOTHING. Always pair `create_field`
-with `visualType`, or use `set_visual` on existing fields. A skeleton of bare fields is
-invisible — skin it.
+**Make things visible — `visualType` is effectively MANDATORY.** A field with no `visualType`
+renders as NOTHING. On EVERY `create_field`, pass a `visualType` (a name you have `define_visual`'d),
+or `set_visual` it immediately after. `visualType` is listed as optional in the schema, but a field
+without one is invisible — a bare skeleton of fields is the #1 cause of a world that "built but looks
+empty". If a world looks blank, a field is missing its visual. Skin every field.
 
 **Focus channel (both directions):**
 - `worldData.player_focus = { fieldId, fieldName, at }` — what the player has selected right
-  now. Read it and follow their target: "make this taller" refers to it.
+  now. It is OPTIONAL and usually ABSENT — it exists only while the player has actively selected
+  a field, so on a fresh or freshly-built world it is null. That is normal; it is NOT a
+  precondition. Build from the `creation_brief`. Read `player_focus` only for targeted follow-up
+  edits: when it's present, "make this taller" refers to it.
 - `worldData.ai_focus` is stamped automatically from your last command — the UI shows the
   player "AI → <thing>". You don't need to set it (but you may overwrite it via
   `set_world_data` with a more precise `{ action, fieldName, at }`).
@@ -345,8 +366,16 @@ sim.worldData.__play_music = { score: {
 ```
 Per-track: `gain`, `cutoff` (lowpass Hz — warmer), `a` (attack s), `d` (decay/release s).
 `sim.worldData.__play_music = { stop: true }` fades the music out. A world's audio never
-outlives it — the engine stops it on world change. React the music to the world by
-rewriting `__play_music` (e.g. swap the score when a chapter changes).
+outlives it — the engine stops it on world change. Swap the whole score by rewriting
+`__play_music` (e.g. a new track per chapter).
+
+**Reactive music — audio as a second rendering of world state.** Set
+`sim.worldData.music_mod = { brightness, gain }` *every frame* (a continuous value, not a
+one-shot) to sweep the live score. `brightness` 0..1 opens/closes a master lowpass
+(dark↔open); `gain` scales volume. It glides smoothly. Drive it from the same state that
+drives your visuals so sound and image move as one — e.g. `music_mod = { brightness: 1 - moonness * 0.7 }`
+makes the music darken as the sun sets. This is the immersive move: the world scores itself
+in real time.
 
 ### Player Presence (multiplayer context)
 
@@ -453,7 +482,7 @@ fn visual_sphere(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
 ### World Uniforms — the shared whiteboard
 
 64 floats shared by ALL visuals and interaction shaders. Write them from a step hook
-(`sim.worldData.gpuUniforms = [...]`) or via the bridge (`set_world_data {"gpuUniforms": [...]}`);
+(`sim.worldData.gpuUniforms = [...]`) or via the bridge (`set_world_data {"data": {"gpuUniforms": [...]}}`);
 read them in any shader with `uni(i)` (i = 0..63) or `uni4(i)` (vec4 rows, i = 0..15).
 
 This is how cross-field state flows: the sea shader can read the boat's position, terrain can

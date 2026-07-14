@@ -32,7 +32,7 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.vercel.app https://challenges.cloudflare.com https://unionchant-websocket-production.up.railway.app wss://unionchant-websocket-production.up.railway.app http://localhost:8080 ws://localhost:8080 http://localhost:3334; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
+          { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.vercel.app https://challenges.cloudflare.com https://*.up.railway.app wss://*.up.railway.app http://localhost:8080 ws://localhost:8080 http://localhost:3334; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
         ],
       },
       {

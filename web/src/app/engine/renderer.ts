@@ -1313,6 +1313,44 @@ export class FieldRenderer {
   }
 
   private _iconPipelines = new Map<string, GPURenderPipeline | null>()
+  private _iconTarget: GPUTexture | null = null
+  private _iconRead: GPUBuffer | null = null
+  private _iconUni: GPUBuffer | null = null
+  private _iconBusy = false
+
+  /** Animate ONE icon cell in place (the hovered bubble): render its shader at
+   *  `time` and write just that slot's 64² region into the atlas — no full
+   *  rebuild, no per-frame cost for the other bubbles. */
+  async renderOneIcon(slot: number, wgsl: string, color: [number, number, number], time: number): Promise<void> {
+    const device = this.device
+    if (!device || !this.iconBuffer || this._iconBusy) return
+    const S = 64, cellBytes = S * S * 4
+    if ((slot + 1) * cellBytes > this.iconBufferCapacity) return
+    const pipeline = await this._iconPipeline(wgsl)
+    if (!pipeline) return
+    this._iconBusy = true
+    try {
+      if (!this._iconTarget) this._iconTarget = device.createTexture({ size: [S, S], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
+      const bytesPerRow = Math.ceil(S * 4 / 256) * 256
+      if (!this._iconRead) this._iconRead = device.createBuffer({ size: bytesPerRow * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+      if (!this._iconUni) this._iconUni = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+      device.pushErrorScope('validation')
+      const bg = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: this._iconUni } }] })
+      device.queue.writeBuffer(this._iconUni, 0, new Float32Array([time, color[0], color[1], color[2]]))
+      const enc = device.createCommandEncoder()
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: this._iconTarget.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.draw(3); pass.end()
+      enc.copyTextureToBuffer({ texture: this._iconTarget }, { buffer: this._iconRead, bytesPerRow, rowsPerImage: S }, [S, S, 1])
+      device.queue.submit([enc.finish()])
+      if (await device.popErrorScope()) return
+      await this._iconRead.mapAsync(GPUMapMode.READ)
+      const raw = new Uint8Array(this._iconRead.getMappedRange())
+      const cell = new Uint32Array(S * S)
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const s = y * bytesPerRow + x * 4; cell[y * S + x] = raw[s] | (raw[s + 1] << 8) | (raw[s + 2] << 16) | 0xff000000 }
+      this._iconRead.unmap()
+      device.queue.writeBuffer(this.iconBuffer, slot * cellBytes, cell.buffer as ArrayBuffer, 0, cellBytes)
+    } catch { /* transient — next frame retries */ } finally { this._iconBusy = false }
+  }
   /** Render each world's OWN dominant visual into its icon-atlas cell, so the
    *  door bubble shows the world (the tidepool's water), not a recolored planet.
    *  Each visual compiles in isolation with the shared prelude + safe stubs; a
@@ -1321,9 +1359,10 @@ export class FieldRenderer {
   async renderWorldIconAtlas(
     items: { slot: number; wgsl: string; color: [number, number, number] }[],
     time = 0,
-  ): Promise<boolean> {
+  ): Promise<number[]> {
     const device = this.device
-    if (!device || items.length === 0) return false
+    if (!device || items.length === 0) return []
+    const rendered: number[] = []
     const S = 64
     const maxSlot = Math.max(...items.map(i => i.slot)) + 1
     const atlas = new Uint32Array(maxSlot * S * S)
@@ -1355,21 +1394,25 @@ export class FieldRenderer {
       if (bindErr) { this._iconPipelines.set(it.wgsl, null); continue }
       try { await readBuf.mapAsync(GPUMapMode.READ) } catch { continue }
       const raw = new Uint8Array(readBuf.getMappedRange())
-      const bgra = false   // rgba8unorm target — no swizzle
       const base = it.slot * S * S
+      let peak = 0
       for (let y = 0; y < S; y++) {
         for (let x = 0; x < S; x++) {
           const s = y * bytesPerRow + x * 4
           const r = raw[s], g = raw[s + 1], b = raw[s + 2]
-          atlas[base + y * S + x] = (bgra ? (b | (g << 8) | (r << 16)) : (r | (g << 8) | (b << 16))) | 0xff000000
+          if (r > peak) peak = r; if (g > peak) peak = g; if (b > peak) peak = b
+          atlas[base + y * S + x] = (r | (g << 8) | (b << 16)) | 0xff000000
         }
       }
       readBuf.unmap()
-      any = true
+      // a state/feedback world renders BLACK in isolation (no running sim to
+      // feed it). Don't give it a slot — it falls back to the living emblem
+      // instead of a black square.
+      if (peak >= 8) rendered.push(it.slot)
     }
     target.destroy(); readBuf.destroy(); uni.destroy()
-    if (any) this.uploadIconAtlas(atlas)
-    return any
+    if (rendered.length) this.uploadIconAtlas(atlas)
+    return rendered
   }
 
   /** Compile a standalone pipeline that runs one world visual over a 64² quad.
@@ -1381,12 +1424,14 @@ export class FieldRenderer {
     if (!device) return null
     // only self-contained visuals: no own bindings/resources (those need the
     // full engine context and would fault a standalone pipeline)
-    if (/@group|@binding|var\s*<\s*(storage|uniform)|create_render_target|texture_2d|textureSample/.test(wgsl)) {
+    if (/@group|@binding|var\s*<\s*(storage|uniform)|create_render_target|texture_2d|textureSample|prevAt|prevHere|\bfeedback\s*\(/.test(wgsl)) {
       this._iconPipelines.set(wgsl, null); return null
     }
-    const m = wgsl.match(/fn\s+(visual_\w+)\s*\(/)
-    if (!m) { this._iconPipelines.set(wgsl, null); return null }
-    const fn = m[1]
+    // prefer an explicit visual_icon wrapper (bespoke / composed) over the first
+    // visual found (a plain dominant-visual export)
+    const all = [...wgsl.matchAll(/fn\s+(visual_\w+)\s*\(/g)].map(x => x[1])
+    if (all.length === 0) { this._iconPipelines.set(wgsl, null); return null }
+    const fn = all.includes('visual_icon') ? 'visual_icon' : all[0]
     const src = /* wgsl */`
 struct IconU { time: f32, r: f32, g: f32, b: f32 };
 @group(0) @binding(0) var<uniform> U: IconU;

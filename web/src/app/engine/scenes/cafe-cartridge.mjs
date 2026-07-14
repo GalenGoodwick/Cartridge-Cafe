@@ -228,8 +228,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let opos = vec2f(uni(ob + 1 + k * 3), uni(ob + 2 + k * 3));
     let ohue = uni(ob + 3 + k * 3);
     let otint = 0.5 + 0.5 * cos(6.2831 * (ohue + vec3f(0.0, 0.33, 0.67)));
-    col += cf_player((uv - opos) * 5.0, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.2) * 0.95;
-    col += otint * 0.7 * exp(-dot(uv - opos, uv - opos) * 1600.0) * 0.35;   // a soft core in their hue
+    // smaller than your own effect (self is /4.5) — other players read as lesser
+    // presence; no center pip, the dance IS the player.
+    col += cf_player((uv - opos) * 6.5, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.3) * 1.05;
   }
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
@@ -618,10 +619,12 @@ try {
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
   const ic = (typeof window !== 'undefined' && window.__cafeIcon) || {}
   u.push(ic.fx | 0, typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
-  // other players in this cafe — their LIVE cursors (from worldData.presence, fed
-  // by /api/engine/presence), so you can see them moving. Screen coords (256 =
-  // center), same space as your own cursor. Capped so we never overrun the 96-float
-  // uniform buffer: count slot, then (x, y, hue) per other.
+  // the dancing shader effect IS the other player here — suppress the DOM cursor
+  // pip that would otherwise draw a dot on top of it
+  wd.noPresenceCursors = true
+  // other players — positions are already smoothly interpolated upstream (entity
+  // interpolation in the engine's presence loop), so just pack them. Screen coords
+  // (256 = center). Capped so we never overrun the 96-float buffer.
   const others = Array.isArray(wd.presence) ? wd.presence : []
   const cap = Math.max(0, Math.min(others.length, 8, Math.floor((96 - u.length - 1) / 3)))
   u.push(cap)
