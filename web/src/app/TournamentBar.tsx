@@ -443,10 +443,8 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         {rail
           ? (docked ? `⚔ VOTING · T${doc.tier}` : `⚔ VOTE · T${doc.tier}`)
           : docked
-            ? `⚔ DELIBERATING · TIER ${doc.tier} · YOUR CELL`
-            : doc.champion
-              ? `♛ ${doc.champion.toLowerCase()} · TIER ${doc.tier} · VOTE`
-              : `⚔ TOURNAMENT · TIER ${doc.tier} · VOTE`}
+            ? `⚔ TIER ${doc.tier} · YOUR CELL`
+            : `⚔ TIER ${doc.tier} · VOTE`}
       </button>
     </div>
   )

@@ -148,6 +148,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugBusy, setPlugBusy] = useState(false)
   // spectators can browse branches without signing in — looking is free
   const [branchesOpen, setBranchesOpen] = useState(false)
+  // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
+  // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
+  const [uiDockOpen, setUiDockOpen] = useState(false)
 
   // ESC closes the topmost open panel and stops there — it must never fall
   // through a modal into "leave this world" (the shell's ESC handler)
@@ -4345,6 +4348,19 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ? INSTRUCTIONS
             </button>
+            {/* game worlds fold their meta-UI behind one dock; back/tools/sound/
+                instructions + the game's own HUD stay out. CAFE / hubs / SUB-MAIN
+                are navigation surfaces — they show everything as before. */}
+            {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+              <button
+                onClick={() => setUiDockOpen(v => !v)}
+                title={uiDockOpen ? 'hide world controls' : 'world controls — branch, versions, connect AI, vote'}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                {uiDockOpen ? '★ CLOSE' : '★'}
+              </button>
+            )}
+            {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
             {/* restart-on-entry lives with the tools, not buried in the manual */}
             {(isOwner || !spaceId) && !isHub && (
               <button
@@ -4473,6 +4489,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
+            </>)}
           </div>
           {instrOpen && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInstrOpen(false); setInstrEdit(false) }}>
