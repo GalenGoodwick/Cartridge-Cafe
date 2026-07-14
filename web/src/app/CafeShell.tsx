@@ -42,6 +42,21 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [mute, setMute] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  // BREW YOUR ICON — the local player's dancing avatar. fx = look (0 comet · 1
+  // ring · 2 eyes · 3 spark), hue 0..1, size. Lives in localStorage and rides to
+  // the shader via window.__cafeIcon (packed at the uniform tail by the hook).
+  const [iconOpen, setIconOpen] = useState(false)
+  const [icon, setIcon] = useState<{ fx: number; hue: number; size: number }>({ fx: 0, hue: 0.55, size: 1 })
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('cafeIcon') || 'null')
+      if (saved && typeof saved.fx === 'number') setIcon({ fx: saved.fx, hue: saved.hue ?? 0.55, size: saved.size ?? 1 })
+    } catch { /* first brew */ }
+  }, [])
+  useEffect(() => {
+    ;(window as unknown as { __cafeIcon?: typeof icon }).__cafeIcon = icon
+    try { localStorage.setItem('cafeIcon', JSON.stringify(icon)) } catch { /* private mode */ }
+  }, [icon])
   const [brewStep, setBrewStep] = useState(0)          // 0 closed · 1 open (single panel, gates unlock in place)
   const [brewName, setBrewName] = useState('')
   const [brewBrief, setBrewBrief] = useState('')
@@ -999,10 +1014,40 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 MY WORLDS
               </button>
             )}
+            <button onClick={() => setIconOpen(o => !o)} className={`rounded-lg border px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] transition-all ${iconOpen ? 'border-flame/60 text-glow' : 'border-brass/40 hover:border-flame/60 text-steamer/80 hover:text-glow'}`}>
+              BREW ICON
+            </button>
             <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
               BREW YOURS
             </button>
           </div>
+
+          {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
+          {iconOpen && (
+            <div className="fixed top-20 right-6 z-50 w-56 rounded-xl border border-brass/40 bg-void/90 backdrop-blur-sm p-4 select-none">
+              <div className="cafe-sign text-lg mb-3">brew your icon</div>
+              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1.5">LOOK</div>
+              <div className="grid grid-cols-4 gap-1.5 mb-3">
+                {['comet', 'ring', 'eyes', 'spark'].map((name, fx) => (
+                  <button key={name} onClick={() => setIcon(v => ({ ...v, fx }))}
+                    className={`rounded-md border px-1 py-1.5 font-mono text-[8px] tracking-[0.1em] uppercase transition-all ${icon.fx === fx ? 'border-flame text-glow bg-flame/10' : 'border-brass/30 text-steamer/70 hover:border-flame/50'}`}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1">HUE</div>
+              <input type="range" min={0} max={1} step={0.01} value={icon.hue}
+                onChange={e => setIcon(v => ({ ...v, hue: parseFloat(e.target.value) }))}
+                className="w-full mb-3 accent-flame" />
+              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1">SIZE</div>
+              <input type="range" min={0.5} max={2} step={0.05} value={icon.size}
+                onChange={e => setIcon(v => ({ ...v, size: parseFloat(e.target.value) }))}
+                className="w-full accent-flame" />
+              <div className="font-mono text-[8px] text-glow/30 mt-3 leading-relaxed">
+                saved to this browser · watch your cursor avatar
+              </div>
+            </div>
+          )}
         </>
       )}
     </>

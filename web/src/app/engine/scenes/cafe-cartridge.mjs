@@ -22,7 +22,7 @@ fn cf_stars(p: vec2f, t: f32) -> vec3f {
 // effect id + params + facing, brewed per person); for now a hardcoded Glow with
 // a nose + pupil so its direction reads. local: offset from the player center,
 // ~1.0 at the edge. dir: unit facing. Returns additive rgb.
-fn cf_player(local0: vec2f, dir: vec2f, phase: f32, tint: vec3f) -> vec3f {
+fn cf_player(local0: vec2f, dir: vec2f, phase: f32, fx: i32, tint: vec3f) -> vec3f {
   // DANCE — bob, sway, squash-and-stretch on this player's own beat. A groove
   // in place, never a spin. dir is the base facing (the groove leans around it).
   let bob = sin(phase * 3.1) * 0.16;                 // up-down
@@ -36,6 +36,23 @@ fn cf_player(local0: vec2f, dir: vec2f, phase: f32, tint: vec3f) -> vec3f {
   let fwd = max(0.0, dot(local, fdir));              // ahead of center, along the facing
   let body = exp(-d2 * 5.0);                         // round glow body
   let nose = fwd * exp(-d2 * 2.2);                   // stretches the glow toward the facing
+  // LOOK — brewed per player. 0 comet · 1 ring · 2 eyes · 3 spark.
+  if (fx == 1) {
+    let r = abs(sqrt(d2) - 0.5);                     // a dancing ring
+    return tint * exp(-r * r * 45.0) * 1.7;
+  }
+  if (fx == 2) {
+    let el = local - side * 0.30 - fdir * 0.10;      // two eyes, looking along the facing
+    let er = local + side * 0.30 - fdir * 0.10;
+    let eyes = exp(-dot(el, el) * 55.0) + exp(-dot(er, er) * 55.0);
+    return tint * body * 1.2 + vec3f(1.0, 0.98, 0.9) * eyes * 0.8;
+  }
+  if (fx == 3) {
+    let ang = atan2(local.y, local.x);               // a five-point spark, spinning on its beat
+    let star = pow(max(0.0, cos(ang * 5.0 + phase * 2.0)), 6.0);
+    return tint * exp(-d2 * 3.0) * (0.5 + star * 1.4) * 1.5;
+  }
+  // 0: comet glow (default)
   let g = body * 1.3 + nose * 1.6;
   let eye = local - fdir * 0.30;                     // a pupil pushed forward — a clear aim
   let pupil = exp(-dot(eye, eye) * 55.0) * body;
@@ -153,20 +170,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g += vec3f(0.85) * exp(-dot(mn, mn) * 260.0);
         g *= 0.85 + 0.3 * (1.0 - length(q));
       }
-      // the head-count, folded into the bubble: a soft dark lozenge + crisp
-      // seven-segment digits in the lower third. Positioned in disc-local q, so
-      // it rides the bubble through every pan and zoom (it IS the bubble).
-      let nDig = select(1.0, 2.0, headCount >= 10);
-      let boxW = 0.17 * nDig + 0.09;
-      let boxH = 0.19;
-      let boxC = vec2f(0.0, 0.60);
-      let bd = abs(q - boxC) - vec2f(boxW, boxH);
-      let inBox = 1.0 - smoothstep(-0.02, 0.03, max(bd.x, bd.y));
-      g = mix(g, g * 0.28, inBox * 0.9);   // a legibility plate behind the number
-      let np = vec2f((q.x - boxC.x) / boxW, (q.y - boxC.y) / boxH);
-      let ink = cafeCount(np, headCount, 0.16) * inBox;
-      let numCol = select(vec3f(0.6, 0.55, 0.46), vec3f(1.0, 0.86, 0.46), headCount > 0);
-      g = mix(g, numCol * 2.4, ink);
+      // (the head-count number is gone — presence is the dancing players now)
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);
@@ -188,7 +192,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let plocal = (ql - orb) * 3.2;                       // seat ON the rim (radius 1.0), spilling out
         let hueK = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.16 + vec3f(0.0, 0.33, 0.67)));
         let ph = t * 1.5 + f32(k) * 1.3 + f32(i) * 0.7;      // each dances on its own beat
-        col += cf_player(plocal, orb, ph, hueK * 1.6) * 1.8; // hold the seat, dance in place
+        col += cf_player(plocal, orb, ph, 0, hueK * 1.6) * 1.8; // hold the seat, dance in place
       }
     }
   }
@@ -205,11 +209,16 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
   }
 
-  // the local player — the "you" roaming the open grid. BIG here (undocked), and
-  // small when seated on a world's rim above: one effect, two scales. Facing is
-  // hardcoded to slowly turn for now (real heading/velocity drives it later).
-  col += cf_player((uv - mp) * 4.5, vec2f(0.0, 1.0), t * 1.6, vec3f(0.35, 0.85, 1.1)) * 1.1;
-  col += vec3f(1.4, 0.9, 0.4) * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a warm ember core
+  // the local player — the "you" roaming the open grid, dancing in place. Its
+  // look/hue/size are BREWED: read from the uniform tail (packed after all the
+  // bubbles, so bubble offsets never move). fx, hue, size = uni(sb, sb+1, sb+2).
+  let sb = 6 + i32(uni(3) + 0.5) * 4;
+  let selfFx = i32(uni(sb) + 0.5);
+  let selfHue = uni(sb + 1);
+  let selfSize = max(uni(sb + 2), 0.25);
+  let selfTint = 0.5 + 0.5 * cos(6.2831 * (selfHue + vec3f(0.0, 0.33, 0.67)));
+  col += cf_player((uv - mp) * (4.5 / selfSize), vec2f(0.0, 1.0), t * 1.6, selfFx, selfTint * 1.3) * 1.1;
+  col += selfTint * 0.9 * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a soft core in your hue
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
   return vec4f(clamp(col, vec3f(0.0), vec3f(60.0)), 1.0);
@@ -588,6 +597,10 @@ try {
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue)
     u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
+  // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
+  // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
+  const ic = (typeof window !== 'undefined' && window.__cafeIcon) || {}
+  u.push(ic.fx | 0, typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
 `
