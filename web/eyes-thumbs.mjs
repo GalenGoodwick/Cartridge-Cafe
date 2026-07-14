@@ -7,6 +7,7 @@ import { chromium } from 'playwright'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import sharp from 'sharp'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const OUT = join(here, 'public', 'thumbs')
@@ -32,13 +33,20 @@ console.log('capturing', targets.length, 'worlds:', targets.map(t => t.name).joi
 
 const b = await chromium.launch({ headless: true, args: ['--enable-unsafe-webgpu', '--use-angle=metal'] })
 for (const t of targets) {
-  const p = await b.newPage({ viewport: { width: 512, height: 512 } })
+  // desktop viewport: below 820px the SupportGate shows "bigger table" instead
+  // of the world. Capture full-desktop, then crop the centered square down.
+  const p = await b.newPage({ viewport: { width: 1100, height: 800 } })
   try {
     await p.goto(t.url, { waitUntil: 'domcontentloaded', timeout: 20000 })
     await p.waitForTimeout(7000)   // let the world wake up and settle
-    const buf = await p.screenshot({ type: 'jpeg', quality: 70 })
+    const full = await p.screenshot({ type: 'png' })
+    // center-crop to a square, then downscale to 160px — the door atlas only
+    // samples 64px, so anything bigger is dead weight on first paint.
+    const buf = await sharp(full)
+      .extract({ left: (1100 - 800) / 2, top: 0, width: 800, height: 800 })
+      .resize(160, 160, { fit: 'cover' }).jpeg({ quality: 78 }).toBuffer()
     writeFileSync(join(OUT, t.name + '.jpg'), buf)
-    console.log('  ✓', t.name)
+    console.log('  ✓', t.name, (buf.length / 1024).toFixed(1) + 'KB')
   } catch (e) {
     console.log('  ✗', t.name, String(e).slice(0, 80))
   }

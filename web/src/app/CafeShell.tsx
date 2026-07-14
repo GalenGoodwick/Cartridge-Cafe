@@ -624,22 +624,32 @@ worldData.instructions is mandatory: key entry + the point.`
       const cv = document.createElement('canvas')
       cv.width = ICON; cv.height = ICON
       const ctx = cv.getContext('2d', { willReadFrequently: true })!
-      const atlas = new Uint32Array(list.length * ICON * ICON)
-      const slotMap: Record<string, number> = {}
-      let slot = 0
       const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
         const im = new Image()
         im.onload = () => res(im)
         im.onerror = () => res(null)
         im.src = src
       })
-      for (const name of list) {
-        const im = await loadImg(`/thumbs/${encodeURIComponent(name)}.jpg`)
-        if (cancelled) return
+      // load every thumbnail AT ONCE (was sequential — the whole delay). As each
+      // arrives, pack it and publish an atlas so far, so faces pop in as they
+      // decode instead of waiting for the slowest one.
+      const slotMap: Record<string, number> = {}
+      const atlas = new Uint32Array(list.length * ICON * ICON)
+      let slot = 0
+      const publish = () => {
+        if (cancelled || slot === 0) return
+        const packed = atlas.subarray(0, slot * ICON * ICON)
+        ;(window as unknown as { __cafeIconAtlas?: Uint32Array; __cafeIconSlots?: Record<string, number> }).__cafeIconAtlas = packed
+        ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = { ...slotMap }
+        window.dispatchEvent(new CustomEvent('cafe:icon-atlas', { detail: packed }))
+      }
+      const loaded = await Promise.all(list.map(name =>
+        loadImg(`/thumbs/${encodeURIComponent(name)}.jpg`).then(im => ({ name, im }))))
+      if (cancelled) return
+      for (const { name, im } of loaded) {
         if (!im) continue   // no thumb (house minis) — no slot; shader keeps its live mini
         ctx.clearRect(0, 0, ICON, ICON)
-        // cover-crop the square screenshot into the icon cell
-        const s = Math.min(im.width, im.height)
+        const s = Math.min(im.width, im.height)   // cover-crop square into the cell
         ctx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, ICON, ICON)
         const px = ctx.getImageData(0, 0, ICON, ICON).data
         const base = slot * ICON * ICON
@@ -649,11 +659,7 @@ worldData.instructions is mandatory: key entry + the point.`
         slotMap[name] = slot
         slot++
       }
-      if (cancelled) return
-      const packed = atlas.subarray(0, slot * ICON * ICON)
-      ;(window as unknown as { __cafeIconAtlas?: Uint32Array; __cafeIconSlots?: Record<string, number> }).__cafeIconAtlas = packed
-      ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = slotMap
-      window.dispatchEvent(new CustomEvent('cafe:icon-atlas', { detail: packed }))
+      publish()
     })()
     return () => { cancelled = true }
   }, [scene])
