@@ -97,6 +97,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const [threadFor, setThreadFor] = useState<string | null>(null)   // world whose comments are unfolded
   const [draft, setDraft] = useState('')
   const [now, setNow] = useState(0)   // 1s tick for the deliberation countdown
+  // deliberation gate: the worlds you have witnessed this cell. You cannot
+  // vote until you've reviewed all five — UC's rule, made spatial.
+  const [seen, setSeen] = useState<Set<string>>(new Set())
+  const cellKey = doc ? doc.round + ':' + doc.tier : ''
+  useEffect(() => { setSeen(new Set()) }, [cellKey])
+  const markSeen = useCallback((w: string) => setSeen(prev => prev.has(w) ? prev : new Set(prev).add(w)), [])
 
   // stepping into any world minimizes the panel — the pill rides along
   const sceneSeen = useRef(sceneKey)
@@ -358,32 +364,43 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               <div key={i} className={`rounded-lg border p-2 ${mine ? 'border-amber-400/40' : 'border-white/10'}`}>
                 <div className={`${pill} mb-1.5 ${mine ? 'text-amber-300' : 'text-brass'}`}>
                   {mine ? 'YOUR CELL' : 'CELL 1 · listening'} {Object.keys(c.votes).length > 0 ? '· spoken' : '· deliberating'}
+                  {mine && !c.worlds.every(x => seen.has(x)) && (
+                    <span className="text-white/40"> · review all five to vote ({c.worlds.filter(x => seen.has(x)).length}/5)</span>
+                  )}
                 </div>
                 <div className="space-y-1">
                   {c.worlds.map(w => {
                     const thread = c.comments?.[w] || []
                     const unfolded = threadFor === i + ':' + w
                     return (
-                      <div key={w}>
+                      <div key={w} onMouseEnter={() => mine && markSeen(w)}>
                         <div className="flex items-center gap-1.5">
-                          {mine && (
-                            <button onClick={() => vote(i, w)} title={myVote === w ? 'your vote' : 'cast your vote here'}
-                              className={`${pill} w-6 text-center py-1 rounded border transition-colors ${
-                                myVote === w
-                                  ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
-                                  : 'border-white/15 text-white/50 hover:border-amber-400/50 hover:text-amber-200'
-                              }`}>
-                              {myVote === w ? '●' : '○'}
-                            </button>
-                          )}
-                          <button onClick={() => travel(w)} title="walk through this world, bar in hand"
+                          {mine && (() => {
+                            const isSeen = seen.has(w)
+                            const allSeen = c.worlds.every(x => seen.has(x))
+                            const locked = !allSeen && myVote !== w
+                            return (
+                              <button onClick={() => { if (!locked) vote(i, w) }} disabled={locked}
+                                title={myVote === w ? 'your vote' : locked ? 'review all five first' : 'cast your vote (+1)'}
+                                className={`${pill} w-7 text-center py-1 rounded border transition-colors ${
+                                  myVote === w
+                                    ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
+                                    : locked
+                                      ? (isSeen ? 'border-emerald-500/30 text-emerald-400/70' : 'border-white/12 text-white/30')
+                                      : 'border-white/15 text-white/50 hover:border-amber-400/50 hover:text-amber-200'
+                                }`}>
+                                {myVote === w ? '+1' : locked ? (isSeen ? '☑' : '☐') : '○'}
+                              </button>
+                            )
+                          })()}
+                          <button onClick={() => { if (mine) markSeen(w); travel(w) }} title="walk through this world, bar in hand"
                             className={`${pill} flex-1 text-left px-2 py-1 rounded border transition-colors ${
                               mine ? 'border-white/15 text-white/80 hover:border-flame/50 hover:text-white'
                                    : 'border-white/8 text-white/45 hover:border-white/25 hover:text-white/70'
                             }`}>
                             {w.toLowerCase()}{tally[w] ? ` ·${tally[w]}` : ''} <span className="opacity-50">↗</span>
                           </button>
-                          <button onClick={() => { setThreadFor(unfolded ? null : i + ':' + w); setDraft('') }}
+                          <button onClick={() => { if (mine) markSeen(w); setThreadFor(unfolded ? null : i + ':' + w); setDraft('') }}
                             className={`${pill} px-1.5 py-1 rounded border border-white/10 ${thread.length ? 'text-brass' : 'text-white/35'} hover:text-white`}>
                             💬{thread.length > 0 ? thread.length : ''}
                           </button>
