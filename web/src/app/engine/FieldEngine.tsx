@@ -235,16 +235,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     fetch('/api/auth/session').then(r => r.json())
       .then(s => setMe(s?.user?.email || s?.user?.name || null)).catch(() => {})
   }, [])
-  // a freshly brewed (blank) world greets its owner with the how-to
-  useEffect(() => {
-    if (!spaceId || !isOwner) return
-    const t = setTimeout(() => {
-      const sim = simulationRef.current
-      if (sim && sim.fields.size === 0) setInstrOpen(true)
-    }, 1800)
-    return () => clearTimeout(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, isOwner])
+  // a freshly brewed (blank) world no longer pops the how-to box — while the
+  // AI is building it, the owner just sees a working spinner (rendered below).
   // Focus throttle: a WATCHING viewer gets full rate (spectators give no input) —
   // only an unfocused-but-visible window drops to ~10fps. Hidden tabs pause free (rAF).
   const windowFocusedRef = useRef(typeof document !== 'undefined' ? document.hasFocus() : true)
@@ -4491,6 +4483,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             })()}
             </>)}
           </div>
+          {/* blank world + AI on the job → a quiet working spinner (no how-to box).
+              Clears itself the instant the first field lands (world stops being blank). */}
+          {(() => {
+            void aiPulse
+            const sim = simulationRef.current
+            const blank = (sim?.fields?.size ?? 0) === 0
+            const brief = sim?.worldData?.creation_brief
+            const working = blank && (agentConnected || (!!brief && !sim?.worldData?.brief_done))
+            if (!working) return null
+            return (
+              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none">
+                <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
+                <div className="font-mono text-[10px] tracking-[0.25em] text-white/50">
+                  {agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR YOUR AI…'}
+                </div>
+              </div>
+            )
+          })()}
           {instrOpen && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInstrOpen(false); setInstrEdit(false) }}>
               <div
