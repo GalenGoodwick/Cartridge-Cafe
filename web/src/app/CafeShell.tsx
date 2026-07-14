@@ -571,7 +571,12 @@ worldData.instructions is mandatory: key entry + the point.`
       // chips live on any hub, not just the main cafe
       if (sceneRef.current !== 'CAFE' && portalsRef.current.length === 0) return
       fetch('/api/presence').then(r => r.ok ? r.json() : null)
-        .then(d => d && setCounts(d.counts || {})).catch(() => {})
+        .then(d => {
+          if (!d) return
+          setCounts(d.counts || {})
+          // the door shader draws head-counts IN the bubbles — hand it the map
+          ;(window as unknown as { __cafeCounts?: Record<string, number> }).__cafeCounts = d.counts || {}
+        }).catch(() => {})
     }
     // the door count is a live thing: beat fast, and say goodbye on the way out
     const bye = () => {
@@ -605,9 +610,11 @@ worldData.instructions is mandatory: key entry + the point.`
         fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
         fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
       ])
+      // house worlds have hand-coded animated minis in the shader — no thumb file
+      const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
       const names = new Set<string>()
       for (const n of (sc.scenes || []) as string[]) {
-        if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ')) continue
+        if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ') || STYLED.has(n)) continue
         names.add(n.toUpperCase())
       }
       for (const s of (sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean }>) {
@@ -704,19 +711,8 @@ worldData.instructions is mandatory: key entry + the point.`
       {/* (bubble faces are drawn INSIDE the door shader now — see the icon-atlas
           effect above; no DOM overlay layer exists to drift) */}
 
-      {/* who's inside: a head-count on every door */}
-      {vp.w > 0 && !modalUp && portals.map(pt => {
-        const n = counts[pt.name] || 0
-        const px = vp.w / 2 + (pt.x + pt.r * 0.75) * span / 2
-        const py = vp.h / 2 + (pt.y + pt.r * 0.75) * span / 2
-        return (
-          <div key={pt.name}
-            className={`fixed z-40 pointer-events-none select-none font-mono text-[10px] rounded-full border px-1.5 py-0.5 backdrop-blur-sm ${n > 0 ? 'border-brass/60 bg-void/70 text-glow' : 'border-brass/20 bg-void/50 text-crema/30'}`}
-            style={{ left: px, top: py, transform: 'translate(-50%, -50%)' }}>
-            ◉ {n}
-          </div>
-        )
-      })}
+      {/* (head-counts are drawn INSIDE each bubble by the door shader now —
+          see the stride-4 publish + cafeCount() in shaders.ts; no DOM overlay) */}
 
       {/* a world's OSD — old TV set lettering, top-left of the glass */}
       {caption && (caption.text || caption.kind === 'typing') && (

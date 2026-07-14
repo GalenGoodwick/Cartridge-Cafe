@@ -48,7 +48,8 @@
    "exposure": 1.0,
    "vignetteStrength": 0.3,
    "vignetteRadius": 0.85
-  }
+  },
+  "__sandbox": true
  },
  "stepHooks": [
   {
@@ -67,5 +68,5 @@
   }
  ],
  "modules": [],
- "timestamp": 1783985000000
+ "timestamp": 1783987000000
 }

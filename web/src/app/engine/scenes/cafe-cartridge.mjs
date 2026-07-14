@@ -36,11 +36,12 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 
   // ── the bubble universe: live positions, pressure-ranked, explorable ──
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
-    let sv = uni(8 + i * 3);
+    let sv = uni(8 + i * 4);
     let stRaw = i32(floor(sv));
     let st = stRaw % 200;
     let hue = fract(sv);
-    let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
+    let headCount = i32(uni(9 + i * 4) + 0.5);
+    let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm;
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
@@ -128,6 +129,18 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g += vec3f(0.85) * exp(-dot(mn, mn) * 260.0);
         g *= 0.85 + 0.3 * (1.0 - length(q));
       }
+      // the head-count, folded into the bubble: a small dark tab + bright
+      // digits in the lower third. Positioned in disc-local q, so it rides the
+      // bubble through every pan and zoom with zero drift (it IS the bubble).
+      let nDig = select(1.0, 2.0, headCount >= 10);
+      let boxW = 0.20 * nDig + 0.10;
+      let boxC = vec2f(0.0, 0.60);
+      let inBox = step(abs(q.x - boxC.x), boxW) * step(abs(q.y - boxC.y), 0.20);
+      g = mix(g, g * 0.35, inBox * 0.85);   // a legibility tab behind the number
+      let np = vec2f((q.x - boxC.x) / boxW, (q.y - boxC.y) / -0.17);
+      let ink = cafeCount(np, headCount) * step(abs(np.x), 1.0) * step(abs(np.y), 1.0);
+      let numCol = select(vec3f(0.55, 0.5, 0.42), vec3f(1.0, 0.85, 0.45), headCount > 0);
+      g = mix(g, numCol * 2.2, ink);
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);
@@ -140,9 +153,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
 
   // the crown, over everything — the champion's ring outshines its neighbors
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
-    let sv = uni(8 + i * 3);
+    let sv = uni(8 + i * 4);
     if (i32(floor(sv)) < 200) { continue; }
-    let ctr = vec2f((uni(6 + i * 3) - cam.x) * zm / 256.0, (uni(7 + i * 3) - cam.y) * zm / 256.0);
+    let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm;
     let ringR = R * 1.24 + sin(t * 2.2) * 0.006;
@@ -408,8 +421,9 @@ try {
 
   // ── exploring: drag empty space to pan · Z/X to zoom ──
   const kE = k => { const n = wd['key_' + k + '_n'] || 0; const was = U.kN[k] || 0; U.kN[k] = n; return n > was }
-  if (kE('z')) U.cam.z = Math.min(2.4, U.cam.z * 1.25)
-  if (kE('x')) U.cam.z = Math.max(0.35, U.cam.z / 1.25)
+  if (kE('z')) { U.cam.z = Math.min(2.4, U.cam.z * 1.25); U.zoomHold = 0.28 }
+  if (kE('x')) { U.cam.z = Math.max(0.35, U.cam.z / 1.25); U.zoomHold = 0.28 }
+  U.zoomHold = Math.max(0, (U.zoomHold || 0) - dt2)
   const hasM = wd.mouse_x !== undefined
   const mgx = wd.mouse_x ?? 256, mgy = wd.mouse_y ?? 256
   const down = !!wd.mouse_down
@@ -460,6 +474,10 @@ try {
       const B = U.bubbles[n]
       return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
     }).filter(Boolean)
+    // DOM chrome (count chips) can't share the canvas's frame, so it visibly
+    // lags the shader during motion. Flag when the camera is moving; the shell
+    // hides the chips until it settles, where their placement is pixel-exact.
+    window.__cafeCamMoving = (U.wake > 0 || (down && U.drag) || U.zoomHold > 0) ? 1 : 0
   }
   if (!U.launched && typeof window !== 'undefined') {
     let sig = ((U.cam.x * 10) | 0) + '|' + ((U.cam.y * 10) | 0) + '|' + ((U.cam.z * 100) | 0)
@@ -486,13 +504,16 @@ try {
     }]
   }
 
-  // ── publish: cam, count, cursor(uv), then (x, y, style+hue) per bubble ──
+  // ── publish: cam, count, cursor(uv), then (x, y, style+hue, headCount) per bubble ──
+  // stride 4 now — the 4th value is the live head-count, drawn IN the bubble by
+  // the shader (the shell fills window.__cafeCounts from /api/presence)
+  const heads = (typeof window !== 'undefined' && window.__cafeCounts) || {}
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
     const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : B.style
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue)
-    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac)
+    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }

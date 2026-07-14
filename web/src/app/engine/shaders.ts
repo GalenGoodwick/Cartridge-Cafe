@@ -1546,14 +1546,14 @@ struct InteractionGPU {
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
 // Every visual and interaction shader can read them: uni(0)..uni(63), or uni4(0)..uni4(15).
 fn uni(i: i32) -> f32 {
-  let v = worldUni[clamp(i, 0, 63) / 4];
-  let c = clamp(i, 0, 63) % 4;
+  let v = worldUni[clamp(i, 0, 95) / 4];
+  let c = clamp(i, 0, 95) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
+fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 23)]; }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
@@ -1569,6 +1569,41 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   // sRGB→linear, then expose up so ACES (applied downstream) lands the photo
   // near its original display brightness instead of crushing it to black
   return pow(c, vec3f(2.2)) * 4.5;
+}
+
+// 3x5 pixel font, one u32 bitmask per digit (bit = row*3 + col, row 0 top).
+// Lets the cafe door draw head-counts INSIDE the bubble, in the same pass —
+// the number can never drift from its bubble because it IS the bubble.
+fn cafeGlyph(d: i32, gx: i32, gy: i32) -> f32 {
+  if (d < 0 || d > 9 || gx < 0 || gx > 2 || gy < 0 || gy > 4) { return 0.0; }
+  var font = array<u32,10>(31599u, 29850u, 29671u, 31207u, 18925u, 31183u, 31695u, 9383u, 31727u, 31215u);
+  let bit = u32(gy * 3 + gx);
+  return f32((font[d] >> bit) & 1u);
+}
+// ink coverage of the integer 'count' centered at disc-local 'p' (cell coords,
+// where the number box spans about ±1 in x and ±1 in y). Two digits max.
+fn cafeCount(p: vec2f, count: i32) -> f32 {
+  if (count < 0) { return 0.0; }
+  let two = count >= 10;
+  let d1 = select(count, count / 10, two);
+  let d0 = count % 10;
+  let ndig = select(1, 2, two);
+  // each glyph cell: 3 wide x 5 tall, with a 1px gap between digits
+  let cellW = 4.0;                 // 3 ink + 1 gap
+  let totalW = f32(ndig) * 3.0 + f32(ndig - 1) * 1.0;
+  // map p.x (-1..1) → font pixels across the number's width
+  let fx = (p.x * 0.5 + 0.5) * totalW;
+  let fy = (p.y * 0.5 + 0.5) * 5.0;
+  let gy = i32(floor(fy));
+  var ink = 0.0;
+  // digit 0 occupies fx 0..3, digit 1 (if two) occupies fx 4..7
+  let slot = i32(floor(fx / cellW));
+  let gx = i32(floor(fx - f32(slot) * cellW));
+  if (gx <= 2) {
+    let digit = select(d0, select(d1, d0, slot == 1), two);
+    ink = cafeGlyph(digit, gx, gy);
+  }
+  return ink;
 }
 
 // ─── Cell shaders: the previous frame is the world's memory ───
@@ -2043,14 +2078,14 @@ ${moduleCode}
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
 // Every visual and interaction shader can read them: uni(0)..uni(63), or uni4(0)..uni4(15).
 fn uni(i: i32) -> f32 {
-  let v = worldUni[clamp(i, 0, 63) / 4];
-  let c = clamp(i, 0, 63) % 4;
+  let v = worldUni[clamp(i, 0, 95) / 4];
+  let c = clamp(i, 0, 95) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 15)]; }
+fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 23)]; }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
@@ -2066,6 +2101,41 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   // sRGB→linear, then expose up so ACES (applied downstream) lands the photo
   // near its original display brightness instead of crushing it to black
   return pow(c, vec3f(2.2)) * 4.5;
+}
+
+// 3x5 pixel font, one u32 bitmask per digit (bit = row*3 + col, row 0 top).
+// Lets the cafe door draw head-counts INSIDE the bubble, in the same pass —
+// the number can never drift from its bubble because it IS the bubble.
+fn cafeGlyph(d: i32, gx: i32, gy: i32) -> f32 {
+  if (d < 0 || d > 9 || gx < 0 || gx > 2 || gy < 0 || gy > 4) { return 0.0; }
+  var font = array<u32,10>(31599u, 29850u, 29671u, 31207u, 18925u, 31183u, 31695u, 9383u, 31727u, 31215u);
+  let bit = u32(gy * 3 + gx);
+  return f32((font[d] >> bit) & 1u);
+}
+// ink coverage of the integer 'count' centered at disc-local 'p' (cell coords,
+// where the number box spans about ±1 in x and ±1 in y). Two digits max.
+fn cafeCount(p: vec2f, count: i32) -> f32 {
+  if (count < 0) { return 0.0; }
+  let two = count >= 10;
+  let d1 = select(count, count / 10, two);
+  let d0 = count % 10;
+  let ndig = select(1, 2, two);
+  // each glyph cell: 3 wide x 5 tall, with a 1px gap between digits
+  let cellW = 4.0;                 // 3 ink + 1 gap
+  let totalW = f32(ndig) * 3.0 + f32(ndig - 1) * 1.0;
+  // map p.x (-1..1) → font pixels across the number's width
+  let fx = (p.x * 0.5 + 0.5) * totalW;
+  let fy = (p.y * 0.5 + 0.5) * 5.0;
+  let gy = i32(floor(fy));
+  var ink = 0.0;
+  // digit 0 occupies fx 0..3, digit 1 (if two) occupies fx 4..7
+  let slot = i32(floor(fx / cellW));
+  let gx = i32(floor(fx - f32(slot) * cellW));
+  if (gx <= 2) {
+    let digit = select(d0, select(d1, d0, slot == 1), two);
+    ink = cafeGlyph(digit, gx, gy);
+  }
+  return ink;
 }
 
 // ─── Cell shaders: the previous frame is the world's memory ───

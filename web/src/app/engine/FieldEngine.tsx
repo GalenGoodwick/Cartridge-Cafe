@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import { FieldRenderer } from './renderer'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
+import { WorldSandbox } from './world-sandbox'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
 import PromptPanel from './PromptPanel'
@@ -247,6 +248,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const rendererRef = useRef<FieldRenderer | null>(null)
   const pendingAtlasRef = useRef<Uint32Array | null>(null)   // door bubble-face atlas, re-applied on renderer (re)init
   const simulationRef = useRef<FieldSimulation | null>(null)
+  // a world flagged worldData.__sandbox runs its hook in a sealed Web Worker
+  // instead of new Function on the main thread — no DOM, no network reach.
+  const sandboxRef = useRef<WorldSandbox | null>(null)
+  const installHooks = useCallback((sim: FieldSimulation, stepHooks: { id: string; author: string; description: string; code: string }[] | undefined, worldData: Record<string, unknown> | undefined) => {
+    sandboxRef.current?.dispose()
+    sandboxRef.current = null
+    if (worldData?.__sandbox && stepHooks && stepHooks.length > 0) {
+      // proof scope: single-hook worlds. Multi-hook fan-in comes next.
+      const box = new WorldSandbox()
+      box.load(stepHooks[0].code)
+      if (box.active) {
+        sandboxRef.current = box
+        return   // the sandbox owns the hook — do NOT compile it on the main thread
+      }
+      // worker couldn't spawn (CSP, no Worker) — fall through to the proven path
+    }
+    for (const h of stepHooks || []) sim.addStepHook(h.id, h.author, h.description, h.code)
+  }, [])
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
   const startTimeRef = useRef<number>(0)
@@ -276,7 +295,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // unmounts, so leaving the page must close the context explicitly
   useEffect(() => {
     const audio = audioRef.current
-    return () => { audio.destroy() }
+    return () => { audio.destroy(); sandboxRef.current?.dispose() }
   }, [])
   // ── fault surface: when the world goes down, SAY WHY on screen ──
   const [fault, setFault] = useState<{ kind: string; message: string } | null>(null)
@@ -745,7 +764,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
       }
       if (scene.stepHooks) {
-        for (const h of scene.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+        installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
         // A scene with logic should boot running (game cartridges)
         if (scene.stepHooks.length > 0 && !sim.running) {
           sim.running = true
@@ -941,7 +960,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
         if (scene.interactionRules) sim.interactionRules = scene.interactionRules
         if (scene.interactionEffects) for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
-        if (scene.stepHooks) for (const h of scene.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+        if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
         sim.running = true
         setRunning(true)
         syncFields()
@@ -1011,7 +1030,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           for (const ie of snapshot.interactionEffects) sim.addInteractionEffect(ie)
         }
         if (snapshot.stepHooks) {
-          for (const h of snapshot.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+          installHooks(sim, snapshot.stepHooks, snapshot.worldData as Record<string, unknown> | undefined)
           // a world with logic boots RUNNING — same law as the cartridges.
           // Without this, AI-built spaces load with their brain installed but
           // the clock stopped: shader drawing, hooks never ticking.
@@ -1643,6 +1662,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const renderer = rendererRef.current
       if (!sim || !renderer) return
 
+      sandboxRef.current?.tick(sim, dt)
       sim.step(dt)
 
       // Process audio triggers from worldData (single event or an array per tick)

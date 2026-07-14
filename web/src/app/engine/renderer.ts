@@ -147,7 +147,7 @@ export class FieldRenderer {
   private stateUniformBuf: GPUBuffer | null = null
   // World uniforms — the shared "whiteboard" hooks write and all shaders read
   private worldUniBuffer: GPUBuffer | null = null
-  private _worldUniData = new Float32Array(64)
+  private _worldUniData = new Float32Array(96)   // whiteboard: uni(0..95)
   private _worldUniDirty = true
 
   // Icon atlas — packed RGBA8 screenshots (64x64/slot) the cafe door samples
@@ -499,12 +499,20 @@ export class FieldRenderer {
       features.push('float32-filterable')
     }
     // the uber-shader binds up to 9 storage buffers per stage; WebGPU's
-    // DEFAULT limit is 8 — ask for what the adapter actually supports
+    // DEFAULT limit is 8 — ask for what the adapter actually supports.
+    // requestDevice can REJECT (driver hiccup, limit quirk); never let that
+    // hard-fail init — fall back to a plain device.
     const wantStorage = Math.min(adapter.limits.maxStorageBuffersPerShaderStage, 12)
-    const device = await adapter.requestDevice({
-      requiredFeatures: features,
-      requiredLimits: wantStorage > 8 ? { maxStorageBuffersPerShaderStage: wantStorage } : undefined,
-    })
+    let device: GPUDevice
+    try {
+      device = await adapter.requestDevice({
+        requiredFeatures: features,
+        requiredLimits: wantStorage > 8 ? { maxStorageBuffersPerShaderStage: wantStorage } : undefined,
+      })
+    } catch (e) {
+      console.warn('requestDevice with limits failed, retrying plain:', e)
+      device = await adapter.requestDevice({ requiredFeatures: features })
+    }
     this.device = device
     // a fresh device orphans every LAZILY-created GPU object (the eagerly
     // created ones are rebuilt right below). A cached layout or buffer from
@@ -574,7 +582,7 @@ export class FieldRenderer {
     // The whiteboard: 64 floats written from worldData.gpuUniforms each frame,
     // visible to every visual/interaction shader as uni(i) / uni4(i)
     this.worldUniBuffer = device.createBuffer({
-      size: 256, // 16 vec4f
+      size: 384, // 24 vec4f = 96 floats (must match _worldUniData + the lazy path)
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
 
@@ -2612,9 +2620,9 @@ export class FieldRenderer {
     this.hitIdPixelCount = pixelCount
   }
 
-  /** Write the world-uniform whiteboard (up to 64 floats). Cheap: skips upload when values unchanged. */
+  /** Write the world-uniform whiteboard (up to 96 floats). Cheap: skips upload when values unchanged. */
   updateWorldUniforms(vals: number[] | Float32Array): void {
-    const n = Math.min(64, vals.length)
+    const n = Math.min(96, vals.length)
     let changed = false
     for (let i = 0; i < n; i++) {
       const v = Number.isFinite(vals[i]) ? vals[i] : 0
@@ -2627,7 +2635,7 @@ export class FieldRenderer {
     if (!this.device) return
     if (!this.worldUniBuffer) {
       this.worldUniBuffer = this.device.createBuffer({
-        size: 256,
+        size: 384,   // 24 vec4f = 96 floats
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       })
       this._worldUniDirty = true
