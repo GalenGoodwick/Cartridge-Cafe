@@ -847,6 +847,27 @@ which is the point: the bubble shows what you actually built.
 
 14. **Deploy incrementally** — when building multi-layer scenes, deploy and test one visual at a time. If all visuals are registered at once and one has an error, it's hard to tell which one broke.
 
+15. **`worldData.renderScale` — the retina lever.** A full-screen raymarched world runs the whole march *per pixel*, and a retina canvas is ~2.2M pixels. Set `worldData.renderScale` to 0.5–0.7 and the engine renders at that fraction of internal resolution and upscales — nearly invisible on a smooth raymarched scene, and it cuts the pixel cost 2–4×. The single biggest win for a heavy first-person world. (Absent the key, resolution is full.)
+
+16. **Cheap bounds-reject BEFORE per-pixel noise.** In a loop over entities (billboard creatures, lights), a pixel far from every entity must bail on a *constant* comparison — never call `fbm`/`vnoise` before that test. One entity filling the screen with an unguarded `fbm` per pixel × 6 entities = the whole frame gone. Compute the cheap projection/offset, `if (abs(lx) > bound) continue;`, and only then sample noise. Sample noise ONCE and reuse it.
+
+---
+
+## Robust Step Hooks (read this — it will save you an hour)
+
+A thrown error inside a step hook is **swallowed silently** (the hook body is wrapped in try/catch, and an uncaught throw just stops the rest of that frame's hook). Symptoms: movement or look still works, `mouse_down_n` still counts up, but one specific action (a hit, a spawn) *never happens* and there is no error in the console. It looks like the input is broken when the input is fine.
+
+- **Write hooks to a file and syntax-check them** (`new Function('sim','dt', body)`) before sending. Do NOT build hook code through nested shell-string escaping — that mangles template literals and backticks into runtime errors that only surface as "nothing happens".
+- **Resolve one-shot actions on the input EDGE, immediately** — not through a decaying timer window. Use the pulse counters (`key_<x>_n`, `mouse_down_n`): compare against a stored last-value, and the frame it increments, do the whole action (the hit, the fire) in that same block. A "resolve when `swingT < 0.23`" window is fragile — under frame-rate throttling the window is skipped and the action never fires. Use the timer for the *animation*, resolve the *gameplay* on the edge.
+
+## First-Person Worlds (WASD + look + collision)
+
+The pattern, all in the hook, published on the whiteboard:
+- **Look**: smooth `mouse_x/mouse_y` into a yaw (and pitch); the shader builds the ray from `uni(yaw)`. `const fwd = [sin(yaw), cos(yaw)]`, `const rgt = [cos(yaw), -sin(yaw)]`.
+- **Move**: `if (wd.key_w) { px += fwd[0]*spd; pz += fwd[1]*spd }` … movement follows where you LOOK. Publish `px, pz` as the camera origin; the shader reads them instead of a scripted path.
+- **Collision**: the cheapest that works — clamp to the playable corridor (`px = clamp(px, -0.95, 0.95)`). This also stops the camera clipping *inside* SDF geometry (which shows the scene's interior).
+- **Enemies that occlude correctly, cheaply**: billboard them. Publish each creature's world position; in the shader, `proj = dot(creaturePos - ro, rd)`; draw it only if `proj > 0 && proj < wallHitDistance` (so columns occlude it) and the pixel is within its projected disc. No extra SDF primitives in the march.
+
 ---
 
 ## Complete Example: Animated Creature

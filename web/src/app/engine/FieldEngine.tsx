@@ -2188,6 +2188,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         renderer.setPostProcess(ppData)
       }
 
+      // A heavy world may request a lower internal resolution — raymarched
+      // worlds upscale invisibly, and pixel count is the biggest lever on
+      // retina. Absent the key, reset to full res so it never leaks between
+      // worlds.
+      const rScale = (sim.worldData['renderScale'] as number | undefined) ?? 1.0
+      if (rScale !== renderer.renderScale) renderer.setRenderScale(rScale)
+
       // Process particle emission requests from worldData
       const emitParticle = sim.worldData['__emit_particles'] as { x: number; y: number; count: number; color?: [number, number, number]; velX?: number; velY?: number; spread?: number; size?: number; life?: number } | undefined
       if (emitParticle) {

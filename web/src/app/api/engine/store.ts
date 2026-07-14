@@ -795,6 +795,25 @@ const LIST_TTL = 2500        // ms a cached slot listing is trusted
 const slotCache = new Map<string, { data: unknown; savedAt: number; at: number }>()
 let listCache: { slots: Array<{ slot: string; savedAt: number }>; at: number } | null = null
 
+// This project has no Prisma migration files (it uses `db push`, which the
+// Prisma-7 driver-adapter config can't run without a static URL). So the
+// EngineSlot table is created here, idempotently, once per instance — a real
+// migration would be cleaner, but this guarantees the table exists in whatever
+// database the deployment actually points at (prod ≠ local here).
+let tableReady: Promise<void> | null = null
+async function ensureSlotTable(): Promise<void> {
+  if (!tableReady) {
+    tableReady = (async () => {
+      const { prisma } = await import('@/lib/prisma')
+      await prisma.$executeRawUnsafe(
+        `CREATE TABLE IF NOT EXISTS "EngineSlot" ("slot" TEXT PRIMARY KEY, "data" JSONB NOT NULL, "savedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "EngineSlot_savedAt_idx" ON "EngineSlot" ("savedAt")`)
+    })().catch(e => { tableReady = null; throw e })   // let a failed attempt retry
+  }
+  return tableReady
+}
+
 /** Write a named save slot (upsert into Neon, refresh cache). */
 export async function saveGameSlot(slot: string, data: unknown): Promise<void> {
   const savedAt = Date.now()
@@ -802,6 +821,7 @@ export async function saveGameSlot(slot: string, data: unknown): Promise<void> {
   listCache = null   // a new/updated slot invalidates the listing
   try {
     const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
     await prisma.engineSlot.upsert({
       where: { slot },
       // Prisma Json can't hold `undefined`; store null for absent data
@@ -817,6 +837,7 @@ export async function loadGameSlot(slot: string): Promise<unknown | undefined> {
   if (c && Date.now() - c.at < SLOT_TTL) return c.data
   try {
     const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
     const row = await prisma.engineSlot.findUnique({ where: { slot } })
     const data = row ? row.data : undefined
     slotCache.set(slot, { data, savedAt: row ? row.savedAt.getTime() : 0, at: Date.now() })
@@ -831,6 +852,7 @@ export async function listGameSlots(): Promise<Array<{ slot: string; savedAt: nu
   if (listCache && Date.now() - listCache.at < LIST_TTL) return listCache.slots
   try {
     const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
     const rows = await prisma.engineSlot.findMany({ select: { slot: true, savedAt: true } })
     const slots = rows.map(r => ({ slot: r.slot, savedAt: r.savedAt.getTime() }))
     listCache = { slots, at: Date.now() }
@@ -846,6 +868,7 @@ export async function deleteGameSlot(slot: string): Promise<boolean> {
   listCache = null
   try {
     const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
     await prisma.engineSlot.delete({ where: { slot } })
     return true
   } catch {
