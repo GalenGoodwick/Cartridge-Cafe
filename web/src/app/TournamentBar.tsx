@@ -40,12 +40,13 @@ type TDoc = {
   reached: Record<string, number>
   champion: string | null
   championAt: number
+  champTier?: number              // the tier the reigning champion was crowned at
 }
 
 // UC: one participant belongs to ONE cell per tier. Past the deliberation
 // window, a tier with at least one voice resolves anyway — silent cells fall
 // to the deterministic tie-break, so no empty cell can stall the chant.
-const TIER_MAX_MS = 3 * 60_000
+const TIER_MAX_MS = 2 * 60 * 60_000   // each tier deliberates for two hours, then resolves by votes
 
 const hash = (s: string) => {
   let h = 2166136261
@@ -185,16 +186,28 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       const next = { ...d }
       for (const w of winners) next.reached = { ...next.reached, [w]: d.tier + 1 }
       if (winners.length === 1) {
-        // coronation — and in the same breath, the next round is dealt
-        next.champion = winners[0]
-        next.championAt = Date.now()
+        // A completed chant. The crown TRANSFERS only on a decisive win — a
+        // challenger who reached a strictly higher tier than the reigning
+        // champion (or the first champion, or the champion re-affirming).
+        // Otherwise the champion holds their seat; the challenger keeps the
+        // tier it earned but does not dethrone. Then the next round is dealt.
+        const w = winners[0]
+        const wTier = d.tier + 1
+        const reign = d.champion
+        const reignTier = d.champTier || 0
+        const dethrone = !reign || w === reign || wTier > reignTier
+        next.champion = dethrone ? w : reign
+        next.champTier = dethrone ? wTier : reignTier
+        next.championAt = dethrone ? Date.now() : d.championAt
         next.round = d.round + 1
         next.tier = 1
         next.cells = r.length >= 2 ? deal(r, next.round) : []
         next.tierAt = Date.now()
         const fresh: Record<string, number> = {}
-        for (const w of r) fresh[w] = 1
-        next.reached = { ...fresh, [winners[0]]: d.tier + 1 }
+        for (const x of r) fresh[x] = 1
+        next.reached = fresh
+        next.reached[w] = wTier
+        if (!dethrone && reign) next.reached[reign] = reignTier
       } else {
         next.tier = d.tier + 1
         next.cells = deal(winners, d.round * 100 + next.tier)
@@ -233,10 +246,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
+    // casting only RECORDS your voice — it never resolves the tier. The tier
+    // resolves solely on its two-hour timer (via the heartbeat), by vote count.
+    // Until then your vote can move and the conversation keeps going.
     const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx ? { ...c, votes: { ...c.votes, [who]: world } } : c) }
-    const settled = reconcile(next) || next
-    setDoc(settled)
-    if (settled === next) save(next)   // reconcile saves when it changes things; otherwise persist the vote
+    setDoc(next)
+    save(next)
   }
 
   /** deliberation: a comment on a world, spoken inside your cell */
@@ -279,9 +294,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 
   // an arena short of two contenders says so instead of vanishing
   if (!doc) {
-    const hint = branchesOf
-      ? '⚔ NO RIVALS YET — ⑂ BRANCH TO CHALLENGE MAIN'
-      : emptyHint
+    // a world's own arena stays silent until real rivals exist — no nagging to branch
+    if (branchesOf) return null
+    const hint = emptyHint
     if (!hint || roster.length >= 2) return null
     return (
       <div className={rail ? 'fixed top-[205px] right-3 z-40' : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50'}>
@@ -305,8 +320,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               ROUND {doc.round} · TIER {doc.tier}
               {doc.tierAt && !doc.champion && (() => {
                 const left = Math.max(0, doc.tierAt + TIER_MAX_MS - (now || Date.now()))
-                const m = Math.floor(left / 60000), s2 = Math.floor((left % 60000) / 1000)
-                return <span className="text-amber-300/80"> · resolves in {m}:{String(s2).padStart(2, '0')}</span>
+                const hrs = Math.floor(left / 3600000), mins = Math.floor((left % 3600000) / 60000)
+                const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
+                return <span className="text-amber-300/80"> · resolves by vote in {label}</span>
               })()}
               {' '}— you are dealt into ONE cell; until the window closes your vote can move and the
               conversation keeps going. Click a NAME to walk through the world · ○ casts your vote · 💬 speaks in your cell.

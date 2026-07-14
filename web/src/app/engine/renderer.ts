@@ -178,6 +178,17 @@ export class FieldRenderer {
   private static readonly FEEDBACK_SIZE = 256
   static readonly MAX_FIELD_EFFECTS = 128
 
+  // Per-effect feedback STATE buffers (the real-feedback primitive). Each
+  // feedback:true effect owns a ping-pong pair of field-space storage buffers
+  // (STATE_DIM² vec4f); the compute shader reads `prev`, writes `next`, they
+  // swap each frame. Field-space (not screen-space) → camera/zoom independent.
+  private static readonly STATE_DIM = 256
+  private effectStateBuffers: Map<string, { a: GPUBuffer; b: GPUBuffer; cur: 0 | 1 }> = new Map()
+  // two distinct dummies — a buffer can't alias a read slot AND a write slot in
+  // the same bind group, so non-feedback effects need separate read/write sinks
+  private _dummyStateA: GPUBuffer | null = null
+  private _dummyStateB: GPUBuffer | null = null
+
   /** Render resolution scale (0.25–2.0). Lower = fewer pixels = faster. Default 1.0. */
   renderScale: number = 1.0
 
@@ -774,6 +785,27 @@ export class FieldRenderer {
     this._cachedSuperBG = null
   }
 
+  /** One-element read/write sink pair bound at the state slots for
+   *  non-feedback effects (arrayLength 1 → the shader's state read/write skip). */
+  private getDummyStatePair(): { read: GPUBuffer; write: GPUBuffer } {
+    if (!this._dummyStateA) this._dummyStateA = this.device!.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE })
+    if (!this._dummyStateB) this._dummyStateB = this.device!.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE })
+    return { read: this._dummyStateA, write: this._dummyStateB }
+  }
+
+  /** Lazily allocate a feedback effect's ping-pong state buffers (zero-init). */
+  private ensureEffectState(programKey: string): { a: GPUBuffer; b: GPUBuffer; cur: 0 | 1 } {
+    let entry = this.effectStateBuffers.get(programKey)
+    if (!entry) {
+      const device = this.device!
+      const size = FieldRenderer.STATE_DIM * FieldRenderer.STATE_DIM * 16 // vec4f/cell
+      const mk = () => device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })
+      entry = { a: mk(), b: mk(), cur: 0 }
+      this.effectStateBuffers.set(programKey, entry)
+    }
+    return entry
+  }
+
   /** Ensure the interaction result buffer matches the current canvas pixel dimensions */
   private ensureIxBuf(width: number, height: number): void {
     const device = this.device!
@@ -855,6 +887,12 @@ export class FieldRenderer {
       entries: [
         { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        // per-effect feedback state, ping-ponged in FIELD space: prev (read) →
+        // next (write). Real per-effect feedback — the primitive that lets an
+        // effect read its own last frame (fluid, reaction-diffusion, any stateful
+        // sim). Non-feedback effects bind a 1-element dummy for both.
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
       ],
     })
 
@@ -1478,6 +1516,13 @@ export class FieldRenderer {
       this.retireTexture(fb.texB)
       this.feedbackBuffers.delete(programKey)
     }
+
+    const st = this.effectStateBuffers.get(programKey)
+    if (st) {
+      st.a.destroy()
+      st.b.destroy()
+      this.effectStateBuffers.delete(programKey)
+    }
   }
 
   removeAllFieldEffects(fieldId: string): void {
@@ -1665,28 +1710,40 @@ export class FieldRenderer {
             this.dispatchUniformBuf!, 0, FieldRenderer.DISPATCH_UNIFORM_SIZE,
           )
 
-          if (!this._cachedDispatchBG) {
-            this._cachedDispatchBG = device.createBindGroup({
-              layout: this.computeDispatchLayout!,
-              entries: [
-                { binding: 0, resource: { buffer: this.dispatchUniformBuf! } },
-                { binding: 1, resource: { buffer: this.accumBuf! } },
-              ],
-            })
+          // Per-effect state ping-pong: feedback effects read their own last
+          // frame (prev) and write the new one (next); non-feedback bind dummies.
+          const st = effect.feedback ? this.ensureEffectState(effect.programKey) : null
+          let statePrev: GPUBuffer, stateNext: GPUBuffer
+          if (st) {
+            statePrev = st.cur === 0 ? st.a : st.b
+            stateNext = st.cur === 0 ? st.b : st.a
+          } else {
+            const d = this.getDummyStatePair()
+            statePrev = d.read; stateNext = d.write
           }
+          const dispatchBG = device.createBindGroup({
+            layout: this.computeDispatchLayout!,
+            entries: [
+              { binding: 0, resource: { buffer: this.dispatchUniformBuf! } },
+              { binding: 1, resource: { buffer: this.accumBuf! } },
+              { binding: 2, resource: { buffer: statePrev } },
+              { binding: 3, resource: { buffer: stateNext } },
+            ],
+          })
 
           const pass = encoder.beginComputePass()
           pass.setPipeline(sharedCompute.pipeline)
           pass.setBindGroup(0, frameBG)
           pass.setBindGroup(1, this.getEffectTextureBindGroup(effect.fieldId))
           pass.setBindGroup(2, effectUniformBG)
-          pass.setBindGroup(3, this._cachedDispatchBG)
+          pass.setBindGroup(3, dispatchBG)
           // Fullscreen dispatch — shader handles pixel-perfect shape via alpha
           pass.dispatchWorkgroups(
             Math.ceil(bufferW / 16),
             Math.ceil(bufferH / 16),
           )
           pass.end()
+          if (st) st.cur = st.cur === 0 ? 1 : 0   // swap this effect's buffers
         }
 
         // ─── Interaction propagation pass ───
@@ -1891,17 +1948,25 @@ export class FieldRenderer {
           encoder.copyBufferToBuffer(this.effectUniformStagingBuf!, computeStageIndices[i] * FieldRenderer.EFFECT_UNIFORM_SIZE, this.effectUniformBuf!, 0, FieldRenderer.EFFECT_UNIFORM_SIZE)
           encoder.copyBufferToBuffer(this.dispatchStagingBuf!, i * FieldRenderer.DISPATCH_UNIFORM_SIZE, this.dispatchUniformBuf!, 0, FieldRenderer.DISPATCH_UNIFORM_SIZE)
 
-          if (!this._cachedDispatchBG) {
-            this._cachedDispatchBG = device.createBindGroup({ layout: this.computeDispatchLayout!, entries: [{ binding: 0, resource: { buffer: this.dispatchUniformBuf! } }, { binding: 1, resource: { buffer: this.accumBuf! } }] })
-          }
+          const stE = effect.feedback ? this.ensureEffectState(effect.programKey) : null
+          let sPrev: GPUBuffer, sNext: GPUBuffer
+          if (stE) { sPrev = stE.cur === 0 ? stE.a : stE.b; sNext = stE.cur === 0 ? stE.b : stE.a }
+          else { const d = this.getDummyStatePair(); sPrev = d.read; sNext = d.write }
+          const dBG = device.createBindGroup({ layout: this.computeDispatchLayout!, entries: [
+            { binding: 0, resource: { buffer: this.dispatchUniformBuf! } },
+            { binding: 1, resource: { buffer: this.accumBuf! } },
+            { binding: 2, resource: { buffer: sPrev } },
+            { binding: 3, resource: { buffer: sNext } },
+          ] })
           const pass = encoder.beginComputePass()
           pass.setPipeline(sc.pipeline)
           pass.setBindGroup(0, frameBG)
           pass.setBindGroup(1, this.getEffectTextureBindGroup(effect.fieldId))
           pass.setBindGroup(2, effectUniformBG)
-          pass.setBindGroup(3, this._cachedDispatchBG)
+          pass.setBindGroup(3, dBG)
           pass.dispatchWorkgroups(Math.ceil(bufferW / 16), Math.ceil(bufferH / 16))
           pass.end()
+          if (stE) stE.cur = stE.cur === 0 ? 1 : 0
         }
 
         // Post-processing
@@ -3434,6 +3499,11 @@ export class FieldRenderer {
       fb.texB.destroy()
     }
     this.feedbackBuffers.clear()
+
+    for (const st of this.effectStateBuffers.values()) { st.a.destroy(); st.b.destroy() }
+    this.effectStateBuffers.clear()
+    this._dummyStateA?.destroy(); this._dummyStateA = null
+    this._dummyStateB?.destroy(); this._dummyStateB = null
 
     this.colorTex?.destroy()
     this.stateTex?.destroy()

@@ -1,11 +1,17 @@
-// FLUID — a real 2D stable-fluids solver (Navier–Stokes), not shader waves.
-// State lives in the effect's feedback texture, ping-ponged each frame:
-//   R,G = velocity (biased to 0..1)   B = dye   A = pressure (biased)
-// Pipeline per frame (Jos Stam): semi-Lagrangian self-advection · emitter
-// forcing · divergence · ONE Jacobi pressure iteration (amortized across
-// frames — the honest real-time compromise) · gradient subtraction · dye
-// advect+dissipate. Displayed raw for now (velocity=red/green, dye=blue);
-// a pretty palette pass comes after this proves the sim.
+// FLUID — a REAL 2D stable-fluids solver (Navier–Stokes), not shader waves.
+// As of the per-effect feedback primitive (2026-07-13) this genuinely reads its
+// own previous frame: `fl_at` calls feedback(), backed by the engine's per-effect
+// ping-pong STATE buffer (renderer.ts / shaders.ts). The velocity field persists,
+// self-advects, and dissipates; a cursor stroke leaves a wake that keeps flowing
+// after you stop. (Before the primitive, feedback() fell back to a static texture
+// and this was really just time-driven emitter animation — that era is over.)
+//
+// State packing (single-pass — the output IS the state AND the image), stored in
+// the feedback buffer, bilinearly sampled on read:
+//   R,G = velocity / VS   B = dye   A = display alpha (dye+flow → base plasma
+//   shows through the transparent background)
+// Per frame: semi-Lagrangian self-advection · divergence damping · swirling
+// emitters + cursor forcing · NaN guard · clamp/decay for stability.
 //   node fluid-cartridge.mjs
 import { writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
@@ -54,8 +60,8 @@ fn visual_fluid_base(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f
 // velocity is STORED scaled to ~[-1,1] (so it stays dim in the display) and
 // recovered to real cells/frame on read. VS = the scale (WGSL-side const).
 const FX = /* wgsl */`
-const VS = 40.0;
-fn fl_at(c: vec2f) -> vec4f { return textureSampleLevel(feedbackTex, texSampler, feedbackUV(c), 0.0); }
+const VS = 220.0;
+fn fl_at(c: vec2f) -> vec4f { return feedback(c); }       // REAL per-effect feedback (ping-ponged state)
 fn fl_v(c: vec2f) -> vec2f { return fl_at(c).rg * VS; }   // recover real velocity
 
 fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f {
@@ -84,7 +90,7 @@ fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, para
   let d2 = length(coord - e2) / span;
   vel += vec2f( cos(t * 1.1),  sin(t * 1.1)) * exp(-d1 * d1 * 22.0) * 22.0;
   vel += vec2f(-sin(t * 0.8),  cos(t * 0.8)) * exp(-d2 * d2 * 22.0) * 22.0;
-  dye += (exp(-d1 * d1 * 34.0) + exp(-d2 * d2 * 34.0)) * 1.1;
+  dye += (exp(-d1 * d1 * 34.0) + exp(-d2 * d2 * 34.0)) * 0.45;
 
   // 3b — YOUR CURSOR via effect.params (a hook writes cursor cell in xy, motion
   // in zw). Drag to shove the ink.
@@ -101,17 +107,23 @@ fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, para
   // frame or two (that's the "works for a second then black").
   if (!(vel.x == vel.x) || !(vel.y == vel.y) || !(dye == dye)) { vel = vec2f(0.0); dye = 0.0; }
   vel = clamp(vel * 0.990, vec2f(-24.0), vec2f(24.0));
-  dye = clamp(dye * 0.988, 0.0, 1.6);
+  dye = clamp(dye * 0.958, 0.0, 1.3);   // faster dissipation → wispy flow, not a solid fill
 
-  // SINGLE effect: the output is BOTH the persisted state (feedback reads
-  // rg=vel/VS, b=dye next frame) AND the visible image. Velocity is stored
-  // SCALED DOWN by VS so it stays dim in red/green; dye leads in blue, so the
-  // ink reads as luminous blue with only a faint velocity tint. Raw but real.
-  //
-  // Alpha follows the ink+flow so the empty background goes transparent and the
-  // original fluid_base plasma flows through behind the blobs — solid where
-  // there's dye/velocity, clear where there isn't.
-  let a = clamp(dye + length(vel) * 0.04, 0.0, 1.0);
+  // OPEN-BOUNDARY damping: fade velocity + dye to zero in a border band. Without
+  // it, advection near the edge samples clamped out-of-bounds cells and smears
+  // edge values inward — the streaky "edge blending" artifact. This gives clean
+  // borders where the fluid simply flows out.
+  let np = (coord - regionMin) / (regionMax - regionMin);
+  let edge = smoothstep(0.0, 0.16, np.x) * smoothstep(0.0, 0.16, np.y)
+           * smoothstep(1.0, 0.84, np.x) * smoothstep(1.0, 0.84, np.y);
+  vel *= edge;
+  dye *= edge;
+
+  // SINGLE effect: output is BOTH persisted state (feedback reads rg=vel/VS,
+  // b=dye) AND the image. VS is large so velocity stays near-black in R/G — the
+  // display is essentially the DYE in blue, legible as ink on the blue base,
+  // with velocity invisible but still driving the flow.
+  let a = clamp(dye * 1.4 + length(vel) * 0.02, 0.0, 1.0);
   return vec4f(vel / VS, dye, a);
 }`
 
@@ -157,11 +169,6 @@ const scene = {
     memory: [], proximity: [], properties: {},
     transform: { x: 256, y: 256, rotation: 0, scale: 1, vx: 0, vy: 0, vr: 0 },
     shapeType: 'rect', w: 512, h: 512, visualTypeName: 'fluid_base', noHit: true, noCollide: true,
-  }, {
-    id: 'fl_f2', name: 'The Second Flow', color: [0.02, 0.01, 0.01, 1],
-    effects: [], memory: [], proximity: [], properties: {},
-    transform: { x: 256, y: 256, rotation: 0, scale: 1, vx: 0, vy: 0, vr: 0 },
-    shapeType: 'rect', w: 230, h: 230, visualTypeName: 'fluid_warm', noHit: true, noCollide: true,
   }],
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
@@ -191,7 +198,7 @@ const scene = {
       if (f && f.effects) { for (const e of f.effects) e.params = p }
     } catch (e) {}` }],
   interactionRules: [], interactionEffects: [],
-  visualTypes: [{ name: 'fluid_base', wgsl: BASE }, { name: 'fluid_warm', wgsl: BASE2 }],
+  visualTypes: [{ name: 'fluid_base', wgsl: BASE }],
   modules: [], timestamp: Date.now(),
 }
 

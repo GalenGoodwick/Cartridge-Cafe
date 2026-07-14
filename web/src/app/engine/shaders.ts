@@ -758,6 +758,12 @@ fn feedbackUV(cellCoord: vec2f) -> vec2f {
   uv.y = 1.0 - uv.y;
   return uv;
 }
+// Fragment-path fallback for feedback(): no per-effect state buffer here, so it
+// degrades to the (static) feedback texture. Real feedback runs in the compute
+// path; this only keeps a feedback-using shader COMPILING if it falls back.
+fn feedback(cellCoord: vec2f) -> vec4f {
+  return textureSampleLevel(feedbackTex, texSampler, feedbackUV(cellCoord), 0.0);
+}
 
 ${fixedWgsl}
 
@@ -963,6 +969,10 @@ struct DispatchRegion {
 };
 @group(3) @binding(0) var<uniform> dispatchRegion: DispatchRegion;
 @group(3) @binding(1) var<storage, read_write> accumBuf: array<vec4f>;
+// per-effect feedback state, ping-ponged in field space (the real-feedback
+// primitive). prev = last frame (read), next = this frame (written below).
+@group(3) @binding(2) var<storage, read> fbStatePrev: array<vec4f>;
+@group(3) @binding(3) var<storage, read_write> fbStateNext: array<vec4f>;
 
 ${getShaderUtilities(modCode)}
 
@@ -970,6 +980,35 @@ fn feedbackUV(cellCoord: vec2f) -> vec2f {
   var uv = clamp((cellCoord - effect.bounds.xy) / max(effect.bounds.zw - effect.bounds.xy, vec2f(1.0)), vec2f(0.0), vec2f(1.0));
   uv.y = 1.0 - uv.y;
   return uv;
+}
+
+// field cell → state buffer index (STATE_DIM² grid over the effect bounds)
+const FB_STATE_DIM: f32 = 256.0;
+fn fbStateIndex(cellCoord: vec2f) -> u32 {
+  let uv = clamp((cellCoord - effect.bounds.xy) / max(effect.bounds.zw - effect.bounds.xy, vec2f(1.0)), vec2f(0.0), vec2f(0.99999));
+  let px = vec2u(u32(uv.x * FB_STATE_DIM), u32(uv.y * FB_STATE_DIM));
+  return px.y * u32(FB_STATE_DIM) + px.x;
+}
+// read this effect's OWN previous frame at a field cell — genuine feedback,
+// BILINEARLY sampled so advection and display are smooth, not chunky. (On the
+// fragment fallback / non-feedback effects the buffer is a 1-elem dummy, so the
+// length guard returns zero.)
+fn feedback(cellCoord: vec2f) -> vec4f {
+  let dim = u32(FB_STATE_DIM);
+  if (arrayLength(&fbStatePrev) < dim * dim) { return vec4f(0.0); }
+  let uv = clamp((cellCoord - effect.bounds.xy) / max(effect.bounds.zw - effect.bounds.xy, vec2f(1.0)), vec2f(0.0), vec2f(0.99999));
+  let fp = uv * FB_STATE_DIM - 0.5;
+  let base = floor(fp);
+  let f = fp - base;
+  let x0 = u32(clamp(base.x, 0.0, FB_STATE_DIM - 1.0));
+  let y0 = u32(clamp(base.y, 0.0, FB_STATE_DIM - 1.0));
+  let x1 = min(x0 + 1u, dim - 1u);
+  let y1 = min(y0 + 1u, dim - 1u);
+  let s00 = fbStatePrev[y0 * dim + x0];
+  let s10 = fbStatePrev[y0 * dim + x1];
+  let s01 = fbStatePrev[y1 * dim + x0];
+  let s11 = fbStatePrev[y1 * dim + x1];
+  return mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
 }
 
 ${fixedWgsl}
@@ -1005,6 +1044,14 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let regionMax = effect.bounds.zw;
 
   let result = fieldEffect(cellCoord, regionMin, regionMax, frame.time, effect.params);
+
+  // persist this cell's output as next-frame feedback BEFORE the display-alpha
+  // cull — an empty/transparent cell must still advance its state (a solver's
+  // whole field evolves, not just the visible ink). Skipped when the buffer is
+  // the 1-element dummy (non-feedback effects): the index is out of range.
+  let sidx = fbStateIndex(cellCoord);
+  if (sidx < arrayLength(&fbStateNext)) { fbStateNext[sidx] = result; }
+
   let alpha = clamp(result.a, 0.0, 1.0);
   if (alpha < 0.002) { return; }
 
