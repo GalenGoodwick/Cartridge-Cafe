@@ -182,10 +182,10 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     // presence players HOVER at the edge — half inside, half out — so they draw
     // in a band that spills BEYOND the disc, not clipped by the d<rr face mask.
     // Additive onto col; the SMALL scale of the cursor's big roaming effect.
-    // DEMO FLOOR forces 4 per bubble until real presence flows (step 2).
+    // One player per real occupant (headCount), up to 6.
     if (d < rr * 1.6) {
       let ql = (uv - ctr) / rr;                              // disc-local; >1 outside the bubble
-      let nP = max(min(headCount, 6), 4);
+      let nP = min(headCount, 6);
       for (var k = 0; k < nP; k++) {
         let ga = f32(k) * 2.39996 + f32(i) * 1.7;            // static seat around the rim
         let orb = vec2f(cos(ga), sin(ga));
@@ -219,6 +219,18 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   let selfTint = 0.5 + 0.5 * cos(6.2831 * (selfHue + vec3f(0.0, 0.33, 0.67)));
   col += cf_player((uv - mp) * (4.5 / selfSize), vec2f(0.0, 1.0), t * 1.6, selfFx, selfTint * 1.3) * 1.1;
   col += selfTint * 0.9 * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a soft core in your hue
+
+  // the OTHER players — their live cursors, dancing, so you see them move around
+  // the cafe. Packed after the self-icon: count at sb+3, then (x, y, hue) each.
+  let ob = sb + 3;
+  let nOthers = i32(uni(ob) + 0.5);
+  for (var k = 0; k < nOthers; k++) {
+    let opos = vec2f(uni(ob + 1 + k * 3), uni(ob + 2 + k * 3));
+    let ohue = uni(ob + 3 + k * 3);
+    let otint = 0.5 + 0.5 * cos(6.2831 * (ohue + vec3f(0.0, 0.33, 0.67)));
+    col += cf_player((uv - opos) * 5.0, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.2) * 0.95;
+    col += otint * 0.7 * exp(-dot(uv - opos, uv - opos) * 1600.0) * 0.35;   // a soft core in their hue
+  }
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
   return vec4f(clamp(col, vec3f(0.0), vec3f(60.0)), 1.0);
@@ -601,6 +613,17 @@ try {
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
   const ic = (typeof window !== 'undefined' && window.__cafeIcon) || {}
   u.push(ic.fx | 0, typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
+  // other players in this cafe — their LIVE cursors (from worldData.presence, fed
+  // by /api/engine/presence), so you can see them moving. Screen coords (256 =
+  // center), same space as your own cursor. Capped so we never overrun the 96-float
+  // uniform buffer: count slot, then (x, y, hue) per other.
+  const others = Array.isArray(wd.presence) ? wd.presence : []
+  const cap = Math.max(0, Math.min(others.length, 8, Math.floor((96 - u.length - 1) / 3)))
+  u.push(cap)
+  for (let k = 0; k < cap; k++) {
+    const o = others[k] || {}
+    u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360)
+  }
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
 `

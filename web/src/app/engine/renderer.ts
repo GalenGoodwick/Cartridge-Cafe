@@ -1590,6 +1590,11 @@ export class FieldRenderer {
     const bufferW = Math.round(displayW * dpr)
     const bufferH = Math.round(displayH * dpr)
 
+    // mid-resize (the vote reckoning insets the canvas) it can momentarily
+    // collapse to 0 — configuring a 0-size swapchain throws 'texture usage must
+    // not be 0'. Skip the frame until it has real pixels again.
+    if (bufferW < 2 || bufferH < 2) return
+
     if (canvas.width !== bufferW || canvas.height !== bufferH) {
       canvas.width = bufferW
       canvas.height = bufferH
@@ -1879,6 +1884,11 @@ export class FieldRenderer {
     const dpr = this.effectiveDpr(displayW, displayH)
     const bufferW = Math.round(displayW * dpr)
     const bufferH = Math.round(displayH * dpr)
+
+    // mid-resize (the vote reckoning insets the canvas) it can momentarily
+    // collapse to 0 — configuring a 0-size swapchain throws 'texture usage must
+    // not be 0'. Skip the frame until it has real pixels again.
+    if (bufferW < 2 || bufferH < 2) return
 
     if (canvas.width !== bufferW || canvas.height !== bufferH) {
       canvas.width = bufferW

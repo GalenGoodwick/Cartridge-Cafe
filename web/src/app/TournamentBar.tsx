@@ -81,7 +81,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview, onStageRect }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -96,9 +96,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   bubbles?: { name: string; x: number; y: number; r: number }[]   // live constellation bubble positions (screen px) — the 5 candidates get highlighted in place
   onReckoning?: (open: boolean) => void          // the vote overlay takes/releases the screen — the shell greys the world behind
   onPreview?: (world: string | null) => void     // render this world live in the stage (the engine swaps to it while the arena stays home)
+  onStageRect?: (rect: { top: number; right: number; bottom: number; left: number } | null) => void   // the center hole the engine reflows into
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)   // drives the slide-in: false = panels at the edges, true = seated
+  const [showInstr, setShowInstr] = useState(false)   // the how-to popover, from the grid's corner tab
   const [who, setWho] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   // deliberation gate: the worlds you have witnessed this cell. You cannot
@@ -114,6 +117,23 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   }, [])
   // the world currently under your gaze — it fills the stage and owns the chat
   const [focus, setFocus] = useState<string | null>(null)
+  // the center hole: the engine reflows the world/constellation into exactly
+  // this rect, so the vote panels frame a resized main rather than overlaying it.
+  const stageRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open || !onStageRect) return
+    const measure = () => {
+      const el = stageRef.current; if (!el) return
+      const r = el.getBoundingClientRect()
+      if (r.width < 80 || r.height < 80) return   // layout not settled — don't collapse the canvas
+      onStageRect({ top: r.top, right: r.right, bottom: r.bottom, left: r.left })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (stageRef.current) ro.observe(stageRef.current)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [open, onStageRect])
   // deliberation is now GLOBAL PER WORLD: one pooled conversation per world,
   // shared across every cell, tier, round and arena. It lives in its own slot
   // ('world-chat:NAME') so a world accrues a real, lasting discussion.
@@ -133,6 +153,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   useEffect(() => {
     if (sceneKey !== sceneSeen.current) { sceneSeen.current = sceneKey; setOpen(false) }
   }, [sceneKey])
+
+  // once the overlay is up, let the panels slide in from the edges (next frame,
+  // so the transition animates from the off-screen start position)
+  useEffect(() => {
+    if (!open) return
+    const id = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(id)
+  }, [open])
 
   const [selfRoster, setSelfRoster] = useState<string[]>([])
   const roster = branchesOf ? selfRoster : (worlds || [])
@@ -305,16 +333,21 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   }
 
   /** open THE RECKONING — the overlay takes the screen; the stage waits for
-   *  your gaze (hovering a candidate is what loads it live). */
+   *  your gaze (hovering a candidate is what loads it live). The panels slide
+   *  in from the edges in step with the canvas resizing into the center, so no
+   *  blank margin ever shows during the transition. */
   const enterReckoning = () => {
     setOpen(true)
     onReckoning?.(true)
   }
   const leaveReckoning = () => {
-    setOpen(false)
+    // reverse it: panels slide back out AS the canvas grows back to full — then
+    // unmount once they've met at the edges (same 320ms as the resize).
+    setMounted(false)
     setFocus(null)
     onPreview?.(null)
-    onReckoning?.(false)
+    onStageRect?.(null)
+    window.setTimeout(() => { setOpen(false); onReckoning?.(false) }, 320)
   }
 
   // while the overlay is up, keep the focused world's talk fresh
@@ -361,7 +394,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     return (
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
         {/* the header — the reckoning, and the world you're looking at, named here */}
-        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/20">
+        <div className={`pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/20 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : '-translate-y-full'}`}>
           <div className={`${pill} text-amber-200/70`}>
             ⚔ THE RECKONING{focus && <span className="text-white/45"> · {focus.toLowerCase()}</span>}
           </div>
@@ -369,18 +402,19 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             className={`${pill} px-2.5 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
         </div>
 
-        {/* the stage (world renders through) + the world's pooled talk */}
+        {/* the stage — the ENGINE reflows the constellation (or a hovered world)
+            into exactly this box; the panels frame it, they don't cover it. */}
         <div className="flex-1 flex min-h-0">
-          <div className="relative flex-1 min-h-0">
+          <div ref={stageRef} className="relative flex-1 min-h-0">
             {!focus && (
-              <div className="absolute inset-0 bg-void/60 flex items-center justify-center">
-                <div className={`${pill} text-white/40`}>hover or click a candidate below to load it live</div>
+              <div className="absolute inset-x-0 top-3 flex justify-center pointer-events-none">
+                <div className={`${pill} text-white/45 bg-black/40 rounded-full px-3 py-1`}>hover a candidate below to load it — or vote from the constellation</div>
               </div>
             )}
           </div>
 
           {/* GLOBAL PER-WORLD talk — one pool, every cell/tier/round shares it */}
-          <div className="pointer-events-auto w-[300px] max-w-[34vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col">
+          <div className={`pointer-events-auto w-[300px] max-w-[34vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col transition-transform duration-[320ms] ease-out ${mounted ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className={`${pill} px-3 py-2 border-b border-white/10 text-brass`}>
               💬 {focus ? focus.toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
             </div>
@@ -413,7 +447,21 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         </div>
 
         {/* the five candidates — a full-width bar along the bottom, centered in it */}
-        <div className="pointer-events-auto bg-[#0d0906]/95 backdrop-blur-sm border-t border-brass/25 px-4 pt-3 pb-4">
+        <div className={`relative pointer-events-auto bg-[#0d0906]/95 backdrop-blur-sm border-t border-brass/25 px-4 pt-3 pb-4 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : 'translate-y-full'}`}>
+          {/* the how-to, tucked in the grid's top-right corner */}
+          <button onClick={() => setShowInstr(v => !v)} title="how the reckoning works"
+            className={`${pill} absolute -top-3 right-3 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
+            ? INSTRUCTIONS
+          </button>
+          {showInstr && (
+            <div className={`${pill} absolute bottom-full right-3 mb-1 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl`}>
+              <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
+              hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
+              witnessed all five, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
+              your vote. every vote nudges its world in the constellation right away; a tier only crowns when a cell gathers a
+              quorum of voices, so no single vote decides it.
+            </div>
+          )}
           <div className="grid grid-cols-5 gap-3 max-w-[1080px] mx-auto">
             {cell.worlds.map(w => {
               const isSeen = seen.has(w)

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import TournamentBar from '@/app/TournamentBar'
+import AdInterstitial from '@/app/AdInterstitial'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -21,10 +22,18 @@ const BLURBS: Record<string, string> = {
   'LIGHTHOUSE': 'your cursor is the hour',
 }
 
+// AD POP-UP: OFF for now — grow the audience before we interrupt it. The whole ad
+// system (serve/rotate/track API, interstitial, protection, lifecycle) stays built
+// and tested; flip this to true to turn the world-start pop-up back on.
+const ADS_ENABLED = false
+
 /** The world IS the interface. The only HTML: the sign, two small doors,
  *  and a name that appears at your cursor when a window notices you. */
 export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: string }) {
   const [scene, setScene] = useState(initialScene)
+  // the contained ad shown on game-world entry; server decides if the viewer /
+  // world is protected (ad-free), the client just throttles how often it shows.
+  const [ad, setAd] = useState<{ id: string; title: string; body: string; emoji: string; advertiser: string } | null>(null)
   const [hint, setHint] = useState(false)
   const [hover, setHover] = useState<string | null>(null)
   const hoverBlockRef = useRef(0)
@@ -57,6 +66,23 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     ;(window as unknown as { __cafeIcon?: typeof icon }).__cafeIcon = icon
     try { localStorage.setItem('cafeIcon', JSON.stringify(icon)) } catch { /* private mode */ }
   }, [icon])
+  const [iconPrompt, setIconPrompt] = useState('')
+  const [iconCopied, setIconCopied] = useState(false)
+  // like BREW YOURS: you don't tune it by hand — you describe it, copy the prompt,
+  // and hand it to an AI, which authors your icon through the bridge and confirms.
+  const copyIconPrompt = async () => {
+    const p = iconPrompt.trim()
+    if (p.length < 3) return
+    const o = window.location.origin
+    const text = `Brew my cartridge.cafe player icon: "${p}".
+
+First GET ${o}/api/engine/guide and read it. Then author a SMALL, GENTLE avatar effect for me and set it as my icon through the bridge (${o}/api/engine/bridge).
+Hard rules — the icon must be safe: no strobing or flashing, no rapid brightness swings, no unbounded loops, bounded size. A calm dancing glyph. Reply to confirm once it's set.`
+    try {
+      await navigator.clipboard.writeText(text)
+      setIconCopied(true); setTimeout(() => setIconCopied(false), 1800)
+    } catch { /* clipboard blocked */ }
+  }
   const [brewStep, setBrewStep] = useState(0)          // 0 closed · 1 open (single panel, gates unlock in place)
   const [brewName, setBrewName] = useState('')
   const [brewBrief, setBrewBrief] = useState('')
@@ -105,6 +131,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   // constellation — scene stays 'CAFE' so the arena bar never unmounts.
   const [voting, setVoting] = useState(false)
   const [previewScene, setPreviewScene] = useState<string | null>(null)
+  const [stageRect, setStageRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
   const votingRef = useRef(false)
   votingRef.current = voting
   const [mainRoster, setMainRoster] = useState<string[]>([])
@@ -704,9 +731,28 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     return () => { cancelled = true; clearInterval(iv) }
   }, [scene])
 
+  // on entering a game world (not the cafe / group nav), maybe show a contained
+  // ad — throttled to at most once every 4 min. The server serves nothing to a
+  // protected viewer or a protected world (pay-to-protect = ad-free everywhere).
+  useEffect(() => {
+    if (!ADS_ENABLED || scene === 'CAFE' || scene === 'SUB-MAIN' || !scene) return
+    let cancelled = false
+    let last = 0
+    try { last = +(localStorage.getItem('cc-ad-t') || 0) } catch { /* private mode */ }
+    if (Date.now() - last < 4 * 60 * 1000) return
+    fetch('/api/engine/ads?world=' + encodeURIComponent(scene)).then(r => r.json()).then(d => {
+      if (cancelled || !d?.ad) return
+      try { localStorage.setItem('cc-ad-t', String(Date.now())) } catch { /* ignore */ }
+      setAd(d.ad)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [scene])
+
   return (
     <>
-      <FieldEngine playScene={voting && previewScene ? previewScene : scene} />
+      {ad && <AdInterstitial ad={ad} onClose={() => setAd(null)} />}
+      <FieldEngine playScene={voting && previewScene ? previewScene : scene}
+        viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
 
       {/* the rolling tournament — every page is its own arena.
           commons: all core worlds · MY WORLDS: your deeds · SUB-MAIN: the
@@ -716,7 +762,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {((scene === 'CAFE' && !mine) || docked) && (
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
+          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           rail={scene !== 'CAFE'}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
@@ -725,7 +771,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {scene === 'CAFE' && mine && !docked && (
         <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
+          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
       {scene === 'SUB-MAIN' && !docked && (
@@ -733,7 +779,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
           worlds={portals.map(pt => pt.name)}
           bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
+          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
       {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
@@ -1024,28 +1070,28 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
           {iconOpen && (
-            <div className="fixed top-20 right-6 z-50 w-56 rounded-xl border border-brass/40 bg-void/90 backdrop-blur-sm p-4 select-none">
-              <div className="cafe-sign text-lg mb-3">brew your icon</div>
-              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1.5">LOOK</div>
-              <div className="grid grid-cols-4 gap-1.5 mb-3">
-                {['comet', 'ring', 'eyes', 'spark'].map((name, fx) => (
-                  <button key={name} onClick={() => setIcon(v => ({ ...v, fx }))}
-                    className={`rounded-md border px-1 py-1.5 font-mono text-[8px] tracking-[0.1em] uppercase transition-all ${icon.fx === fx ? 'border-flame text-glow bg-flame/10' : 'border-brass/30 text-steamer/70 hover:border-flame/50'}`}>
-                    {name}
-                  </button>
-                ))}
+            <div className="fixed top-20 right-6 z-50 w-64 rounded-xl border border-brass/40 bg-void/90 backdrop-blur-sm p-4 select-none">
+              <div className="flex items-start justify-between mb-2">
+                <div className="cafe-sign text-lg">brew your icon</div>
+                <button onClick={() => setIconOpen(false)} aria-label="close"
+                  className="font-mono text-glow/50 hover:text-glow text-sm leading-none -mt-0.5 px-1">×</button>
               </div>
-              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1">HUE</div>
-              <input type="range" min={0} max={1} step={0.01} value={icon.hue}
-                onChange={e => setIcon(v => ({ ...v, hue: parseFloat(e.target.value) }))}
-                className="w-full mb-3 accent-flame" />
-              <div className="font-mono text-[9px] tracking-[0.2em] text-glow/50 mb-1">SIZE</div>
-              <input type="range" min={0.5} max={2} step={0.05} value={icon.size}
-                onChange={e => setIcon(v => ({ ...v, size: parseFloat(e.target.value) }))}
-                className="w-full accent-flame" />
-              <div className="font-mono text-[8px] text-glow/30 mt-3 leading-relaxed">
-                saved to this browser · watch your cursor avatar
+              <div className="font-mono text-[9px] text-glow/40 leading-relaxed mb-2">
+                describe your icon, then hand the prompt to your AI — it authors a
+                safe, gentle avatar for you and confirms.
               </div>
+              <textarea
+                value={iconPrompt}
+                onChange={e => setIconPrompt(e.target.value)}
+                placeholder="a shy blue jellyfish that drifts…"
+                maxLength={200}
+                rows={3}
+                className="w-full resize-none rounded-md border border-brass/30 bg-void/60 px-2 py-1.5 font-mono text-[11px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-2"
+              />
+              <button onClick={copyIconPrompt} disabled={iconPrompt.trim().length < 3}
+                className="w-full rounded-md bg-flame/90 hover:bg-glow disabled:opacity-40 px-3 py-2 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
+                {iconCopied ? 'COPIED ✓' : 'COPY FOR YOUR AI'}
+              </button>
             </div>
           )}
         </>

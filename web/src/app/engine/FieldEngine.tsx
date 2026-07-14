@@ -112,13 +112,22 @@ interface FieldEngineProps {
    *  owner or a trusted author. False → the shader still renders (GPU is safe),
    *  the JS brain is simply not installed. House cartridges are always trusted. */
   hooksTrusted?: boolean
+  /** Shrink the engine's root to this inset (px from each viewport edge) so the
+   *  world reflows into a framed box — the vote UI slides panels into the margins
+   *  and the constellation resizes to what's left, instead of being overlaid. */
+  viewport?: { top: number; right: number; bottom: number; left: number } | null
 }
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
  *  can PROVE which build it holds (shown in the fault banner + console). */
 const ENGINE_BUILD = 'e5-fx-dbg'
 
-export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted }: FieldEngineProps = {}) {
+// downloaded scenes, cached by playScene name — the vote reckoning flicks between
+// five candidates, and this spares the network/DB on every re-hover. It caches the
+// DOWNLOAD only; one scene runs at a time. Dev hot-reload deletes an entry on edit.
+const scenePreloadCache = new Map<string, unknown>()
+
+export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -929,15 +938,28 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         //    snapshot (so the reckoning can preview spaces inline, in place)
         //  · a house cartridge shipped as a static file (CDN, server-proof)
         //  · the store API, for locally saved scenes
-        let data
-        if (playScene.startsWith('space:')) {
-          const slug = playScene.slice(6)
-          const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/snapshot`)
-          data = r.ok ? await r.json() : {}
+        // Fetches are CACHED per name: flicking between the five vote candidates
+        // (or re-hovering one) reuses the fetched world instead of hitting the
+        // network/DB again. Only ONE world is ever live at a time — the cache is
+        // just the download, not a running scene. Dev hot-reload clears an entry
+        // when its source changes (see the poll below).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let data: any = scenePreloadCache.get(playScene)
+        if (data) {
+          data = structuredClone(data)   // hand the loader a private copy — never mutate the cached original
         } else {
-          let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
-          if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
-          data = await resp.json()
+          if (playScene.startsWith('space:')) {
+            const slug = playScene.slice(6)
+            const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/snapshot`)
+            data = r.ok ? await r.json() : {}
+          } else {
+            let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
+            if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
+            data = await resp.json()
+          }
+          if (data && (data.scene || data.snapshot || data.fields)) {
+            try { scenePreloadCache.set(playScene, structuredClone(data)) } catch { /* uncloneable — skip the cache */ }
+          }
         }
         const scene = data.scene || data.snapshot || data
         if (!scene || !scene.fields) return
@@ -1012,6 +1034,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           const d = await r.json()
           const stamp = String((d.scene || d).timestamp ?? '')
           if (last && stamp && stamp !== last) {
+            scenePreloadCache.delete(playScene)   // the source changed — drop the stale download
             playLoadedRef.current = null      // let the load effect fire again
             setReloadTick(t => t + 1)
           }
@@ -4238,7 +4261,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [syncFields])
 
   return (
-    <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}>
+    <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}
+      style={viewport ? { top: viewport.top, right: viewport.right, bottom: viewport.bottom, left: viewport.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
       {/* Canvas + fields panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Canvas area */}
@@ -4405,7 +4429,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
           {/* Mandatory world instructions + branch + AI status — top right, every world.
               On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
-          <div className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
+          <div className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"

@@ -26,11 +26,32 @@ export async function GET() {
     orderBy: { updatedAt: 'desc' },
     take: 60,
   })
+  // the world's own palette → a single hue the door's living emblem wears, so a
+  // player world's bubble carries its real color (the tidepool reads teal) with
+  // no screenshot and nothing stored. Pick the most saturated field color.
+  const hueOf = (fields: Array<{ color?: number[] }>): number | null => {
+    let best = -1, bestHue = null as number | null
+    for (const f of fields) {
+      const c = f.color
+      if (!Array.isArray(c) || c.length < 3) continue
+      const [r, g, b] = c
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn
+      const sat = mx <= 0 ? 0 : d / mx
+      if (sat <= best || d === 0) continue
+      let h = 0
+      if (mx === r) h = ((g - b) / d) % 6
+      else if (mx === g) h = (b - r) / d + 2
+      else h = (r - g) / d + 4
+      best = sat; bestHue = ((h / 6) % 1 + 1) % 1
+    }
+    return bestHue
+  }
   // a world is BLANK until it holds something; only unblank worlds join the door
   const out = spaces.map(({ snapshot, ...rest }) => {
-    const sn = snapshot as { fields?: unknown[]; stepHooks?: unknown[]; visualTypes?: unknown[] } | null
+    const sn = snapshot as { fields?: Array<{ color?: number[] }>; stepHooks?: unknown[]; visualTypes?: unknown[] } | null
     const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
-    return { ...rest, blank }
+    const hue = sn?.fields?.length ? hueOf(sn.fields) : null
+    return { ...rest, blank, hue }
   })
   return NextResponse.json({ spaces: out })
 }
