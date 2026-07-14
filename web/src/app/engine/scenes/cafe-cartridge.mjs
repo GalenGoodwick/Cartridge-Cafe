@@ -22,13 +22,22 @@ fn cf_stars(p: vec2f, t: f32) -> vec3f {
 // effect id + params + facing, brewed per person); for now a hardcoded Glow with
 // a nose + pupil so its direction reads. local: offset from the player center,
 // ~1.0 at the edge. dir: unit facing. Returns additive rgb.
-fn cf_player(local: vec2f, dir: vec2f, tint: vec3f) -> vec3f {
+fn cf_player(local0: vec2f, dir: vec2f, phase: f32, tint: vec3f) -> vec3f {
+  // DANCE — bob, sway, squash-and-stretch on this player's own beat. A groove
+  // in place, never a spin. dir is the base facing (the groove leans around it).
+  let bob = sin(phase * 3.1) * 0.16;                 // up-down
+  let sway = sin(phase * 2.2 + 0.6) * 0.17;          // side-to-side
+  let squash = 1.0 + 0.17 * sin(phase * 6.0);        // pulse
+  let fdir = normalize(dir + vec2f(0.0, 0.0001));    // guard the zero vector
+  let side = vec2f(-fdir.y, fdir.x);
+  var local = local0 - fdir * bob - side * sway;     // move the body as it dances
+  local = vec2f(local.x * squash, local.y / squash); // squash & stretch
   let d2 = dot(local, local);
-  let fwd = max(0.0, dot(local, dir));       // ahead of center, along the facing
-  let body = exp(-d2 * 5.0);                 // round glow body
-  let nose = fwd * exp(-d2 * 2.2);           // stretches the glow toward the facing
+  let fwd = max(0.0, dot(local, fdir));              // ahead of center, along the facing
+  let body = exp(-d2 * 5.0);                         // round glow body
+  let nose = fwd * exp(-d2 * 2.2);                   // stretches the glow toward the facing
   let g = body * 1.3 + nose * 1.6;
-  let eye = local - dir * 0.30;              // a pupil pushed forward — a clear aim
+  let eye = local - fdir * 0.30;                     // a pupil pushed forward — a clear aim
   let pupil = exp(-dot(eye, eye) * 55.0) * body;
   return tint * g + vec3f(1.0, 0.98, 0.9) * pupil * 0.8;
 }
@@ -174,11 +183,12 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       let ql = (uv - ctr) / rr;                              // disc-local; >1 outside the bubble
       let nP = max(min(headCount, 6), 4);
       for (var k = 0; k < nP; k++) {
-        let ga = f32(k) * 2.39996 + t * 0.4 + f32(i) * 1.7;  // golden-angle drift, per-bubble phase
+        let ga = f32(k) * 2.39996 + f32(i) * 1.7;            // static seat around the rim
         let orb = vec2f(cos(ga), sin(ga));
         let plocal = (ql - orb) * 3.2;                       // seat ON the rim (radius 1.0), spilling out
         let hueK = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.16 + vec3f(0.0, 0.33, 0.67)));
-        col += cf_player(plocal, orb, hueK * 1.6) * 1.8;     // face outward, bright
+        let ph = t * 1.5 + f32(k) * 1.3 + f32(i) * 0.7;      // each dances on its own beat
+        col += cf_player(plocal, orb, ph, hueK * 1.6) * 1.8; // hold the seat, dance in place
       }
     }
   }
@@ -198,8 +208,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // the local player — the "you" roaming the open grid. BIG here (undocked), and
   // small when seated on a world's rim above: one effect, two scales. Facing is
   // hardcoded to slowly turn for now (real heading/velocity drives it later).
-  let selfDir = vec2f(cos(t * 0.6), sin(t * 0.6));
-  col += cf_player((uv - mp) * 4.5, selfDir, vec3f(0.35, 0.85, 1.1)) * 1.1;
+  col += cf_player((uv - mp) * 4.5, vec2f(0.0, 1.0), t * 1.6, vec3f(0.35, 0.85, 1.1)) * 1.1;
   col += vec3f(1.4, 0.9, 0.4) * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a warm ember core
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
@@ -392,7 +401,18 @@ try {
           const cellAge = cellAt[n] ? (now - cellAt[n]) / 60000 : 999
           const bornHeat = Math.max(0, 1 - (now - B.born) / 120000)
           const T = (tvr && tvr.data && tvr.data.round) ? tvr.data : null
-          const reach = T && T.reached ? (T.reached[n] || 0) : 0
+          // the tier a world has climbed — but its pull DECAYS over days without
+          // fresh support, so the field clears out on its own (half-life ~3d).
+          let reach = T && T.reached ? (T.reached[n] || 0) : 0
+          if (reach > 1 && T && T.reachedAt && T.reachedAt[n]) {
+            const ageDays = (now - T.reachedAt[n]) / 86400000
+            reach = 1 + (reach - 1) * Math.pow(0.5, ageDays / 3)
+          }
+          // LIVE pressure: every vote cast in the open tier pushes its world
+          // toward the crown right now — the constellation moves as people vote,
+          // before any tier resolves.
+          let live = 0
+          if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
           const champ = T && T.champion === n
           B.crown = !!champ
           // the shell packs each world's screenshot into an atlas slot; a world
@@ -401,7 +421,7 @@ try {
           B.iconSlot = slots && slots[n] != null ? slots[n] : (slots && slots[n.toUpperCase && n.toUpperCase()] != null ? slots[n.toUpperCase()] : null)
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
-            : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + (champ ? 6 : 0)
+            : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
           // chant shifts perturb — but a bubble just placed from the shared
           // universe getting its first real score is not a shift, it's arrival
           if (!B.justPlaced && Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)

@@ -2134,11 +2134,28 @@ export class FieldRenderer {
     }
     buf.unmap()
     buf.destroy()
-    // never emit a black frame — a not-yet-drawn or between-scenes canvas reads
-    // near-zero; the caller retries. (Legitimately dark worlds still clear this.)
-    let sum = 0
-    for (let i = 0; i < out.length; i += 4) sum += out[i] + out[i + 1] + out[i + 2]
-    if (sum / (outW * outH * 3) < 5) return null
+    // Reject only a TRULY blank frame: a released/between-scenes surface reads
+    // uniformly near-zero, so its PEAK is ~0. A dark-but-real world (dusk, night
+    // sky, the fireworks bay) always has bright accents, so gate on the peak —
+    // NOT the average, which was wrongly killing legitimately dark worlds.
+    let peak = 0, luma = 0
+    for (let i = 0; i < out.length; i += 4) {
+      if (out[i] > peak) peak = out[i]
+      if (out[i + 1] > peak) peak = out[i + 1]
+      if (out[i + 2] > peak) peak = out[i + 2]
+      luma += 0.299 * out[i] + 0.587 * out[i + 1] + 0.114 * out[i + 2]
+    }
+    if (peak < 8) return null
+    // Lift dark scenes so the icon stays legible at 64px; bright worlds untouched.
+    const mean = luma / (outW * outH)
+    const gain = Math.max(1, Math.min(3.5, 70 / Math.max(mean, 1)))
+    if (gain > 1.02) {
+      for (let i = 0; i < out.length; i += 4) {
+        out[i] = Math.min(255, out[i] * gain)
+        out[i + 1] = Math.min(255, out[i + 1] * gain)
+        out[i + 2] = Math.min(255, out[i + 2] * gain)
+      }
+    }
     const c = document.createElement('canvas')
     c.width = outW; c.height = outH
     const cx = c.getContext('2d')

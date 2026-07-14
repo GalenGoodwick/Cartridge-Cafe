@@ -4163,7 +4163,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     let target: { slug: string } | { scene: string } | null = null
     if (spaceSlug && isOwner) target = { slug: spaceSlug }
     else if (!spaceId && playScene && playScene !== 'CAFE' && playScene !== 'SUB-MAIN'
-      && !playScene.includes(' ⑂ ') && !HOUSE_STYLED.has(playScene)) target = { scene: playScene }
+      && !playScene.includes(' ⑂ ') && !HOUSE_STYLED.has(playScene)
+      // a preview/launch string ("space:<slug>", "sub:<slug>") is NOT a house
+      // scene name — capturing it wrote junk /thumbs/SPACE:<slug>.jpg files
+      && !playScene.startsWith('space:') && !playScene.startsWith('sub:')) target = { scene: playScene }
     if (!target) return
     const body = target
     let lastSig = ''

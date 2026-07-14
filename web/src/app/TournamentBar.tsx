@@ -36,17 +36,20 @@ type TDoc = {
   round: number
   tier: number
   cells: Cell[]
-  tierAt?: number                 // when this tier was dealt — the deliberation clock
+  tierAt?: number                 // when this tier was dealt (kept for record; no longer a clock)
   reached: Record<string, number>
+  reachedAt?: Record<string, number>   // when each world last earned its standing — the constellation decays it over days
   champion: string | null
   championAt: number
   champTier?: number              // the tier the reigning champion was crowned at
 }
 
-// UC: one participant belongs to ONE cell per tier. Past the deliberation
-// window, a tier with at least one voice resolves anyway — silent cells fall
-// to the deterministic tie-break, so no empty cell can stall the chant.
-const TIER_MAX_MS = 2 * 60 * 60_000   // each tier deliberates for two hours, then resolves by votes
+// UC: one participant belongs to ONE cell per tier. A tier resolves only when
+// every cell has gathered a QUORUM of distinct voices — no clock, and no single
+// vote can crown anything. Low-traffic arenas simply wait; the day-scale decay
+// on the constellation keeps a stale standing from lingering.
+const QUORUM = 3   // distinct voters a cell needs before it can speak — no single vote crowns anything
+// (the day-scale decay on a world's pull lives in the CAFE hook, where the constellation is drawn)
 
 const hash = (s: string) => {
   let h = 2166136261
@@ -98,7 +101,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const [open, setOpen] = useState(false)
   const [who, setWho] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [now, setNow] = useState(0)   // 1s tick for the deliberation countdown
   // deliberation gate: the worlds you have witnessed this cell. You cannot
   // vote until you've reviewed all five — UC's rule, made spatial.
   const [seen, setSeen] = useState<Set<string>>(new Set())
@@ -132,12 +134,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (sceneKey !== sceneSeen.current) { sceneSeen.current = sceneKey; setOpen(false) }
   }, [sceneKey])
 
-  useEffect(() => {
-    if (!open) return
-    setNow(Date.now())
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [open])
   const [selfRoster, setSelfRoster] = useState<string[]>([])
   const roster = branchesOf ? selfRoster : (worlds || [])
   const rosterRef = useRef(roster)
@@ -179,46 +175,41 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     }).catch(() => {})
   }
 
-  /** the law: seed when empty, resolve full tiers, crown — and the moment a
-   *  champion is crowned, the next round begins. Always rolling. */
+  /** the law: seed when empty, resolve a tier once every cell reaches quorum,
+   *  crown only on a quorate final — no clock, no single-vote coronations. */
   const reconcile = useCallback((d: TDoc | null): TDoc | null => {
     const r = rosterRef.current
+    const nowT = Date.now()
+    const stampAll = (ws: string[]): Record<string, number> => {
+      const at: Record<string, number> = {}; for (const w of ws) at[w] = nowT; return at
+    }
     if (!d || !d.round) {
       if (r.length < 2) return null
-      const seeded: TDoc = { round: 1, tier: 1, cells: deal(r, 1), tierAt: Date.now(), reached: {}, champion: null, championAt: 0 }
+      const seeded: TDoc = { round: 1, tier: 1, cells: deal(r, 1), tierAt: nowT, reached: {}, reachedAt: stampAll(r), champion: null, championAt: 0 }
       for (const w of r) seeded.reached[w] = 1
       save(seeded)
       return seeded
     }
     // a doc without cells rolls into its next round as soon as it can
     if (d.cells.length === 0 && r.length >= 2) {
-      const next: TDoc = { ...d, round: d.round + 1, tier: 1, cells: deal(r, d.round + 1), tierAt: Date.now(), reached: {} }
+      const next: TDoc = { ...d, round: d.round + 1, tier: 1, cells: deal(r, d.round + 1), tierAt: nowT, reached: {}, reachedAt: stampAll(r) }
       for (const w of r) next.reached[w] = 1
       save(next)
       return next
     }
-    // an older doc without a deliberation clock gets one now
-    if (d.cells.length > 0 && !d.tierAt) {
-      const next = { ...d, tierAt: Date.now() }
-      save(next)
-      return next
-    }
-    // the tier resolves ONLY when the deliberation window closes (with at
-    // least one voice in it). Never early: a cast vote can be moved and the
-    // conversation keeps going until the clock runs out — deliberation is the
-    // point, not a race to speak first. Silent cells fall to the tie-break.
-    const anyVoice = d.cells.some(c => Object.keys(c.votes).length > 0)
-    const windowClosed = !!d.tierAt && Date.now() - d.tierAt > TIER_MAX_MS
-    if (d.cells.length > 0 && anyVoice && windowClosed) {
+    // the tier resolves ONLY once EVERY cell has gathered QUORUM distinct
+    // voices. No timer: a cast vote can be moved and the talk keeps going until
+    // enough of the cell has weighed in. This is the guard that makes a single
+    // vote unable to crown — a champion needs a quorate final cell.
+    const quorate = d.cells.length > 0 && d.cells.every(c => new Set(Object.keys(c.votes)).size >= QUORUM)
+    if (quorate) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
-      const next = { ...d }
-      for (const w of winners) next.reached = { ...next.reached, [w]: d.tier + 1 }
+      const next: TDoc = { ...d, reachedAt: { ...(d.reachedAt || {}) } }
+      for (const w of winners) { next.reached = { ...next.reached, [w]: d.tier + 1 }; next.reachedAt![w] = nowT }
       if (winners.length === 1) {
         // A completed chant. The crown TRANSFERS only on a decisive win — a
         // challenger who reached a strictly higher tier than the reigning
         // champion (or the first champion, or the champion re-affirming).
-        // Otherwise the champion holds their seat; the challenger keeps the
-        // tier it earned but does not dethrone. Then the next round is dealt.
         const w = winners[0]
         const wTier = d.tier + 1
         const reign = d.champion
@@ -226,20 +217,21 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         const dethrone = !reign || w === reign || wTier > reignTier
         next.champion = dethrone ? w : reign
         next.champTier = dethrone ? wTier : reignTier
-        next.championAt = dethrone ? Date.now() : d.championAt
+        next.championAt = dethrone ? nowT : d.championAt
         next.round = d.round + 1
         next.tier = 1
         next.cells = r.length >= 2 ? deal(r, next.round) : []
-        next.tierAt = Date.now()
+        next.tierAt = nowT
         const fresh: Record<string, number> = {}
         for (const x of r) fresh[x] = 1
         next.reached = fresh
         next.reached[w] = wTier
         if (!dethrone && reign) next.reached[reign] = reignTier
+        next.reachedAt = { ...stampAll(r), [w]: nowT }
       } else {
         next.tier = d.tier + 1
         next.cells = deal(winners, d.round * 100 + next.tier)
-        next.tierAt = Date.now()
+        next.tierAt = nowT
       }
       save(next)
       return next
