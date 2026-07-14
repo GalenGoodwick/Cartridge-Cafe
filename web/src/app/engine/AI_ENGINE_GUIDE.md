@@ -92,6 +92,15 @@ heads-up first — `reset` wipes the world (history survives, but don't make the
 
 ---
 
+## Worlds render automatically
+
+A world **boots running** as soon as it has renderable content — a field with a
+`visualType`, or a step hook. You do NOT need a step hook just to see a static
+or shader-animated visual; the shader animates off `time` on its own. (Add a
+step hook only when you need per-frame *logic* — reading input, moving fields,
+writing uniforms.) A world with fields but nothing visible almost always means a
+field is missing its `visualType`.
+
 ## World Instructions (MANDATORY)
 
 Every world MUST ship `worldData.instructions` — a plain string surfaced behind the

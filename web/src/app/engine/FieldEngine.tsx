@@ -116,7 +116,7 @@ interface FieldEngineProps {
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
  *  can PROVE which build it holds (shown in the fault banner + console). */
-const ENGINE_BUILD = 'e4-bindgroup'
+const ENGINE_BUILD = 'e5-fx-dbg'
 
 export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
@@ -768,20 +768,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (scene.interactionEffects) {
         for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
       }
-      if (scene.stepHooks) {
-        installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
-        // A scene with logic should boot running (game cartridges)
-        if (scene.stepHooks.length > 0 && !sim.running) {
-          sim.running = true
-          setRunning(true)
-        }
+      if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
+      // Any world with RENDERABLE content boots running — not just ones with
+      // hooks. A visual-only world (fields with visuals, no stepHook) otherwise
+      // draws a single frame and idles to black. Content, not logic, is the test.
+      const hasContent = (scene.stepHooks?.length ?? 0) > 0 || (scene.fields || []).some((f: { visualTypeName?: string }) => f.visualTypeName)
+      if (hasContent && !sim.running) {
+        sim.running = true
+        setRunning(true)
       }
 
       // Recompile effects
       for (const field of sim.fields.values()) {
         for (const effect of field.effects) {
-          const programKey = `${field.id}_${effect.id}`
-          await renderer.compileFieldEffect(programKey, field.id, effect.wgsl, getModCode())
+          await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
         }
       }
 
@@ -879,6 +879,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // Play mode: load a saved scene into the local sim and run it.
   // Reacts to playScene changes — the world swaps in place (portal travel).
   const playLoadedRef = useRef<string | null>(null)
+  // dev hot-reload: bumping this re-runs the load effect below, live-swapping
+  // the cartridge without a page refresh — the ideal loop for iterating worlds.
+  const [reloadTick, setReloadTick] = useState(0)
   useEffect(() => {
     if (!playScene || playLoadedRef.current === playScene) return
     const prevScene = playLoadedRef.current
@@ -966,6 +969,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         if (scene.interactionRules) sim.interactionRules = scene.interactionRules
         if (scene.interactionEffects) for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
         if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
+        // compile each field's effects — the /play loader never did this, so
+        // cartridge effects (the fluid solver, any feedback pass) were silently
+        // dropped and only the base visual ever rendered.
+        for (const field of sim.fields.values()) {
+          for (const effect of field.effects) {
+            await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
+          }
+        }
         sim.running = true
         setRunning(true)
         syncFields()
@@ -975,7 +986,33 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     loadPlayScene()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playScene])
+  }, [playScene, reloadTick])
+
+  // dev-only hot-reload: poll the cartridge JSON; when its timestamp changes
+  // (a re-save), force the load effect to re-run so edits appear live. Fails
+  // silent — if the poll can't fetch, nothing breaks, you just refresh.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' || !playScene || spaceId) return
+    let last = ''
+    let stop = false
+    const poll = async () => {
+      try {
+        const r = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json?ts=${Date.now()}`, { cache: 'no-store' })
+        if (r.ok) {
+          const d = await r.json()
+          const stamp = String((d.scene || d).timestamp ?? '')
+          if (last && stamp && stamp !== last) {
+            playLoadedRef.current = null      // let the load effect fire again
+            setReloadTick(t => t + 1)
+          }
+          if (stamp) last = stamp
+        }
+      } catch { /* offline / mid-save — try again next tick */ }
+      if (!stop) setTimeout(poll, 1500)
+    }
+    poll()
+    return () => { stop = true }
+  }, [playScene, spaceId])
 
   // Load space snapshot on mount (for space mode)
   const spaceLoadedRef = useRef(false)
@@ -1036,10 +1073,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
         if (snapshot.stepHooks) {
           installHooks(sim, snapshot.stepHooks, snapshot.worldData as Record<string, unknown> | undefined)
-          // a world with logic boots RUNNING — same law as the cartridges.
-          // Without this, AI-built spaces load with their brain installed but
-          // the clock stopped: shader drawing, hooks never ticking.
-          if (snapshot.stepHooks.length > 0 && !sim.running) sim.running = true
+        }
+        // any renderable content boots RUNNING — hooks OR visual fields. A
+        // visual-only space would otherwise draw one frame and idle to black.
+        {
+          const hasContent = (snapshot.stepHooks?.length ?? 0) > 0 || (snapshot.fields || []).some((f: { visualTypeName?: string }) => f.visualTypeName)
+          if (hasContent && !sim.running) sim.running = true
         }
 
         // Recompile effects
@@ -1875,7 +1914,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             programKey,
             bounds: effectBounds,
             transform: [field.transform.x, field.transform.y, field.transform.rotation, field.transform.scale],
-            params: [field.color[0], field.color[1], field.color[2], field.color[3]],
+            // a hook may drive an effect's params live (cursor, sliders, …);
+            // fall back to the field color when it hasn't set any.
+            params: (effect as { params?: [number, number, number, number] }).params
+              ?? [field.color[0], field.color[1], field.color[2], field.color[3]],
             blend: effect.blend,
             feedback: effect.feedback,
           })

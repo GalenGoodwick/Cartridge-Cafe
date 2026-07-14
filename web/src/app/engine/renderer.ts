@@ -840,7 +840,12 @@ export class FieldRenderer {
 
     // Group 2: per-effect uniforms (FRAGMENT | COMPUTE)
     this.effectUniformBindGroupLayout = device.createBindGroupLayout({
-      entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }],
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        // the whiteboard: effects read uni() just like visuals — this is what
+        // lets input (cursor/keys, written by a hook) reach the compute layer.
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      ],
     })
 
     // ─── Compute effect pipeline layouts ───
@@ -1196,7 +1201,10 @@ export class FieldRenderer {
     if (!this._cachedEffectUniformBG) {
       this._cachedEffectUniformBG = this.device!.createBindGroup({
         layout: this.effectUniformBindGroupLayout!,
-        entries: [{ binding: 0, resource: { buffer: this.effectUniformBuf! } }],
+        entries: [
+          { binding: 0, resource: { buffer: this.effectUniformBuf! } },
+          { binding: 1, resource: { buffer: this.worldUniBuffer! } },
+        ],
       })
     }
     return this._cachedEffectUniformBG

@@ -732,6 +732,19 @@ ${FRAME_UNIFORM_STRUCT}
 
 ${EFFECT_UNIFORM_STRUCT}
 
+// the whiteboard, readable from the compute layer too: input (cursor/keys) a
+// step hook writes to worldData.gpuUniforms reaches effects here via uni().
+@group(2) @binding(1) var<storage, read> effWorldUni: array<vec4f>;
+fn uni(i: i32) -> f32 {
+  let v = effWorldUni[clamp(i, 0, 95) / 4];
+  let c = clamp(i, 0, 95) % 4;
+  if (c == 0) { return v.x; }
+  if (c == 1) { return v.y; }
+  if (c == 2) { return v.z; }
+  return v.w;
+}
+fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 23)]; }
+
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
@@ -873,6 +886,19 @@ ${FRAME_UNIFORM_STRUCT}
 @group(1) @binding(4) var texSampler: sampler;
 
 ${EFFECT_UNIFORM_STRUCT}
+
+// the whiteboard, readable from the compute layer too: input (cursor/keys) a
+// step hook writes to worldData.gpuUniforms reaches effects here via uni().
+@group(2) @binding(1) var<storage, read> effWorldUni: array<vec4f>;
+fn uni(i: i32) -> f32 {
+  let v = effWorldUni[clamp(i, 0, 95) / 4];
+  let c = clamp(i, 0, 95) % 4;
+  if (c == 0) { return v.x; }
+  if (c == 1) { return v.y; }
+  if (c == 2) { return v.z; }
+  return v.w;
+}
+fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 23)]; }
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
