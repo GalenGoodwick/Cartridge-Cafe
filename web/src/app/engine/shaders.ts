@@ -1608,7 +1608,7 @@ struct InteractionGPU {
 @group(1) @binding(4) var<storage, read_write> ixBuf: array<vec4f>;
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
-@group(1) @binding(7) var<storage, read> worldUni: array<vec4f>;
+@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 24>;
 // icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
 // The cafe door samples a world's real screenshot INTO its bubble with this —
 // same shader pass as the bubble, so the face can never detach. Empty for
@@ -2151,7 +2151,7 @@ ${moduleCode}
 @group(1) @binding(4) var<storage, read_write> ixBuf: array<vec4f>;
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
-@group(1) @binding(7) var<storage, read> worldUni: array<vec4f>;
+@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 24>;
 // icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
 // The cafe door samples a world's real screenshot INTO its bubble with this —
 // same shader pass as the bubble, so the face can never detach. Empty for

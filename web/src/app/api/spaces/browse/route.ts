@@ -46,12 +46,30 @@ export async function GET() {
     }
     return bestHue
   }
+  // the world's DOMINANT visual = the shader on its biggest field (its
+  // background). That WGSL is the world's own look; the door renders it live in
+  // the bubble. ~2KB of text straight from the snapshot — nothing stored extra.
+  type F = { color?: number[]; visualTypeName?: string; w?: number; h?: number; radius?: number }
+  const iconWgslOf = (fields: F[], visuals: Array<{ name?: string; wgsl?: string }>): string | null => {
+    let best = -1, bestName: string | null = null
+    for (const f of fields) {
+      if (!f.visualTypeName) continue
+      const w = f.w ?? (f.radius ? f.radius * 2 : 0)
+      const h = f.h ?? (f.radius ? f.radius * 2 : 0)
+      const area = (w || 1) * (h || 1)
+      if (area > best) { best = area; bestName = f.visualTypeName }
+    }
+    if (!bestName) return null
+    const v = visuals.find(v => v.name === bestName)
+    return (v?.wgsl && /fn\s+visual_\w+\s*\(/.test(v.wgsl)) ? v.wgsl : null
+  }
   // a world is BLANK until it holds something; only unblank worlds join the door
   const out = spaces.map(({ snapshot, ...rest }) => {
-    const sn = snapshot as { fields?: Array<{ color?: number[] }>; stepHooks?: unknown[]; visualTypes?: unknown[] } | null
+    const sn = snapshot as { fields?: F[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }> } | null
     const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
     const hue = sn?.fields?.length ? hueOf(sn.fields) : null
-    return { ...rest, blank, hue }
+    const iconWgsl = (sn?.fields?.length && sn?.visualTypes?.length) ? iconWgslOf(sn.fields, sn.visualTypes) : null
+    return { ...rest, blank, hue, iconWgsl }
   })
   return NextResponse.json({ spaces: out })
 }

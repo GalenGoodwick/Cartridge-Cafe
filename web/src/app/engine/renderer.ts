@@ -24,6 +24,7 @@ import {
   InteractionEntry,
   PropagationEntry,
   ModuleEntry,
+  getShaderUtilities,
 } from './shaders'
 import type { SuperFieldGPU } from './types'
 
@@ -608,7 +609,9 @@ export class FieldRenderer {
     // visible to every visual/interaction shader as uni(i) / uni4(i)
     this.worldUniBuffer = device.createBuffer({
       size: 384, // 24 vec4f = 96 floats (must match _worldUniData + the lazy path)
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      // UNIFORM for the super-compute stage (keeps that stage at 8 storage buffers
+      // for Firefox); STORAGE because the frame/render path still binds it as one.
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     })
 
     this.effectUniformBuf = device.createBuffer({
@@ -931,7 +934,9 @@ export class FieldRenderer {
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-        { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        // worldUni is a UNIFORM (not storage) so the compute stage stays at 8
+        // storage buffers — Firefox caps that stage at 8; a 9th fails to create.
+        { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
       ],
     })
@@ -1305,6 +1310,127 @@ export class FieldRenderer {
       this._cachedSuperBG = null   // new buffer → the cached bind group is stale
     }
     this.device.queue.writeBuffer(this.iconBuffer, 0, data.buffer as ArrayBuffer, data.byteOffset, data.byteLength)
+  }
+
+  private _iconPipelines = new Map<string, GPURenderPipeline | null>()
+  /** Render each world's OWN dominant visual into its icon-atlas cell, so the
+   *  door bubble shows the world (the tidepool's water), not a recolored planet.
+   *  Each visual compiles in isolation with the shared prelude + safe stubs; a
+   *  visual that won't compile is skipped (its bubble keeps the emblem). Zero
+   *  storage — the WGSL comes straight from each world's snapshot. */
+  async renderWorldIconAtlas(
+    items: { slot: number; wgsl: string; color: [number, number, number] }[],
+    time = 0,
+  ): Promise<boolean> {
+    const device = this.device
+    if (!device || items.length === 0) return false
+    const S = 64
+    const maxSlot = Math.max(...items.map(i => i.slot)) + 1
+    const atlas = new Uint32Array(maxSlot * S * S)
+    const target = device.createTexture({
+      size: [S, S], format: 'rgba8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    })
+    const bytesPerRow = Math.ceil(S * 4 / 256) * 256
+    const readBuf = device.createBuffer({ size: bytesPerRow * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
+    const uni = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+    let any = false
+    for (const it of items) {
+      const pipeline = await this._iconPipeline(it.wgsl)
+      if (!pipeline) continue
+      device.pushErrorScope('validation')
+      const bg = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: uni } }],
+      })
+      device.queue.writeBuffer(uni, 0, new Float32Array([time, it.color[0], it.color[1], it.color[2]]))
+      const enc = device.createCommandEncoder()
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
+      })
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.draw(3); pass.end()
+      enc.copyTextureToBuffer({ texture: target }, { buffer: readBuf, bytesPerRow, rowsPerImage: S }, [S, S, 1])
+      device.queue.submit([enc.finish()])
+      const bindErr = await device.popErrorScope()
+      if (bindErr) { this._iconPipelines.set(it.wgsl, null); continue }
+      try { await readBuf.mapAsync(GPUMapMode.READ) } catch { continue }
+      const raw = new Uint8Array(readBuf.getMappedRange())
+      const bgra = false   // rgba8unorm target — no swizzle
+      const base = it.slot * S * S
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const s = y * bytesPerRow + x * 4
+          const r = raw[s], g = raw[s + 1], b = raw[s + 2]
+          atlas[base + y * S + x] = (bgra ? (b | (g << 8) | (r << 16)) : (r | (g << 8) | (b << 16))) | 0xff000000
+        }
+      }
+      readBuf.unmap()
+      any = true
+    }
+    target.destroy(); readBuf.destroy(); uni.destroy()
+    if (any) this.uploadIconAtlas(atlas)
+    return any
+  }
+
+  /** Compile a standalone pipeline that runs one world visual over a 64² quad.
+   *  Cached by WGSL; null (and cached as null) if it doesn't compile or isn't
+   *  self-contained. Uses an error scope so a bad shader is skipped, never faults. */
+  private async _iconPipeline(wgsl: string): Promise<GPURenderPipeline | null> {
+    if (this._iconPipelines.has(wgsl)) return this._iconPipelines.get(wgsl) || null
+    const device = this.device
+    if (!device) return null
+    // only self-contained visuals: no own bindings/resources (those need the
+    // full engine context and would fault a standalone pipeline)
+    if (/@group|@binding|var\s*<\s*(storage|uniform)|create_render_target|texture_2d|textureSample/.test(wgsl)) {
+      this._iconPipelines.set(wgsl, null); return null
+    }
+    const m = wgsl.match(/fn\s+(visual_\w+)\s*\(/)
+    if (!m) { this._iconPipelines.set(wgsl, null); return null }
+    const fn = m[1]
+    const src = /* wgsl */`
+struct IconU { time: f32, r: f32, g: f32, b: f32 };
+@group(0) @binding(0) var<uniform> U: IconU;
+${getShaderUtilities()}
+// safe stubs so a world visual that reaches for live state still COMPILES here
+fn uni(i: i32) -> f32 { return 0.0; }
+fn uni4(i: i32) -> vec4f { return vec4f(0.0); }
+fn pix() -> vec2f { return vec2f(0.0); }
+fn prevHere() -> vec4f { return vec4f(0.0); }
+fn prevAt(o: vec2f) -> vec4f { return vec4f(0.0); }
+fn sampleTarget(id: u32, p: vec2f) -> vec4f { return vec4f(0.0); }
+fn sampleTargetUV(id: u32, uv: vec2f) -> vec4f { return vec4f(0.0); }
+fn feedback(c: vec2f) -> vec4f { return vec4f(0.0); }
+${wgsl}
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> VO {
+  var p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+  var o: VO; o.pos = vec4f(p[i], 0.0, 1.0); o.uv = p[i]; return o;
+}
+@fragment fn fs(in: VO) -> @location(0) vec4f {
+  let col = vec4f(U.r, U.g, U.b, 1.0);
+  let c = ${fn}(in.uv, -1.0, col, U.time, vec4f(0.0), vec4f(0.0));
+  return vec4f(clamp(c.rgb, vec3f(0.0), vec3f(1.0)), 1.0);
+}`
+    try {
+      device.pushErrorScope('validation')
+      const module = device.createShaderModule({ code: src })
+      const info = await module.getCompilationInfo()
+      const pipeline = device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module, entryPoint: 'vs' },
+        fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
+        primitive: { topology: 'triangle-list' },
+      })
+      const err = await device.popErrorScope()
+      if (err || info.messages.some(x => x.type === 'error')) {
+        this._iconPipelines.set(wgsl, null); return null
+      }
+      this._iconPipelines.set(wgsl, pipeline)
+      return pipeline
+    } catch {
+      this._iconPipelines.set(wgsl, null)
+      return null
+    }
   }
 
   uploadColorData(data: Float32Array): void {
@@ -2809,7 +2935,7 @@ export class FieldRenderer {
     if (!this.worldUniBuffer) {
       this.worldUniBuffer = this.device.createBuffer({
         size: 384,   // 24 vec4f = 96 floats
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       })
       this._worldUniDirty = true
     }

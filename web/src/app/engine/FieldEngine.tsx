@@ -463,11 +463,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       setPresenceOthers(prev => (prev.length === 0 && others.length === 0) ? prev : others)
       if (sim) sim.worldData['presence'] = others
     }
-    const socket: Socket = io(PRESENCE_URL, { transports: ['websocket'], reconnection: true })
+    console.log('[cursors] connecting to', PRESENCE_URL, 'room', instance, 'as', id)
+    const socket: Socket = io(PRESENCE_URL, { transports: ['websocket', 'polling'], reconnection: true })
     socket.on('connect', () => {
+      console.log('[cursors] connected', socket.id)
       socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: world })
       socket.emit('join-instance', { instance })
     })
+    socket.on('connect_error', (e: Error) => console.warn('[cursors] connect_error →', PRESENCE_URL, e.message))
     socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number }> }) => {
       players.clear()
       for (const p of list) players.set(p.id, { rx: p.rx ?? 0.5, ry: p.ry ?? 0.5 })
@@ -4173,8 +4176,43 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => clearInterval(interval)
   }, [])
 
-  // (Shelf icons are living shader emblems drawn by the door — no screenshot
-  //  capture, no /thumbs. See CafeShell + cafe-cartridge door hook.)
+  // Door bubbles wear each world's OWN look: fetch the roster's dominant-visual
+  // WGSL and render each into the icon atlas the door samples. No screenshots,
+  // nothing stored — the shader text comes straight from each world's snapshot.
+  // A world whose shader won't compile in isolation simply keeps its emblem.
+  useEffect(() => {
+    if (playScene !== 'CAFE' && playScene !== 'SUB-MAIN') return
+    let stop = false
+    let items: { slot: number; wgsl: string; color: [number, number, number] }[] = []
+    const hsv = (h: number): [number, number, number] => {
+      const f = (n: number) => { const k = (n + h * 6) % 6; return 0.92 - 0.92 * 0.65 * Math.max(0, Math.min(k, 4 - k, 1)) }
+      return [f(5), f(3), f(1)]
+    }
+    const refresh = async () => {
+      const sp = await fetch('/api/spaces/browse').then(x => x.json()).catch(() => null)
+      if (!sp || stop) return
+      const worlds = ((sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean; hue?: number; iconWgsl?: string }>)
+        .filter(s => !s.blank && s.iconWgsl).slice(0, 64)
+      const slots: Record<string, number> = {}
+      const next: typeof items = []
+      worlds.forEach((s, i) => {
+        const nm = (s.name || s.slug).toUpperCase()
+        slots[nm] = i
+        next.push({ slot: i, wgsl: s.iconWgsl as string, color: hsv(s.hue ?? 0.6) })
+      })
+      items = next
+      ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = slots
+    }
+    const draw = async () => {
+      const r = rendererRef.current
+      if (r && items.length) await r.renderWorldIconAtlas(items, performance.now() / 1000).catch(() => {})
+    }
+    refresh().then(draw)
+    const refreshIv = setInterval(() => { if (!stop) refresh() }, 4000)
+    const drawIv = setInterval(() => { if (!stop) draw() }, 600)
+    return () => { stop = true; clearInterval(refreshIv); clearInterval(drawIv) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene])
 
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 

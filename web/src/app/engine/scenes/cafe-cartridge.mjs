@@ -436,10 +436,13 @@ try {
           if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
           const champ = T && T.champion === n
           B.crown = !!champ
-          // a world with a hand-coded style is a house mini; every other world is
-          // a LIVING EMBLEM in its own palette (hue from its field colors) — no
-          // screenshot, nothing stored. keep hue fresh as the palette resolves.
+          // a world with a hand-coded style is a house mini. Otherwise: if the
+          // engine has rendered this world's OWN visual into an atlas slot, the
+          // bubble shows that (the world's real look); else a LIVING EMBLEM in
+          // the world's own palette (hue from its field colors). Nothing stored.
           if (want[n].hue != null) B.hue = want[n].hue
+          const slots = (typeof window !== 'undefined' && window.__cafeIconSlots) || null
+          B.iconSlot = slots && slots[n] != null ? slots[n] : null
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -605,9 +608,11 @@ try {
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
-    // style (house mini 0-7, or 8 = living emblem) + the world's hue as the frac
-    const frac = Math.min(0.999, B.hue != null ? B.hue : 0)
-    u.push(B.x, B.y, (B.crown ? 200 : 0) + B.style + frac, Math.min(99, heads[n] || 0))
+    // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
+    // house mini (0-7) or living emblem (8), tinted by the world's hue.
+    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : B.style
+    const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
+    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
