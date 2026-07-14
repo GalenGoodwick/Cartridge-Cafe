@@ -98,15 +98,11 @@ or `set_visual` it immediately after. `visualType` is listed as optional in the 
 without one is invisible — a bare skeleton of fields is the #1 cause of a world that "built but looks
 empty". If a world looks blank, a field is missing its visual. Skin every field.
 
-**Focus channel (both directions):**
-- `worldData.player_focus = { fieldId, fieldName, at }` — what the player has selected right
-  now. It is OPTIONAL and usually ABSENT — it exists only while the player has actively selected
-  a field, so on a fresh or freshly-built world it is null. That is normal; it is NOT a
-  precondition. Build from the `creation_brief`. Read `player_focus` only for targeted follow-up
-  edits: when it's present, "make this taller" refers to it.
+**AI focus (what the player sees you doing):**
 - `worldData.ai_focus` is stamped automatically from your last command — the UI shows the
   player "AI → <thing>". You don't need to set it (but you may overwrite it via
-  `set_world_data` with a more precise `{ action, fieldName, at }`).
+  `set_world_data {"data": { "ai_focus": { action, fieldName, at } }}` for a more precise label).
+- (There is no `player_focus` — build from the `creation_brief`, not from a live selection.)
 
 **Save points**: the owner versions the world from the UI. Big destructive changes deserve a
 heads-up first — `reset` wipes the world (history survives, but don't make them need it).

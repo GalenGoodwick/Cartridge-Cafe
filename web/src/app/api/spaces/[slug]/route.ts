@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { invalidateSpaceCache } from '../../engine/space-store'
+import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -94,15 +94,18 @@ export async function PATCH(
     }
   }
 
-  // the brief lives INSIDE the world: first thing a connected AI reads
+  // the brief lives INSIDE the world: first thing a connected AI reads. Write it
+  // THROUGH the space-store (cache + persist), not straight to prisma — a direct
+  // snapshot write here races the store's cached persist and gets clobbered (an
+  // AI that connects and announces `built_by` would erase the brief). Going
+  // through the store keeps the bridge, the cache, and the DB one source of truth.
   if (typeof body.brief === 'string' && body.brief.trim()) {
-    const cur = await prisma.playerSpace.findUnique({ where: { id: space.id }, select: { snapshot: true } })
-    const snap = (cur?.snapshot as Record<string, unknown>) || { fields: [] }
+    const snap = ((await getSpaceSnapshot(space.id)) as unknown as Record<string, unknown> | null) || { fields: [] as unknown[] }
     const wd = (snap.worldData as Record<string, unknown>) || {}
     wd.creation_brief = { prompt: body.brief.trim(), by: user.id, at: Date.now() }
     delete wd.brief_done
     snap.worldData = wd
-    update.snapshot = snap
+    await setSpaceSnapshot(space.id, snap as never)
   }
 
   const updated = await prisma.playerSpace.update({

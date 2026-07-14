@@ -113,6 +113,21 @@ export function invalidateSpaceCache(spaceId: string): void {
 
 // --- Server-side command processing for space mode ---
 
+// #5b: curated known-params per command. Unknown keys are surfaced as a
+// (non-fatal) warning so a typo'd param stops silently vanishing.
+const KNOWN_PARAMS: Record<string, Set<string>> = {
+  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
+  set_visual: new Set(['type', 'fieldId', 'visualType']),
+  set_position: new Set(['type', 'fieldId', 'x', 'y']),
+  set_color: new Set(['type', 'fieldId', 'color']),
+  set_scale: new Set(['type', 'fieldId', 'scale']),
+  set_world_data: new Set(['type', 'data']),
+  define_visual: new Set(['type', 'name', 'wgsl']),
+  define_module: new Set(['type', 'name', 'wgsl']),
+  clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
+  delete_field: new Set(['type', 'fieldId']),
+}
+
 function emptySnapshot(): SceneSnapshot {
   return {
     name: '',
@@ -389,9 +404,40 @@ export async function applyCommandToSnapshot(
       break
     }
 
+    case 'set_visual': {
+      // THE binding that was silently lost headless: attach a registered visual
+      // to an existing field so it actually renders (persisted, no browser needed).
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `set_visual: no field with id "${cmd.fieldId}"`; return result }
+      f.visualTypeName = cmd.visualType as string
+      break
+    }
+
     default:
       // Unknown command — no server-side processing, just pass through to SSE
       return result
+  }
+
+  // #5b: surface unknown/typo'd params (non-fatal) — a silent drop becomes visible
+  const known = KNOWN_PARAMS[cmd.type as string]
+  if (known) {
+    const unknown = Object.keys(cmd).filter(k => !known.has(k))
+    if (unknown.length) result.warnings = [`unknown params ignored: ${unknown.join(', ')}`]
+  }
+
+  // #6: echo the AUTHORITATIVE resulting field so the agent can verify the change
+  // persisted (a bare {ok:true} hid a set_visual that never bound its visualType).
+  const affectedId = (result.fieldId as string) || (cmd.fieldId as string)
+  if (affectedId) {
+    const f = snap.fields.find(f => f.id === affectedId)
+    if (f) result.field = {
+      id: f.id, name: f.name, visualType: f.visualTypeName ?? null,
+      x: f.transform.x, y: f.transform.y, scale: f.transform.scale,
+      shape: f.shapeType, w: f.w, h: f.h, radius: f.radius, color: f.color,
+    }
+  }
+  if (cmd.type === 'define_visual') {
+    result.visual = { name: cmd.name, registered: !!snap.visualTypes?.some(v => v.name === cmd.name) }
   }
 
   snap.timestamp = Date.now()

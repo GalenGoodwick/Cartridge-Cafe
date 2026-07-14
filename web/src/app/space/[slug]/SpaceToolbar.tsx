@@ -84,7 +84,6 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
     lastSeen: string | null
     agentName: string | null
     aiFocus?: { action?: string; fieldId?: string; fieldName?: string; at?: number } | null
-    playerFocus?: { fieldId?: string; fieldName?: string; at?: number } | null
   }>({ aiActive: false, lastSeen: null, agentName: null })
 
   const loadVersions = useCallback(async () => {
@@ -201,7 +200,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   }
 
   const aiInstructions = aiToken
-    ? `Connect to my Unity Chant world "${name}":\nPOST commands to ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/bridge\nheader: Authorization: Bearer ${aiToken}\nFull docs: GET ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/guide (markdown). GET the bridge URL returns world state. worldData.player_focus = what I have selected — follow it. Fields are INVISIBLE until given a visualType.`
+    ? `Connect to my Unity Chant world "${name}":\nPOST commands to ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/bridge\nheader: Authorization: Bearer ${aiToken}\nFull docs: GET ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/guide (markdown). GET the bridge URL returns world state. Fields are INVISIBLE until given a visualType.`
     : ''
 
   const btn = 'brass-tab px-2.5 py-1 text-[10px] disabled:opacity-30'
@@ -318,20 +317,13 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
       {(() => {
         const fresh = (at?: number) => at !== undefined && Date.now() - at < 120_000
         const ai = aiStatus.aiFocus
-        const pl = aiStatus.playerFocus
-        if (!fresh(ai?.at) && !fresh(pl?.at)) return null
+        if (!fresh(ai?.at)) return null
         return (
           <div className="flex flex-col items-start gap-1">
             {fresh(ai?.at) && (
               <div className="inline-flex items-center gap-1.5 rounded-lg bg-black/60 backdrop-blur border border-emerald-400/20 px-2.5 py-1 text-[11px] text-emerald-200/90">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 AI \u2192 {ai?.fieldName || ai?.fieldId || 'the world'}{ai?.action ? ` \u00b7 ${String(ai.action).replace(/_/g, ' ')}` : ''}
-              </div>
-            )}
-            {fresh(pl?.at) && !isOwner && (
-              <div className="inline-flex items-center gap-1.5 rounded-lg bg-black/60 backdrop-blur border border-sky-400/20 px-2.5 py-1 text-[11px] text-sky-200/90">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                {ownerName || 'player'} \u2192 {pl?.fieldName || pl?.fieldId}
               </div>
             )}
           </div>

@@ -300,7 +300,6 @@ Before doing ANYTHING else:
 3. STAND BY. Do not build yet — I am writing your brief right now. It will
    appear in worldData.creation_brief. When it does: build exactly that,
    then set worldData.brief_done = true.
-worldData.player_focus is what I have selected — always follow it.
 You may open your world's page in your own (headless) browser as your eyes —
 GET the bridge URL and use space.viewUrl (it can change when I name the world).
 Your view is yours: it never takes my seat and never counts in head-counts.`
@@ -315,16 +314,18 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     try {
       const b = await fetch('/api/spaces/browse').then(r2 => r2.json())
       for (const sp of (b.spaces || [])) {
-        if (sp.owner?.id === sess.user.id && sp.blank && sp.name === 'Untitled World') {
+        if (sp.owner?.id === sess.user.id && sp.blank) {   // any of my unbuilt drafts (now timestamp-named)
           await fetch('/api/spaces/' + sp.slug, { method: 'DELETE' }).catch(() => {})
         }
       }
     } catch { /* best effort */ }
     // a DRAFT is born now — private, off every shelf — so its AI key can
     // exist before anything else. ENTER WORLD is what makes it a world.
+    // a blank draft is named with a timestamp (unique + sortable) until the player names it
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
     const r = await fetch('/api/spaces', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Untitled World', slug: 'w-' + Math.random().toString(36).slice(2, 8), draft: true }),
+      body: JSON.stringify({ name: stamp, slug: 'w-' + Math.random().toString(36).slice(2, 8), draft: true }),
     })
     const d = await r.json()
     if (!r.ok || !d?.space?.slug) { window.alert(d?.error || 'could not brew'); return }

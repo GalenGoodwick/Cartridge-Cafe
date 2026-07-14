@@ -1368,30 +1368,40 @@ export class FieldRenderer {
     const atlas = new Uint32Array(maxSlot * S * S)
     const target = device.createTexture({
       size: [S, S], format: 'rgba8unorm',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
     })
     const bytesPerRow = Math.ceil(S * 4 / 256) * 256
     const readBuf = device.createBuffer({ size: bytesPerRow * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
     const uni = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
-    let any = false
     for (const it of items) {
-      const pipeline = await this._iconPipeline(it.wgsl)
-      if (!pipeline) continue
-      device.pushErrorScope('validation')
-      const bg = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: uni } }],
-      })
-      device.queue.writeBuffer(uni, 0, new Float32Array([time, it.color[0], it.color[1], it.color[2]]))
-      const enc = device.createCommandEncoder()
-      const pass = enc.beginRenderPass({
-        colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
-      })
-      pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.draw(3); pass.end()
-      enc.copyTextureToBuffer({ texture: target }, { buffer: readBuf, bytesPerRow, rowsPerImage: S }, [S, S, 1])
-      device.queue.submit([enc.finish()])
-      const bindErr = await device.popErrorScope()
-      if (bindErr) { this._iconPipelines.set(it.wgsl, null); continue }
+      // STATE/feedback worlds evolve their rule for a few dozen ping-pong steps
+      // (bounded, once per roster change) so the icon shows the real pattern.
+      const isFeedback = /\bprevAt\b|\bprevHere\b/.test(it.wgsl)
+      if (isFeedback) {
+        const ok = await this._runFeedback(it.wgsl, it.color, target, 44)
+        if (!ok) continue
+      } else {
+        const pipeline = await this._iconPipeline(it.wgsl)
+        if (!pipeline) continue
+        device.pushErrorScope('validation')
+        const bg = device.createBindGroup({
+          layout: pipeline.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: { buffer: uni } }],
+        })
+        device.queue.writeBuffer(uni, 0, new Float32Array([time, it.color[0], it.color[1], it.color[2]]))
+        const enc = device.createCommandEncoder()
+        const pass = enc.beginRenderPass({
+          colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }],
+        })
+        pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.draw(3); pass.end()
+        device.queue.submit([enc.finish()])
+        const bindErr = await device.popErrorScope()
+        if (bindErr) { this._iconPipelines.set(it.wgsl, null); continue }
+      }
+      // shared readback of `target` (whichever path filled it)
+      const enc2 = device.createCommandEncoder()
+      enc2.copyTextureToBuffer({ texture: target }, { buffer: readBuf, bytesPerRow, rowsPerImage: S }, [S, S, 1])
+      device.queue.submit([enc2.finish()])
       try { await readBuf.mapAsync(GPUMapMode.READ) } catch { continue }
       const raw = new Uint8Array(readBuf.getMappedRange())
       const base = it.slot * S * S
@@ -1476,6 +1486,107 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       this._iconPipelines.set(wgsl, null)
       return null
     }
+  }
+
+  private _fbPipelines = new Map<string, GPURenderPipeline | null>()
+  private _fbA: GPUTexture | null = null
+  private _fbB: GPUTexture | null = null
+  private _fbSampler: GPUSampler | null = null
+
+  /** A pipeline for a STATE/feedback world (Life, reaction-diffusion…): prevAt/
+   *  prevHere read a real previous-frame texture, and `running` uniforms read 1
+   *  so the rule evolves instead of sitting in its seed branch. */
+  private async _feedbackPipeline(wgsl: string): Promise<GPURenderPipeline | null> {
+    if (this._fbPipelines.has(wgsl)) return this._fbPipelines.get(wgsl) || null
+    const device = this.device
+    if (!device) { return null }
+    // external engine resources still can't run standalone; prevAt/prevHere ARE allowed
+    if (/@group|@binding|var\s*<\s*(storage|uniform)|create_render_target|texture_2d\s*<|textureSample|sampleTarget/.test(wgsl)) {
+      this._fbPipelines.set(wgsl, null); return null
+    }
+    const all = [...wgsl.matchAll(/fn\s+(visual_\w+)\s*\(/g)].map(x => x[1])
+    if (all.length === 0) { this._fbPipelines.set(wgsl, null); return null }
+    const fn = all.includes('visual_icon') ? 'visual_icon' : all[0]
+    const src = /* wgsl */`
+struct IconU { time: f32, r: f32, g: f32, b: f32 };
+@group(0) @binding(0) var<uniform> U: IconU;
+@group(0) @binding(1) var prevTex: texture_2d<f32>;
+@group(0) @binding(2) var prevSamp: sampler;
+${getShaderUtilities()}
+var<private> g_uv: vec2f;
+fn uni(i: i32) -> f32 { return 1.0; }
+fn uni4(i: i32) -> vec4f { return vec4f(1.0); }
+fn pix() -> vec2f { return g_uv * 64.0; }
+fn prevHere() -> vec4f { return textureSampleLevel(prevTex, prevSamp, g_uv, 0.0); }
+fn prevAt(o: vec2f) -> vec4f { return textureSampleLevel(prevTex, prevSamp, g_uv + o / 64.0, 0.0); }
+fn feedback(c: vec2f) -> vec4f { return textureSampleLevel(prevTex, prevSamp, g_uv, 0.0); }
+fn sampleTarget(id: u32, p: vec2f) -> vec4f { return vec4f(0.0); }
+fn sampleTargetUV(id: u32, uv: vec2f) -> vec4f { return vec4f(0.0); }
+${wgsl}
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> VO {
+  var p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
+  var o: VO; o.pos = vec4f(p[i], 0.0, 1.0); o.uv = p[i]; return o;
+}
+@fragment fn fs(in: VO) -> @location(0) vec4f {
+  g_uv = in.uv * 0.5 + 0.5;
+  let col = vec4f(U.r, U.g, U.b, 1.0);
+  let c = ${fn}(in.uv, -1.0, col, U.time, vec4f(0.0), vec4f(0.0));
+  return clamp(c, vec4f(0.0), vec4f(1.0));
+}`
+    try {
+      device.pushErrorScope('validation')
+      const module = device.createShaderModule({ code: src })
+      const info = await module.getCompilationInfo()
+      const pipeline = device.createRenderPipeline({
+        layout: 'auto', vertex: { module, entryPoint: 'vs' },
+        fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
+        primitive: { topology: 'triangle-list' },
+      })
+      const err = await device.popErrorScope()
+      if (err || info.messages.some(x => x.type === 'error')) { this._fbPipelines.set(wgsl, null); return null }
+      this._fbPipelines.set(wgsl, pipeline); return pipeline
+    } catch { this._fbPipelines.set(wgsl, null); return null }
+  }
+
+  /** Evolve a state world's rule for `iters` ping-pong steps from a noise seed,
+   *  and copy the developed frame into `dest`. Returns false if it can't run. */
+  private async _runFeedback(wgsl: string, color: [number, number, number], dest: GPUTexture, iters: number): Promise<boolean> {
+    const device = this.device
+    if (!device) return false
+    const pipeline = await this._feedbackPipeline(wgsl)
+    if (!pipeline) return false
+    const S = 64
+    const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
+    if (!this._fbA) this._fbA = device.createTexture({ size: [S, S], format: 'rgba8unorm', usage })
+    if (!this._fbB) this._fbB = device.createTexture({ size: [S, S], format: 'rgba8unorm', usage })
+    if (!this._fbSampler) this._fbSampler = device.createSampler({ magFilter: 'nearest', minFilter: 'nearest', addressModeU: 'repeat', addressModeV: 'repeat' })
+    if (!this._iconUni) this._iconUni = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+    device.queue.writeBuffer(this._iconUni, 0, new Float32Array([0.0, color[0], color[1], color[2]]))
+    // seed A with noise so the rule has something to evolve
+    const seed = new Uint8Array(S * S * 4)
+    for (let i = 0; i < seed.length; i++) seed[i] = (Math.random() * 256) | 0
+    device.queue.writeTexture({ texture: this._fbA }, seed, { bytesPerRow: S * 4, rowsPerImage: S }, [S, S, 1])
+    device.pushErrorScope('validation')
+    let readTex = this._fbA, writeTex = this._fbB
+    for (let k = 0; k < iters; k++) {
+      const bind = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this._iconUni } },
+          { binding: 1, resource: readTex.createView() },
+          { binding: 2, resource: this._fbSampler },
+        ],
+      })
+      const enc = device.createCommandEncoder()
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: writeTex.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 1 } }] })
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end()
+      enc.copyTextureToTexture({ texture: writeTex }, { texture: dest }, [S, S, 1])   // keep dest = latest
+      device.queue.submit([enc.finish()])
+      const t = readTex; readTex = writeTex; writeTex = t
+    }
+    if (await device.popErrorScope()) return false
+    return true
   }
 
   uploadColorData(data: Float32Array): void {

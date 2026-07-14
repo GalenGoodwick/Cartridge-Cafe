@@ -634,23 +634,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     syncFields()
   }, [syncFields, selection.selectedFieldId, updateSelectionMask])
 
-  // Broadcast the player's focus to connected agents: the current selection rides
-  // the snapshot sync into worldData, so a world's AI can follow the player's target.
-  useEffect(() => {
-    const sim = simulationRef.current
-    if (!sim) return
-    if (selection.selectedFieldId) {
-      const f = sim.fields.get(selection.selectedFieldId)
-      sim.worldData['player_focus'] = {
-        fieldId: selection.selectedFieldId,
-        fieldName: f?.name || null,
-        at: Date.now(),
-      }
-    } else {
-      delete sim.worldData['player_focus']
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection.selectedFieldId])
+  // (player_focus removed — it was low-value for AI building and unreliable to
+  // pick in raymarched worlds. Agents build from the creation_brief.)
 
   // Select field (toolbar click)
   const handleSelectField = useCallback((id: string) => {
@@ -963,6 +948,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // dev hot-reload: bumping this re-runs the load effect below, live-swapping
   // the cartridge without a page refresh — the ideal loop for iterating worlds.
   const [reloadTick, setReloadTick] = useState(0)
+  const [worldLoading, setWorldLoading] = useState(false)   // true while an existing world's fields are being fetched/restored
   useEffect(() => {
     if (!playScene || playLoadedRef.current === playScene) return
     const prevScene = playLoadedRef.current
@@ -972,6 +958,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
+      setWorldLoading(true)
       try {
         // save data survives the swap: stash the departing scene's game state
         // (the __-prefixed worldData blobs) so re-entering a game resumes it
@@ -1088,6 +1075,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         syncFields()
       } catch (err) {
         console.error('Failed to load play scene:', err)
+      } finally {
+        setWorldLoading(false)
       }
     }
     loadPlayScene()
@@ -4262,17 +4251,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     let lastSig = ''
     const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
     const tick = async () => {
-      const sp = await fetch('/api/spaces/browse').then(x => x.json()).catch(() => null)
-      if (!sp || stop) return
-      const worlds = ((sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean; hue?: number; iconWgsl?: string }>)
-        .filter(s => !s.blank && s.iconWgsl).slice(0, 64)
+      const [sp, sc] = await Promise.all([
+        fetch('/api/spaces/browse').then(x => x.json()).catch(() => null),
+        fetch('/api/engine/scene-icons').then(x => x.json()).catch(() => null),
+      ])
+      if ((!sp && !sc) || stop) return
+      // player worlds (spaces) AND house scenes both get their real shader icon
+      const players = ((sp?.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean; hue?: number; iconWgsl?: string }>)
+        .filter(s => !s.blank && s.iconWgsl).map(s => ({ name: (s.name || s.slug).toUpperCase(), hue: s.hue, iconWgsl: s.iconWgsl as string }))
+      const scenes = (sc?.icons || []) as Array<{ name: string; hue?: number; iconWgsl: string }>
+      const seen = new Set(players.map(p => p.name))
+      const worlds = [...players, ...scenes.filter(s => !seen.has(s.name))].slice(0, 64)
       const nameOfSlot: Record<number, string> = {}
       const next: typeof items = []
       for (const k of Object.keys(byName)) delete byName[k]
       worlds.forEach((s, i) => {
-        const nm = (s.name || s.slug).toUpperCase()
+        const nm = s.name
         nameOfSlot[i] = nm
-        const it = { slot: i, wgsl: s.iconWgsl as string, color: hsv(s.hue ?? 0.6) }
+        const it = { slot: i, wgsl: s.iconWgsl, color: hsv(s.hue ?? 0.6) }
         next.push(it); byName[nm] = it
       })
       items = next
@@ -4708,13 +4704,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             const sim = simulationRef.current
             const blank = (sim?.fields?.size ?? 0) === 0
             const brief = sim?.worldData?.creation_brief
-            const working = blank && (agentConnected || (!!brief && !sim?.worldData?.brief_done))
-            if (!working) return null
+            // A real, unfinished build (a pending creation_brief) → the AI spinner.
+            const building = blank && !!brief && !sim?.worldData?.brief_done
+            // An existing world whose fields are still being fetched/restored → a
+            // plain loading spinner (it's not being MADE, just loaded).
+            const loading = blank && !building && worldLoading
+            if (!building && !loading) return null
             return (
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[10px] tracking-[0.25em] text-white/50">
-                  {agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR YOUR AI…'}
+                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR YOUR AI…') : 'LOADING WORLD…'}
                 </div>
               </div>
             )

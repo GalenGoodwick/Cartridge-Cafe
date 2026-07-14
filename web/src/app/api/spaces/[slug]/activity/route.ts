@@ -44,6 +44,5 @@ export async function GET(
     lastSeen,
     agentName: latest?.name ?? null,
     aiFocus: wd['ai_focus'] ?? null,
-    playerFocus: wd['player_focus'] ?? null,
   })
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore } from '../store'
 import type { GlslMod } from '../store'
-import { validateSpaceToken, getSpaceSnapshot, applyCommandToSnapshot } from '../space-store'
+import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot } from '../space-store'
 
 export const maxDuration = 30
 
@@ -234,6 +234,13 @@ export async function POST(req: NextRequest) {
     const results: unknown[] = []
     const isSpaceScoped = !!auth.spaceId
 
+    // #4 atomic batch: snapshot the world BEFORE the batch; if any command throws
+    // mid-way, we revert to this so a half-applied batch never persists.
+    const rollback = isSpaceScoped
+      ? await getSpaceSnapshot(auth.spaceId!).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
+      : null
+    let batchAbort: { cmd: unknown; error: string } | null = null
+
     // Provenance cross-check: stamp the User-Agent of the FIRST agent to post a
     // build command to this world (self-reported worldData.built_by is separate,
     // and can be spoofed; this is the unspoofed hint). Best-effort — never blocks.
@@ -373,7 +380,12 @@ export async function POST(req: NextRequest) {
       // Space-scoped: apply command to snapshot server-side (works without browser)
       let spaceResult: Record<string, unknown> | null = null
       if (isSpaceScoped) {
-        spaceResult = await applyCommandToSnapshot(auth.spaceId!, cmd)
+        try {
+          spaceResult = await applyCommandToSnapshot(auth.spaceId!, cmd)
+        } catch (e) {
+          batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
+          break   // stop the batch; we roll the snapshot back below
+        }
         // Merge server-generated IDs into the command so SSE relays the correct fieldId
         if (spaceResult.fieldId) {
           cmd.fieldId = spaceResult.fieldId
@@ -403,6 +415,18 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+
+    // #4 atomic: a command threw — revert the whole batch's snapshot so no
+    // partial/broken state survives, and tell the agent exactly where it aborted.
+    if (isSpaceScoped && batchAbort) {
+      if (rollback) { try { await setSpaceSnapshot(auth.spaceId!, rollback) } catch { /* revert is best-effort */ } }
+      return NextResponse.json({
+        ok: false,
+        rolledBack: !!rollback,
+        error: `batch aborted at command "${batchAbort.cmd}": ${batchAbort.error} — no partial state was kept`,
+        results,
+      })
     }
 
     // AI focus beacon: derive what the agent just touched and publish it so the
