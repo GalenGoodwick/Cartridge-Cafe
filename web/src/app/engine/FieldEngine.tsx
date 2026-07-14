@@ -2644,6 +2644,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               const effectId = genEffectId()
               const programKey = `${targetId}_${effectId}`
               const result = await renderer.compileFieldEffect(programKey, targetId, shaderCode, getModCode())
+              if (data.id) fetch('/api/engine/compile-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: data.id, result: result.success ? { ok: true } : { ok: false, error: (result.error || '').slice(0, 300) } }) }).catch(() => {})
 
               if (result.success) {
                 const effect: FieldEffect = {
@@ -2694,6 +2695,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               const rawBlend = cmd.blend || cmd.effectType
               const blend = (rawBlend === 'additive' || rawBlend === 'multiply') ? rawBlend : 'alpha'
               const result = await renderer.compileFieldEffect(programKey, targetId, shaderSrc, getModCode())
+              // report the compile outcome straight back to the AI through the
+              // bridge's command_result channel (same as define_visual) so the
+              // agent sees its OWN shader errors synchronously, not just in memory
+              if (data.id) fetch('/api/engine/compile-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: data.id, result: result.success ? { ok: true } : { ok: false, error: (result.error || '').slice(0, 300) } }) }).catch(() => {})
 
               if (result.success) {
                 const effect: FieldEffect = {
@@ -2758,6 +2763,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
               const programKey = `${targetId}_${effectId}`
               const result = await renderer.compileFieldEffect(programKey, targetId, updateShader, getModCode())
+              if (data.id) fetch('/api/engine/compile-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: data.id, result: result.success ? { ok: true } : { ok: false, error: (result.error || '').slice(0, 300) } }) }).catch(() => {})
               if (result.success) {
                 // Update in place — no gap
                 oldEffect.wgsl = updateShader
@@ -3351,6 +3357,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               const stateShader = (cmd.wgsl || cmd.glsl) as string
               if (stateShader) {
                 const stateResult = await renderer.compileStateUpdate(stateShader, getModCode())
+                if (data.id) fetch('/api/engine/compile-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: data.id, result: stateResult.success ? { ok: true } : { ok: false, error: (stateResult.error || '').slice(0, 300) } }) }).catch(() => {})
                 if (stateResult.success) {
                   pushTerminal('add_state_shader', cmd.fieldId, cmd.description || 'state update shader active', stateShader, cmd.author as string)
                 } else {

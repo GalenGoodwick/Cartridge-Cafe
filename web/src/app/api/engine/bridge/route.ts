@@ -373,8 +373,12 @@ export async function POST(req: NextRequest) {
       }
       results.push(result)
 
-      // For define_visual and define_module: wait for browser compile result
-      if ((cmd.type === 'define_visual' || cmd.type === 'define_module') && result.commands) {
+      // Wait for the browser's compile result so the AI gets shader errors
+      // synchronously in its bridge response — not just visuals/modules but
+      // effects and state shaders too (the agent authors those and needs the
+      // error the moment it makes it).
+      const AWAIT_COMPILE = new Set(['define_visual', 'define_module', 'add_effect', 'inject_wgsl', 'inject_glsl', 'update_effect', 'add_state_shader'])
+      if (AWAIT_COMPILE.has(cmd.type as string) && result.commands) {
         const cmds = result.commands as Array<{ id: string; type: string }>
         const cmdEntry = cmds.find(c => c.type === cmd.type)
         if (cmdEntry?.id) {
