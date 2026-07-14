@@ -18,6 +18,21 @@ fn cf_stars(p: vec2f, t: f32) -> vec3f {
   return c;
 }
 
+// A PLAYER — a bounded, directional glow. Meant to become programmable (an
+// effect id + params + facing, brewed per person); for now a hardcoded Glow with
+// a nose + pupil so its direction reads. local: offset from the player center,
+// ~1.0 at the edge. dir: unit facing. Returns additive rgb.
+fn cf_player(local: vec2f, dir: vec2f, tint: vec3f) -> vec3f {
+  let d2 = dot(local, local);
+  let fwd = max(0.0, dot(local, dir));       // ahead of center, along the facing
+  let body = exp(-d2 * 5.0);                 // round glow body
+  let nose = fwd * exp(-d2 * 2.2);           // stretches the glow toward the facing
+  let g = body * 1.3 + nose * 1.6;
+  let eye = local - dir * 0.30;              // a pupil pushed forward — a clear aim
+  let pupil = exp(-dot(eye, eye) * 55.0) * body;
+  return tint * g + vec3f(1.0, 0.98, 0.9) * pupil * 0.8;
+}
+
 fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let t = time;
   let mp = vec2f(uni(4), uni(5));     // cursor (uv coords)
@@ -143,6 +158,17 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       let ink = cafeCount(np, headCount, 0.16) * inBox;
       let numCol = select(vec3f(0.6, 0.55, 0.46), vec3f(1.0, 0.86, 0.46), headCount > 0);
       g = mix(g, numCol * 2.4, ink);
+      // presence, folded into the bubble: a little directional player seated on
+      // the inner rim for each occupant (up to 6), facing out of the world. This
+      // is the SMALL scale of the same effect that rides big in the open grid.
+      let nP = min(headCount, 6);
+      for (var k = 0; k < nP; k++) {
+        let ga = f32(k) * 2.39996 + t * 0.15 + f32(i) * 1.7;   // golden-angle drift, per-bubble phase
+        let orb = vec2f(cos(ga), sin(ga));
+        let plocal = (q - orb * 0.82) * 6.0;                   // seat on the rim, player-local
+        let hueK = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.16 + vec3f(0.0, 0.33, 0.67)));
+        g += cf_player(plocal, orb, hueK * 1.1);               // face outward
+      }
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);
@@ -165,8 +191,12 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
   }
 
-  // the cursor itself — a soft ember
-  col += vec3f(1.4, 0.9, 0.4) * exp(-dot(uv - mp, uv - mp) * 900.0) * 0.8;
+  // the local player — the "you" roaming the open grid. BIG here (undocked), and
+  // small when seated on a world's rim above: one effect, two scales. Facing is
+  // hardcoded to slowly turn for now (real heading/velocity drives it later).
+  let selfDir = vec2f(cos(t * 0.6), sin(t * 0.6));
+  col += cf_player((uv - mp) * 4.5, selfDir, vec3f(0.35, 0.85, 1.1)) * 1.1;
+  col += vec3f(1.4, 0.9, 0.4) * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a warm ember core
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
   return vec4f(clamp(col, vec3f(0.0), vec3f(60.0)), 1.0);

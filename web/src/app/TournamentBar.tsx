@@ -78,7 +78,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview, launches }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -93,6 +93,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   bubbles?: { name: string; x: number; y: number; r: number }[]   // live constellation bubble positions (screen px) — the 5 candidates get highlighted in place
   onReckoning?: (open: boolean) => void          // the vote overlay takes/releases the screen — the shell greys the world behind
   onPreview?: (world: string | null) => void     // render this world live in the stage (the engine swaps to it while the arena stays home)
+  launches?: Record<string, string>              // name -> launch descriptor; a 'space:slug' world opens on its own page and can't preview inline
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
@@ -300,13 +301,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     }).catch(() => {})
   }
 
-  /** bring a world to the stage: it renders live, you read its talk, you witness it */
-  const gaze = useCallback((w: string) => {
-    setFocus(w)
-    loadChat(w)
+  /** a world you can watch in the stage — spaces open on their own page instead */
+  const previewable = (w: string) => !(launches?.[w] || '').startsWith('space:')
+  /** load a world into the stage: render it live, pull up its talk, witness it */
+  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); if (previewable(w)) onPreview?.(w) }
+  /** click: load at once. hover: focus + talk now, load after a short dwell. */
+  const select = (w: string) => { const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] } load(w) }
+  const gaze = (w: string) => {
+    setFocus(w); loadChat(w)
     if (dwell.current[w]) return
-    dwell.current[w] = setTimeout(() => { onPreview?.(w); markSeen(w); delete dwell.current[w] }, 200)
-  }, [loadChat, markSeen, onPreview])
+    dwell.current[w] = setTimeout(() => { load(w); delete dwell.current[w] }, 200)
+  }
 
   /** open THE RECKONING — the overlay takes the screen; the stage waits for
    *  your gaze (hovering a candidate is what loads it live). */
@@ -365,10 +370,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     const msgs = focus ? (chat[focus] || []) : []
     const leftMs = doc.tierAt && !doc.champion && now ? Math.max(0, doc.tierAt + TIER_MAX_MS - now) : 0
     const hrs = Math.floor(leftMs / 3600000), mins = Math.floor((leftMs % 3600000) / 60000)
+    const focusOk = focus ? previewable(focus) : true
     return (
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
         {/* the header */}
-        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/85 backdrop-blur-sm border-b border-brass/25">
+        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/25">
           <div className={`${pill} text-white/60`}>
             ⚔ THE RECKONING · ROUND {doc.round} · TIER {doc.tier}
             {leftMs > 0 && <span className="text-amber-300/80"> · resolves by vote in {hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`}</span>}
@@ -378,32 +384,100 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             className={`${pill} px-2.5 py-1 rounded border border-white/20 text-white/70 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
         </div>
 
-        {/* the stage (world renders through) + the world's pooled talk */}
+        {/* the instructions */}
+        <div className="pointer-events-auto px-4 py-1.5 bg-[#0d0906]/80 backdrop-blur-sm border-b border-white/8 text-center">
+          <span className={`${pill} text-white/45`}>
+            hover or click a world to load it in the stage · read &amp; add to its talk · once you&apos;ve witnessed all five, tap the
+            <span className="inline-flex items-center justify-center align-middle mx-1 w-4 h-4 rounded border border-amber-400/80 text-amber-300 text-[9px]">+</span>
+            on your choice to cast your vote
+          </span>
+        </div>
+
+        {/* body: the stage + grid on the left, the world's talk on the right */}
         <div className="flex-1 flex min-h-0">
-          <div className="relative flex-1">
-            <div className={`${pill} pointer-events-auto absolute top-3 left-4 px-2.5 py-1 rounded bg-black/50 backdrop-blur-sm border border-brass/20 text-amber-200/90`}>
-              {focus ? `▶ ${focus.toLowerCase()}` : 'the stage'}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* the stage — the world renders through here (engine canvas behind) */}
+            <div className="relative flex-1 min-h-0">
+              <div className={`${pill} pointer-events-auto absolute top-3 left-4 px-2.5 py-1 rounded bg-black/50 backdrop-blur-sm border border-brass/20 text-amber-200/90`}>
+                {focus ? `▶ ${focus.toLowerCase()}` : 'the stage'}
+              </div>
+              {!focus && (
+                <div className="absolute inset-0 bg-void/60 flex items-center justify-center">
+                  <div className={`${pill} text-white/40`}>hover or click a candidate below to load it live</div>
+                </div>
+              )}
+              {focus && !focusOk && (
+                <div className="absolute inset-0 bg-void/85 flex flex-col items-center justify-center gap-2 text-center px-6">
+                  <div className={`${pill} text-white/70`}>{focus.toLowerCase()}</div>
+                  <div className={`${pill} text-white/35`}>this world opens on its own page — it can&apos;t play in the stage yet.<br />you&apos;ve still witnessed it; you can vote for it.</div>
+                </div>
+              )}
             </div>
-            {!focus && (
-              <div className="absolute inset-0 bg-void/70 flex items-center justify-center">
-                <div className={`${pill} text-white/40`}>hover a candidate below to load it live</div>
+
+            {/* the five candidates — a grid sized to the space beside the talk */}
+            <div className="pointer-events-auto bg-[#0d0906]/92 backdrop-blur-sm border-t border-brass/25 px-4 py-3">
+              <div className="grid grid-cols-5 gap-2.5">
+                {cell.worlds.map(w => {
+                  const isSeen = seen.has(w)
+                  const voted = myVote === w
+                  const isFocus = focus === w
+                  const canVote = seated && (seenAll || voted)
+                  return (
+                    <div key={w}
+                      onMouseEnter={() => gaze(w)} onMouseLeave={() => stopDwell(w)}
+                      onClick={() => select(w)}
+                      title="click to load in the stage"
+                      className={`relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all ${
+                        isFocus ? 'border-flame/80' : voted ? 'border-amber-400' : isSeen ? 'border-emerald-400/45' : 'border-white/12 hover:border-white/25'
+                      }`}>
+                      <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
+                        <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
+                        <img src={`/thumbs/${encodeURIComponent(w)}.jpg`} alt="" loading="lazy"
+                          className={`absolute inset-0 w-full h-full object-cover ${isSeen || isFocus ? '' : 'grayscale opacity-55'}`}
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                        {isSeen && !voted && <span className="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[9px] flex items-center justify-center">✓</span>}
+                        {/* THE VOTE BOX — top-right, the click zone that casts your voice */}
+                        {seated && (
+                          <button
+                            onClick={e => { e.stopPropagation(); if (canVote) vote(mci, w) }}
+                            disabled={!canVote}
+                            title={voted ? 'your vote — tap another world to move it' : canVote ? 'cast your vote' : 'witness all five to vote'}
+                            className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border-2 flex items-center justify-center font-mono text-base font-bold transition-all ${
+                              voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
+                                    : canVote ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
+                                              : 'bg-black/60 border-white/15 text-white/25 cursor-not-allowed'
+                            }`}>
+                            {voted ? '✓' : '+'}
+                          </button>
+                        )}
+                      </div>
+                      <div className={`${pill} px-1.5 py-1 flex items-center justify-between ${voted ? 'bg-amber-500/20 text-amber-200' : 'bg-black/40 text-white/70'}`}>
+                        <span className="truncate">{w.toLowerCase()}</span>
+                        {tally[w] ? <span className="shrink-0 ml-1">·{tally[w]}</span> : null}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            )}
-            {focus && !livePreview && (
-              <div className="absolute inset-0 bg-void/80 flex items-center justify-center">
-                <div className={`${pill} text-white/50 text-center`}>{focus.toLowerCase()}<br /><span className="text-white/30">branch preview lives on its own page</span></div>
+              <div className={`${pill} text-center mt-2 ${
+                !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
+              }`}>
+                {!seated ? 'sign in to take a seat — loading and reading are free'
+                  : myVote ? `voice cast for ${myVote.toLowerCase()} · tier ${doc.tier} weight · tap another + to move it`
+                  : seenAll ? 'all five witnessed — tap the + on your choice to vote'
+                  : `load each world to witness it — ${seenN}/5 · the + unlocks at 5`}
               </div>
-            )}
+            </div>
           </div>
 
-          {/* GLOBAL PER-WORLD chat — one pool, every cell/tier/round shares it */}
-          <div className="pointer-events-auto w-[300px] max-w-[40vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col">
+          {/* GLOBAL PER-WORLD talk — one pool, every cell/tier/round shares it */}
+          <div className="pointer-events-auto w-[300px] max-w-[34vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col">
             <div className={`${pill} px-3 py-2 border-b border-white/10 text-brass`}>
               💬 {focus ? focus.toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
               {focus && msgs.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one yet</div>}
-              {!focus && <div className={`${pill} text-white/30`}>hover a world to hear its talk</div>}
+              {!focus && <div className={`${pill} text-white/30`}>load a world to hear its talk</div>}
               {msgs.map((m, k) => (
                 <div key={k} className={`${pill} text-white/70 leading-relaxed`}>
                   <span className="text-brass/80">{m.who}</span> — {m.text}
@@ -426,51 +500,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                 )}
               </div>
             )}
-          </div>
-        </div>
-
-        {/* the five candidates — hover loads, click votes (once all witnessed) */}
-        <div className="pointer-events-auto bg-[#0d0906]/92 backdrop-blur-sm border-t border-brass/25 px-4 py-3">
-          <div className="flex flex-wrap justify-center gap-3">
-            {cell.worlds.map(w => {
-              const isSeen = seen.has(w)
-              const voted = myVote === w
-              const isFocus = focus === w
-              const locked = !seenAll && !voted
-              return (
-                <button key={w}
-                  onMouseEnter={() => gaze(w)} onMouseLeave={() => stopDwell(w)}
-                  onClick={() => { if (!seated) return; if (locked) { gaze(w); return } vote(mci, w) }}
-                  title={!seated ? 'sign in to take a seat' : voted ? 'your voice' : locked ? 'witness all five to vote' : 'cast your voice (+1)'}
-                  className={`relative w-[116px] rounded-lg border-2 overflow-hidden transition-all ${
-                    voted ? 'border-amber-400 shadow-[0_0_20px_rgba(212,160,60,0.5)]'
-                          : isFocus ? 'border-flame/70'
-                                    : isSeen ? 'border-emerald-400/40' : 'border-white/12'
-                  }`}>
-                  <div className="relative h-[64px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
-                    <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
-                    <img src={`/thumbs/${encodeURIComponent(w)}.jpg`} alt="" loading="lazy"
-                      className={`absolute inset-0 w-full h-full object-cover ${isSeen || isFocus ? '' : 'grayscale opacity-60'}`}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                    <span className={`absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border ${
-                      isSeen ? 'bg-emerald-500/90 border-emerald-300 text-black' : 'bg-black/70 border-white/20 text-white/40'
-                    }`}>{isSeen ? '✓' : ''}</span>
-                  </div>
-                  <div className={`${pill} px-1.5 py-1 flex items-center justify-between ${voted ? 'bg-amber-500/20 text-amber-200' : 'bg-black/40 text-white/70'}`}>
-                    <span className="truncate">{w.toLowerCase()}</span>
-                    <span className="shrink-0 ml-1">{voted ? '● +1' : tally[w] ? `·${tally[w]}` : (locked ? (isSeen ? '☑' : '☐') : '○')}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-          <div className={`${pill} text-center mt-2 ${
-            !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
-          }`}>
-            {!seated ? 'sign in to take a seat — hovering and reading are free'
-              : myVote ? `voice cast for ${myVote.toLowerCase()} · tier ${doc.tier} weight · click another to move it`
-              : seenAll ? 'all five witnessed — click one to cast your voice'
-              : `hover each world to witness it — ${seenN}/5 seen`}
           </div>
         </div>
       </div>

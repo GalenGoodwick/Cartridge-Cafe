@@ -613,7 +613,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     if (scene !== 'CAFE' && scene !== 'SUB-MAIN') return
     let cancelled = false
     let building = false
-    const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
+    // worlds with a hand-coded door mini we keep as-is (no screenshot face).
+    // TIDERUNNER is intentionally NOT here: it reads empty, so let it heal to a
+    // real screenshot (its style-6 mini still shows until one is captured).
+    const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'SIGNAL'])
     const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
       const im = new Image()
       im.onload = () => res(im)
@@ -692,6 +695,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
           onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
+          launches={launchMapRef.current}
           rail={scene !== 'CAFE'}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
@@ -701,6 +705,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           bubbles={portals}
           onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
+          launches={launchMapRef.current}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
       {scene === 'SUB-MAIN' && !docked && (
@@ -709,6 +714,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           worlds={portals.map(pt => pt.name)}
           bubbles={portals}
           onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
+          launches={launchMapRef.current}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
       {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
@@ -742,7 +748,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           see the stride-4 publish + cafeCount() in shaders.ts; no DOM overlay) */}
 
       {/* a world's OSD — old TV set lettering, top-left of the glass */}
-      {caption && (caption.text || caption.kind === 'typing') && (
+      {caption && (caption.text || caption.kind === 'typing') && !voting && (
         <div className="fixed top-8 left-10 z-50 pointer-events-none select-none font-mono uppercase tracking-[0.3em]"
           style={{
             color: caption.kind === 'hint' ? 'rgba(140,255,170,0.45)' : 'rgb(140,255,170)',
@@ -756,7 +762,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {/* the group layer's controls — found in the viewer, join/pin inside.
           Before the world's first report arrives, assume the viewer: the
           FOUND door must never be invisible on an empty group layer. */}
-      {scene === 'SUB-MAIN' && !modalUp && (
+      {scene === 'SUB-MAIN' && !modalUp && !voting && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2">
           {subMode?.mode === 'group' ? (<>
             <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
@@ -781,7 +787,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
 
       {/* founder's moderation desk: members, pins, and the shelf rule */}
-      {scene === 'SUB-MAIN' && !modalUp && subTools && subMode?.mode === 'group' && subMode.owner && (
+      {scene === 'SUB-MAIN' && !modalUp && !voting && subTools && subMode?.mode === 'group' && subMode.owner && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[90vw] max-h-[55vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3 font-mono text-[10px] tracking-[0.15em]">
           <div className="flex items-center justify-between">
             <span className="text-brass">SHELF RULE</span>
@@ -963,7 +969,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
 
       {/* the sign and two small doors — the only permanent chrome */}
-      {!inGame && (
+      {!inGame && !voting && (
         <>
           <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
             <div className="cafe-sign text-2xl">

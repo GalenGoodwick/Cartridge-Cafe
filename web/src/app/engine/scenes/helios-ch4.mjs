@@ -1,7 +1,8 @@
-// Patch HELIOS.json to add CHAPTER IV — THE FIRST LIGHT.
-// Kindle a spark in the void; HOLD to feed it, keep still or the dark eats it;
-// when whole it ignites into the first sun. Wires the ch3 door → ch4.
-//   node helios-ch4-patch.mjs
+// Add CHAPTER IV — THE FIRST LIGHT to HELIOS, on the new chapter/trigger
+// primitives. Chapter 3's door now completeChapter()s into it; ignition fires
+// via sim.trigger. (Cups ch4 is unrecoverable — FIRST LIGHT fills slot 4; if the
+// cups puzzle returns, insert it and this becomes chapter 5 — chapters are data.)
+//   node helios-ch4.mjs
 import { readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
@@ -9,52 +10,43 @@ import { dirname, join } from 'path'
 const here = dirname(fileURLToPath(import.meta.url))
 const path = join(here, '../../../../public/cartridges/HELIOS.json')
 const scene = JSON.parse(readFileSync(path, 'utf8'))
-
-const must = (s, anchor, next, label) => {
-  if (!s.includes(anchor)) throw new Error('anchor NOT FOUND: ' + label)
-  return s.split(anchor).join(next)
-}
-
-// ── hook: CHNAMES, bind ch3, wire door → ch4, add ch4 branch ──
 let code = scene.stepHooks[0].code
+const must = (a, n, label) => { if (!code.includes(a)) throw new Error('MISSING ' + label); code = code.split(a).join(n) }
 
-code = must(code, "THE BEARER']", "THE BEARER', 'CHAPTER IV — THE FIRST LIGHT']", 'CHNAMES')
-code = must(code, '} else if (!navX) {', '} else if (!navX && HX.act === 3) {', 'ch3-open')
-code = must(code,
-  "capX('CHAPTER IV \\u2014 not yet written \\u00b7 step through to the valley', 'hint')",
-  "capX('CHAPTER IV — THE FIRST LIGHT · a spark waits in the dark before the sun', 'hint')",
-  'ch3-door-hint')
-code = must(code,
-  "HX.act = 1; HX.capd = ''; capX('CHAPTER I \\u2014 THE VALLEY \\u00b7 home, with the light', 'tuned')",
-  "HX.act = 4; HX.unlocked = Math.max(HX.unlocked, 4); HX.capd = ''; wd0.__play_sound = [{ frequency: 140, duration: 0.7, volume: 0.3, type: 'sine' }]; capX('CHAPTER IV — THE FIRST LIGHT · kindle it', 'tuned')",
-  'ch3-door-enter')
+// 1 — declare chapter IV
+must("THE BEARER'])", "THE BEARER', 'CHAPTER IV — THE FIRST LIGHT'])", 'defineChapters')
 
-const CH4_HOOK = `
+// 2 — bound chapter III so IV gets its own branch
+must("} else if (!navX) {", "} else if (!navX && sim.act === 3) {", 'ch3-bound')
+
+// 3 — chapter III's door now leads to IV (not home)
+must("capX('CHAPTER IV \\u2014 not yet written \\u00b7 step through to the valley', 'hint')",
+     "capX('CHAPTER IV — THE FIRST LIGHT · step through, into the dark before the sun', 'hint')", 'ch3-door-hint')
+must("sim.goChapter(1); HX.capd = ''; capX('CHAPTER I \\u2014 THE VALLEY \\u00b7 home, with the light', 'tuned')",
+     "sim.completeChapter(); HX.capd = ''; wd0.__play_sound = [{ frequency: 140, duration: 0.7, volume: 0.3, type: 'sine' }]; capX('CHAPTER IV — THE FIRST LIGHT · kindle it', 'tuned')", 'ch3-door-enter')
+
+// 4 — the chapter IV hook branch (uses sim.trigger / sim.edge)
+const CH4 = `
     // ── CHAPTER IV — THE FIRST LIGHT ──
-    if (!wd0.__hx4) wd0.__hx4 = { life: 0.14, ignite: 0, igniteT: 0, hinted: 0, near: 0, dead: 0, lx: mxX, ly: myX, ix: 0, iy: 0 }
+    if (!wd0.__hx4) wd0.__hx4 = { life: 0.14, ignite: 0, igniteT: 0, ix: 0, iy: 0, lx: mxX, ly: myX }
     const F = wd0.__hx4
     const spd4 = Math.hypot(mxX - F.lx, myX - F.ly); F.lx = mxX; F.ly = myX
-    if (!F.hinted) { F.hinted = 1; capX('a spark in the dark · hold to feed it · keep still', 'hint') }
+    if (sim.trigger('ch4_hint', true)) capX('a spark in the dark · hold to feed it · keep still', 'hint')
     if (!F.ignite) {
-      if (mdX) {
-        const feed = Math.max(0.12, 1 - spd4 * 6)
-        F.life = Math.min(1, F.life + pdtX * feed / 5)
-      } else {
-        F.life = Math.max(0, F.life - pdtX / 12)
-      }
-      if (F.life <= 0.02 && !F.dead) { F.dead = 1; capX('the dark closes in · hold it, keep still', 'hint') }
-      if (F.life > 0.12) F.dead = 0
-      if (F.life >= 1) {
+      if (mdX) { const feed = Math.max(0.12, 1 - spd4 * 6); F.life = Math.min(1, F.life + pdtX * feed / 5) }
+      else { F.life = Math.max(0, F.life - pdtX / 12) }
+      if (sim.edge('ch4_dark', F.life <= 0.02)) capX('the dark closes in · hold it, keep still', 'hint')
+      if (sim.trigger('ch4_ignite', F.life >= 1)) {
         F.ignite = 1; F.ix = mxX; F.iy = myX
         wd0.__play_sound = [{ frequency: 180, duration: 0.8, volume: 0.32, type: 'sine' }, { frequency: 360, duration: 1.0, volume: 0.24, type: 'sine' }, { frequency: 540, duration: 1.3, volume: 0.18, type: 'triangle' }]
         capX('it catches · the first light', 'tuned')
-      } else if (F.life > 0.85 && !F.near) { F.near = 1; capX('almost · hold it steady', 'hint') } else if (F.life < 0.7) F.near = 0
+      }
     } else {
       F.igniteT = Math.min(1, (F.igniteT || 0) + pdtX / 3.2)
       if (F.igniteT >= 0.999) {
         const nearDoor = myX > 0.5 && Math.abs(mxX) < 0.2
         if (nearDoor) capX('carry it home · CHAPTER I — THE VALLEY', 'hint')
-        if (nearDoor && clickX) { HX.act = 1; HX.capd = ''; capX('CHAPTER I — THE VALLEY · the light you kindled hangs over it', 'tuned') }
+        if (nearDoor && clickX) { sim.goChapter(1); HX.capd = ''; capX('CHAPTER I — THE VALLEY · the light you kindled hangs over it', 'tuned') }
       }
     }
     const cx4 = F.ignite ? F.ix : mxX, cy4 = F.ignite ? F.iy : myX
@@ -63,17 +55,14 @@ const CH4_HOOK = `
     wd0.gpuUniforms = u4
     wd0.hud = []
   `
-code = must(code,
-  "wd0.hud = []\n  }\n  if (navX) {",
-  "wd0.hud = []\n  } else if (!navX && HX.act === 4) {" + CH4_HOOK + "}\n  if (navX) {",
-  'ch4-branch')
+must("u[24] = 3\n    wd0.gpuUniforms = u\n    wd0.hud = []\n  }\n  if (navX) {",
+     "u[24] = 3\n    wd0.gpuUniforms = u\n    wd0.hud = []\n  } else if (!navX && sim.act === 4) {" + CH4 + "}\n  if (navX) {", 'ch4-branch')
 
 scene.stepHooks[0].code = code
 
-// ── shader: add the CHAPTER IV scene to visual_helios_chapters ──
+// 5 — chapter IV shader scene (the void → spark → first sun)
 const vt = scene.visualTypes.find(v => v.name === 'helios_chapters')
-if (!vt) throw new Error('helios_chapters visual not found')
-const CH4_WGSL = `  // ════ CHAPTER IV — THE FIRST LIGHT ════
+const CH4W = `  // ════ CHAPTER IV — THE FIRST LIGHT ════
   if (act > 3.5) {
     let life = clamp(uni(2), 0.0, 1.0);
     let held = uni(3);
@@ -123,24 +112,25 @@ const CH4_WGSL = `  // ════ CHAPTER IV — THE FIRST LIGHT ════
   }
 
   `
-vt.wgsl = must(vt.wgsl, '  let won = uni(10);', CH4_WGSL + 'let won = uni(10);', 'ch4-shader')
+if (!vt.wgsl.includes('  let won = uni(10);')) throw new Error('MISSING shader anchor')
+vt.wgsl = vt.wgsl.replace('  let won = uni(10);', CH4W + 'let won = uni(10);')
 
-// ── instructions ──
+// 6 — instructions
 scene.worldData.instructions =
   'HELIOS — a story in chapters. One world.\n\n' +
   'MOVE — the light follows your cursor · CLICK & HOLD — hurry time / turn the light\n' +
   'Bottom corners — move between UNLOCKED chapters.\n\n' +
   'CHAPTER I — THE VALLEY: carry the sun; hold for the moon. Light the six stones to wake the tree. When the moon is full, its reflection on the lake invites you down.\n' +
-  'CHAPTER II — THE DROWNED MOON: six phase-stones ring the deep; match the crescents. The moon-tree descends further.\n' +
-  'CHAPTER III — THE BEARER: seven stars wait. DRAG a thread of light from star to star — only the figure’s true lines take. Six threads write the light-carrier into the sky.\n' +
-  'CHAPTER IV — THE FIRST LIGHT: the void before any sun. Cup the faint spark and HOLD to feed it; keep still, or the dark eats its edges. Kindle it whole and it ignites into the first light — the sun that will hang over the valley.\n\n' +
+  'CHAPTER II — THE DROWNED MOON: six phase-stones ring the deep; match the crescents. The moon-tree grows — step through it.\n' +
+  'CHAPTER III — THE BEARER: seven stars wait. DRAG a thread of light from star to star — six threads write the light-carrier into the sky, then step through its door.\n' +
+  'CHAPTER IV — THE FIRST LIGHT: the void before any sun. Cup the faint spark and HOLD to feed it; keep still, or the dark eats its edges. Kindle it whole and it ignites into the first light.\n\n' +
   'Progress persists per chapter.'
 
 scene.timestamp = Date.now()
 writeFileSync(path, JSON.stringify(scene, null, 1))
-console.log('HELIOS patched — chapter IV added')
+console.log('HELIOS chapter IV (THE FIRST LIGHT) added on the primitives')
 const res = await fetch('http://localhost:3000/api/engine/scene', {
   method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
   body: JSON.stringify({ action: 'save', name: 'HELIOS', scene }),
 }).catch(() => null)
-if (res) console.log('HELIOS saved:', res.status)
+if (res) console.log('saved:', res.status)

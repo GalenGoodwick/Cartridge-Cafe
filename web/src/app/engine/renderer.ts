@@ -584,6 +584,8 @@ export class FieldRenderer {
       device,
       format: this.canvasFormat,
       alphaMode: 'opaque',
+      // COPY_SRC so we can read the presented frame back for shelf-icon capture
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     })
 
     // Create bind group layouts
@@ -2084,6 +2086,60 @@ export class FieldRenderer {
     buf.destroy()
 
     return { width: outW, height: outH, pixels }
+  }
+
+  /** Snap the CURRENT presented frame to a JPEG data URL — must be called from
+   *  within the frame loop right after render(), while getCurrentTexture() still
+   *  holds this frame (WebGPU releases it on present, so a detached toDataURL
+   *  reads black). Downscaled; BGRA→RGBA handled per canvas format. */
+  async captureCanvasJpeg(maxSize = 192, quality = 0.85): Promise<string | null> {
+    const device = this.device
+    const ctx = this.context
+    if (!device || !ctx) return null
+    const canvas = ctx.canvas as HTMLCanvasElement
+    const W = canvas.width, H = canvas.height
+    if (W <= 0 || H <= 0) return null
+    const canvasTex = ctx.getCurrentTexture()
+    const bytesPerRow = Math.ceil(W * 4 / 256) * 256
+    const buf = device.createBuffer({
+      size: bytesPerRow * H,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    })
+    const encoder = device.createCommandEncoder()
+    encoder.copyTextureToBuffer(
+      { texture: canvasTex, origin: [0, 0, 0] },
+      { buffer: buf, bytesPerRow, rowsPerImage: H },
+      [W, H, 1],
+    )
+    device.queue.submit([encoder.finish()])
+    try {
+      await buf.mapAsync(GPUMapMode.READ)
+    } catch { buf.destroy(); return null }
+    const raw = new Uint8Array(buf.getMappedRange())
+    const scale = Math.min(1, maxSize / Math.max(W, H))
+    const outW = Math.max(1, Math.round(W * scale))
+    const outH = Math.max(1, Math.round(H * scale))
+    const out = new Uint8ClampedArray(outW * outH * 4)
+    const bgra = this.canvasFormat.startsWith('bgra')
+    for (let y = 0; y < outH; y++) {
+      const sy = Math.min(H - 1, Math.floor(y / scale))
+      for (let x = 0; x < outW; x++) {
+        const sx = Math.min(W - 1, Math.floor(x / scale))
+        const s = sy * bytesPerRow + sx * 4
+        const d = (y * outW + x) * 4
+        if (bgra) { out[d] = raw[s + 2]; out[d + 1] = raw[s + 1]; out[d + 2] = raw[s] }
+        else { out[d] = raw[s]; out[d + 1] = raw[s + 1]; out[d + 2] = raw[s + 2] }
+        out[d + 3] = 255
+      }
+    }
+    buf.unmap()
+    buf.destroy()
+    const c = document.createElement('canvas')
+    c.width = outW; c.height = outH
+    const cx = c.getContext('2d')
+    if (!cx) return null
+    cx.putImageData(new ImageData(out, outW, outH), 0, 0)
+    return c.toDataURL('image/jpeg', quality)
   }
 
   // --- State update compute ---

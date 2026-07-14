@@ -268,6 +268,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [])
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
+  // shelf-icon capture: the scheduler sets a pending request; the frame loop
+  // fulfils it in-frame (WebGPU frames go black if read after present)
+  const captureReqRef = useRef<{ slug: string } | { scene: string } | null>(null)
+  const capturingRef = useRef(false)
   const startTimeRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const lastSampleTimeRef = useRef<number>(0)
@@ -2284,6 +2288,22 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
       if (!skipRender) {
         renderer.render(camera, camera.zoom, time, fieldEffects, superFields, activeInteractions, mode3D ? { pos: mode3D.pos, pitch: mode3D.pitch, yaw: mode3D.yaw, fov: mode3D.fov } : undefined, stepHookData)
+        // fulfil a pending shelf-icon capture IN-FRAME — reads the frame we just
+        // drew, before WebGPU presents and releases it (a detached read is black)
+        if (captureReqRef.current && !capturingRef.current) {
+          const req = captureReqRef.current
+          captureReqRef.current = null
+          capturingRef.current = true
+          renderer.captureCanvasJpeg().then(jpeg => {
+            capturingRef.current = false
+            if (jpeg) {
+              fetch('/api/engine/thumb', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...req, image: jpeg }),
+              }).catch(() => {})
+            }
+          }).catch(() => { capturingRef.current = false })
+        }
       }
 
       // Trigger async readback of hit ID map for pixel-perfect hit testing
@@ -4123,7 +4143,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   //  • house world with NO curated door mini (e.g. HANABI): heal its icon if
   //    it's missing. Worlds with a hand-coded mini (styles below) keep it.
   useEffect(() => {
-    const HOUSE_STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
+    const HOUSE_STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'SIGNAL'])
     let target: { slug: string } | { scene: string } | null = null
     if (spaceSlug && isOwner) target = { slug: spaceSlug }
     else if (!spaceId && playScene && playScene !== 'CAFE' && playScene !== 'SUB-MAIN'
@@ -4134,24 +4154,16 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     let settle: ReturnType<typeof setTimeout> | null = null
     const iv = setInterval(() => {
       const sim = simulationRef.current
-      const canvas = canvasRef.current
-      if (!sim || !canvas || sim.fields.size === 0) return
+      if (!sim || sim.fields.size === 0) return
       // structural fingerprint only — ignore per-frame shader animation
       let sig = `${sim.fields.size}|${sim.stepHooks.size}`
       for (const f of sim.fields.values()) sig += `,${f.visualTypeName || ''}`
       if (sig === lastSig) return
       lastSig = sig
+      // once the picture settles, ask the frame loop to snap it (it captures the
+      // live frame in-frame; a detached read of a WebGPU canvas comes back black)
       if (settle) clearTimeout(settle)
-      settle = setTimeout(() => {
-        try {
-          const jpeg = canvas.toDataURL('image/jpeg', 0.82)
-          if (!jpeg || jpeg === 'data:,') return
-          fetch('/api/engine/thumb', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...body, image: jpeg }),
-          }).catch(() => {})
-        } catch { /* readback can fail on a lost context — try again next change */ }
-      }, 2500)
+      settle = setTimeout(() => { captureReqRef.current = body }, 2500)
     }, 2000)
     return () => { clearInterval(iv); if (settle) clearTimeout(settle) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
