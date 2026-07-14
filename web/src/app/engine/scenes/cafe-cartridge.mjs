@@ -158,17 +158,6 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       let ink = cafeCount(np, headCount, 0.16) * inBox;
       let numCol = select(vec3f(0.6, 0.55, 0.46), vec3f(1.0, 0.86, 0.46), headCount > 0);
       g = mix(g, numCol * 2.4, ink);
-      // presence, folded into the bubble: a little directional player seated on
-      // the inner rim for each occupant (up to 6), facing out of the world. This
-      // is the SMALL scale of the same effect that rides big in the open grid.
-      let nP = min(headCount, 6);
-      for (var k = 0; k < nP; k++) {
-        let ga = f32(k) * 2.39996 + t * 0.15 + f32(i) * 1.7;   // golden-angle drift, per-bubble phase
-        let orb = vec2f(cos(ga), sin(ga));
-        let plocal = (q - orb * 0.82) * 6.0;                   // seat on the rim, player-local
-        let hueK = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.16 + vec3f(0.0, 0.33, 0.67)));
-        g += cf_player(plocal, orb, hueK * 1.1);               // face outward
-      }
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);
@@ -176,6 +165,21 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     } else {
       // halo when hovered
       col += vec3f(1.0, 0.7, 0.3) * exp(-pow((d - rr) * 22.0, 2.0)) * hov * 0.8;
+    }
+    // presence players HOVER at the edge — half inside, half out — so they draw
+    // in a band that spills BEYOND the disc, not clipped by the d<rr face mask.
+    // Additive onto col; the SMALL scale of the cursor's big roaming effect.
+    // DEMO FLOOR forces 4 per bubble until real presence flows (step 2).
+    if (d < rr * 1.6) {
+      let ql = (uv - ctr) / rr;                              // disc-local; >1 outside the bubble
+      let nP = max(min(headCount, 6), 4);
+      for (var k = 0; k < nP; k++) {
+        let ga = f32(k) * 2.39996 + t * 0.4 + f32(i) * 1.7;  // golden-angle drift, per-bubble phase
+        let orb = vec2f(cos(ga), sin(ga));
+        let plocal = (ql - orb) * 3.2;                       // seat ON the rim (radius 1.0), spilling out
+        let hueK = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.16 + vec3f(0.0, 0.33, 0.67)));
+        col += cf_player(plocal, orb, hueK * 1.6) * 1.8;     // face outward, bright
+      }
     }
   }
 

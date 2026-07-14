@@ -356,7 +356,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const cell = doc.cells[seated ? mci : 0]
   const myVote = who && seated && cell ? cell.votes[who] : undefined
   const seenAll = !!cell && cell.worlds.every(x => seen.has(x))
-  const livePreview = !!onPreview   // door arenas load real worlds; a world-page arena (MAIN vs branches) can't
 
   // ── THE RECKONING ── the vote takes the whole screen. The world under your
   // gaze fills the stage (rendered live by the engine behind this overlay), its
@@ -367,28 +366,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     for (const v of Object.values(cell.votes)) tally[v] = (tally[v] || 0) + 1
     const seenN = cell.worlds.filter(x => seen.has(x)).length
     const msgs = focus ? (chat[focus] || []) : []
-    const leftMs = doc.tierAt && !doc.champion && now ? Math.max(0, doc.tierAt + TIER_MAX_MS - now) : 0
-    const hrs = Math.floor(leftMs / 3600000), mins = Math.floor((leftMs % 3600000) / 60000)
     return (
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
-        {/* the header */}
-        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/25">
-          <div className={`${pill} text-white/60`}>
-            ⚔ THE RECKONING · ROUND {doc.round} · TIER {doc.tier}
-            {leftMs > 0 && <span className="text-amber-300/80"> · resolves by vote in {hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`}</span>}
-            <span className={seenAll ? ' text-emerald-300/80' : ' text-white/40'}> · witnessed {seenN}/5</span>
-          </div>
+        {/* the header — kept quiet: a title and a way out */}
+        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/20">
+          <div className={`${pill} text-amber-200/70`}>⚔ THE RECKONING</div>
           <button onClick={leaveReckoning} title="leave the reckoning"
-            className={`${pill} px-2.5 py-1 rounded border border-white/20 text-white/70 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
-        </div>
-
-        {/* the instructions */}
-        <div className="pointer-events-auto px-4 py-1.5 bg-[#0d0906]/80 backdrop-blur-sm border-b border-white/8 text-center">
-          <span className={`${pill} text-white/45`}>
-            hover or click a world to load it in the stage · read &amp; add to its talk · once you&apos;ve witnessed all five, tap the
-            <span className="inline-flex items-center justify-center align-middle mx-1 w-4 h-4 rounded border border-amber-400/80 text-amber-300 text-[9px]">+</span>
-            on your choice to cast your vote
-          </span>
+            className={`${pill} px-2.5 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
         </div>
 
         {/* body: the stage + grid on the left, the world's talk on the right */}
@@ -407,7 +391,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             </div>
 
             {/* the five candidates — a grid sized to the space beside the talk */}
-            <div className="pointer-events-auto bg-[#0d0906]/92 backdrop-blur-sm border-t border-brass/25 px-4 py-3">
+            <div className="pointer-events-auto bg-[#0d0906]/92 backdrop-blur-sm border-t border-brass/25 px-4 pt-3 pb-5">
               <div className="grid grid-cols-5 gap-2.5">
                 {cell.worlds.map(w => {
                   const isSeen = seen.has(w)

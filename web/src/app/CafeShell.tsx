@@ -617,6 +617,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     // TIDERUNNER is intentionally NOT here: it reads empty, so let it heal to a
     // real screenshot (its style-6 mini still shows until one is captured).
     const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'SIGNAL'])
+    let lastSig = ''   // rebuild ONLY when the roster or a thumb's mtime changes
     const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
       const im = new Image()
       im.onload = () => res(im)
@@ -644,6 +645,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           if (!s.blank) names.add((s.name || s.slug).toUpperCase())
         }
         const ICON = 64, list = [...names].slice(0, 64)   // atlas cap
+        // nothing changed since the last publish → leave the live atlas alone.
+        // (Republishing every tick was reshuffling slots and flickering faces
+        // back to the default seed-planet for a frame.)
+        const sig = list.map(n => `${n}:${ver[n] ?? 0}`).sort().join('|')
+        if (sig === lastSig) return
+        lastSig = sig
         const cv = document.createElement('canvas')
         cv.width = ICON; cv.height = ICON
         const ctx = cv.getContext('2d', { willReadFrequently: true })!
@@ -820,6 +827,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       <button
         onClick={() => { setMuted(!mute); setMute(!mute) }}
         aria-label={mute ? 'Unmute' : 'Mute'}
+        style={{ display: voting ? 'none' : undefined }}
         className="fixed bottom-4 right-4 z-50 w-8 h-8 rounded-full border border-brass/40 bg-void/60 backdrop-blur-sm text-glow/60 hover:text-glow font-mono text-[11px] transition-colors"
       >
         {mute ? '∅' : '♪'}
