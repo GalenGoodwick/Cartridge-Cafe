@@ -175,3 +175,15 @@ model StakeEvent {
 
   @@index([plotId, createdAt])
 }
+
+// Durable key-value for the engine's save slots: tournaments, sub-mains, the
+// shared bubble-universe layout, and per-player game saves. Was a local JSON
+// file (fine in dev, ephemeral on Vercel) — now Neon-backed so this state is
+// real and shared across every player in production.
+model EngineSlot {
+  slot      String   @id
+  data      Json
+  savedAt   DateTime @updatedAt
+
+  @@index([savedAt])
+}

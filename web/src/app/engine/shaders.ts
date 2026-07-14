@@ -1571,37 +1571,46 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   return pow(c, vec3f(2.2)) * 4.5;
 }
 
-// 3x5 pixel font, one u32 bitmask per digit (bit = row*3 + col, row 0 top).
-// Lets the cafe door draw head-counts INSIDE the bubble, in the same pass —
-// the number can never drift from its bubble because it IS the bubble.
-fn cafeGlyph(d: i32, gx: i32, gy: i32) -> f32 {
-  if (d < 0 || d > 9 || gx < 0 || gx > 2 || gy < 0 || gy > 4) { return 0.0; }
-  var font = array<u32,10>(31599u, 29850u, 29671u, 31207u, 18925u, 31183u, 31695u, 9383u, 31727u, 31215u);
-  let bit = u32(gy * 3 + gx);
-  return f32((font[d] >> bit) & 1u);
+// Seven-segment digits as smooth SDF strokes — crisp and antialiased at any
+// bubble size, no pixel chunk. Lets the cafe door draw head-counts INSIDE the
+// bubble, same pass — the number can never drift because it IS the bubble.
+fn cafeSeg(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a; let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
 }
-// ink coverage of the integer 'count' centered at disc-local 'p' (cell coords,
-// where the number box spans about ±1 in x and ±1 in y). Two digits max.
-fn cafeCount(p: vec2f, count: i32) -> f32 {
+// one digit at local p (x -0.5..0.5, y -1..1, y down). Soft coverage of stroke
+// half-width w. Segment bits: A=1 B=2 C=4 D=8 E=16 F=32 G=64.
+fn cafeDigit(d: i32, p: vec2f, w: f32) -> f32 {
+  if (d < 0 || d > 9) { return 0.0; }
+  var segs = array<u32,10>(63u, 6u, 91u, 79u, 102u, 109u, 125u, 7u, 127u, 111u);
+  let m = segs[d];
+  let x0 = -0.34; let x1 = 0.34;
+  let yT = -0.82; let yM = 0.0; let yB = 0.82;
+  var dist = 1e9;
+  if ((m & 1u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yT), vec2f(x1, yT))); }  // A
+  if ((m & 2u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x1, yT), vec2f(x1, yM))); }  // B
+  if ((m & 4u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x1, yM), vec2f(x1, yB))); }  // C
+  if ((m & 8u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yB), vec2f(x1, yB))); }  // D
+  if ((m & 16u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yM), vec2f(x0, yB))); }  // E
+  if ((m & 32u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yT), vec2f(x0, yM))); }  // F
+  if ((m & 64u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yM), vec2f(x1, yM))); }  // G
+  return smoothstep(w, w * 0.4, dist);
+}
+// ink coverage of 'count' at local p (x,y in -1..1 over the number's box).
+// Two digits max; w is stroke half-width in local units.
+fn cafeCount(p: vec2f, count: i32, w: f32) -> f32 {
   if (count < 0) { return 0.0; }
   let two = count >= 10;
-  let d1 = select(count, count / 10, two);
-  let d0 = count % 10;
-  let ndig = select(1, 2, two);
-  // each glyph cell: 3 wide x 5 tall, with a 1px gap between digits
-  let cellW = 4.0;                 // 3 ink + 1 gap
-  let totalW = f32(ndig) * 3.0 + f32(ndig - 1) * 1.0;
-  // map p.x (-1..1) → font pixels across the number's width
-  let fx = (p.x * 0.5 + 0.5) * totalW;
-  let fy = (p.y * 0.5 + 0.5) * 5.0;
-  let gy = i32(floor(fy));
+  let n = select(1.0, 2.0, two);
+  let u = p.x * n;                              // -n..n across the digits
   var ink = 0.0;
-  // digit 0 occupies fx 0..3, digit 1 (if two) occupies fx 4..7
-  let slot = i32(floor(fx / cellW));
-  let gx = i32(floor(fx - f32(slot) * cellW));
-  if (gx <= 2) {
-    let digit = select(d0, select(d1, d0, slot == 1), two);
-    ink = cafeGlyph(digit, gx, gy);
+  for (var k = 0; k < 2; k++) {
+    if (f32(k) >= n) { break; }
+    let c = -n + 2.0 * f32(k) + 1.0;            // this digit's center in u
+    var d = count;
+    if (two) { if (k == 0) { d = count / 10; } else { d = count % 10; } }
+    ink = max(ink, cafeDigit(d, vec2f((u - c) * 0.66, p.y), w));
   }
   return ink;
 }
@@ -2103,37 +2112,46 @@ fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   return pow(c, vec3f(2.2)) * 4.5;
 }
 
-// 3x5 pixel font, one u32 bitmask per digit (bit = row*3 + col, row 0 top).
-// Lets the cafe door draw head-counts INSIDE the bubble, in the same pass —
-// the number can never drift from its bubble because it IS the bubble.
-fn cafeGlyph(d: i32, gx: i32, gy: i32) -> f32 {
-  if (d < 0 || d > 9 || gx < 0 || gx > 2 || gy < 0 || gy > 4) { return 0.0; }
-  var font = array<u32,10>(31599u, 29850u, 29671u, 31207u, 18925u, 31183u, 31695u, 9383u, 31727u, 31215u);
-  let bit = u32(gy * 3 + gx);
-  return f32((font[d] >> bit) & 1u);
+// Seven-segment digits as smooth SDF strokes — crisp and antialiased at any
+// bubble size, no pixel chunk. Lets the cafe door draw head-counts INSIDE the
+// bubble, same pass — the number can never drift because it IS the bubble.
+fn cafeSeg(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a; let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
 }
-// ink coverage of the integer 'count' centered at disc-local 'p' (cell coords,
-// where the number box spans about ±1 in x and ±1 in y). Two digits max.
-fn cafeCount(p: vec2f, count: i32) -> f32 {
+// one digit at local p (x -0.5..0.5, y -1..1, y down). Soft coverage of stroke
+// half-width w. Segment bits: A=1 B=2 C=4 D=8 E=16 F=32 G=64.
+fn cafeDigit(d: i32, p: vec2f, w: f32) -> f32 {
+  if (d < 0 || d > 9) { return 0.0; }
+  var segs = array<u32,10>(63u, 6u, 91u, 79u, 102u, 109u, 125u, 7u, 127u, 111u);
+  let m = segs[d];
+  let x0 = -0.34; let x1 = 0.34;
+  let yT = -0.82; let yM = 0.0; let yB = 0.82;
+  var dist = 1e9;
+  if ((m & 1u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yT), vec2f(x1, yT))); }  // A
+  if ((m & 2u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x1, yT), vec2f(x1, yM))); }  // B
+  if ((m & 4u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x1, yM), vec2f(x1, yB))); }  // C
+  if ((m & 8u)  != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yB), vec2f(x1, yB))); }  // D
+  if ((m & 16u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yM), vec2f(x0, yB))); }  // E
+  if ((m & 32u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yT), vec2f(x0, yM))); }  // F
+  if ((m & 64u) != 0u) { dist = min(dist, cafeSeg(p, vec2f(x0, yM), vec2f(x1, yM))); }  // G
+  return smoothstep(w, w * 0.4, dist);
+}
+// ink coverage of 'count' at local p (x,y in -1..1 over the number's box).
+// Two digits max; w is stroke half-width in local units.
+fn cafeCount(p: vec2f, count: i32, w: f32) -> f32 {
   if (count < 0) { return 0.0; }
   let two = count >= 10;
-  let d1 = select(count, count / 10, two);
-  let d0 = count % 10;
-  let ndig = select(1, 2, two);
-  // each glyph cell: 3 wide x 5 tall, with a 1px gap between digits
-  let cellW = 4.0;                 // 3 ink + 1 gap
-  let totalW = f32(ndig) * 3.0 + f32(ndig - 1) * 1.0;
-  // map p.x (-1..1) → font pixels across the number's width
-  let fx = (p.x * 0.5 + 0.5) * totalW;
-  let fy = (p.y * 0.5 + 0.5) * 5.0;
-  let gy = i32(floor(fy));
+  let n = select(1.0, 2.0, two);
+  let u = p.x * n;                              // -n..n across the digits
   var ink = 0.0;
-  // digit 0 occupies fx 0..3, digit 1 (if two) occupies fx 4..7
-  let slot = i32(floor(fx / cellW));
-  let gx = i32(floor(fx - f32(slot) * cellW));
-  if (gx <= 2) {
-    let digit = select(d0, select(d1, d0, slot == 1), two);
-    ink = cafeGlyph(digit, gx, gy);
+  for (var k = 0; k < 2; k++) {
+    if (f32(k) >= n) { break; }
+    let c = -n + 2.0 * f32(k) + 1.0;            // this digit's center in u
+    var d = count;
+    if (two) { if (k == 0) { d = count / 10; } else { d = count % 10; } }
+    ink = max(ink, cafeDigit(d, vec2f((u - c) * 0.66, p.y), w));
   }
   return ink;
 }

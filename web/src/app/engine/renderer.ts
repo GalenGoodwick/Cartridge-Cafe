@@ -487,9 +487,21 @@ export class FieldRenderer {
       return false
     }
 
-    const adapter = await navigator.gpu.requestAdapter()
+    // a GPU process that crashed (a hung shader earlier this session) can
+    // return null for a beat while it restarts — retry once before giving up,
+    // and tell the player plainly instead of a raw stack.
+    let adapter = await navigator.gpu.requestAdapter()
+    if (!adapter) {
+      await new Promise(r => setTimeout(r, 400))
+      adapter = await navigator.gpu.requestAdapter()
+    }
     if (!adapter) {
       console.error('No WebGPU adapter found')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cc:fault', {
+          detail: { kind: 'gpu-lost', message: 'The GPU is unavailable — it likely needs a restart. Fully quit the browser (Cmd+Q) and reopen.' },
+        }))
+      }
       return false
     }
 

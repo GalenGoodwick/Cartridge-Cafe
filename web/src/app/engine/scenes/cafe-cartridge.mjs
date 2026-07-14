@@ -129,18 +129,20 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g += vec3f(0.85) * exp(-dot(mn, mn) * 260.0);
         g *= 0.85 + 0.3 * (1.0 - length(q));
       }
-      // the head-count, folded into the bubble: a small dark tab + bright
-      // digits in the lower third. Positioned in disc-local q, so it rides the
-      // bubble through every pan and zoom with zero drift (it IS the bubble).
+      // the head-count, folded into the bubble: a soft dark lozenge + crisp
+      // seven-segment digits in the lower third. Positioned in disc-local q, so
+      // it rides the bubble through every pan and zoom (it IS the bubble).
       let nDig = select(1.0, 2.0, headCount >= 10);
-      let boxW = 0.20 * nDig + 0.10;
+      let boxW = 0.17 * nDig + 0.09;
+      let boxH = 0.19;
       let boxC = vec2f(0.0, 0.60);
-      let inBox = step(abs(q.x - boxC.x), boxW) * step(abs(q.y - boxC.y), 0.20);
-      g = mix(g, g * 0.35, inBox * 0.85);   // a legibility tab behind the number
-      let np = vec2f((q.x - boxC.x) / boxW, (q.y - boxC.y) / -0.17);
-      let ink = cafeCount(np, headCount) * step(abs(np.x), 1.0) * step(abs(np.y), 1.0);
-      let numCol = select(vec3f(0.55, 0.5, 0.42), vec3f(1.0, 0.85, 0.45), headCount > 0);
-      g = mix(g, numCol * 2.2, ink);
+      let bd = abs(q - boxC) - vec2f(boxW, boxH);
+      let inBox = 1.0 - smoothstep(-0.02, 0.03, max(bd.x, bd.y));
+      g = mix(g, g * 0.28, inBox * 0.9);   // a legibility plate behind the number
+      let np = vec2f((q.x - boxC.x) / boxW, (q.y - boxC.y) / boxH);
+      let ink = cafeCount(np, headCount, 0.16) * inBox;
+      let numCol = select(vec3f(0.6, 0.55, 0.46), vec3f(1.0, 0.86, 0.46), headCount > 0);
+      g = mix(g, numCol * 2.4, ink);
       // glass edge + hover bloom
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);

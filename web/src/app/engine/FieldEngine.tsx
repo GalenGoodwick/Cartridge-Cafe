@@ -107,13 +107,18 @@ interface FieldEngineProps {
   versionView?: number
   /** Load this saved scene on mount and just play it — local sim, no server state, no chrome */
   playScene?: string
+  /** May this SPACE's stored JS hooks run? A space hook runs in the visitor's
+   *  browser, so untrusted-author JS is XSS. The server decides: true for the
+   *  owner or a trusted author. False → the shader still renders (GPU is safe),
+   *  the JS brain is simply not installed. House cartridges are always trusted. */
+  hooksTrusted?: boolean
 }
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
  *  can PROVE which build it holds (shown in the fault banner + console). */
 const ENGINE_BUILD = 'e4-bindgroup'
 
-export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -1482,9 +1487,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       await new Promise(r => setTimeout(r, 700))
       ok = await renderer.init(canvas!)
     }
-    if (!ok || cancelled) {
+    if (cancelled) return   // StrictMode/remount cleanup — not a failure, say nothing
+    if (!ok) {
       console.error('Failed to initialize WebGPU renderer')
-      if (!cancelled) setGpuFailed(true)
+      setGpuFailed(true)
       return
     }
     // a bubble-face atlas that arrived before this renderer existed gets applied now

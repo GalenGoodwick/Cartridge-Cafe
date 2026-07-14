@@ -37,7 +37,11 @@ self.onmessage = function (ev) {
   if (msg.type === 'tick' && __hook) {
     __events = [];
     const fields = new Map();
-    for (const f of msg.fields) fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties });
+    const before = new Map();   // remember each transform so we patch only what the hook MOVED
+    for (const f of msg.fields) {
+      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties });
+      before.set(f.id, JSON.stringify(f.transform));
+    }
     const sim = {
       worldData: msg.worldData,
       fields,
@@ -46,8 +50,12 @@ self.onmessage = function (ev) {
     };
     try { __hook(sim, msg.dt); }
     catch (e) { self.postMessage({ type: 'result', error: String((e && e.message) || e), worldData: msg.worldData, fieldPatches: [], events: [] }); return; }
+    // only fields the hook actually changed — never hand the host a stale
+    // transform for a field it manages itself (that fight reads as jitter)
     const fieldPatches = [];
-    for (const f of fields.values()) fieldPatches.push({ id: f.id, transform: f.transform });
+    for (const f of fields.values()) {
+      if (JSON.stringify(f.transform) !== before.get(f.id)) fieldPatches.push({ id: f.id, transform: f.transform });
+    }
     self.postMessage({ type: 'result', worldData: sim.worldData, fieldPatches, events: __events });
   }
 };
@@ -161,12 +169,19 @@ export class WorldSandbox {
   }
 }
 
-/** strip anything structuredClone can't carry (functions) — worldData is
- *  plain data, but a stray function would throw the whole postMessage */
+// host-managed blobs the hook never reads — cloning them across the worker
+// boundary every frame is slow AND makes the round-trip time VARIABLE, which
+// surfaces as an irregular update rate (warp/jitter). Drop them from the send.
+const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'hud', '__play_sound', '__play_music'])
+
+/** minimal, cheap-to-clone payload: the hook's inputs and its own state, never
+ *  the host's heavy blobs or the hook's own outputs (which it overwrites). */
 function cloneable(wd: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const k of Object.keys(wd)) {
-    if (typeof wd[k] !== 'function') out[k] = wd[k]
+    if (HOST_HEAVY.has(k)) continue
+    if (typeof wd[k] === 'function') continue
+    out[k] = wd[k]
   }
   return out
 }

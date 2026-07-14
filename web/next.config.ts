@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The engine reads its worlds from .engine-store.json at runtime via a dynamic
+  // readFileSync, which Next.js won't auto-trace into the serverless bundle.
+  // Force-include the world files so the door has its shelf in production.
+  outputFileTracingIncludes: {
+    '/api/engine/**': ['./.engine-store.json', './.engine-saves.json'],
+  },
   async redirects() {
     return [
       {

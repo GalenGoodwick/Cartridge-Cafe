@@ -780,49 +780,75 @@ export function deleteScene(name: string): boolean {
 }
 
 // ─── Game Save Slots ───
-// Named progress saves for game cartridges — separate file from the world store
-// so a corrupted world never takes the player's saves with it (and vice versa).
+// Save slots — tournaments, sub-mains, the shared bubble-universe layout, and
+// per-player game saves. Durable in Neon (the `EngineSlot` table) so this state
+// is real and shared in production, where the filesystem is ephemeral.
+//
+// The door polls a handful of slots every few seconds per player, so raw DB
+// reads would be wasteful: a tiny in-memory cache (per serverless instance)
+// absorbs the read storm. Writes go straight through and refresh the cache.
+// Cross-instance staleness is bounded by the TTL — the same eventual-consistency
+// the file store already had, now shared instead of per-machine.
 
-const SAVES_PATH = join(process.cwd(), '.engine-saves.json')
-let gameSaves: Record<string, { data: unknown; savedAt: number }> | null = null
+const SLOT_TTL = 1500        // ms a cached slot value is trusted before re-reading
+const LIST_TTL = 2500        // ms a cached slot listing is trusted
+const slotCache = new Map<string, { data: unknown; savedAt: number; at: number }>()
+let listCache: { slots: Array<{ slot: string; savedAt: number }>; at: number } | null = null
 
-function loadSaves(): Record<string, { data: unknown; savedAt: number }> {
-  if (gameSaves) return gameSaves
+/** Write a named save slot (upsert into Neon, refresh cache). */
+export async function saveGameSlot(slot: string, data: unknown): Promise<void> {
+  const savedAt = Date.now()
+  slotCache.set(slot, { data, savedAt, at: savedAt })
+  listCache = null   // a new/updated slot invalidates the listing
   try {
-    gameSaves = JSON.parse(readFileSync(SAVES_PATH, 'utf-8'))
+    const { prisma } = await import('@/lib/prisma')
+    await prisma.engineSlot.upsert({
+      where: { slot },
+      // Prisma Json can't hold `undefined`; store null for absent data
+      create: { slot, data: (data ?? null) as never },
+      update: { data: (data ?? null) as never },
+    })
+  } catch { /* DB write is best-effort — the cache still serves this instance */ }
+}
+
+/** Read a named save slot (cache-first, then Neon). */
+export async function loadGameSlot(slot: string): Promise<unknown | undefined> {
+  const c = slotCache.get(slot)
+  if (c && Date.now() - c.at < SLOT_TTL) return c.data
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    const row = await prisma.engineSlot.findUnique({ where: { slot } })
+    const data = row ? row.data : undefined
+    slotCache.set(slot, { data, savedAt: row ? row.savedAt.getTime() : 0, at: Date.now() })
+    return data
   } catch {
-    gameSaves = {}
+    return c?.data   // DB unreachable — last known value beats nothing
   }
-  return gameSaves!
 }
 
-function persistSaves(): void {
-  try { writeFileSync(SAVES_PATH, JSON.stringify(gameSaves ?? {})) } catch { /* disk write is best-effort */ }
+/** List all save slots with timestamps (cache-first). */
+export async function listGameSlots(): Promise<Array<{ slot: string; savedAt: number }>> {
+  if (listCache && Date.now() - listCache.at < LIST_TTL) return listCache.slots
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    const rows = await prisma.engineSlot.findMany({ select: { slot: true, savedAt: true } })
+    const slots = rows.map(r => ({ slot: r.slot, savedAt: r.savedAt.getTime() }))
+    listCache = { slots, at: Date.now() }
+    return slots
+  } catch {
+    return listCache?.slots ?? []
+  }
 }
 
-/** Write a named game save slot */
-export function saveGameSlot(slot: string, data: unknown): void {
-  const saves = loadSaves()
-  saves[slot] = { data, savedAt: Date.now() }
-  persistSaves()
-}
-
-/** Read a named game save slot */
-export function loadGameSlot(slot: string): unknown | undefined {
-  return loadSaves()[slot]?.data
-}
-
-/** List all save slots with timestamps */
-export function listGameSlots(): Array<{ slot: string; savedAt: number }> {
-  const saves = loadSaves()
-  return Object.keys(saves).map(k => ({ slot: k, savedAt: saves[k].savedAt }))
-}
-
-/** Delete a save slot */
-export function deleteGameSlot(slot: string): boolean {
-  const saves = loadSaves()
-  if (!(slot in saves)) return false
-  delete saves[slot]
-  persistSaves()
-  return true
+/** Delete a save slot. */
+export async function deleteGameSlot(slot: string): Promise<boolean> {
+  slotCache.delete(slot)
+  listCache = null
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    await prisma.engineSlot.delete({ where: { slot } })
+    return true
+  } catch {
+    return false   // not found or DB error
+  }
 }

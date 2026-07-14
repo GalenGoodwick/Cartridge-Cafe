@@ -1,9 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { setFieldSnapshots, getFieldSnapshot, getEngineState, claimWriter } from '../store'
-import { setSpaceSnapshot } from '../space-store'
+import { setSpaceSnapshot, validateSpaceToken } from '../space-store'
 import type { FieldSnapshot, SceneSnapshot } from '@/app/engine/types'
+
+/** Writing a world's snapshot (fields, HOOKS, everything) demands authority
+ *  for THAT world — never just "any logged-in session". Authority is:
+ *   · the admin engine token, or
+ *   · a uc_st_ space token minted FOR this space (the key you hand a friend/AI), or
+ *   · the owner's session.
+ *  Without this, any signed-in user could overwrite anyone's world (and inject
+ *  JS hooks that run in every visitor's browser). */
+async function mayWriteSpace(req: NextRequest, spaceId: string): Promise<boolean> {
+  const authHeader = req.headers.get('authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7)
+    if (token.startsWith('uc_st_')) {
+      const v = await validateSpaceToken(token)
+      return !!v && v.spaceId === spaceId   // a key opens only its own world
+    }
+    const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
+    if (envToken && token === envToken) return true
+  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) return false
+  const space = await prisma.playerSpace.findUnique({ where: { id: spaceId }, select: { ownerId: true } })
+  return !!space && space.ownerId === session.user.id
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -43,15 +68,19 @@ async function checkAuth(req: NextRequest): Promise<boolean> {
  * Body: { fields: FieldSnapshot[], spaceId?: string }
  */
 export async function POST(req: NextRequest) {
-  if (!(await checkAuth(req))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
     const body = await req.json()
     const fields: FieldSnapshot[] = body.fields
     if (!Array.isArray(fields)) {
       return NextResponse.json({ error: 'Expected { fields: FieldSnapshot[] }' }, { status: 400 })
+    }
+
+    // Authority is gated PER BRANCH: the global world needs a session/admin;
+    // a space needs owner/keyholder/admin (mayWriteSpace, below). A space token
+    // must never be able to write the global world, so we don't broaden the
+    // global gate to accept uc_st_.
+    if (!body.spaceId && !(await checkAuth(req))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Writer lease on the global world — one session syncs, others get 409
@@ -67,9 +96,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Space-scoped: persist to database (behind a per-space writer lease —
-    // two of the owner's tabs must not clobber each other every 2s)
+    // Space-scoped: persist to database. AUTHORITY FIRST — only the owner, a
+    // keyholder, or admin may write this world's snapshot; the lease is merely
+    // concurrency between the owner's own tabs, never an authorization check.
     if (body.spaceId) {
+      if (!(await mayWriteSpace(req, body.spaceId))) {
+        return NextResponse.json({ error: 'Not authorized to write this world' }, { status: 403 })
+      }
       if (typeof body.clientId === 'string' &&
           !claimSpaceWriter(body.spaceId, body.clientId, body.takeover === true)) {
         return NextResponse.json({ error: 'world-locked' }, { status: 409 })
