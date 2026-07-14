@@ -272,6 +272,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // fulfils it in-frame (WebGPU frames go black if read after present)
   const captureReqRef = useRef<{ slug: string } | { scene: string } | null>(null)
   const capturingRef = useRef(false)
+  const captureTriesRef = useRef(0)
   const startTimeRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const lastSampleTimeRef = useRef<number>(0)
@@ -923,12 +924,22 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         // cropping is not (a wide monitor was losing 40% of every scene).
         cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
 
-        // house cartridges ship as static files (CDN, stateless-server-proof);
-        // the store API is the fallback for locally saved scenes
-        let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
-        if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
-        const data = await resp.json()
-        const scene = data.scene || data
+        // three sources, in order of specificity:
+        //  · a 'space:slug' descriptor → a DB-backed player space's live
+        //    snapshot (so the reckoning can preview spaces inline, in place)
+        //  · a house cartridge shipped as a static file (CDN, server-proof)
+        //  · the store API, for locally saved scenes
+        let data
+        if (playScene.startsWith('space:')) {
+          const slug = playScene.slice(6)
+          const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/snapshot`)
+          data = r.ok ? await r.json() : {}
+        } else {
+          let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
+          if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
+          data = await resp.json()
+        }
+        const scene = data.scene || data.snapshot || data
         if (!scene || !scene.fields) return
         if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
         if (scene.modules) for (const m of scene.modules) renderer.registerModule(m.name, m.wgsl)
@@ -2292,15 +2303,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         // drew, before WebGPU presents and releases it (a detached read is black)
         if (captureReqRef.current && !capturingRef.current) {
           const req = captureReqRef.current
-          captureReqRef.current = null
           capturingRef.current = true
           renderer.captureCanvasJpeg().then(jpeg => {
             capturingRef.current = false
             if (jpeg) {
+              captureReqRef.current = null
+              captureTriesRef.current = 0
               fetch('/api/engine/thumb', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...req, image: jpeg }),
               }).catch(() => {})
+            } else if (++captureTriesRef.current > 180) {
+              // frame stayed black too long (world genuinely empty) — give up
+              captureReqRef.current = null
+              captureTriesRef.current = 0
             }
           }).catch(() => { capturingRef.current = false })
         }

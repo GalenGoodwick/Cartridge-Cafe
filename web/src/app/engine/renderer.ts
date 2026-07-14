@@ -2134,6 +2134,11 @@ export class FieldRenderer {
     }
     buf.unmap()
     buf.destroy()
+    // never emit a black frame — a not-yet-drawn or between-scenes canvas reads
+    // near-zero; the caller retries. (Legitimately dark worlds still clear this.)
+    let sum = 0
+    for (let i = 0; i < out.length; i += 4) sum += out[i] + out[i + 1] + out[i + 2]
+    if (sum / (outW * outH * 3) < 5) return null
     const c = document.createElement('canvas')
     c.width = outW; c.height = outH
     const cx = c.getContext('2d')

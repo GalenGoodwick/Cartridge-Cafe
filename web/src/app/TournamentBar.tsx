@@ -78,7 +78,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview, launches }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -93,7 +93,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   bubbles?: { name: string; x: number; y: number; r: number }[]   // live constellation bubble positions (screen px) — the 5 candidates get highlighted in place
   onReckoning?: (open: boolean) => void          // the vote overlay takes/releases the screen — the shell greys the world behind
   onPreview?: (world: string | null) => void     // render this world live in the stage (the engine swaps to it while the arena stays home)
-  launches?: Record<string, string>              // name -> launch descriptor; a 'space:slug' world opens on its own page and can't preview inline
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
@@ -301,10 +300,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     }).catch(() => {})
   }
 
-  /** a world you can watch in the stage — spaces open on their own page instead */
-  const previewable = (w: string) => !(launches?.[w] || '').startsWith('space:')
-  /** load a world into the stage: render it live, pull up its talk, witness it */
-  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); if (previewable(w)) onPreview?.(w) }
+  /** load a world into the stage: render it live, pull up its talk, witness it.
+   *  cartridges load by name; DB spaces load by their 'space:slug' descriptor,
+   *  resolved by the shell — both render in place. */
+  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); onPreview?.(w) }
   /** click: load at once. hover: focus + talk now, load after a short dwell. */
   const select = (w: string) => { const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] } load(w) }
   const gaze = (w: string) => {
@@ -370,7 +369,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     const msgs = focus ? (chat[focus] || []) : []
     const leftMs = doc.tierAt && !doc.champion && now ? Math.max(0, doc.tierAt + TIER_MAX_MS - now) : 0
     const hrs = Math.floor(leftMs / 3600000), mins = Math.floor((leftMs % 3600000) / 60000)
-    const focusOk = focus ? previewable(focus) : true
     return (
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
         {/* the header */}
@@ -404,12 +402,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               {!focus && (
                 <div className="absolute inset-0 bg-void/60 flex items-center justify-center">
                   <div className={`${pill} text-white/40`}>hover or click a candidate below to load it live</div>
-                </div>
-              )}
-              {focus && !focusOk && (
-                <div className="absolute inset-0 bg-void/85 flex flex-col items-center justify-center gap-2 text-center px-6">
-                  <div className={`${pill} text-white/70`}>{focus.toLowerCase()}</div>
-                  <div className={`${pill} text-white/35`}>this world opens on its own page — it can&apos;t play in the stage yet.<br />you&apos;ve still witnessed it; you can vote for it.</div>
                 </div>
               )}
             </div>

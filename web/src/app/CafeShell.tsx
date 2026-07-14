@@ -694,8 +694,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {((scene === 'CAFE' && !mine) || docked) && (
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
-          launches={launchMapRef.current}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
           rail={scene !== 'CAFE'}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
@@ -704,8 +703,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {scene === 'CAFE' && mine && !docked && (
         <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
-          launches={launchMapRef.current}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
       {scene === 'SUB-MAIN' && !docked && (
@@ -713,8 +711,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
           worlds={portals.map(pt => pt.name)}
           bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
-          launches={launchMapRef.current}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
       {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
