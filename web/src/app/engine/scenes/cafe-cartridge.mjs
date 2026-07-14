@@ -157,6 +157,16 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g = vec3f(sn * 0.5);
         g += vec3f(0.3, 1.0, 0.45) * exp(-dot(q, q) * 8.0) * (0.28 + 0.14 * sin(t * 2.0));
         g *= 0.82 + 0.18 * sin(q.y * 60.0 - t * 8.0);
+      } else if (st == 99) {
+        // its shader icon is still rendering — a quiet sweeping spinner, not a
+        // default planet, so a loading bubble reads as "on its way"
+        let ang = atan2(q.y, -q.x);
+        let rd = length(q);
+        let ring = smoothstep(0.09, 0.0, abs(rd - 0.5));
+        let sweep = fract(ang / 6.2831 + t * 0.7);
+        let comet = smoothstep(0.0, 0.55, sweep) * smoothstep(1.0, 0.55, sweep);
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = vec3f(0.02, 0.02, 0.03) + cA * ring * (0.12 + comet * 1.3);
       } else if (st >= 9) {
         // a real world — its screenshot, folded into the bubble by the shader
         g = cafeIcon(st - 9, q);
@@ -374,7 +384,7 @@ try {
             want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
           }
           for (const s of (sp.spaces || [])) {
-            if (s.blank) continue
+            if (s.blank || s.building) continue   // unbuilt / stuck-in-AI worlds stay off main
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
@@ -444,6 +454,10 @@ try {
           if (want[n].hue != null) B.hue = want[n].hue
           const slots = (typeof window !== 'undefined' && window.__cafeIconSlots) || null
           B.iconSlot = slots && slots[n] != null ? slots[n] : null
+          // before the first icon pass lands, an un-styled bubble (style 8) shows
+          // a spinner instead of flashing the default emblem
+          const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
+          B.iconLoading = B.iconSlot == null && B.style >= 8 && !ready
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -611,7 +625,7 @@ try {
     const B = U.bubbles[n]
     // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
-    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : B.style
+    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
     u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }

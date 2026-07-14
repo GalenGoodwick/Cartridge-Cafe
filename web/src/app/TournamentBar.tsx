@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 type Cell = {
   worlds: string[]
   votes: Record<string, string>
+  voteAt?: Record<string, number>   // when each voter cast — a vote locks for VOTE_LOCK_MS
   // deliberation, just like UC: per-world comment threads inside the cell.
   // They live and die with the tier — a fresh deal is a fresh conversation.
   comments?: Record<string, { who: string; text: string; at: number }[]>
@@ -49,6 +50,7 @@ type TDoc = {
 // vote can crown anything. Low-traffic arenas simply wait; the day-scale decay
 // on the constellation keeps a stale standing from lingering.
 const QUORUM = 3   // distinct voters a cell needs before it can speak — no single vote crowns anything
+const VOTE_LOCK_MS = 10 * 60_000   // once cast, a vote locks for ten minutes
 // (the day-scale decay on a world's pull lives in the CAFE hook, where the constellation is drawn)
 
 const hash = (s: string) => {
@@ -102,6 +104,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)   // drives the slide-in: false = panels at the edges, true = seated
   const [showInstr, setShowInstr] = useState(false)   // the how-to popover, from the grid's corner tab
+  const [now, setNow] = useState(0)   // 1s tick, for the vote-lock countdown
+  useEffect(() => {
+    if (!open) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [open])
   const [who, setWho] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   // deliberation gate: the worlds you have witnessed this cell. You cannot
@@ -304,10 +313,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
-    // casting only RECORDS your voice — it never resolves the tier. The tier
-    // resolves solely on its two-hour timer (via the heartbeat), by vote count.
-    // Until then your vote can move and the conversation keeps going.
-    const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx ? { ...c, votes: { ...c.votes, [who]: world } } : c) }
+    // a vote LOCKS for ten minutes once cast — no flip-flopping to game the tally.
+    const cell0 = doc.cells[cellIdx]
+    const castAt = cell0?.voteAt?.[who]
+    if (castAt && Date.now() - castAt < VOTE_LOCK_MS) return   // still locked
+    const at = Date.now()
+    const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx
+      ? { ...c, votes: { ...c.votes, [who]: world }, voteAt: { ...(c.voteAt || {}), [who]: at } }
+      : c) }
     setDoc(next)
     save(next)
   }
@@ -469,10 +482,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           {showInstr && (
             <div className={`${pill} absolute bottom-full right-3 mb-1 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl`}>
               <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
-              hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
-              witnessed all five, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
-              your vote. every vote nudges its world in the constellation right away; a tier only crowns when a cell gathers a
-              quorum of voices, so no single vote decides it.
+              {branchesOf ? (
+                <>this arena asks one thing: should a <span className="text-amber-300">branch</span> replace{' '}
+                <span className="text-amber-300">{branchesOf.toLowerCase()}</span>&apos;s MAIN? load each contender (MAIN and every
+                branch), witness them all, then tap the <span className="text-amber-300">+</span> on the one that should hold the
+                name. a vote locks for ten minutes; a change only lands when a cell reaches a quorum.</>
+              ) : (
+                <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
+                witnessed all five, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
+                your vote. a vote locks for ten minutes; every vote nudges its world in the constellation, and a tier only crowns
+                when a cell gathers a quorum, so no single vote decides it.</>
+              )}
             </div>
           )}
           <div className="grid grid-cols-5 gap-3 max-w-[1080px] mx-auto">
@@ -492,20 +512,30 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
                     <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
                     {isSeen && !voted && <span className="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[9px] flex items-center justify-center">✓</span>}
-                    {/* THE VOTE BOX — top-right, the click zone that casts your voice */}
-                    {seated && (
-                      <button
-                        onClick={e => { e.stopPropagation(); if (canVote) vote(mci, w) }}
-                        disabled={!canVote}
-                        title={voted ? 'your vote — tap another world to move it' : canVote ? 'cast your vote' : 'witness all five to vote'}
-                        className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border-2 flex items-center justify-center font-mono text-base font-bold transition-all ${
-                          voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
-                                : canVote ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
+                    {/* THE VOTE BOX — top-right. Once cast, it locks for ten minutes
+                        and shows the time remaining. */}
+                    {seated && (() => {
+                      const castAt = cell.voteAt?.[who || '']
+                      const lockLeft = voted && castAt ? Math.max(0, castAt + VOTE_LOCK_MS - (now || Date.now())) : 0
+                      const locked = lockLeft > 0
+                      const mm = Math.floor(lockLeft / 60000), ss = Math.floor((lockLeft % 60000) / 1000)
+                      const armed = canVote && !locked
+                      return (
+                        <button
+                          onClick={e => { e.stopPropagation(); if (armed) vote(mci, w) }}
+                          disabled={!armed}
+                          title={locked ? `vote locked · ${mm}:${String(ss).padStart(2, '0')} left` : voted ? 'your vote' : armed ? 'cast your vote' : 'witness all five to vote'}
+                          className={`absolute top-1.5 right-1.5 ${locked ? 'w-auto px-1.5 gap-0.5' : 'w-7'} h-7 rounded-md border-2 flex items-center justify-center font-mono font-bold transition-all ${
+                            voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
+                                  : armed ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
                                           : 'bg-black/60 border-white/15 text-white/25 cursor-not-allowed'
-                        }`}>
-                        {voted ? '✓' : '+'}
-                      </button>
-                    )}
+                          }`}>
+                          {locked
+                            ? <span className="text-[9px] flex items-center gap-0.5">🔒 {mm}:{String(ss).padStart(2, '0')}</span>
+                            : <span className="text-base">{voted ? '✓' : '+'}</span>}
+                        </button>
+                      )
+                    })()}
                   </div>
                   <div className={`${pill} px-1.5 py-1 flex items-center justify-between ${voted ? 'bg-amber-500/20 text-amber-200' : 'bg-black/40 text-white/70'}`}>
                     <span className="truncate">{w.toLowerCase()}</span>
@@ -519,7 +549,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
           }`}>
             {!seated ? 'sign in to take a seat — loading and reading are free'
-              : myVote ? `voice cast for ${myVote.toLowerCase()} · tap another + to move it`
+              : myVote ? (() => {
+                  const castAt = cell.voteAt?.[who || '']
+                  const left = castAt ? Math.max(0, castAt + VOTE_LOCK_MS - (now || Date.now())) : 0
+                  const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000)
+                  return left > 0
+                    ? `voice locked on ${myVote.toLowerCase()} · ${mm}:${String(ss).padStart(2, '0')} until you can move it`
+                    : `voice cast for ${myVote.toLowerCase()} · tap another + to move it`
+                })()
               : seenAll ? 'all five witnessed — tap the + on your choice to vote'
               : `load each world to witness it — ${seenN}/5 · the + unlocks at 5`}
           </div>

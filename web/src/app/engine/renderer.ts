@@ -563,12 +563,17 @@ export class FieldRenderer {
     }).catch(() => { /* never rejects in practice */ })
     let uncapCount = 0
     device.onuncapturederror = (e: GPUUncapturedErrorEvent) => {
+      const msg = e.error.message
+      // The vote reckoning insets the canvas; mid-resize the browser transiently
+      // fails to allocate the swapchain IOSurface ("texture usage must not be 0").
+      // It's a benign resize artifact, not a world fault — never bannered.
+      if (/texture usage must not be 0|IOSurface|SharedTextureMemory/i.test(msg)) return
       uncapCount++
       if (uncapCount > 3) return   // first faults tell the story; don't spam
-      console.error('[GPU] uncaptured error:', e.error.message)
+      console.error('[GPU] uncaptured error:', msg)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('cc:fault', {
-          detail: { kind: 'gpu-error', message: e.error.message.slice(0, 400) },
+          detail: { kind: 'gpu-error', message: msg.slice(0, 400) },
         }))
       }
     }
@@ -1885,7 +1890,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.writeFrameUniforms(camera, [bufferW, bufferH], zoom, time, mode3D)
 
     const encoder = device.createCommandEncoder()
-    const textureView = ctx.getCurrentTexture().createView()
+    // mid-resize the browser can transiently fail to allocate the swapchain
+    // IOSurface ('texture usage must not be 0') — catch it and skip this frame
+    // rather than surfacing a WORLD FAULT; the next settled frame renders fine.
+    let textureView: GPUTextureView
+    try { textureView = ctx.getCurrentTexture().createView() } catch { return }
 
     // --- Pass 1: Base (opaque) ---
     {
@@ -2180,7 +2189,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.writeFrameUniforms(camera, [bufferW, bufferH], zoom, time)
 
     const encoder = device.createCommandEncoder()
-    const textureView = ctx.getCurrentTexture().createView()
+    // mid-resize the browser can transiently fail to allocate the swapchain
+    // IOSurface ('texture usage must not be 0') — catch it and skip this frame
+    // rather than surfacing a WORLD FAULT; the next settled frame renders fine.
+    let textureView: GPUTextureView
+    try { textureView = ctx.getCurrentTexture().createView() } catch { return }
 
     // Clear pass
     {

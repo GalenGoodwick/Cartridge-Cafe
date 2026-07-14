@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore } from '../store'
+import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
-import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot } from '../space-store'
+import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, getSpaceFamily } from '../space-store'
 
 export const maxDuration = 30
 
@@ -273,6 +273,73 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // --- Multi-AI Roundtable ------------------------------------------------
+      // A design channel shared across a whole world-family: every AI holding a
+      // space token for a world OR any branch grown from it talks in one pooled
+      // conversation (slot `roundtable:<rootSlug>`). Purely additive — stored in
+      // the same KV as world-chat/tournament docs and polled the same way. The
+      // legacy global token has no family, so these require a uc_st_ space token.
+      if (cmd.type === 'roundtable_say' || cmd.type === 'roundtable_read' || cmd.type === 'roundtable_nominate') {
+        if (!auth.spaceId) {
+          results.push({ error: 'roundtable requires a space token (uc_st_…) — it needs a world-family to belong to' })
+          continue
+        }
+        const family = await getSpaceFamily(auth.spaceId)
+        if (!family) {
+          results.push({ error: 'space not found for roundtable' })
+          continue
+        }
+        const slot = `roundtable:${family.rootSlug}`
+        type RtMsg = { who: string; slug: string; ownerId: string | null; ai: boolean; text: string; at: number }
+        const doc = (await loadGameSlot(slot)) as { msgs?: RtMsg[] } | undefined
+        const msgs: RtMsg[] = Array.isArray(doc?.msgs) ? doc!.msgs! : []
+
+        if (cmd.type === 'roundtable_say' || cmd.type === 'roundtable_nominate') {
+          const isNom = cmd.type === 'roundtable_nominate'
+          const raw = String((isNom ? cmd.note : cmd.text) ?? '').trim()
+          if (!isNom && !raw) { results.push({ error: 'roundtable_say needs a non-empty text' }); continue }
+          const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+          const text = isNom
+            ? `⚑ nominates this branch to the arena${raw ? ': ' + raw.slice(0, 500) : ''}`
+            : raw.slice(0, 1000)
+          const msg: RtMsg = { who, slug: auth.slug ?? family.rootSlug, ownerId: auth.ownerId, ai: true, text, at: Date.now() }
+          const next = [...msgs, msg].slice(-300)
+          await saveGameSlot(slot, { msgs: next })
+          // NOTE: roundtable_nominate only RECORDS the intent for now. Whether a
+          // nomination auto-enters the version arena, lets AIs vote, or just opens
+          // THE RECKONING for humans is an open design fork (the tournament guards
+          // a quorum of *human* voices) — wired once that choice is made.
+          results.push({ ok: true, roundtable: family.rootSlug, posted: msg, count: next.length, ...(isNom ? { nominated: auth.slug, voteEngine: 'pending design choice' } : {}) })
+          continue
+        }
+
+        // roundtable_read: recent talk + who's live + a read-only peek at the vote
+        const since = typeof cmd.since === 'number' ? cmd.since : 0
+        const recent = since ? msgs.filter(m => m.at > since) : msgs.slice(-60)
+        const LIVE_MS = 120_000
+        const now = Date.now()
+        const present = family.members
+          .filter(m => m.lastTokenUse && now - m.lastTokenUse < LIVE_MS)
+          .map(m => ({ slug: m.slug, name: m.name, ownerId: m.ownerId }))
+        // read-only view of this space's version arena so an AI can SEE the vote
+        const arenaDoc = (await loadGameSlot(`tournament:space:${auth.slug}`)) as
+          { champion?: string | null; tier?: number; round?: number } | undefined
+        results.push({
+          ok: true,
+          roundtable: family.rootSlug,
+          family: {
+            root: { slug: family.rootSlug, name: family.rootName },
+            members: family.members.map(m => ({ slug: m.slug, name: m.name, ownerId: m.ownerId })),
+          },
+          present,
+          messages: recent,
+          arena: arenaDoc
+            ? { slot: `tournament:space:${auth.slug}`, champion: arenaDoc.champion ?? null, tier: arenaDoc.tier ?? null, round: arenaDoc.round ?? null }
+            : null,
+        })
+        continue
+      }
+
       // Server-side store operations only for global mode (space state is persisted via browser state sync)
       if (!isSpaceScoped) {
         // define_interaction: store server-side AND forward to browser
@@ -432,18 +499,24 @@ export async function POST(req: NextRequest) {
     // AI focus beacon: derive what the agent just touched and publish it so the
     // world UI can show "AI -> <thing>". Written to the snapshot AND relayed live.
     if (isSpaceScoped && commands.length > 0) {
-      const last = commands[commands.length - 1] as Record<string, unknown>
-      const focus = {
-        action: last.type ?? null,
-        fieldId: last.fieldId ?? null,
-        fieldName: last.name ?? null,
-        at: Date.now(),
+      // roundtable_* commands are conversation, not world edits — don't let one
+      // as the trailing command publish a bogus "AI -> roundtable_read" focus.
+      const isRoundtable = (t: unknown) => t === 'roundtable_say' || t === 'roundtable_read' || t === 'roundtable_nominate'
+      const last = [...commands].reverse().find(c => !isRoundtable((c as Record<string, unknown>).type)) as Record<string, unknown> | undefined
+      // a batch of pure conversation touched no world — publish nothing
+      if (last) {
+        const focus = {
+          action: last.type ?? null,
+          fieldId: last.fieldId ?? null,
+          fieldName: last.name ?? null,
+          at: Date.now(),
+        }
+        const beacon = { type: 'set_world_data', data: { ai_focus: focus } }
+        try {
+          await applyCommandToSnapshot(auth.spaceId!, beacon)
+          await pushToAgent(beacon, req, auth.spaceId)
+        } catch { /* the beacon must never break the bridge */ }
       }
-      const beacon = { type: 'set_world_data', data: { ai_focus: focus } }
-      try {
-        await applyCommandToSnapshot(auth.spaceId!, beacon)
-        await pushToAgent(beacon, req, auth.spaceId)
-      } catch { /* the beacon must never break the bridge */ }
     }
 
     return NextResponse.json({ ok: true, executed: results.length, results })

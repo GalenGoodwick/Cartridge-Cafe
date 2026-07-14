@@ -914,8 +914,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* every level: a way back, top-left. It pauses and asks. */}
-      {inGame && (
+      {/* every level: a way back, top-left. It pauses and asks. Hidden in vote
+          mode — the reckoning has its own ✕ CLOSE, and this arc was poking out
+          below its header. */}
+      {inGame && !voting && (
         <button
           onClick={() => (confirmLeave ? stay() : openConfirm())}
           aria-label="Back to the cafe"

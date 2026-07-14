@@ -156,6 +156,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugOpen, setPlugOpen] = useState(false)
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
+  const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
@@ -920,6 +921,26 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     window.addEventListener('cafe:pause', onPause)
     return () => window.removeEventListener('cafe:pause', onPause)
+  }, [playScene])
+
+  // Press R to reset the world to the start — only when the world opts in
+  // (worldData.rResetKey, toggled in world tools). Ignored while typing.
+  useEffect(() => {
+    if (!playScene) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'r' && e.key !== 'R' || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const sim = simulationRef.current
+      if (!sim || !sim.worldData.rResetKey) return
+      // reset: forget this session's run state + saved stash, then reload fresh
+      for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
+      try { localStorage.removeItem(`cc-save-${playScene}`) } catch { /* fine */ }
+      playLoadedRef.current = null   // force the load effect to re-run this scene
+      setReloadTick(v => v + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [playScene])
 
   // Play mode and spaces: the world IS the screen. Fit the 512 grid to the
@@ -1772,11 +1793,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // the canvas to black. The first crash is surfaced as a fault.
     function frame() {
       try { frameBody() } catch (e) {
+        const msg = String((e as Error)?.message || e)
+        // The vote reckoning insets the canvas; mid-resize the browser can throw a
+        // one-off swapchain-allocation error ("texture usage must not be 0" on the
+        // IOSurface). It's a transient, not a world fault — skip the frame and let
+        // the next settled one render, without tripping the (sticky) fault banner.
+        if (/texture usage must not be 0|IOSurface|SharedTextureMemory|getCurrentTexture/i.test(msg)) {
+          animFrameRef.current = requestAnimationFrame(frame)
+          return
+        }
         console.error('[Engine] frame crashed:', e)
         if (!frameCrashRef.current) {
           frameCrashRef.current = true
           window.dispatchEvent(new CustomEvent('cc:fault', {
-            detail: { kind: 'frame-crash', message: String((e as Error)?.message || e).slice(0, 400) },
+            detail: { kind: 'frame-crash', message: msg.slice(0, 400) },
           }))
         }
         animFrameRef.current = requestAnimationFrame(frame)
@@ -4284,8 +4314,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const okSlots = (r && items.length) ? await r.renderWorldIconAtlas(items, 0.5).catch(() => [] as number[]) : []
       const slots: Record<string, number> = {}
       for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
-      ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = slots
+      const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconReady?: boolean }
+      w.__cafeIconSlots = slots
+      w.__cafeIconReady = true   // first pass done — spinners resolve to faces/emblems
     }
+    // until the first pass lands, un-styled bubbles show a spinner, not a default
+    ;(window as unknown as { __cafeIconReady?: boolean }).__cafeIconReady = false
     tick()
     const iv = setInterval(() => { if (!stop) tick() }, 4000)
     // ANIMATE ON HOVER: only the bubble under the cursor re-renders (~30fps);
@@ -4560,12 +4594,35 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   if (key) {
                     fetch('/api/engine/save', {
                       method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on } }),
+                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on, rResetKey: !!s.worldData.rResetKey } }),
                     }).catch(() => {})
                   }
                 }}
               >
                 ↻ RESTART: {simulationRef.current?.worldData?.resetOnEntry ? 'ON' : 'OFF'}
+              </button>
+            )}
+            {/* let players press R to reset the world to the start — opt-in per world */}
+            {(isOwner || !spaceId) && !isHub && (
+              <button
+                title="When ON, pressing R resets this world to the beginning"
+                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                onClick={() => {
+                  const s = simulationRef.current
+                  if (!s) return
+                  const on = !s.worldData.rResetKey
+                  s.worldData.rResetKey = on
+                  setAiPulse(v => v + 1)
+                  const key = spaceId ? undefined : playScene
+                  if (key) {
+                    fetch('/api/engine/save', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: !!s.worldData.resetOnEntry, rResetKey: on } }),
+                    }).catch(() => {})
+                  }
+                }}
+              >
+                ⟲ RESET (R): {simulationRef.current?.worldData?.rResetKey ? 'ON' : 'OFF'}
               </button>
             )}
             {!isHub && <button
@@ -4871,8 +4928,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             const briefing = `Connect to my cartridge.cafe world${lastSceneRef.current ? ` branch "${lastSceneRef.current}"` : ''}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${tok}
-Full docs: GET ${origin}/api/engine/guide (markdown; instructions are MANDATORY — key entry + the point).
-GET the bridge URL returns world state. Fields are INVISIBLE until given a visualType.
+1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
+2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
+${plugBrief.trim() ? 'BUILD THIS: ' + plugBrief.trim() : 'Ask me what to build, or read the world state and continue it.'}
 The eye versions your edits automatically after each settled burst — just build.`
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
@@ -4884,8 +4942,11 @@ The eye versions your edits automatically after each settled burst — just buil
                       {agentConnected ? 'LIVE' : 'WAITING'}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-3 text-[11px]">Paste this to any AI (Claude, or anything that can speak HTTP). It will build in this world; the eye will version every settled edit.</p>
-                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[11px] text-emerald-200/90 select-all">{briefing}</pre>
+                  <p className="text-white/60 mb-2 text-[11px]">Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.</p>
+                  <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
+                    placeholder="what should the AI build in this branch? (optional)"
+                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[12px] text-white/90 outline-none focus:border-white/35 mb-3" />
+                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[11px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
                   <div className="flex gap-2 mt-3 justify-end">
                     <button
                       className="text-[10px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
