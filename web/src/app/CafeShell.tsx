@@ -85,6 +85,13 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   // main's doors (worlds' own portals must not become contestants), and every
   // name→launch pair ever announced is kept so travel works from anywhere.
   const [docked, setDocked] = useState(false)
+  // THE RECKONING: the vote overlay takes over the screen. While it's up, the
+  // engine renders the world you're hovering (previewScene) instead of the
+  // constellation — scene stays 'CAFE' so the arena bar never unmounts.
+  const [voting, setVoting] = useState(false)
+  const [previewScene, setPreviewScene] = useState<string | null>(null)
+  const votingRef = useRef(false)
+  votingRef.current = voting
   const [mainRoster, setMainRoster] = useState<string[]>([])
   const launchMapRef = useRef<Record<string, string>>({})
   const travelTo = (name: string) => {
@@ -475,6 +482,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     }
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
     const onPortals = (e: Event) => {
+      if (votingRef.current) return   // previewing a world under the reckoning — its doors are not contenders
       if (Date.now() < portalsBlockRef.current) return   // a door slamming behind us
       const ps = ((e as CustomEvent).detail || []) as { name: string; launch?: string; x: number; y: number; r: number }[]
       setPortals(ps)
@@ -598,70 +606,82 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   // pan/zoom, no second DOM layer. The name→slot map lets the door hook tell
   // the shader which slot each bubble wears.
   useEffect(() => {
-    if (scene !== 'CAFE') return
+    // The shelf-face atlas builds on entry to a shelf surface (main / sub-main)
+    // AND heals itself on a slow interval while you stay there: a level made or
+    // updated writes /thumbs/<NAME>.jpg, and the next tick re-fetches ONLY the
+    // changed files (keyed by mtime) so its icon appears without leaving.
+    if (scene !== 'CAFE' && scene !== 'SUB-MAIN') return
     let cancelled = false
-    ;(async () => {
-      const [sc, sp] = await Promise.all([
-        fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
-        fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
-      ])
-      // house worlds have hand-coded animated minis in the shader — no thumb file
-      const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
-      const names = new Set<string>()
-      for (const n of (sc.scenes || []) as string[]) {
-        if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ') || STYLED.has(n)) continue
-        names.add(n.toUpperCase())
-      }
-      for (const s of (sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean }>) {
-        if (!s.blank) names.add((s.name || s.slug).toUpperCase())
-      }
-      const ICON = 64, list = [...names].slice(0, 64)   // atlas cap
-      const cv = document.createElement('canvas')
-      cv.width = ICON; cv.height = ICON
-      const ctx = cv.getContext('2d', { willReadFrequently: true })!
-      const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
-        const im = new Image()
-        im.onload = () => res(im)
-        im.onerror = () => res(null)
-        im.src = src
-      })
-      // load every thumbnail AT ONCE (was sequential — the whole delay). As each
-      // arrives, pack it and publish an atlas so far, so faces pop in as they
-      // decode instead of waiting for the slowest one.
-      const slotMap: Record<string, number> = {}
-      const atlas = new Uint32Array(list.length * ICON * ICON)
-      let slot = 0
-      const publish = () => {
+    let building = false
+    const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
+    const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
+      const im = new Image()
+      im.onload = () => res(im)
+      im.onerror = () => res(null)
+      im.src = src
+    })
+    const build = async () => {
+      if (cancelled || building) return
+      building = true
+      try {
+        const [sc, sp, tj] = await Promise.all([
+          fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
+          fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
+          fetch('/api/engine/thumbs').then(r => r.json()).catch(() => ({ thumbs: {} })),
+        ])
+        // mtime per icon → cache-busting version; a thumb absent here has no file,
+        // so the door keeps its live mini instead of loading a 404
+        const ver = (tj.thumbs || {}) as Record<string, number>
+        const names = new Set<string>()
+        for (const n of (sc.scenes || []) as string[]) {
+          if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ') || STYLED.has(n)) continue
+          names.add(n.toUpperCase())
+        }
+        for (const s of (sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean }>) {
+          if (!s.blank) names.add((s.name || s.slug).toUpperCase())
+        }
+        const ICON = 64, list = [...names].slice(0, 64)   // atlas cap
+        const cv = document.createElement('canvas')
+        cv.width = ICON; cv.height = ICON
+        const ctx = cv.getContext('2d', { willReadFrequently: true })!
+        const slotMap: Record<string, number> = {}
+        const atlas = new Uint32Array(list.length * ICON * ICON)
+        let slot = 0
+        // only fetch icons that actually exist (in the manifest); the ?v=mtime
+        // means unchanged files stay cached and changed ones re-download
+        const loaded = await Promise.all(list.map(name =>
+          ver[name] != null
+            ? loadImg(`/thumbs/${encodeURIComponent(name)}.jpg?v=${ver[name]}`).then(im => ({ name, im }))
+            : Promise.resolve({ name, im: null as HTMLImageElement | null })))
+        if (cancelled) return
+        for (const { name, im } of loaded) {
+          if (!im) continue   // no thumb yet — no slot; the door draws its mini
+          ctx.clearRect(0, 0, ICON, ICON)
+          const s = Math.min(im.width, im.height)   // cover-crop square into the cell
+          ctx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, ICON, ICON)
+          const px = ctx.getImageData(0, 0, ICON, ICON).data
+          const base = slot * ICON * ICON
+          for (let i = 0; i < ICON * ICON; i++) {
+            atlas[base + i] = px[i * 4] | (px[i * 4 + 1] << 8) | (px[i * 4 + 2] << 16) | 0xff000000
+          }
+          slotMap[name] = slot
+          slot++
+        }
         if (cancelled || slot === 0) return
         const packed = atlas.subarray(0, slot * ICON * ICON)
         ;(window as unknown as { __cafeIconAtlas?: Uint32Array; __cafeIconSlots?: Record<string, number> }).__cafeIconAtlas = packed
         ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = { ...slotMap }
         window.dispatchEvent(new CustomEvent('cafe:icon-atlas', { detail: packed }))
-      }
-      const loaded = await Promise.all(list.map(name =>
-        loadImg(`/thumbs/${encodeURIComponent(name)}.jpg`).then(im => ({ name, im }))))
-      if (cancelled) return
-      for (const { name, im } of loaded) {
-        if (!im) continue   // no thumb (house minis) — no slot; shader keeps its live mini
-        ctx.clearRect(0, 0, ICON, ICON)
-        const s = Math.min(im.width, im.height)   // cover-crop square into the cell
-        ctx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, ICON, ICON)
-        const px = ctx.getImageData(0, 0, ICON, ICON).data
-        const base = slot * ICON * ICON
-        for (let i = 0; i < ICON * ICON; i++) {
-          atlas[base + i] = px[i * 4] | (px[i * 4 + 1] << 8) | (px[i * 4 + 2] << 16) | 0xff000000
-        }
-        slotMap[name] = slot
-        slot++
-      }
-      publish()
-    })()
-    return () => { cancelled = true }
+      } finally { building = false }
+    }
+    build()
+    const iv = setInterval(build, 6000)
+    return () => { cancelled = true; clearInterval(iv) }
   }, [scene])
 
   return (
     <>
-      <FieldEngine playScene={scene} />
+      <FieldEngine playScene={voting && previewScene ? previewScene : scene} />
 
       {/* the rolling tournament — every page is its own arena.
           commons: all core worlds · MY WORLDS: your deeds · SUB-MAIN: the
@@ -671,6 +691,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {((scene === 'CAFE' && !mine) || docked) && (
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
           rail={scene !== 'CAFE'}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
@@ -679,6 +700,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {scene === 'CAFE' && mine && !docked && (
         <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           bubbles={portals}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
       {scene === 'SUB-MAIN' && !docked && (
@@ -686,6 +708,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
           worlds={portals.map(pt => pt.name)}
           bubbles={portals}
+          onReckoning={(on) => { setVoting(on); if (!on) setPreviewScene(null) }} onPreview={setPreviewScene}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
       {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
@@ -700,7 +723,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
 
       {/* a name surfaces where you're looking, then gets out of the way */}
-      {portals.length > 0 && hover && !modalUp && (mouse.x !== 0 || mouse.y !== 0) && (
+      {portals.length > 0 && hover && !modalUp && !voting && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
           className="fixed z-50 pointer-events-none select-none rounded-xl bg-black/60 backdrop-blur-sm border border-brass/20 px-3.5 py-2.5"
           style={{ left: Math.min(mouse.x + 18, Math.max(0, vp.w - 250)), top: Math.max(8, mouse.y - 8) }}

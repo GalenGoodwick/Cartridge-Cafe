@@ -78,7 +78,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, docked, onDock, onTravel, onCloseHome, sceneKey, rail, bubbles }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -91,11 +91,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   sceneKey?: string              // the scene under the bar — changing it minimizes the panel
   rail?: boolean                 // in-world: sit in the right rail under the AI lamp, not bottom-center
   bubbles?: { name: string; x: number; y: number; r: number }[]   // live constellation bubble positions (screen px) — the 5 candidates get highlighted in place
+  onReckoning?: (open: boolean) => void          // the vote overlay takes/releases the screen — the shell greys the world behind
+  onPreview?: (world: string | null) => void     // render this world live in the stage (the engine swaps to it while the arena stays home)
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
   const [who, setWho] = useState<string | null>(null)
-  const [threadFor, setThreadFor] = useState<string | null>(null)   // world whose comments are unfolded
   const [draft, setDraft] = useState('')
   const [now, setNow] = useState(0)   // 1s tick for the deliberation countdown
   // deliberation gate: the worlds you have witnessed this cell. You cannot
@@ -106,12 +107,23 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const markSeen = useCallback((w: string) => setSeen(prev => prev.has(w) ? prev : new Set(prev).add(w)), [])
   // to "review" a world you must rest on it a beat — a glance isn't a witness.
   const dwell = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  const startDwell = useCallback((w: string) => {
-    if (dwell.current[w]) return
-    dwell.current[w] = setTimeout(() => { markSeen(w); delete dwell.current[w] }, 420)
-  }, [markSeen])
   const stopDwell = useCallback((w: string) => {
     const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] }
+  }, [])
+  // the world currently under your gaze — it fills the stage and owns the chat
+  const [focus, setFocus] = useState<string | null>(null)
+  // deliberation is now GLOBAL PER WORLD: one pooled conversation per world,
+  // shared across every cell, tier, round and arena. It lives in its own slot
+  // ('world-chat:NAME') so a world accrues a real, lasting discussion.
+  type Msg = { who: string; text: string; at: number }
+  const [chat, setChat] = useState<Record<string, Msg[]>>({})
+  const chatSlot = (w: string) => 'world-chat:' + w.toUpperCase()
+  const loadChat = useCallback(async (w: string) => {
+    try {
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + w.toUpperCase())).then(r => r.json())
+      const msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
+      setChat(prev => ({ ...prev, [w]: msgs }))
+    } catch { /* offline is fine */ }
   }, [])
 
   // stepping into any world minimizes the panel — the pill rides along
@@ -259,7 +271,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     who && d.cells.length > 0 ? hash(who + ':' + d.round + ':' + d.tier) % d.cells.length : -1
 
   const vote = (cellIdx: number, world: string) => {
-    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
+    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
     // casting only RECORDS your voice — it never resolves the tier. The tier
@@ -270,39 +282,51 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     save(next)
   }
 
-  /** deliberation: a comment on a world, spoken inside your cell */
-  const comment = (cellIdx: number, world: string, text: string) => {
-    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
-    if (!doc || !text.trim()) return
-    if (cellIdx !== myCellIdx(doc)) return
-    const next = {
-      ...doc,
-      cells: doc.cells.map((c, i) => {
-        if (i !== cellIdx) return c
-        const thread = [...(c.comments?.[world] || []), { who, text: text.trim().slice(0, 280), at: Date.now() }].slice(-50)
-        return { ...c, comments: { ...(c.comments || {}), [world]: thread } }
-      }),
-    }
-    setDoc(next)
-    save(next)
+  /** a word spoken about a world — pooled globally, read-modify-write (v0) */
+  const postChat = async (w: string, text: string) => {
+    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
+    const t = text.trim(); if (!t) return
+    let cur: Msg[] = []
+    try {
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(chatSlot(w))).then(r => r.json())
+      cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
+    } catch { /* start fresh */ }
+    const next = [...cur, { who, text: t.slice(0, 280), at: Date.now() }].slice(-200)
+    setChat(prev => ({ ...prev, [w]: next }))
     setDraft('')
+    fetch('/api/engine/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: chatSlot(w), data: { msgs: next } }),
+    }).catch(() => {})
   }
 
-  /** step into a contender to see it — the bar docks and rides along */
-  const travel = (world: string) => {
-    if (!onTravel) return
-    onDock?.(true)
-    setOpen(false)   // minimize for the trip; the pill stays within reach
-    onTravel(world)
-  }
+  /** bring a world to the stage: it renders live, you read its talk, you witness it */
+  const gaze = useCallback((w: string) => {
+    setFocus(w)
+    loadChat(w)
+    if (dwell.current[w]) return
+    dwell.current[w] = setTimeout(() => { onPreview?.(w); markSeen(w); delete dwell.current[w] }, 200)
+  }, [loadChat, markSeen, onPreview])
 
-  /** ✕ — undock, close, go back to this arena's door */
-  const closeOut = () => {
+  /** open THE RECKONING — the overlay takes the screen; the stage waits for
+   *  your gaze (hovering a candidate is what loads it live). */
+  const enterReckoning = () => {
+    setOpen(true)
+    onReckoning?.(true)
+  }
+  const leaveReckoning = () => {
     setOpen(false)
-    setThreadFor(null)
-    onDock?.(false)
-    onCloseHome?.()
+    setFocus(null)
+    onPreview?.(null)
+    onReckoning?.(false)
   }
+
+  // while the overlay is up, keep the focused world's talk fresh
+  useEffect(() => {
+    if (!open || !focus) return
+    const t = setInterval(() => loadChat(focus), 5000)
+    return () => clearInterval(t)
+  }, [open, focus, loadChat])
 
   if (!visible) return null
 
@@ -323,195 +347,149 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     )
   }
 
-  const standings = Object.entries(doc.reached).sort((a, b) => b[1] - a[1])
+  const mci = myCellIdx(doc)
+  const seated = mci >= 0
+  const cell = doc.cells[seated ? mci : 0]
+  const myVote = who && seated && cell ? cell.votes[who] : undefined
+  const seenAll = !!cell && cell.worlds.every(x => seen.has(x))
+  const livePreview = !!onPreview   // door arenas load real worlds; a world-page arena (MAIN vs branches) can't
 
-  // when the panel is open, ring the five candidates where they float in the
-  // constellation — the vote at the pill and the worlds on the glass are one.
-  const ringMci = doc ? myCellIdx(doc) : -1
-  const ringCell = doc && open && bubbles && bubbles.length ? doc.cells[ringMci >= 0 ? ringMci : 0] : null
-  const ringNames = ringCell ? new Set(ringCell.worlds.map(x => x.toUpperCase())) : null
+  // ── THE RECKONING ── the vote takes the whole screen. The world under your
+  // gaze fills the stage (rendered live by the engine behind this overlay), its
+  // talk pools in the rail, and you may only speak your vote once you have
+  // witnessed all five. Hover loads; click votes.
+  if (open && cell) {
+    const tally: Record<string, number> = {}
+    for (const v of Object.values(cell.votes)) tally[v] = (tally[v] || 0) + 1
+    const seenN = cell.worlds.filter(x => seen.has(x)).length
+    const msgs = focus ? (chat[focus] || []) : []
+    const leftMs = doc.tierAt && !doc.champion && now ? Math.max(0, doc.tierAt + TIER_MAX_MS - now) : 0
+    const hrs = Math.floor(leftMs / 3600000), mins = Math.floor((leftMs % 3600000) / 60000)
+    return (
+      <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
+        {/* the header */}
+        <div className="pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/85 backdrop-blur-sm border-b border-brass/25">
+          <div className={`${pill} text-white/60`}>
+            ⚔ THE RECKONING · ROUND {doc.round} · TIER {doc.tier}
+            {leftMs > 0 && <span className="text-amber-300/80"> · resolves by vote in {hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`}</span>}
+            <span className={seenAll ? ' text-emerald-300/80' : ' text-white/40'}> · witnessed {seenN}/5</span>
+          </div>
+          <button onClick={leaveReckoning} title="leave the reckoning"
+            className={`${pill} px-2.5 py-1 rounded border border-white/20 text-white/70 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
+        </div>
+
+        {/* the stage (world renders through) + the world's pooled talk */}
+        <div className="flex-1 flex min-h-0">
+          <div className="relative flex-1">
+            <div className={`${pill} pointer-events-auto absolute top-3 left-4 px-2.5 py-1 rounded bg-black/50 backdrop-blur-sm border border-brass/20 text-amber-200/90`}>
+              {focus ? `▶ ${focus.toLowerCase()}` : 'the stage'}
+            </div>
+            {!focus && (
+              <div className="absolute inset-0 bg-void/70 flex items-center justify-center">
+                <div className={`${pill} text-white/40`}>hover a candidate below to load it live</div>
+              </div>
+            )}
+            {focus && !livePreview && (
+              <div className="absolute inset-0 bg-void/80 flex items-center justify-center">
+                <div className={`${pill} text-white/50 text-center`}>{focus.toLowerCase()}<br /><span className="text-white/30">branch preview lives on its own page</span></div>
+              </div>
+            )}
+          </div>
+
+          {/* GLOBAL PER-WORLD chat — one pool, every cell/tier/round shares it */}
+          <div className="pointer-events-auto w-[300px] max-w-[40vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col">
+            <div className={`${pill} px-3 py-2 border-b border-white/10 text-brass`}>
+              💬 {focus ? focus.toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+              {focus && msgs.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one yet</div>}
+              {!focus && <div className={`${pill} text-white/30`}>hover a world to hear its talk</div>}
+              {msgs.map((m, k) => (
+                <div key={k} className={`${pill} text-white/70 leading-relaxed`}>
+                  <span className="text-brass/80">{m.who}</span> — {m.text}
+                </div>
+              ))}
+            </div>
+            {focus && (
+              <div className="p-2.5 border-t border-white/10">
+                {who ? (
+                  <div className="flex gap-1.5">
+                    <input value={draft} onChange={e => setDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') postChat(focus, draft) }}
+                      placeholder={`speak on ${focus.toLowerCase()}…`} maxLength={280}
+                      className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-2 py-1.5 text-white/80 outline-none focus:border-amber-400/40`} />
+                    <button onClick={() => postChat(focus, draft)}
+                      className={`${pill} px-2.5 py-1.5 rounded border border-white/15 text-white/60 hover:text-white`}>SAY</button>
+                  </div>
+                ) : (
+                  <div className={`${pill} text-flame/70`}>sign in to speak — reading is free</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* the five candidates — hover loads, click votes (once all witnessed) */}
+        <div className="pointer-events-auto bg-[#0d0906]/92 backdrop-blur-sm border-t border-brass/25 px-4 py-3">
+          <div className="flex flex-wrap justify-center gap-3">
+            {cell.worlds.map(w => {
+              const isSeen = seen.has(w)
+              const voted = myVote === w
+              const isFocus = focus === w
+              const locked = !seenAll && !voted
+              return (
+                <button key={w}
+                  onMouseEnter={() => gaze(w)} onMouseLeave={() => stopDwell(w)}
+                  onClick={() => { if (!seated) return; if (locked) { gaze(w); return } vote(mci, w) }}
+                  title={!seated ? 'sign in to take a seat' : voted ? 'your voice' : locked ? 'witness all five to vote' : 'cast your voice (+1)'}
+                  className={`relative w-[116px] rounded-lg border-2 overflow-hidden transition-all ${
+                    voted ? 'border-amber-400 shadow-[0_0_20px_rgba(212,160,60,0.5)]'
+                          : isFocus ? 'border-flame/70'
+                                    : isSeen ? 'border-emerald-400/40' : 'border-white/12'
+                  }`}>
+                  <div className="relative h-[64px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
+                    <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
+                    <img src={`/thumbs/${encodeURIComponent(w)}.jpg`} alt="" loading="lazy"
+                      className={`absolute inset-0 w-full h-full object-cover ${isSeen || isFocus ? '' : 'grayscale opacity-60'}`}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                    <span className={`absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border ${
+                      isSeen ? 'bg-emerald-500/90 border-emerald-300 text-black' : 'bg-black/70 border-white/20 text-white/40'
+                    }`}>{isSeen ? '✓' : ''}</span>
+                  </div>
+                  <div className={`${pill} px-1.5 py-1 flex items-center justify-between ${voted ? 'bg-amber-500/20 text-amber-200' : 'bg-black/40 text-white/70'}`}>
+                    <span className="truncate">{w.toLowerCase()}</span>
+                    <span className="shrink-0 ml-1">{voted ? '● +1' : tally[w] ? `·${tally[w]}` : (locked ? (isSeen ? '☑' : '☐') : '○')}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          <div className={`${pill} text-center mt-2 ${
+            !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
+          }`}>
+            {!seated ? 'sign in to take a seat — hovering and reading are free'
+              : myVote ? `voice cast for ${myVote.toLowerCase()} · tier ${doc.tier} weight · click another to move it`
+              : seenAll ? 'all five witnessed — click one to cast your voice'
+              : `hover each world to witness it — ${seenN}/5 seen`}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <>
-    {ringCell && ringNames && bubbles && (
-      <div className="fixed inset-0 z-40 pointer-events-none">
-        {bubbles.filter(b => ringNames.has(b.name.toUpperCase())).map(b => {
-          const w = ringCell.worlds.find(x => x.toUpperCase() === b.name.toUpperCase())!
-          const isSeen = seen.has(w)
-          return (
-            <div key={b.name} style={{ left: b.x - b.r - 5, top: b.y - b.r - 5, width: b.r * 2 + 10, height: b.r * 2 + 10 }}
-              className={`absolute rounded-full border-2 transition-colors ${isSeen ? 'border-emerald-400/70' : 'border-amber-300/80 animate-pulse'}`} />
-          )
-        })}
-      </div>
-    )}
     <div className={rail
       ? 'fixed top-[205px] right-3 z-40 flex flex-col items-end gap-2'
       : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2'}>
-      {open && (
-        <div className="w-[440px] max-w-[92vw] max-h-[52vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className={`${pill} text-white/50`}>
-              ROUND {doc.round} · TIER {doc.tier}
-              {doc.tierAt && !doc.champion && (() => {
-                const left = Math.max(0, doc.tierAt + TIER_MAX_MS - (now || Date.now()))
-                const hrs = Math.floor(left / 3600000), mins = Math.floor((left % 3600000) / 60000)
-                const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
-                return <span className="text-amber-300/80"> · resolves by vote in {label}</span>
-              })()}
-              {' '}— you are dealt into ONE cell of five worlds. Dwell on each bubble to review it (a glance
-              isn't a witness); once you've seen all five you may cast your voice. It can move until the window closes. 💬 speaks in your cell.
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <button onClick={() => setOpen(false)} title="minimize — the pill rides along"
-                className={`${pill} px-1.5 py-0.5 rounded border border-white/15 text-white/60 hover:text-white`}>—</button>
-              <button onClick={closeOut} title="leave the deliberation — back to the door"
-                className={`${pill} px-1.5 py-0.5 rounded border border-white/15 text-white/60 hover:text-white`}>✕</button>
-            </div>
-          </div>
-          {/* UC law: you are dealt into ONE cell — you sit in yours; the other
-              cells of the tier are a pulse (spoken / deliberating), not a window. */}
-          {doc.cells.length > 1 && (
-            <div className={`${pill} flex items-center gap-1.5 text-white/40`}>
-              TIER CELLS
-              {doc.cells.map((c, i) => (
-                <span key={i}
-                  title={`cell ${i + 1} — ${Object.keys(c.votes).length > 0 ? 'spoken' : 'deliberating'}${i === myCellIdx(doc) ? ' — yours' : ''}`}
-                  className={`inline-block w-2 h-2 rounded-full ${Object.keys(c.votes).length > 0 ? 'bg-emerald-400/80' : 'bg-white/25'} ${i === myCellIdx(doc) ? 'ring-2 ring-amber-300/80' : ''}`} />
-              ))}
-              {myCellIdx(doc) < 0 && <span className="ml-1 text-white/30">sign in to take a seat</span>}
-            </div>
-          )}
-          {/* THE RECKONING — your five, brought to hand. Dwell on each disc to
-              witness it, then cast your voice. Voting glows and pulls the disc
-              toward the crown; the higher the tier, the more that voice carries. */}
-          {(() => {
-            const mci = myCellIdx(doc)
-            const seated = mci >= 0
-            const ci = seated ? mci : 0
-            const c = doc.cells[ci]
-            if (!c) return null
-            const myVote = who && seated ? c.votes[who] : undefined
-            const tally: Record<string, number> = {}
-            for (const v of Object.values(c.votes)) tally[v] = (tally[v] || 0) + 1
-            const seenN = c.worlds.filter(x => seen.has(x)).length
-            const allSeen = seenN === c.worlds.length
-            return (
-              <div className={`rounded-lg border p-2.5 ${seated ? 'border-amber-400/40' : 'border-white/10'}`}>
-                <div className={`${pill} mb-2 ${seated ? 'text-amber-300' : 'text-brass'}`}>
-                  {seated ? 'YOUR CELL' : 'CELL 1 · listening'}
-                  {seated && !allSeen && <span className="text-white/40"> · dwell on each to review ({seenN}/5)</span>}
-                  {seated && allSeen && !myVote && <span className="text-emerald-300/80"> · all witnessed — cast your voice</span>}
-                  {seated && myVote && <span className="text-amber-200/80"> · voice cast · tier {doc.tier} weight</span>}
-                </div>
-                <div className="flex flex-wrap justify-center gap-2.5">
-                  {c.worlds.map(w => {
-                    const isSeen = seen.has(w)
-                    const voted = myVote === w
-                    const locked = !allSeen && !voted
-                    const thread = c.comments?.[w] || []
-                    return (
-                      <div key={w} className="w-[76px] flex flex-col items-center gap-1"
-                        onMouseEnter={() => seated && startDwell(w)} onMouseLeave={() => stopDwell(w)}>
-                        <button onClick={() => { if (seated) markSeen(w); travel(w) }} title="walk through this world"
-                          className={`relative w-[72px] h-[72px] rounded-full overflow-hidden border-2 transition-all duration-300 ${
-                            voted ? 'border-amber-400 scale-105 shadow-[0_0_20px_rgba(212,160,60,0.6)]'
-                                  : isSeen ? 'border-emerald-400/50 hover:border-flame/60'
-                                           : 'border-white/15 grayscale opacity-70 hover:opacity-90'
-                          }`}>
-                          <div className="absolute inset-0 flex items-center justify-center text-xl font-mono text-white/70 bg-gradient-to-br from-[#3a2410] to-[#120a04]">
-                            {w[0]?.toUpperCase()}
-                          </div>
-                          <img src={`/thumbs/${encodeURIComponent(w)}.jpg`} alt="" loading="lazy"
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                          <span className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border ${
-                            isSeen ? 'bg-emerald-500/90 border-emerald-300 text-black' : 'bg-black/70 border-white/20 text-white/40'
-                          }`}>{isSeen ? '✓' : ''}</span>
-                        </button>
-                        <div className={`${pill} text-center leading-tight truncate w-full ${voted ? 'text-amber-200' : 'text-white/60'}`}>
-                          {w.toLowerCase()}{tally[w] ? ` ·${tally[w]}` : ''}
-                        </div>
-                        {seated && (
-                          <button onClick={() => { markSeen(w); if (!locked) vote(ci, w) }} disabled={locked}
-                            title={voted ? 'your voice' : locked ? 'review all five first' : 'cast your voice (+1)'}
-                            className={`${pill} w-full text-center py-0.5 rounded border transition-colors ${
-                              voted ? 'border-amber-400/70 bg-amber-500/20 text-amber-200'
-                                    : locked ? 'border-white/10 text-white/25 cursor-not-allowed'
-                                             : 'border-white/20 text-white/60 hover:border-amber-400/60 hover:text-amber-200'
-                            }`}>
-                            {voted ? '● voice' : locked ? (isSeen ? '☑' : '☐') : '○ vote'}
-                          </button>
-                        )}
-                        <button onClick={() => { if (seated) markSeen(w); setThreadFor(threadFor === ci + ':' + w ? null : ci + ':' + w); setDraft('') }}
-                          className={`${pill} ${thread.length ? 'text-brass' : 'text-white/30'} hover:text-white`}>
-                          💬{thread.length || ''}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-                {/* the thread for whichever disc you unfolded, below the cluster */}
-                {threadFor && threadFor.startsWith(ci + ':') && (() => {
-                  const w = threadFor.slice((ci + ':').length)
-                  const thread = c.comments?.[w] || []
-                  return (
-                    <div className="mt-2.5 pt-2 border-t border-white/10 space-y-1">
-                      <div className={`${pill} text-brass/80`}>💬 {w.toLowerCase()}</div>
-                      {thread.map((m, k) => (
-                        <div key={k} className={`${pill} text-white/60 leading-relaxed`}>
-                          <span className="text-brass/80">{m.who}</span> — {m.text}
-                        </div>
-                      ))}
-                      {thread.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one</div>}
-                      {seated && who && (
-                        <div className="flex gap-1.5">
-                          <input value={draft} onChange={e => setDraft(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') comment(ci, w, draft) }}
-                            placeholder="speak in your cell…" maxLength={280}
-                            className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-2 py-1 text-white/80 outline-none focus:border-amber-400/40`} />
-                          <button onClick={() => comment(ci, w, draft)}
-                            className={`${pill} px-2 py-1 rounded border border-white/15 text-white/60 hover:text-white`}>SAY</button>
-                        </div>
-                      )}
-                      {!seated && <div className={`${pill} text-white/25`}>not your cell — listening only</div>}
-                    </div>
-                  )
-                })()}
-              </div>
-            )
-          })()}
-          {/* the stats: who stands where this round */}
-          {standings.length > 0 && (
-            <div className="rounded-lg border border-white/10 p-2">
-              <div className={`${pill} text-brass mb-1.5`}>STANDINGS</div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-                {standings.map(([w, tier]) => (
-                  <div key={w} className={`${pill} flex justify-between gap-2 ${doc.champion === w ? 'text-amber-300' : 'text-white/60'}`}>
-                    <span className="truncate">{doc.champion === w ? '♛ ' : ''}{w.toLowerCase()}</span>
-                    <span className="shrink-0">t{tier}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {!who && <div className={`${pill} text-flame/80`}>sign in to vote — watching is free</div>}
-        </div>
-      )}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={enterReckoning}
         className={`${pill} rounded-full px-4 py-2 border backdrop-blur transition-colors ${
           doc.champion
             ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
             : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
         }`}>
-        {rail
-          ? (docked ? `⚔ VOTING · T${doc.tier}` : `⚔ VOTE · T${doc.tier}`)
-          : docked
-            ? `⚔ TIER ${doc.tier} · YOUR CELL`
-            : `⚔ TIER ${doc.tier} · VOTE`}
+        {rail ? `⚔ VOTE · T${doc.tier}` : `⚔ TIER ${doc.tier} · VOTE`}
       </button>
     </div>
-    </>
   )
 }

@@ -322,10 +322,27 @@ try {
               U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1,
                 born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
             } else {
-              // truly newborn — born around the heart; its true place is live:
-              // packing pressure and participation sort it outward from here
-              const a2 = angOf(n)
-              U.bubbles[n] = { x: 256 + Math.cos(a2) * 26, y: 256 + Math.sin(a2) * 26 * 0.74, vx: 0, vy: 0,
+              // truly newborn — spawn on the RIM at the emptiest bearing so it
+              // never lands on top of a sibling; packing pressure and score then
+              // sort it inward from there (the old center-spawn caused overlaps)
+              const others = Object.keys(U.bubbles).map(k => U.bubbles[k]).filter(Boolean)
+              let maxR = 40
+              const angs = []
+              for (const o of others) {
+                angs.push(Math.atan2((o.y - 256) / 0.74, o.x - 256))
+                maxR = Math.max(maxR, Math.hypot(o.x - 256, (o.y - 256) / 0.74))
+              }
+              let a2 = angOf(n)
+              if (angs.length > 0) {
+                angs.sort((p, q) => p - q)
+                let widest = -1
+                for (let k = 0; k < angs.length; k++) {
+                  const lo = angs[k], hi = k + 1 < angs.length ? angs[k + 1] : angs[0] + 6.28318
+                  if (hi - lo > widest) { widest = hi - lo; a2 = lo + (hi - lo) / 2 }
+                }
+              }
+              const rr = maxR + 78
+              U.bubbles[n] = { x: 256 + Math.cos(a2) * rr, y: 256 + Math.sin(a2) * rr * 0.74, vx: 0, vy: 0,
                 born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
               U.wake = 10   // a birth perturbs the whole field
             }

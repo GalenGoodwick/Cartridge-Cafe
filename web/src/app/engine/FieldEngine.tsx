@@ -4116,6 +4116,47 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => clearInterval(interval)
   }, [])
 
+  // Level shelf icon — when THIS world is made or updated (a new field, visual,
+  // or hook lands and the picture settles), snap the canvas and write it to
+  // /thumbs/<NAME>.jpg, the face the cafe + sub-main shelves fetch.
+  //  • player world (owner): always (re)stamp — its content changes.
+  //  • house world with NO curated door mini (e.g. HANABI): heal its icon if
+  //    it's missing. Worlds with a hand-coded mini (styles below) keep it.
+  useEffect(() => {
+    const HOUSE_STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'TIDERUNNER', 'SIGNAL'])
+    let target: { slug: string } | { scene: string } | null = null
+    if (spaceSlug && isOwner) target = { slug: spaceSlug }
+    else if (!spaceId && playScene && playScene !== 'CAFE' && playScene !== 'SUB-MAIN'
+      && !playScene.includes(' ⑂ ') && !HOUSE_STYLED.has(playScene)) target = { scene: playScene }
+    if (!target) return
+    const body = target
+    let lastSig = ''
+    let settle: ReturnType<typeof setTimeout> | null = null
+    const iv = setInterval(() => {
+      const sim = simulationRef.current
+      const canvas = canvasRef.current
+      if (!sim || !canvas || sim.fields.size === 0) return
+      // structural fingerprint only — ignore per-frame shader animation
+      let sig = `${sim.fields.size}|${sim.stepHooks.size}`
+      for (const f of sim.fields.values()) sig += `,${f.visualTypeName || ''}`
+      if (sig === lastSig) return
+      lastSig = sig
+      if (settle) clearTimeout(settle)
+      settle = setTimeout(() => {
+        try {
+          const jpeg = canvas.toDataURL('image/jpeg', 0.82)
+          if (!jpeg || jpeg === 'data:,') return
+          fetch('/api/engine/thumb', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, image: jpeg }),
+          }).catch(() => {})
+        } catch { /* readback can fail on a lost context — try again next change */ }
+      }, 2500)
+    }, 2000)
+    return () => { clearInterval(iv); if (settle) clearTimeout(settle) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceSlug, spaceId, isOwner, playScene])
+
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 
   // Portal visual WGSL (swirling vortex shader)

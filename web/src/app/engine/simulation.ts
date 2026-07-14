@@ -1788,6 +1788,81 @@ export class FieldSimulation {
     this.worldData['__events'] = events
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  //  Triggers + Chapters — reusable stage/goal primitives.
+  //  Before this, a story world was one giant hand-rolled step hook where every
+  //  win-condition was `if (x && !flag) { flag = true; … }` re-checked by hand
+  //  each frame — the pattern behind flaky "the goal is met but nothing fires"
+  //  bugs. These give hooks a real trigger system and chapter state manager.
+  //  All state lives in worldData (serializes + persists); pull-based, so there
+  //  is no per-frame engine coupling. Stable API for step hooks and AI agents.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Fires TRUE exactly once — the first frame `cond` is truthy — latched by id.
+   *  The reliable replacement for `if (x && !flag){flag=true;…}`.
+   *  e.g. `if (sim.trigger('tree', allSixLit)) growTheTree()`. */
+  trigger(id: string, cond: unknown): boolean {
+    if (!this.worldData.__trig) this.worldData.__trig = {}
+    const L = this.worldData.__trig as Record<string, boolean>
+    if (cond) { if (!L[id]) { L[id] = true; return true } }
+    return false
+  }
+
+  /** Fires TRUE on every false→true edge of `cond` (re-arms when it goes false).
+   *  Use for repeatable events; `trigger` is the one-shot. */
+  edge(id: string, cond: unknown): boolean {
+    if (!this.worldData.__edge) this.worldData.__edge = {}
+    const L = this.worldData.__edge as Record<string, boolean>
+    const was = !!L[id]; const now = !!cond; L[id] = now
+    return now && !was
+  }
+
+  /** Re-arm a one-shot `trigger` so it may fire again. */
+  resetTrigger(id: string): void {
+    const L = this.worldData.__trig as Record<string, boolean> | undefined
+    if (L) delete L[id]
+  }
+
+  private _ch(): { names: string[]; unlocked: number[]; cur: number } {
+    let c = this.worldData.__chapters as { names: string[]; unlocked: number[]; cur: number } | undefined
+    if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; this.worldData.__chapters = c }
+    return c
+  }
+
+  /** Declare the world's chapters (1-indexed in use). Idempotent: names refresh
+   *  on every call, but progress (current + unlocked) is preserved. */
+  defineChapters(names: string[]): void {
+    const c = this._ch()
+    c.names = ['', ...names]
+    if (!Array.isArray(c.unlocked) || !c.unlocked.length) c.unlocked = [1]
+    if (!c.cur) c.cur = 1
+  }
+
+  /** The current chapter number (1-based). `if (sim.act === 2) { … }` */
+  get act(): number { return this._ch().cur }
+  chapterName(n?: number): string { const c = this._ch(); return c.names[n ?? c.cur] || '' }
+  chapterCount(): number { return this._ch().names.length - 1 }
+  chapterUnlocked(n: number): boolean { return this._ch().unlocked.includes(n) }
+  unlockChapter(n: number): void {
+    const c = this._ch()
+    if (n >= 1 && n <= this.chapterCount() && !c.unlocked.includes(n)) c.unlocked.push(n)
+  }
+
+  /** Navigate to chapter n if it is unlocked. Returns whether it moved. */
+  goChapter(n: number): boolean {
+    const c = this._ch()
+    if (c.unlocked.includes(n)) { c.cur = n; return true }
+    return false
+  }
+
+  /** Finish the current chapter: unlock the next and step into it. Call from a
+   *  trigger when the chapter's goal is met — `if (sim.trigger('won', all)) sim.completeChapter()`. */
+  completeChapter(): boolean {
+    const c = this._ch(); const nx = c.cur + 1
+    if (nx <= this.chapterCount()) { this.unlockChapter(nx); c.cur = nx; return true }
+    return false
+  }
+
   // ─── Collision Callbacks ───
 
   /** Register a collision callback */

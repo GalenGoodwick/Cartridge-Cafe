@@ -260,6 +260,52 @@ Boundary modes: `"solid"`, `"wrap"`, `"open"`
 
 Step hooks run in the browser and have access to field state, world data, and can emit commands.
 
+### Triggers & Chapters (stage/goal primitives)
+
+Do **not** hand-roll `if (goalMet && !flag) { flag = true; … }` — that pattern is
+the source of flaky "the goal is met but nothing happened" bugs. The sim gives
+step hooks a real trigger system and a chapter state manager. All state lives in
+`worldData` (it serializes and persists, so progress survives reloads).
+
+**Triggers** — reliable, latched events:
+
+```js
+// fires TRUE exactly once, the first frame the condition is truthy:
+if (sim.trigger('tree', allSixStonesLit)) { growTheTree() }
+// fires TRUE on every false→true edge (re-arms when false) — for repeatables:
+if (sim.edge('click', !!wd.mouse_down)) { onClick() }
+sim.resetTrigger('tree')   // re-arm a one-shot so it can fire again
+```
+
+**Chapters** — named, unlockable, navigable stages:
+
+```js
+sim.defineChapters(['THE VALLEY', 'THE DROWNED MOON', 'THE BEARER'])  // 1-indexed
+sim.act                    // current chapter number (getter): if (sim.act === 2) {…}
+sim.chapterName()          // current name; sim.chapterName(3) for a specific one
+sim.chapterCount()         // total
+sim.chapterUnlocked(n)     // bool
+sim.goChapter(n)           // navigate if unlocked → returns whether it moved
+sim.unlockChapter(n)       // unlock without moving
+sim.completeChapter()      // finish current: unlock the next and step into it
+```
+
+Canonical shape — each chapter runs its own body; a trigger drives advancement,
+and you publish the chapter to shaders via a uniform so a `visual_*` can branch
+on `uni(...)`:
+
+```js
+sim.defineChapters(['THE VALLEY', 'THE DROWNED MOON', 'THE BEARER'])
+const act = sim.act
+if (act === 1) {
+  // …chapter 1 logic, set uniforms…
+  if (sim.trigger('ch1-done', sixStonesLit)) sim.completeChapter()  // → unlock+enter ch2
+} else if (act === 2) {
+  // …
+}
+wd.gpuUniforms = [/* … */]; wd.gpuUniforms[24] = act   // shader reads uni(24) to pick the scene
+```
+
 ### Shared State
 
 | Command | Parameters | Description |
