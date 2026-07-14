@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
@@ -277,11 +278,6 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [])
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
-  // shelf-icon capture: the scheduler sets a pending request; the frame loop
-  // fulfils it in-frame (WebGPU frames go black if read after present)
-  const captureReqRef = useRef<{ slug: string } | { scene: string } | null>(null)
-  const capturingRef = useRef(false)
-  const captureTriesRef = useRef(0)
   const startTimeRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const lastSampleTimeRef = useRef<number>(0)
@@ -444,44 +440,62 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   useEffect(() => {
     if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10)
     const id = presenceIdRef.current
-    let hue = 0
-    for (let i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360
     const world = spaceId || playScene || 'global'
-    let alive = true
-    const tick = async () => {
+    // Presence over the Railway Socket.IO server (persistent → shared in
+    // PRODUCTION, unlike the per-instance in-memory HTTP route). Cursors ride the
+    // same room protocol as the hub (join-instance / position → player-moved).
+    // Others land in worldData.presence in the {id,x,y,hue} grid shape the cafe
+    // shader already reads. The room key ('cursors:'+world) is the sharding seam:
+    // for >~25 players, join 'cursors:'+world+'#2', etc. Hue is derived from each
+    // id, so colors are stable without threading color through every move.
+    const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL || 'http://localhost:8080'
+    const instance = 'cursors:' + world
+    const hueOf = (pid: string) => { let h = 0; for (let i = 0; i < pid.length; i++) h = (h * 31 + pid.charCodeAt(i)) % 360; return h }
+    const players = new Map<string, { rx: number; ry: number }>()
+    const publish = () => {
       const sim = simulationRef.current
-      // single-player context: the world declares it in its own data
-      // (worldData.singlePlayer: true, or multiplayer: false) — no orbs shown,
-      // and this player is not broadcast. Checked per-tick so it holds across
-      // async scene loads and live set_world_data changes.
-      const wdp = sim?.worldData
-      if (wdp && (wdp['singlePlayer'] === true || wdp['multiplayer'] === false)) {
-        setPresenceOthers(prev => (prev.length ? [] : prev))
-        if (wdp['presence']) delete wdp['presence']
-        return
+      const others: Array<{ id: string; x: number; y: number; hue: number }> = []
+      for (const [pid, p] of players) {
+        if (pid === id) continue
+        others.push({ id: pid, x: p.rx * gridSize, y: p.ry * gridSize, hue: hueOf(pid) })
+        if (others.length >= 25) break
       }
-      // viewer's own choice: presence off means invisible both ways
-      if (presenceOffRef.current) {
+      setPresenceOthers(prev => (prev.length === 0 && others.length === 0) ? prev : others)
+      if (sim) sim.worldData['presence'] = others
+    }
+    const socket: Socket = io(PRESENCE_URL, { transports: ['websocket'], reconnection: true })
+    socket.on('connect', () => {
+      socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: world })
+      socket.emit('join-instance', { instance })
+    })
+    socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number }> }) => {
+      players.clear()
+      for (const p of list) players.set(p.id, { rx: p.rx ?? 0.5, ry: p.ry ?? 0.5 })
+      publish()
+    })
+    socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number } }) => {
+      players.set(player.id, { rx: player.rx ?? 0.5, ry: player.ry ?? 0.5 }); publish()
+    })
+    socket.on('player-left', ({ playerId }: { playerId: string }) => { players.delete(playerId); publish() })
+    socket.on('player-moved', ({ playerId, rx, ry }: { playerId: string; rx: number; ry: number }) => {
+      const p = players.get(playerId); if (p) { p.rx = rx; p.ry = ry; publish() }
+    })
+    // broadcast our cursor a few times a second — gated by single-player / off.
+    const iv = setInterval(() => {
+      const sim = simulationRef.current
+      const wdp = sim?.worldData
+      // single-player or presence-off: don't broadcast, and hide others locally.
+      if ((wdp && (wdp['singlePlayer'] === true || wdp['multiplayer'] === false)) || presenceOffRef.current) {
+        if (wdp && wdp['presence']) delete wdp['presence']
         setPresenceOthers(prev => (prev.length ? [] : prev))
         return
       }
       const mx = sim?.worldData['mouse_x'], my = sim?.worldData['mouse_y']
       const x = typeof mx === 'number' ? mx : gridSize / 2
       const y = typeof my === 'number' ? my : gridSize / 2
-      try {
-        const r = await fetch('/api/engine/presence', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ world, id, x, y, hue }),
-        })
-        if (!alive) return
-        const data = await r.json()
-        const others = Array.isArray(data.others) ? data.others.slice(0, 25) : []
-        setPresenceOthers(prev => (prev.length === 0 && others.length === 0) ? prev : others)
-        if (sim) sim.worldData['presence'] = others
-      } catch { /* offline is fine — presence is a live signal, not a record */ }
-    }
-    const iv = setInterval(tick, 250)
-    return () => { alive = false; clearInterval(iv) }
+      socket.emit('position', { rx: x / gridSize, ry: y / gridSize })
+    }, 250)
+    return () => { clearInterval(iv); socket.disconnect() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, playScene])
   const spaceHeld = useRef(false)
@@ -721,6 +735,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (!scene) { showToast(`Scene "${sceneName}" not found`, 'error'); return }
 
       // Clear current state — including the old world's audio
+      audioRef.current.stopScore()
       audioRef.current.stopMusic(0.2)
       delete sim.worldData['__play_sound']
       delete sim.worldData['__play_music']
@@ -916,6 +931,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         // teardown the previous scene COMPLETELY — restoreFromSnapshots only
         // adds, so every old field must be removed by hand. The old world's
         // music must not follow the player through the door.
+        audioRef.current.stopScore()
         audioRef.current.stopMusic(0.2)
         for (const id of Array.from(sim.fields.keys())) {
           renderer.removeAllFieldEffects(id)
@@ -926,6 +942,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         sim.interactionEffects = []
         for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
         frameFingerprintRef.current = ''
+        audioRef.current?.stopScore()
         audioRef.current?.stopMusic(0.3)   // no world's sound outlives it
         // every world opens with a fresh eye — a zoom left over from another
         // scene must not follow the player through the door. CONTAIN, not cover:
@@ -1758,12 +1775,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         }
       }
 
-      // Music: { url, loop?, volume? } starts/switches a track; { stop: true } fades out
-      const playMusic = sim.worldData['__play_music'] as { url?: string; volume?: number; loop?: boolean; stop?: boolean } | undefined
+      // Music: { score } plays a COMPOSED score (data, nothing hosted — the audio
+      // equivalent of a shader); { url } plays a file track; { stop: true } fades out.
+      const playMusic = sim.worldData['__play_music'] as { url?: string; score?: object; volume?: number; loop?: boolean; stop?: boolean } | undefined
       if (playMusic) {
         delete sim.worldData['__play_music']
         const audio = audioRef.current
-        if (playMusic.stop) audio.stopMusic()
+        if (playMusic.stop) { audio.stopScore(); audio.stopMusic() }
+        else if (playMusic.score) audio.playScore(playMusic.score as Parameters<typeof audio.playScore>[0])
         else if (playMusic.url) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
       }
 
@@ -2322,27 +2341,6 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
       if (!skipRender) {
         renderer.render(camera, camera.zoom, time, fieldEffects, superFields, activeInteractions, mode3D ? { pos: mode3D.pos, pitch: mode3D.pitch, yaw: mode3D.yaw, fov: mode3D.fov } : undefined, stepHookData)
-        // fulfil a pending shelf-icon capture IN-FRAME — reads the frame we just
-        // drew, before WebGPU presents and releases it (a detached read is black)
-        if (captureReqRef.current && !capturingRef.current) {
-          const req = captureReqRef.current
-          capturingRef.current = true
-          renderer.captureCanvasJpeg().then(jpeg => {
-            capturingRef.current = false
-            if (jpeg) {
-              captureReqRef.current = null
-              captureTriesRef.current = 0
-              fetch('/api/engine/thumb', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...req, image: jpeg }),
-              }).catch(() => {})
-            } else if (++captureTriesRef.current > 180) {
-              // frame stayed black too long (world genuinely empty) — give up
-              captureReqRef.current = null
-              captureTriesRef.current = 0
-            }
-          }).catch(() => { capturingRef.current = false })
-        }
       }
 
       // Trigger async readback of hit ID map for pixel-perfect hit testing
@@ -4175,41 +4173,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return () => clearInterval(interval)
   }, [])
 
-  // Level shelf icon — when THIS world is made or updated (a new field, visual,
-  // or hook lands and the picture settles), snap the canvas and write it to
-  // /thumbs/<NAME>.jpg, the face the cafe + sub-main shelves fetch.
-  //  • player world (owner): always (re)stamp — its content changes.
-  //  • house world with NO curated door mini (e.g. HANABI): heal its icon if
-  //    it's missing. Worlds with a hand-coded mini (styles below) keep it.
-  useEffect(() => {
-    const HOUSE_STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'SIGNAL'])
-    let target: { slug: string } | { scene: string } | null = null
-    if (spaceSlug && isOwner) target = { slug: spaceSlug }
-    else if (!spaceId && playScene && playScene !== 'CAFE' && playScene !== 'SUB-MAIN'
-      && !playScene.includes(' ⑂ ') && !HOUSE_STYLED.has(playScene)
-      // a preview/launch string ("space:<slug>", "sub:<slug>") is NOT a house
-      // scene name — capturing it wrote junk /thumbs/SPACE:<slug>.jpg files
-      && !playScene.startsWith('space:') && !playScene.startsWith('sub:')) target = { scene: playScene }
-    if (!target) return
-    const body = target
-    let lastSig = ''
-    let settle: ReturnType<typeof setTimeout> | null = null
-    const iv = setInterval(() => {
-      const sim = simulationRef.current
-      if (!sim || sim.fields.size === 0) return
-      // structural fingerprint only — ignore per-frame shader animation
-      let sig = `${sim.fields.size}|${sim.stepHooks.size}`
-      for (const f of sim.fields.values()) sig += `,${f.visualTypeName || ''}`
-      if (sig === lastSig) return
-      lastSig = sig
-      // once the picture settles, ask the frame loop to snap it (it captures the
-      // live frame in-frame; a detached read of a WebGPU canvas comes back black)
-      if (settle) clearTimeout(settle)
-      settle = setTimeout(() => { captureReqRef.current = body }, 2500)
-    }, 2000)
-    return () => { clearInterval(iv); if (settle) clearTimeout(settle) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceSlug, spaceId, isOwner, playScene])
+  // (Shelf icons are living shader emblems drawn by the door — no screenshot
+  //  capture, no /thumbs. See CafeShell + cafe-cartridge door hook.)
 
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 

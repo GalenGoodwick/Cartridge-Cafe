@@ -146,8 +146,136 @@ export class GameAudio {
     return this.sounds.has(id)
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  //  SCORE — the audio equivalent of the shader framework. The AI composes
+  //  music as DATA (tracks of named synth voices + step patterns); the engine
+  //  synthesizes and loops it live. Nothing is hosted — it's a score, not a file.
+  //
+  //  wd.__play_music = { score: {
+  //    bpm: 100, loop: true,
+  //    tracks: [
+  //      { inst: 'triangle', gain: 0.4, cutoff: 500, notes: 'C2 . G2 . F2 . G2 .' },
+  //      { inst: 'square', gain: 0.25, cutoff: 2000, notes: 'C4 E4 G4 . E4 . C4 .' },
+  //      { inst: 'kick', notes: 'x . . . x . . .' },
+  //      { inst: 'hat',  notes: '. x . x . x . x' },
+  //    ] } }
+  //  inst: a wave (sine|square|sawtooth|triangle) OR a drum (kick|snare|hat|clap).
+  //  notes: space-separated steps — note names (C4, F#3, chords 'C4+E4+G4'),
+  //         'x' for a drum hit, '.'/'-' for a rest. Loop = longest track.
+  // ═══════════════════════════════════════════════════════════════════════
+  private score: { stop: () => void } | null = null
+
+  private noteFreq(name: string): number {
+    const m = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(name.trim())
+    if (!m) return 0
+    const base: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
+    let semi = base[m[1].toUpperCase()]
+    if (m[2] === '#') semi += 1
+    if (m[2] === 'b') semi -= 1
+    const midi = (parseInt(m[3], 10) + 1) * 12 + semi   // C4 = 60
+    return 440 * Math.pow(2, (midi - 69) / 12)
+  }
+
+  private noiseBuf(ctx: AudioContext, dur: number): AudioBuffer {
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur))
+    const b = ctx.createBuffer(1, len, ctx.sampleRate)
+    const d = b.getChannelData(0)
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
+    return b
+  }
+
+  private voice(ctx: AudioContext, inst: string, note: string, t: number, g: number, cutoff?: number, a = 0.005, dec = 0.25): void {
+    const out = this.masterGain!
+    if (inst === 'kick' || inst === 'snare' || inst === 'hat' || inst === 'clap') {
+      const env = ctx.createGain(); env.connect(out)
+      if (inst === 'kick') {
+        const o = ctx.createOscillator(); o.type = 'sine'
+        o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.11)
+        env.gain.setValueAtTime(g, t); env.gain.exponentialRampToValueAtTime(0.001, t + 0.13)
+        o.connect(env); o.start(t); o.stop(t + 0.15)
+      } else {
+        const dur = inst === 'hat' ? 0.03 : inst === 'clap' ? 0.09 : 0.12
+        const src = ctx.createBufferSource(); src.buffer = this.noiseBuf(ctx, dur)
+        const f = ctx.createBiquadFilter()
+        f.type = inst === 'hat' ? 'highpass' : 'bandpass'; f.frequency.value = inst === 'hat' ? 8000 : 1600
+        env.gain.setValueAtTime(g, t); env.gain.exponentialRampToValueAtTime(0.001, t + dur)
+        src.connect(f); f.connect(env); src.start(t); src.stop(t + dur + 0.02)
+        if (inst === 'snare') {
+          const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 180
+          const g2 = ctx.createGain(); g2.gain.setValueAtTime(g * 0.4, t); g2.gain.exponentialRampToValueAtTime(0.001, t + dur)
+          o.connect(g2); g2.connect(out); o.start(t); o.stop(t + dur + 0.02)
+        }
+      }
+      return
+    }
+    for (const nn of note.split('+')) {   // chords via '+'
+      const freq = this.noteFreq(nn); if (!freq) continue
+      const o = ctx.createOscillator(); o.type = (inst as OscillatorType) || 'sine'; o.frequency.value = freq
+      const env = ctx.createGain()
+      env.gain.setValueAtTime(0.0001, t)
+      env.gain.linearRampToValueAtTime(g, t + a)
+      env.gain.exponentialRampToValueAtTime(0.0001, t + a + dec)
+      let last: AudioNode = o
+      if (cutoff) { const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = cutoff; o.connect(flt); last = flt }
+      last.connect(env); env.connect(out)
+      o.start(t); o.stop(t + a + dec + 0.05)
+    }
+  }
+
+  /** Play a composed score (data, not a file). Replaces any current score. */
+  playScore(score: {
+    bpm?: number; div?: number; loop?: boolean; gain?: number; swing?: number
+    tracks?: Array<{ inst: string; notes: string; gain?: number; cutoff?: number; a?: number; d?: number }>
+  }): void {
+    this.stopScore()
+    const ctx = this.ensureContext()
+    const drums = new Set(['kick', 'snare', 'hat', 'clap'])
+    const tracks = (score.tracks || []).map(tr => ({
+      inst: String(tr.inst || 'sine'), drum: drums.has(String(tr.inst)),
+      steps: String(tr.notes || '').trim().split(/\s+/).filter(Boolean),
+      gain: tr.gain ?? 0.3, cutoff: tr.cutoff, a: tr.a, d: tr.d,
+    })).filter(tr => tr.steps.length)
+    if (!tracks.length) return
+    const div = Math.max(1, Math.min(8, score.div ?? 4))
+    const bpm = Math.max(20, Math.min(300, score.bpm ?? 100))
+    const stepDur = 60 / bpm / div
+    const len = Math.max(...tracks.map(t => t.steps.length))
+    const loop = score.loop !== false
+    const swing = Math.max(0, Math.min(0.6, score.swing ?? 0))
+    const master = score.gain ?? 0.5
+
+    let step = 0
+    let nextT = ctx.currentTime + 0.06
+    let stopped = false
+    const schedule = () => {
+      if (stopped) return
+      const ahead = ctx.currentTime + 0.12
+      while (nextT < ahead && !stopped) {
+        const t = nextT + ((step % 2 === 1) ? swing * stepDur : 0)
+        for (const tr of tracks) {
+          const cell = tr.steps[step % tr.steps.length]
+          if (cell && cell !== '.' && cell !== '-') {
+            this.voice(ctx, tr.inst, tr.drum ? '' : cell, t, tr.gain * master, tr.cutoff, tr.a, tr.d)
+          }
+        }
+        step++
+        if (step >= len) { if (loop) step = 0; else { stopped = true; break } }
+        nextT += stepDur
+      }
+    }
+    const iv = setInterval(schedule, 25)
+    schedule()
+    this.score = { stop: () => { stopped = true; clearInterval(iv) } }
+  }
+
+  /** Stop the composed score. */
+  stopScore(): void {
+    if (this.score) { this.score.stop(); this.score = null }
+  }
+
   /** Destroy the audio context */
   destroy(): void {
+    this.stopScore()
     this.stopMusic(0.05)
     if (this.ctx) {
       this.ctx.close().catch(() => {})

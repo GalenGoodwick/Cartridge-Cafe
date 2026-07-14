@@ -312,6 +312,42 @@ wd.gpuUniforms = [/* … */]; wd.gpuUniforms[24] = act   // shader reads uni(24)
 |---------|-----------|-------------|
 | `set_world_data` | `data: Record<string, unknown>, fieldId?` | Merge into global worldData object (set key to null to delete) |
 
+### Audio — SFX + composed music (synthesized, nothing hosted)
+
+Audio is **composed as data**, the same way visuals are shaders: you write it, the
+engine synthesizes it live via Web Audio. No files, no URLs, no hosting. Write these
+from a step hook (`sim.worldData.__play_sound` / `sim.worldData.__play_music`); the
+engine consumes and clears them each frame. Audio needs one user gesture to start
+(browser rule) — it unlocks on the first click.
+
+**Sound effects** — one-shots, fired the frame you set them:
+```js
+sim.worldData.__play_sound = { frequency: 440, duration: 0.2, volume: 0.5, type: 'sine' }
+sim.worldData.__play_sound = [ { frequency: 220, duration: 0.3, type: 'triangle' }, { frequency: 660, duration: 0.15 } ]  // a small chord/arp
+```
+
+**Music** — a looping SCORE you compose. `inst` is a wave (`sine|square|sawtooth|
+triangle`) OR a drum (`kick|snare|hat|clap`). `notes` is a space-separated step
+string: note names (`C4`, `F#3`, chords `C4+E4+G4`), `x` for a drum hit, `.`/`-` for
+a rest. Step = a 16th note (`div` steps/beat, default 4); the loop is the longest track.
+```js
+sim.worldData.__play_music = { score: {
+  bpm: 100, loop: true, gain: 0.5, swing: 0.08,
+  tracks: [
+    { inst: 'triangle', gain: 0.5, cutoff: 500, notes: 'C2 . . . G2 . . . F2 . . . G2 . . .' },  // bass
+    { inst: 'sawtooth', gain: 0.16, cutoff: 900, a: 0.25, d: 0.6, notes: 'C3+E3+G3 . . . . . . . F3+A3+C4 . . . . . . .' },  // pad
+    { inst: 'square', gain: 0.2, cutoff: 2400, a: 0.01, d: 0.14, notes: 'C5 . E5 . G5 . E5 . F5 . A5 . G5 . E5 .' },  // lead
+    { inst: 'kick', notes: 'x . . . x . . . x . . . x . . .' },
+    { inst: 'hat',  gain: 0.22, notes: '. . x . . . x . . . x . . . x .' },
+    { inst: 'snare', gain: 0.35, notes: '. . . . x . . . . . . . x . . .' },
+  ]
+} }
+```
+Per-track: `gain`, `cutoff` (lowpass Hz — warmer), `a` (attack s), `d` (decay/release s).
+`sim.worldData.__play_music = { stop: true }` fades the music out. A world's audio never
+outlives it — the engine stops it on world change. React the music to the world by
+rewriting `__play_music` (e.g. swap the score when a chapter changes).
+
 ### Player Presence (multiplayer context)
 
 Every viewing tab is an orb on everyone else's screen — capped at 25 per

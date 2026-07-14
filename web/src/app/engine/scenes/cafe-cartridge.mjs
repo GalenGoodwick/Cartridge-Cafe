@@ -364,7 +364,7 @@ try {
           for (const s of (sp.spaces || [])) {
             if (!s.owner || s.owner.id !== MF.ownerId) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
         } else {
           for (const n of (sc.scenes || [])) {
@@ -375,7 +375,7 @@ try {
           for (const s of (sp.spaces || [])) {
             if (s.blank) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8 }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
         }
         for (const n of Object.keys(want)) {
@@ -384,7 +384,7 @@ try {
             if (sb) {
               // this world already has its place in the shared universe
               U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1,
-                born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+                born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
             } else {
               // truly newborn — spawn on the RIM at the emptiest bearing so it
               // never lands on top of a sibling; packing pressure and score then
@@ -407,7 +407,7 @@ try {
               }
               const rr = maxR + 78
               U.bubbles[n] = { x: 256 + Math.cos(a2) * rr, y: 256 + Math.sin(a2) * rr * 0.74, vx: 0, vy: 0,
-                born: now, launch: want[n].launch, style: want[n].style, hue: hueOf(n), score: 2 }
+                born: now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
               U.wake = 10   // a birth perturbs the whole field
             }
           }
@@ -436,10 +436,10 @@ try {
           if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
           const champ = T && T.champion === n
           B.crown = !!champ
-          // the shell packs each world's screenshot into an atlas slot; a world
-          // WITH a slot shows its real face (drawn in-shader), else a house mini
-          const slots = (typeof window !== 'undefined' && window.__cafeIconSlots) || null
-          B.iconSlot = slots && slots[n] != null ? slots[n] : (slots && slots[n.toUpperCase && n.toUpperCase()] != null ? slots[n.toUpperCase()] : null)
+          // a world with a hand-coded style is a house mini; every other world is
+          // a LIVING EMBLEM in its own palette (hue from its field colors) — no
+          // screenshot, nothing stored. keep hue fresh as the palette resolves.
+          if (want[n].hue != null) B.hue = want[n].hue
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -605,9 +605,9 @@ try {
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
-    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : B.style
-    const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue)
-    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
+    // style (house mini 0-7, or 8 = living emblem) + the world's hue as the frac
+    const frac = Math.min(0.999, B.hue != null ? B.hue : 0)
+    u.push(B.x, B.y, (B.crown ? 200 : 0) + B.style + frac, Math.min(99, heads[n] || 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride

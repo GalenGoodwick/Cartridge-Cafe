@@ -163,6 +163,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   }, [open])
 
   const [selfRoster, setSelfRoster] = useState<string[]>([])
+  // for a world-page arena the candidates are base names ('MAIN', 'NAME ⑂ author');
+  // this maps each to a LOADABLE scene so the stage can preview it — MAIN → the
+  // base world, a branch → its newest saved version.
+  const previewMap = useRef<Record<string, string>>({})
   const roster = branchesOf ? selfRoster : (worlds || [])
   const rosterRef = useRef(roster)
   rosterRef.current = roster
@@ -182,13 +186,19 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       try {
         const j = await fetch('/api/engine/scene?action=list').then(r => r.json())
         if (stop) return
-        const bases = new Set<string>()
+        const bestVer: Record<string, number> = {}
+        const bestName: Record<string, string> = {}
         for (const n of (j.scenes || []) as string[]) {
           if (!n.startsWith(branchesOf + ' ⑂ ')) continue
           const vAt = n.lastIndexOf(' · v')
-          bases.add(vAt > 0 ? n.slice(0, vAt) : n)
+          const base = vAt > 0 ? n.slice(0, vAt) : n
+          const ver = vAt > 0 ? (parseInt(n.slice(vAt + 4), 10) || 0) : 0
+          if (!(base in bestVer) || ver >= bestVer[base]) { bestVer[base] = ver; bestName[base] = n }
         }
-        setSelfRoster(bases.size > 0 ? ['MAIN', ...bases] : [])
+        const bases = Object.keys(bestName)
+        // MAIN previews the base world itself; each branch previews its newest version
+        previewMap.current = { MAIN: branchesOf, ...bestName }
+        setSelfRoster(bases.length > 0 ? ['MAIN', ...bases] : [])
       } catch { /* offline is fine */ }
     }
     scan()
@@ -323,7 +333,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   /** load a world into the stage: render it live, pull up its talk, witness it.
    *  cartridges load by name; DB spaces load by their 'space:slug' descriptor,
    *  resolved by the shell — both render in place. */
-  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); onPreview?.(w) }
+  // door arenas hand the raw world name to the shell (it resolves 'space:slug');
+  // a world-page arena resolves 'MAIN'/branch names to a loadable scene itself.
+  const previewName = (w: string) => branchesOf ? (previewMap.current[w] || w) : w
+  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); onPreview?.(previewName(w)) }
   /** click: load at once. hover: focus + talk now, load after a short dwell. */
   const select = (w: string) => { const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] } load(w) }
   const gaze = (w: string) => {
@@ -478,9 +491,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   }`}>
                   <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
                     <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
-                    <img src={`/thumbs/${encodeURIComponent(w)}.jpg`} alt="" loading="lazy"
-                      className={`absolute inset-0 w-full h-full object-cover ${isSeen || isFocus ? '' : 'grayscale opacity-55'}`}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
                     {isSeen && !voted && <span className="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[9px] flex items-center justify-center">✓</span>}
                     {/* THE VOTE BOX — top-right, the click zone that casts your voice */}
                     {seated && (

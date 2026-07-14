@@ -641,95 +641,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   // uv → screen for the contain-fit square (span = min(w,h), centered)
   const span = Math.min(vp.w, vp.h)
 
-  // Bubble faces are FOLDED INTO the shader, not overlaid. We load every
-  // world's screenshot once, pack them into one RGBA8 atlas (64x64 per slot),
-  // and hand it to the engine's icon buffer. The door shader samples a world's
-  // slot directly inside its bubble disc — one render pass, zero drift on
-  // pan/zoom, no second DOM layer. The name→slot map lets the door hook tell
-  // the shader which slot each bubble wears.
-  useEffect(() => {
-    // The shelf-face atlas builds on entry to a shelf surface (main / sub-main)
-    // AND heals itself on a slow interval while you stay there: a level made or
-    // updated writes /thumbs/<NAME>.jpg, and the next tick re-fetches ONLY the
-    // changed files (keyed by mtime) so its icon appears without leaving.
-    if (scene !== 'CAFE' && scene !== 'SUB-MAIN') return
-    let cancelled = false
-    let building = false
-    // worlds with a hand-coded door mini we keep as-is (no screenshot face).
-    // TIDERUNNER is intentionally NOT here: it reads empty, so let it heal to a
-    // real screenshot (its style-6 mini still shows until one is captured).
-    const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTICE', 'SIGNAL'])
-    let lastSig = ''   // rebuild ONLY when the roster or a thumb's mtime changes
-    const loadImg = (src: string) => new Promise<HTMLImageElement | null>(res => {
-      const im = new Image()
-      im.onload = () => res(im)
-      im.onerror = () => res(null)
-      im.src = src
-    })
-    const build = async () => {
-      if (cancelled || building) return
-      building = true
-      try {
-        const [sc, sp, tj] = await Promise.all([
-          fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
-          fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
-          fetch('/api/engine/thumbs').then(r => r.json()).catch(() => ({ thumbs: {} })),
-        ])
-        // mtime per icon → cache-busting version; a thumb absent here has no file,
-        // so the door keeps its live mini instead of loading a 404
-        const ver = (tj.thumbs || {}) as Record<string, number>
-        const names = new Set<string>()
-        for (const n of (sc.scenes || []) as string[]) {
-          if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ') || STYLED.has(n)) continue
-          names.add(n.toUpperCase())
-        }
-        for (const s of (sp.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean }>) {
-          if (!s.blank) names.add((s.name || s.slug).toUpperCase())
-        }
-        const ICON = 64, list = [...names].slice(0, 64)   // atlas cap
-        // nothing changed since the last publish → leave the live atlas alone.
-        // (Republishing every tick was reshuffling slots and flickering faces
-        // back to the default seed-planet for a frame.)
-        const sig = list.map(n => `${n}:${ver[n] ?? 0}`).sort().join('|')
-        if (sig === lastSig) return
-        lastSig = sig
-        const cv = document.createElement('canvas')
-        cv.width = ICON; cv.height = ICON
-        const ctx = cv.getContext('2d', { willReadFrequently: true })!
-        const slotMap: Record<string, number> = {}
-        const atlas = new Uint32Array(list.length * ICON * ICON)
-        let slot = 0
-        // only fetch icons that actually exist (in the manifest); the ?v=mtime
-        // means unchanged files stay cached and changed ones re-download
-        const loaded = await Promise.all(list.map(name =>
-          ver[name] != null
-            ? loadImg(`/thumbs/${encodeURIComponent(name)}.jpg?v=${ver[name]}`).then(im => ({ name, im }))
-            : Promise.resolve({ name, im: null as HTMLImageElement | null })))
-        if (cancelled) return
-        for (const { name, im } of loaded) {
-          if (!im) continue   // no thumb yet — no slot; the door draws its mini
-          ctx.clearRect(0, 0, ICON, ICON)
-          const s = Math.min(im.width, im.height)   // cover-crop square into the cell
-          ctx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, ICON, ICON)
-          const px = ctx.getImageData(0, 0, ICON, ICON).data
-          const base = slot * ICON * ICON
-          for (let i = 0; i < ICON * ICON; i++) {
-            atlas[base + i] = px[i * 4] | (px[i * 4 + 1] << 8) | (px[i * 4 + 2] << 16) | 0xff000000
-          }
-          slotMap[name] = slot
-          slot++
-        }
-        if (cancelled || slot === 0) return
-        const packed = atlas.subarray(0, slot * ICON * ICON)
-        ;(window as unknown as { __cafeIconAtlas?: Uint32Array; __cafeIconSlots?: Record<string, number> }).__cafeIconAtlas = packed
-        ;(window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots = { ...slotMap }
-        window.dispatchEvent(new CustomEvent('cafe:icon-atlas', { detail: packed }))
-      } finally { building = false }
-    }
-    build()
-    const iv = setInterval(build, 6000)
-    return () => { cancelled = true; clearInterval(iv) }
-  }, [scene])
+  // Bubble icons are LIVING SHADER EMBLEMS drawn in the door itself: each world
+  // wears its own palette (hue from its field colors, carried in the per-bubble
+  // uniform by the door hook). No screenshots, no atlas, no /thumbs, nothing
+  // stored. House worlds keep their hand-coded minis; everything else is a
+  // living emblem in its own color.
 
   // on entering a game world (not the cafe / group nav), maybe show a contained
   // ad — throttled to at most once every 4 min. The server serves nothing to a
@@ -790,6 +706,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           branchesOf={scene.split(' ⑂ ')[0]}
           sceneKey={scene}
           rail
+          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }}
+          onPreview={setPreviewScene}
+          onStageRect={setStageRect}
         />
       )}
 
