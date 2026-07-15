@@ -56,3 +56,6 @@ next-env.d.ts
 # has its shelf in production. (Kept out of .gitignore deliberately.)
 # .engine-saves.json is dead now (save slots moved to Neon) — don't re-track it
 .engine-saves.json
+
+# runtime quarantine telemetry (read by humans/AI after a freeze)
+quarantine-log.json

@@ -302,6 +302,16 @@ export class FieldRenderer {
   private visualTypeRegistry: Map<string, VisualTypeEntry> = new Map()
   private nextVisualTypeId: number = 0  // All visual types are runtime-defined
 
+  // Pre-flight hazard limits. A visual that bakes an image into WGSL `array(...)`
+  // literals (e.g. a portrait as thousands of per-pixel u32s) produces a shader
+  // so large that createShaderModule/createComputePipeline hangs the GPU
+  // process — freezing the whole machine BEFORE the reactive quarantine (which
+  // only fires on a compile *error*) can run. These caps reject such a visual
+  // before it ever reaches the GPU. See screenVisualHazard().
+  private static readonly HAZARD_MAX_WGSL_BYTES = 60_000      // one visual's source
+  private static readonly HAZARD_MAX_ARRAY_ELEMENTS = 2047    // WGSL const-array hard cap
+  private static readonly HAZARD_MAX_BAKED_ELEMENTS = 8192    // total array-literal elements
+
   // Shader module registry (reusable WGSL utility functions)
   private moduleRegistry: Map<string, ModuleEntry> = new Map()
 
@@ -1364,6 +1374,7 @@ export class FieldRenderer {
   async renderWorldIconAtlas(
     items: { slot: number; wgsl: string; color: [number, number, number] }[],
     time = 0,
+    onSlot?: (slot: number) => void,
   ): Promise<number[]> {
     const device = this.device
     if (!device || items.length === 0) return []
@@ -1423,10 +1434,16 @@ export class FieldRenderer {
       // a state/feedback world renders BLACK in isolation (no running sim to
       // feed it). Don't give it a slot — it falls back to the living emblem
       // instead of a black square.
-      if (peak >= 8) rendered.push(it.slot)
+      if (peak >= 8) {
+        rendered.push(it.slot)
+        // PROGRESSIVE: upload the growing atlas and announce this slot the moment
+        // its icon lands, so bubbles fill in one-by-one (spinner → face) instead
+        // of every icon popping in together after the whole roster finishes.
+        this.uploadIconAtlas(atlas)
+        onSlot?.(it.slot)
+      }
     }
     target.destroy(); readBuf.destroy(); uni.destroy()
-    if (rendered.length) this.uploadIconAtlas(atlas)
     return rendered
   }
 
@@ -2870,7 +2887,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     const myCompilationId = this.superCompilationId  // Snapshot — don't bump
 
     try {
-      const allVisuals = this.getAllVisualTypes().filter(v => !v.broken)
+      const allVisuals = this.preflightVisuals(this.getAllVisualTypes().filter(v => !v.broken))
       const allInteractions = this.getAllInteractionTypes()
       const allModules = this.getAllModules()
       const targetCount = this.renderTargets.size
@@ -2892,11 +2909,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
         const quarantined = await this.quarantineBrokenVisuals(allVisuals, allModules, targetCount)
         if (quarantined.length > 0) {
           console.error(`[Super] QUARANTINED ${quarantined.length} broken visual(s): ${quarantined.join(', ')} — recompiling without them`)
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('cc:fault', {
-              detail: { kind: 'quarantine', message: `visual(s) failed to compile and were quarantined: ${quarantined.join(', ')}` },
-            }))
-          }
+          this.reportQuarantine('compile-error', quarantined.map((name) => {
+            const v = allVisuals.find((x) => x.name === name)
+            return { name, reason: v?.error ?? 'failed isolated compile', wgslBytes: (v?.wgsl || '').length }
+          }))
           this.superCompilationError = null
           this.super3DPipelineReady = false
           this.super3DPipeline = null
@@ -2955,6 +2971,89 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     }
   }
 
+  /** Count `array(...)` literals in WGSL and their element sizes via balanced
+   *  paren scan (handles nested vec4(...) elements). This is how a baked-image
+   *  visual is detected: thousands of numbers spread across many array literals. */
+  private static measureBakedArrays(w: string): { arrays: number; maxArray: number; totalElements: number } {
+    let arrays = 0, maxArray = 0, totalElements = 0
+    const re = /\barray\b\s*(?:<[^>]*>)?\s*\(/g
+    while (re.exec(w) !== null) {
+      let depth = 1, commas = 0, i = re.lastIndex
+      for (; i < w.length && depth > 0; i++) {
+        const ch = w[i]
+        if (ch === '(') depth++
+        else if (ch === ')') depth--
+        else if (ch === ',' && depth === 1) commas++
+      }
+      const els = commas + 1
+      if (els > 1) { arrays++; totalElements += els; if (els > maxArray) maxArray = els }
+      re.lastIndex = i   // resume after this literal
+    }
+    return { arrays, maxArray, totalElements }
+  }
+
+  /** PRE-FLIGHT hazard screen. Returns a rejection reason + stats if a visual's
+   *  WGSL is large enough to hang the GPU compiler, else null. Runs before the
+   *  visual reaches the GPU — this is the guard that the reactive, post-compile
+   *  quarantine cannot be (a freeze happens *during* compile, not after). */
+  private static screenVisualHazard(
+    v: VisualTypeEntry,
+  ): { reason: string; wgslBytes: number; arrays: number; maxArray: number; totalElements: number } | null {
+    const w = v.wgsl || ''
+    const { arrays, maxArray, totalElements } = FieldRenderer.measureBakedArrays(w)
+    const stats = { wgslBytes: w.length, arrays, maxArray, totalElements }
+    if (maxArray > FieldRenderer.HAZARD_MAX_ARRAY_ELEMENTS) {
+      return { reason: `array literal of ${maxArray} elements exceeds the WGSL ${FieldRenderer.HAZARD_MAX_ARRAY_ELEMENTS} const-array cap`, ...stats }
+    }
+    if (totalElements > FieldRenderer.HAZARD_MAX_BAKED_ELEMENTS) {
+      return { reason: `baked data: ${arrays} array literals / ${totalElements} elements — would hang the GPU compiler (looks like a baked image; use a texture instead)`, ...stats }
+    }
+    if (w.length > FieldRenderer.HAZARD_MAX_WGSL_BYTES) {
+      return { reason: `oversized WGSL source (${(w.length / 1024).toFixed(0)}KB > ${(FieldRenderer.HAZARD_MAX_WGSL_BYTES / 1024).toFixed(0)}KB) — would hang the GPU compiler`, ...stats }
+    }
+    return null
+  }
+
+  /** Pre-flight the visual set: mark any hazardous entry broken (so it is
+   *  excluded now and on every subsequent compile), report the details, and
+   *  return the healthy set. Called before building the uber-shader. */
+  private preflightVisuals(visuals: VisualTypeEntry[]): VisualTypeEntry[] {
+    const safe: VisualTypeEntry[] = []
+    const hazards: Array<Record<string, unknown>> = []
+    for (const v of visuals) {
+      const h = FieldRenderer.screenVisualHazard(v)
+      if (h) {
+        v.broken = true
+        v.error = `[pre-flight] ${h.reason}`
+        hazards.push({ name: v.name, reason: h.reason, wgslBytes: h.wgslBytes, arrays: h.arrays, maxArray: h.maxArray, totalElements: h.totalElements })
+        console.error(`[Super] PRE-FLIGHT quarantine '${v.name}': ${h.reason}`)
+      } else {
+        safe.push(v)
+      }
+    }
+    if (hazards.length > 0) this.reportQuarantine('preflight', hazards)
+    return safe
+  }
+
+  /** Surface a quarantine to the UI (cc:fault event) AND persist it to the
+   *  server log so a human or an AI can read exactly what was rejected and why,
+   *  without having to reproduce the freeze. Fire-and-forget. */
+  private reportQuarantine(phase: string, hazards: Array<Record<string, unknown>>): void {
+    if (typeof window === 'undefined') return
+    const names = hazards.map((h) => h.name).join(', ')
+    window.dispatchEvent(new CustomEvent('cc:fault', {
+      detail: { kind: 'quarantine', message: `visual(s) quarantined (${phase}): ${names}` },
+    }))
+    try {
+      void fetch('/api/engine/quarantine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phase, url: window.location?.href, hazards }),
+        keepalive: true,   // survive a navigation/tab-close after the freeze
+      }).catch(() => {})
+    } catch { /* telemetry must never throw into the render path */ }
+  }
+
   /** Compile each visual in isolation to find the ones that break the
    *  uber-shader. Broken entries are flagged (entry.broken/entry.error) so
    *  subsequent compiles exclude them. Returns the quarantined names. */
@@ -2998,7 +3097,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     const myCompilationId = this.superCompilationId
 
     try {
-      const allVisuals = this.getAllVisualTypes().filter(v => !v.broken)
+      const allVisuals = this.preflightVisuals(this.getAllVisualTypes().filter(v => !v.broken))
       const allInteractions = this.getAllInteractionTypes()
       const allModules = this.getAllModules()
       const targetCount = this.renderTargets.size

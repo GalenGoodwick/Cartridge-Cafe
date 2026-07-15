@@ -4524,17 +4524,33 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (sig === lastSig) return
       lastSig = sig
       const r = rendererRef.current
+      const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean }
+      // start this pass with EVERY candidate marked loading → the door draws a
+      // spinner on each un-house bubble. As icons land they flip to the face
+      // one-by-one (progressive), not all at the end. Fresh slots so stale atlas
+      // indices from the previous roster can't mis-map a bubble.
+      const slots: Record<string, number> = {}
+      const loading: Record<string, boolean> = {}
+      for (const nm of Object.values(nameOfSlot)) loading[nm] = true
+      w.__cafeIconSlots = slots
+      w.__cafeIconLoading = loading
       // ONLY worlds whose shader actually rendered (non-black) get an atlas slot;
       // state/feedback worlds render black in isolation → no slot → living emblem.
-      const okSlots = (r && items.length) ? await r.renderWorldIconAtlas(items, 0.5).catch(() => [] as number[]) : []
-      const slots: Record<string, number> = {}
+      const okSlots = (r && items.length)
+        ? await r.renderWorldIconAtlas(items, 0.5, (sl) => {
+            // per-icon: reveal it the instant it lands, clear its spinner
+            const nm = nameOfSlot[sl]
+            if (nm) { slots[nm] = sl; delete loading[nm] }
+          }).catch(() => [] as number[])
+        : []
+      // any candidate that never got a slot (emblem/feedback world) stops
+      // spinning now — it resolves to its living emblem, not an endless spinner.
       for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
-      const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconReady?: boolean }
-      w.__cafeIconSlots = slots
-      w.__cafeIconReady = true   // first pass done — spinners resolve to faces/emblems
+      for (const nm of Object.keys(loading)) delete loading[nm]
+      w.__cafeIconReady = true
     }
     // until the first pass lands, un-styled bubbles show a spinner, not a default
-    ;(window as unknown as { __cafeIconReady?: boolean }).__cafeIconReady = false
+    ;(window as unknown as { __cafeIconReady?: boolean; __cafeIconLoading?: Record<string, boolean> }).__cafeIconReady = false
     tick()
     const iv = setInterval(() => { if (!stop) tick() }, 4000)
     // ANIMATE ON HOVER: only the bubble under the cursor re-renders (~30fps);

@@ -1634,9 +1634,10 @@ const CAFE_ICON: i32 = 64;
 fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   if (slot < 0) { return vec3f(0.0); }
   let px = clamp(i32((uv.x * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
-  // atlas rows were being read bottom-up vs. how they're packed → icons flipped;
-  // sample top-down so the screenshot lands upright in the bubble
-  let py = clamp(i32((uv.y * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  // atlas is packed top-down (row 0 = the icon's top, from the render readback).
+  // disc-local uv has y UP, so top of the bubble is uv.y=+1 → must map to row 0.
+  // (0.5 - uv.y*0.5) does that; the old (uv.y*0.5+0.5) sampled bottom-up → upside down.
+  let py = clamp(i32((0.5 - uv.y * 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
   let idx = slot * CAFE_ICON * CAFE_ICON + py * CAFE_ICON + px;
   if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
   let p = iconBuf[idx];
@@ -2177,9 +2178,10 @@ const CAFE_ICON: i32 = 64;
 fn cafeIcon(slot: i32, uv: vec2f) -> vec3f {
   if (slot < 0) { return vec3f(0.0); }
   let px = clamp(i32((uv.x * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
-  // atlas rows were being read bottom-up vs. how they're packed → icons flipped;
-  // sample top-down so the screenshot lands upright in the bubble
-  let py = clamp(i32((uv.y * 0.5 + 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
+  // atlas is packed top-down (row 0 = the icon's top, from the render readback).
+  // disc-local uv has y UP, so top of the bubble is uv.y=+1 → must map to row 0.
+  // (0.5 - uv.y*0.5) does that; the old (uv.y*0.5+0.5) sampled bottom-up → upside down.
+  let py = clamp(i32((0.5 - uv.y * 0.5) * f32(CAFE_ICON)), 0, CAFE_ICON - 1);
   let idx = slot * CAFE_ICON * CAFE_ICON + py * CAFE_ICON + px;
   if (idx < 0 || u32(idx) >= arrayLength(&iconBuf)) { return vec3f(0.0); }
   let p = iconBuf[idx];
