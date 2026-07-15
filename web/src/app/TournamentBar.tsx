@@ -28,7 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 type Cell = {
   worlds: string[]
   votes: Record<string, string>
-  voteAt?: Record<string, number>   // when each voter cast — a vote locks for VOTE_LOCK_MS
+  voteAt?: Record<string, number>   // when each voter cast (record only; the cell locks at QUORUM voices, not on a timer)
   // deliberation, just like UC: per-world comment threads inside the cell.
   // They live and die with the tier — a fresh deal is a fresh conversation.
   comments?: Record<string, { who: string; text: string; at: number }[]>
@@ -49,8 +49,9 @@ type TDoc = {
 // every cell has gathered a QUORUM of distinct voices — no clock, and no single
 // vote can crown anything. Low-traffic arenas simply wait; the day-scale decay
 // on the constellation keeps a stale standing from lingering.
-const QUORUM = 3   // distinct voters a cell needs before it can speak — no single vote crowns anything
-const VOTE_LOCK_MS = 10 * 60_000   // once cast, a vote locks for ten minutes
+const QUORUM = 5   // distinct voters a cell needs to resolve — AND the point at which
+                   // votes lock. Until the 5th voice lands, every vote stays freely
+                   // changeable; the 5th settles the cell. (No time-based lock.)
 // The VOTE-rules gate is accept-once. localStorage is the durable store, but some
 // contexts DENY it (private mode, partitioned/sandboxed storage) — there, getItem
 // throws, `accepted` stays false, and the warning pops EVERY time. This module-
@@ -110,6 +111,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
   const [gate, setGate] = useState(false)   // THE VOTE gate — first-timers must read & accept the rules
+  const [confirm, setConfirm] = useState(false)   // returning voters get a light enter/exit confirm, not the rules
   const [mounted, setMounted] = useState(false)   // drives the slide-in: false = panels at the edges, true = seated
   const [showInstr, setShowInstr] = useState(false)   // the how-to popover, from the grid's corner tab
   const [now, setNow] = useState(0)   // 1s tick, for the vote-lock countdown
@@ -125,7 +127,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // vote until you've reviewed all five — UC's rule, made spatial.
   const [seen, setSeen] = useState<Set<string>>(new Set())
   const cellKey = doc ? doc.round + ':' + doc.tier : ''
-  useEffect(() => { setSeen(new Set()) }, [cellKey])
   const markSeen = useCallback((w: string) => setSeen(prev => prev.has(w) ? prev : new Set(prev).add(w)), [])
   // to "review" a world you must rest on it a beat — a glance isn't a witness.
   const dwell = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -139,7 +140,19 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const viewMs = useRef<Record<string, number>>({})
   const focusRef = useRef<string | null>(null)
   const [vtick, setVtick] = useState(0)
-  useEffect(() => { viewMs.current = {} }, [cellKey])   // fresh timers per cell
+  // witness memory: watch-time per world, PERSISTED per arena so leaving and
+  // re-entering never restarts the 10s stare — the countdown resumes where you
+  // left it, and a finished witness stays finished.
+  const witnessKey = 'cc-witness:' + slot
+  useEffect(() => {
+    let stored: Record<string, number> = {}
+    try { stored = JSON.parse(localStorage.getItem(witnessKey) || '{}') } catch { /* ignore */ }
+    viewMs.current = stored
+    setSeen(prev => { const s = new Set(prev); for (const w of Object.keys(stored)) { if ((stored[w] || 0) >= WITNESS_MS) s.add(w) } return s })
+  }, [witnessKey])
+  const persistWitness = useCallback(() => {
+    try { localStorage.setItem(witnessKey, JSON.stringify(viewMs.current)) } catch { /* ignore */ }
+  }, [witnessKey])
   // the world currently under your gaze — it fills the stage and owns the chat
   const [focus, setFocus] = useState<string | null>(null)
   focusRef.current = focus
@@ -148,14 +161,16 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     const id = setInterval(() => {
       const f = focusRef.current
       if (f) {
-        const v = Math.min(WITNESS_MS, (viewMs.current[f] || 0) + 250)
+        const prevV = viewMs.current[f] || 0
+        const v = Math.min(WITNESS_MS, prevV + 250)
         viewMs.current[f] = v
         if (v >= WITNESS_MS) markSeen(f)
+        if (Math.floor(v / 1000) > Math.floor(prevV / 1000)) persistWitness()   // bank each new second watched
       }
       setVtick(x => (x + 1) & 0xffff)
     }, 250)
     return () => clearInterval(id)
-  }, [markSeen])
+  }, [markSeen, persistWitness])
   // PRESENCE: everyone in this cell's reckoning heartbeats their name to a shared
   // slot; each viewer prunes the stale and shows who else is watching. v0 rmw.
   const [viewers, setViewers] = useState<{ who: string; at: number }[]>([])
@@ -182,9 +197,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // the center hole: the engine reflows the world/constellation into exactly
   // this rect, so the vote panels frame a resized main rather than overlaying it.
   const stageRef = useRef<HTMLDivElement>(null)
+  // While closing, freeze stage-rect measuring: closeReckoning's final
+  // onStageRect(null) (which un-shrinks the world/grid) must be the LAST word.
+  // Without this, a late ResizeObserver tick during the 320ms close animation
+  // re-measured and re-sent a rect, leaving the grid stuck shrunk after a vote
+  // was finalized.
+  const closingRef = useRef(false)
   useEffect(() => {
     if (!open || !onStageRect) return
+    closingRef.current = false   // fresh open — measuring is live again
     const measure = () => {
+      if (closingRef.current) return
       const el = stageRef.current; if (!el) return
       const r = el.getBoundingClientRect()
       if (r.width < 80 || r.height < 80) return   // layout not settled — don't collapse the canvas
@@ -268,6 +291,22 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     return () => { stop = true; clearInterval(t) }
   }, [branchesOf, visible])
 
+  // tournament → throne: when THIS world arena crowns a champion, nudge the server
+  // to promote it to the lineage's mainHolder. The server reads the arena's OWN
+  // stored champion and resolves it, so this can't spoof a winner — it just says
+  // "the arena settled, re-check the throne." World arenas only; skips a null
+  // champion so a between-rounds lull never demotes the reigning branch.
+  const promotedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!branchesOf || !doc?.champion) return
+    if (promotedRef.current === doc.champion) return
+    promotedRef.current = doc.champion
+    fetch('/api/engine/lineage/promote', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base: branchesOf }),
+    }).catch(() => {})
+  }, [branchesOf, doc?.champion])
+
   const save = (d: TDoc) => {
     fetch('/api/engine/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -296,6 +335,26 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       for (const w of r) next.reached[w] = 1
       save(next)
       return next
+    }
+    // GROW THE OPEN CELL — a branch created mid-round joins the cell you're in
+    // rather than waiting for the next deal. Any roster contestant not yet in a
+    // cell drops into an open one (≤5 per cell) so a fresh challenger is votable
+    // NOW. Votes already cast stand; nothing resets.
+    if (d.cells.length > 0) {
+      const inPlay = new Set(d.cells.flatMap(c => c.worlds))
+      const missing = r.filter(w => !inPlay.has(w))
+      if (missing.length > 0) {
+        const cells = d.cells.map(c => ({ ...c, worlds: [...c.worlds] }))
+        for (const w of missing) {
+          let cell = cells.find(c => c.worlds.length < 5)
+          if (!cell) { cell = { worlds: [], votes: {} }; cells.push(cell) }
+          cell.worlds.push(w)
+        }
+        const grown: TDoc = { ...d, cells, reached: { ...d.reached }, reachedAt: { ...(d.reachedAt || {}) } }
+        for (const w of missing) { grown.reached[w] = d.tier; grown.reachedAt![w] = nowT }
+        save(grown)
+        return grown
+      }
     }
     // the tier resolves ONLY once EVERY cell has gathered QUORUM distinct
     // voices. No timer: a cast vote can be moved and the talk keeps going until
@@ -368,8 +427,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
     // a vote LOCKS for ten minutes once cast — no flip-flopping to game the tally.
     const cell0 = doc.cells[cellIdx]
-    const castAt = cell0?.voteAt?.[who]
-    if (castAt && Date.now() - castAt < VOTE_LOCK_MS) return   // still locked
+    // votes stay changeable until the cell fills to QUORUM distinct voices; the
+    // 5th settles it and locks everyone in. No time-based lock any more.
+    if (cell0 && new Set(Object.keys(cell0.votes)).size >= QUORUM) return
     const at = Date.now()
     const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx
       ? { ...c, votes: { ...c.votes, [who]: world }, voteAt: { ...(c.voteAt || {}), [who]: at } }
@@ -416,11 +476,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
    *  in from the edges in step with the canvas resizing into the center, so no
    *  blank margin ever shows during the transition. */
   const enterReckoning = () => {
-    // THE VOTE is a serious dynamic — first-timers must read the rules and accept
-    // before they can enter. Enforced against no rule they weren't first shown.
+    // First time ever: the full rules, read & accept once. Every time after:
+    // just a light enter/exit confirmation — the severe box doesn't repeat.
     let accepted = gateAcceptedMem
     try { accepted = accepted || localStorage.getItem('cc-vote-gate') === '1' } catch { /* storage denied — the memory flag still holds */ }
-    if (accepted) { setOpen(true); onReckoning?.(true) }
+    if (accepted) setConfirm(true)
     else setGate(true)
   }
   const acceptGate = () => {
@@ -428,9 +488,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     try { localStorage.setItem('cc-vote-gate', '1') } catch { /* ignore */ }
     setGate(false); setOpen(true); onReckoning?.(true)
   }
+  const enterVote = () => { setConfirm(false); setOpen(true); onReckoning?.(true) }
   // the visual close: panels slide back out AS the canvas grows to full, then
   // unmount once they've met at the edges (same 320ms as the resize).
   const closeReckoning = useCallback(() => {
+    closingRef.current = true   // freeze measuring so the null below is final
     setMounted(false)
     setFocus(null)
     onPreview?.(null)
@@ -631,26 +693,23 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                       return <span title="watch 10s to witness · time accumulates"
                         className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[9px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
                     })()}
-                    {/* THE VOTE BOX — top-right. Once cast, it locks for ten minutes
-                        and shows the time remaining. */}
+                    {/* THE VOTE BOX — top-right. Votes stay changeable until the cell
+                        gathers QUORUM voices; the 5th locks everyone in. */}
                     {seated && (() => {
-                      const castAt = cell.voteAt?.[who || '']
-                      const lockLeft = voted && castAt ? Math.max(0, castAt + VOTE_LOCK_MS - (now || Date.now())) : 0
-                      const locked = lockLeft > 0
-                      const mm = Math.floor(lockLeft / 60000), ss = Math.floor((lockLeft % 60000) / 1000)
+                      const locked = new Set(Object.keys(cell.votes)).size >= QUORUM
                       const armed = canVote && !locked
                       return (
                         <button
                           onClick={e => { e.stopPropagation(); if (armed) vote(mci, w) }}
                           disabled={!armed}
-                          title={locked ? `vote locked · ${mm}:${String(ss).padStart(2, '0')} left` : voted ? 'your vote' : armed ? 'cast your vote' : 'witness all five to vote'}
-                          className={`absolute top-1.5 right-1.5 ${locked ? 'w-auto px-1.5 gap-0.5' : 'w-7'} h-7 rounded-md border-2 flex items-center justify-center font-mono font-bold transition-all ${
+                          title={locked ? `votes locked · ${QUORUM} have voted, the cell is settled` : voted ? 'your vote — tap another to move it' : armed ? 'cast your vote' : 'witness all five to vote'}
+                          className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border-2 flex items-center justify-center font-mono font-bold transition-all ${
                             voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
                                   : armed ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
                                           : 'bg-black/60 border-white/15 text-white/25 cursor-not-allowed'
                           }`}>
-                          {locked
-                            ? <span className="text-[9px] flex items-center gap-0.5">🔒 {mm}:{String(ss).padStart(2, '0')}</span>
+                          {locked && !voted
+                            ? <span className="text-[11px]">🔒</span>
                             : <span className="text-base">{voted ? '✓' : '+'}</span>}
                         </button>
                       )
@@ -669,12 +728,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           }`}>
             {!seated ? 'sign in to take a seat — loading and reading are free'
               : myVote ? (() => {
-                  const castAt = cell.voteAt?.[who || '']
-                  const left = castAt ? Math.max(0, castAt + VOTE_LOCK_MS - (now || Date.now())) : 0
-                  const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000)
-                  return left > 0
-                    ? `voice locked on ${myVote.toLowerCase()} · ${mm}:${String(ss).padStart(2, '0')} until you can move it`
-                    : `voice cast for ${myVote.toLowerCase()} · tap another + to move it`
+                  const voters = new Set(Object.keys(cell.votes)).size
+                  return voters >= QUORUM
+                    ? `voice locked on ${myVote.toLowerCase()} · ${QUORUM} have voted, the cell is settled`
+                    : `voice on ${myVote.toLowerCase()} · ${voters}/${QUORUM} voted — you can still move it`
                 })()
               : seenAll ? 'all five witnessed — tap the + on your choice to vote'
               : `watch each game 10s to witness it — ${seenN}/5 · time accumulates`}
@@ -688,7 +745,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               <div className="flex justify-center mt-2 pointer-events-auto">
                 <button
                   disabled={!chosen}
-                  onClick={() => { if (!myVote && chosen) vote(mci, chosen); leaveReckoning() }}
+                  onClick={() => { try { if (!myVote && chosen) vote(mci, chosen) } finally { leaveReckoning() } }}
                   title={chosen ? `finalize on ${chosen.toLowerCase()} and leave the cell` : 'witness all five, pick one, then finalize to leave'}
                   className={`${pill} px-4 py-1.5 rounded-full border-2 font-bold tracking-wide transition-all ${
                     chosen ? 'bg-emerald-500/90 border-emerald-300 text-black hover:scale-105 shadow-[0_0_16px_rgba(16,185,129,0.5)]'
@@ -724,6 +781,19 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               <button onClick={acceptGate} className="text-[11px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER — I ACCEPT</button>
             </div>
             <p className="text-white/30 text-[10px] tracking-[0.15em] mt-3 text-center">Enter only if you accept this.</p>
+          </div>
+        </div>
+      )}
+      {/* returning voters: a light enter/exit confirmation — the rules were read once */}
+      {confirm && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setConfirm(false)}>
+          <div className="w-[360px] max-w-[92vw] rounded-lg border border-brass/35 bg-[#0e0b07] p-6 font-mono text-[13px] leading-relaxed text-white/85 text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-amber-200/80 tracking-[0.2em] text-[12px] mb-2">⚔ ENTER THE VOTE?</div>
+            <p className="text-white/60 text-[12px] mb-5">Review this cell&rsquo;s games and cast (or move) your voice. Leaving without voting is free.</p>
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setConfirm(false)} className="text-[11px] tracking-[0.18em] px-4 py-2 rounded border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors">EXIT</button>
+              <button onClick={enterVote} className="text-[11px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER</button>
+            </div>
           </div>
         </div>
       )}

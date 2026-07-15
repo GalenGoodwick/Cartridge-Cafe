@@ -107,6 +107,18 @@ export async function POST(req: NextRequest) {
           !claimSpaceWriter(body.spaceId, body.clientId, body.takeover === true)) {
         return NextResponse.json({ error: 'world-locked' }, { status: 409 })
       }
+      // Bridge-write guard: if an AI bridge command just changed this world, hold
+      // off the tab's 2s auto-sync for a few seconds so that change can propagate
+      // to open tabs via SSE (they recompile) BEFORE a stale tab syncs its old
+      // state back over it. Without this, a bridge deploy and a stale tab flip-flop
+      // the world every 2s and the deploy never sticks.
+      {
+        const gb = globalThis as unknown as { __spaceBridgeWrite?: Map<string, number> }
+        const lastBridge = gb.__spaceBridgeWrite?.get(body.spaceId) ?? 0
+        if (Date.now() - lastBridge < 4000) {
+          return NextResponse.json({ ok: true, deferred: 'bridge-write in flight', spaceId: body.spaceId })
+        }
+      }
       const snapshot: SceneSnapshot = {
         name: body.spaceId,
         fields,

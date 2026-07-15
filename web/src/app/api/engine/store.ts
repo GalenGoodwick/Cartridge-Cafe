@@ -717,11 +717,29 @@ function versionDir(name: string): string {
   return join(VERSIONS_DIR, name.replace(/[^a-zA-Z0-9 _-]/g, '_'))
 }
 
+/** Content identity for dedupe — ignore the volatile top-level timestamp/name so
+ *  two saves of the same world compare equal even though each stamps a new time. */
+function sceneFingerprint(raw: string): string {
+  try {
+    const o = JSON.parse(raw)
+    if (o && typeof o === 'object') { delete o.timestamp; delete o.name; return JSON.stringify(o) }
+  } catch { /* not JSON — compare raw */ }
+  return raw
+}
+
 function snapshotVersion(name: string, scene: SceneSnapshot): void {
   try {
     const dir = versionDir(name)
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, Date.now() + '.json'), JSON.stringify(scene))
+    const body = JSON.stringify(scene)
+    // DEDUPE: don't file a version identical (by content) to the newest one
+    // already saved — a save-point or a no-op auto-save shouldn't spawn a twin.
+    const existing = readdirSync(dir).filter(f => f.endsWith('.json')).sort()
+    const newest = existing[existing.length - 1]
+    if (newest) {
+      try { if (sceneFingerprint(readFileSync(join(dir, newest), 'utf8')) === sceneFingerprint(body)) return } catch { /* unreadable — fall through and write */ }
+    }
+    writeFileSync(join(dir, Date.now() + '.json'), body)
     const files = readdirSync(dir).filter(f => f.endsWith('.json')).sort()
     while (files.length > MAX_VERSIONS) unlinkSync(join(dir, files.shift()!))
   } catch (e) {

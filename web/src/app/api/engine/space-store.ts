@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule } from '@/app/engine/types'
+import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
 
@@ -212,11 +213,14 @@ function emptySnapshot(): SceneSnapshot {
  * This allows Claude Code to work without a browser being open.
  * Returns the command result metadata (e.g. generated fieldId).
  */
-export async function applyCommandToSnapshot(
-  spaceId: string,
+/** Apply one build command to a snapshot OBJECT, in place, with NO I/O. This is
+ *  the shared brain: the space path (DB-backed) and the scene path (file-store
+ *  branches) both run through it, so a branch is edited by the exact same command
+ *  semantics as a space — no divergent second implementation. */
+export function applyCommandToSnapshotObject(
+  snap: SceneSnapshot,
   cmd: Record<string, unknown>
-): Promise<Record<string, unknown>> {
-  const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
+): Record<string, unknown> {
   // snapshots built up from a blank brew (or written by older code) may lack
   // whole sections — every array the commands push into must exist
   const blank = emptySnapshot()
@@ -505,6 +509,31 @@ export async function applyCommandToSnapshot(
   }
 
   snap.timestamp = Date.now()
+  return result
+}
+
+/** SPACE path: load the PlayerSpace's DB snapshot → apply → persist. */
+export async function applyCommandToSnapshot(
+  spaceId: string,
+  cmd: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
+  const result = applyCommandToSnapshotObject(snap, cmd)
   await setSpaceSnapshot(spaceId, snap)
+  return result
+}
+
+/** SCENE path: a branch lives in the file scene-store (no DB row), so it can't
+ *  ride the space snapshot machinery. Load THIS scene → apply → save (the store
+ *  auto-versions on write, which is the eye). Headless and isolated: it touches
+ *  ONLY the named scene — never the global registry, never main. This is what a
+ *  branch-scoped token uses so a connected AI can never overwrite another world. */
+export function applyCommandToScene(
+  sceneName: string,
+  cmd: Record<string, unknown>
+): Record<string, unknown> {
+  const snap = loadScene(sceneName) ?? emptySnapshot()
+  const result = applyCommandToSnapshotObject(snap, cmd)
+  saveScene(sceneName, snap)
   return result
 }

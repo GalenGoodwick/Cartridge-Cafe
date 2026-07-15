@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
-import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, getSpaceFamily } from '../space-store'
+import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
+import { validateSceneToken } from '../scene-token'
+import { loadScene, saveScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
 
 export const maxDuration = 30
@@ -12,6 +14,7 @@ interface BridgeAuth {
   ownerId: string | null
   slug?: string
   spaceName?: string
+  sceneName?: string        // set = branch-scoped (file-store scene); read/write isolated to it
 }
 
 // Auth: ENGINE_AGENT_TOKEN or uc_st_ space token
@@ -28,6 +31,15 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
     const result = await validateSpaceToken(token)
     if (!result) return { authorized: false, spaceId: null, ownerId: null }
     return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName }
+  }
+
+  // Branch (scene) token path — stateless, bound to ONE scene name. Read/write
+  // scope to that scene only; it can never touch main or the global registry.
+  if (token.startsWith('uc_sc_')) {
+    const result = validateSceneToken(token)
+    if (!result) return { authorized: false, spaceId: null, ownerId: null }
+    const slug = result.sceneName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
+    return { authorized: true, spaceId: null, ownerId: null, sceneName: result.sceneName, slug, spaceName: result.sceneName }
   }
 
   // Legacy global token path (admin)
@@ -112,6 +124,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       space: { slug: auth.slug, name: auth.spaceName, viewUrl: req.nextUrl.origin + '/space/' + auth.slug },
       spaceId: auth.spaceId,
+      fields: snapshot?.fields ?? [],
+      fieldCount: snapshot?.fields?.length ?? 0,
+      worldParams: snapshot?.worldParams ?? {},
+      worldData: snapshot?.worldData ?? {},
+      interactionRules: snapshot?.interactionRules ?? [],
+      interactionEffects: snapshot?.interactionEffects ?? [],
+      visualTypes: snapshot?.visualTypes ?? [],
+      modules: snapshot?.modules ?? [],
+      stepHooks: snapshot?.stepHooks ?? [],
+    })
+  }
+
+  // Branch-scoped: return the scene's own snapshot from the file store
+  if (auth.sceneName) {
+    const snapshot = loadScene(auth.sceneName)
+    return NextResponse.json({
+      scene: auth.sceneName,
+      space: { slug: auth.slug, name: auth.sceneName, viewUrl: req.nextUrl.origin + '/' },
       fields: snapshot?.fields ?? [],
       fieldCount: snapshot?.fields?.length ?? 0,
       worldParams: snapshot?.worldParams ?? {},
@@ -234,12 +264,15 @@ export async function POST(req: NextRequest) {
 
     const results: unknown[] = []
     const isSpaceScoped = !!auth.spaceId
+    const isSceneScoped = !!auth.sceneName   // branch token: headless, isolated to one scene
 
     // #4 atomic batch: snapshot the world BEFORE the batch; if any command throws
     // mid-way, we revert to this so a half-applied batch never persists.
     const rollback = isSpaceScoped
       ? await getSpaceSnapshot(auth.spaceId!).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
-      : null
+      : isSceneScoped
+        ? (() => { const s = loadScene(auth.sceneName!); return s ? JSON.parse(JSON.stringify(s)) : null })()
+        : null
     let batchAbort: { cmd: unknown; error: string } | null = null
 
     // Provenance cross-check: stamp the User-Agent of the FIRST agent to post a
@@ -262,8 +295,10 @@ export async function POST(req: NextRequest) {
         await new Promise(r => setTimeout(r, 100))
       }
 
-      // reset: clear server-side store alongside browser reset
-      if (cmd.type === 'reset') {
+      // reset: clear server-side store alongside browser reset. NEVER for a
+      // branch token — resetStore() wipes the GLOBAL engine; a scoped 'reset'
+      // clears only this scene's snapshot, handled by applyCommandToScene below.
+      if (cmd.type === 'reset' && !isSceneScoped) {
         resetStore()
       }
 
@@ -384,8 +419,11 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Server-side store operations only for global mode (space state is persisted via browser state sync)
-      if (!isSpaceScoped) {
+      // Server-side GLOBAL-registry ops run only in true global mode. A branch
+      // token must NEVER land visuals/modules/interactions in the shared registry
+      // (that global scoop is exactly what bled foreign visuals into ORCHID) —
+      // its define_* commands persist into the scene snapshot below instead.
+      if (!isSpaceScoped && !isSceneScoped) {
         // define_interaction: store server-side AND forward to browser
         if (cmd.type === 'define_interaction' && cmd.rule) {
           const rule = cmd.rule as Record<string, unknown>
@@ -488,11 +526,32 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // Branch-scoped: apply ONLY to this scene's file-store snapshot and stop.
+      // No pushToAgent — a branch token is headless and isolated by design, so it
+      // never relays over the shared SSE bus (that is what let one AI's build land
+      // on main and another branch). The eye/versioning happens inside saveScene.
+      if (isSceneScoped) {
+        try {
+          const sceneResult = applyCommandToScene(auth.sceneName!, cmd)
+          if (sceneResult.fieldId) cmd.fieldId = sceneResult.fieldId
+          results.push({ ...sceneResult, scene: auth.sceneName })
+        } catch (e) {
+          batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
+          break   // stop the batch; we roll the scene back below
+        }
+        continue
+      }
+
       // Space-scoped: apply command to snapshot server-side (works without browser)
       let spaceResult: Record<string, unknown> | null = null
       if (isSpaceScoped) {
         try {
           spaceResult = await applyCommandToSnapshot(auth.spaceId!, cmd)
+          // mark that a bridge command just wrote this world — the state route
+          // defers a tab's auto-sync briefly so this change isn't clobbered before
+          // it propagates to open tabs via SSE (fixes the "deploy doesn't stick" flap)
+          const gb = globalThis as unknown as { __spaceBridgeWrite?: Map<string, number> }
+          ;(gb.__spaceBridgeWrite ??= new Map()).set(auth.spaceId!, Date.now())
         } catch (e) {
           batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
           break   // stop the batch; we roll the snapshot back below
@@ -530,8 +589,13 @@ export async function POST(req: NextRequest) {
 
     // #4 atomic: a command threw — revert the whole batch's snapshot so no
     // partial/broken state survives, and tell the agent exactly where it aborted.
-    if (isSpaceScoped && batchAbort) {
-      if (rollback) { try { await setSpaceSnapshot(auth.spaceId!, rollback) } catch { /* revert is best-effort */ } }
+    if ((isSpaceScoped || isSceneScoped) && batchAbort) {
+      if (rollback) {
+        try {
+          if (isSceneScoped) saveScene(auth.sceneName!, rollback)
+          else await setSpaceSnapshot(auth.spaceId!, rollback)
+        } catch { /* revert is best-effort */ }
+      }
       return NextResponse.json({
         ok: false,
         rolledBack: !!rollback,

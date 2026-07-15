@@ -232,33 +232,45 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
   }
 
   /** members pin worlds (or spaces) onto the group's shelf by name */
-  const pinWorld = async () => {
-    const slug = subMode?.slug
+  // PIN A WORLD — a live search box (site colors), not a browser prompt. Open it,
+  // it loads every pinnable world on main, and you filter as you type.
+  const [pinOpen, setPinOpen] = useState(false)
+  const [pinQuery, setPinQuery] = useState('')
+  const [pinWorldList, setPinWorldList] = useState<{ name: string; launch: string }[]>([])
+  const openPin = async () => {
     if (!who) { window.alert('sign in to pin'); return }
-    if (!slug) { window.alert('step inside a sub-main first — pins land on its shelf'); return }
-    const name = window.prompt('Pin which world? (its name on main)')
-    if (!name?.trim()) return
-    const target = name.trim().toUpperCase()
+    if (!subMode?.slug) { window.alert('step inside a sub-main first — pins land on its shelf'); return }
+    setPinQuery(''); setPinWorldList([]); setPinOpen(true)
     const [sc, sp] = await Promise.all([
       fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => ({ scenes: [] })),
       fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })),
     ])
-    let launch: string | null = ((sc.scenes || []) as string[]).find(n => n.toUpperCase() === target) || null
-    if (!launch) {
-      const s = ((sp.spaces || []) as { name?: string; slug: string }[]).find(s2 => (s2.name || s2.slug).toUpperCase() === target)
-      if (s) launch = 'space:' + s.slug
+    const list: { name: string; launch: string }[] = []
+    for (const n of (sc.scenes || []) as string[]) {
+      if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes(' ⑂ ') || n.includes('␂')) continue
+      list.push({ name: n.toUpperCase(), launch: n })
     }
-    if (!launch) { window.alert('no world by that name on the shelf'); return }
-    await mutateSubs(subs => {
+    for (const s of (sp.spaces || []) as { name?: string; slug: string; blank?: boolean; building?: boolean }[]) {
+      if (s.blank || s.building) continue
+      const nm = (s.name || s.slug).toUpperCase()
+      if (!list.some(w => w.name === nm)) list.push({ name: nm, launch: 'space:' + s.slug })
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name))
+    setPinWorldList(list)
+  }
+  const doPin = async (target: string, launch: string) => {
+    const slug = subMode?.slug
+    if (!slug || !who) return
+    setPinOpen(false)
+    const ok = await mutateSubs(subs => {
       const s = subs[slug]
       if (!s) return 'this sub-main dissolved'
       if (!s.members[who.id]) return 'join first — only members pin'
       if (s.pinsLocked && s.ownerId !== who.id) return 'the founder closed the shelf — pinning is founder-only right now'
-      s.shelf[target] = { launch: launch as string, addedBy: who.name, at: Date.now() }
+      s.shelf[target] = { launch, addedBy: who.name, at: Date.now() }
       return null
-    }).then(ok => {
-      if (ok) window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'pinned ' + target, kind: 'tuned' } }))
     })
+    if (ok) window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'pinned ' + target, kind: 'tuned' } }))
   }
 
   /** ── moderation: the founder AND admins kick/ban members; admins are unkickable.
@@ -371,8 +383,15 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     // sweep my own abandoned drafts first — unnamed, unbuilt, invisible
     try {
       const b = await fetch('/api/spaces/browse').then(r2 => r2.json())
+      const now = Date.now()
       for (const sp of (b.spaces || [])) {
-        if (sp.owner?.id === sess.user.id && sp.blank) {   // any of my unbuilt drafts (now timestamp-named)
+        // Sweep only GENUINELY abandoned drafts. A blank draft is NOT abandoned if
+        // it is mid-brief (a creation_brief was set) or was just touched — those are
+        // in-flight connects, and deleting them cascade-kills the token we just
+        // handed to an AI (the "engine gave me a token that 401s" bug). Require the
+        // draft to be blank, not-building, AND untouched for >1h before removing it.
+        const stale = sp.updatedAt && (now - new Date(sp.updatedAt).getTime() > 60 * 60 * 1000)
+        if (sp.owner?.id === sess.user.id && sp.blank && !sp.building && stale) {
           await fetch('/api/spaces/' + sp.slug, { method: 'DELETE' }).catch(() => {})
         }
       }
@@ -513,7 +532,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   useEffect(() => {
     startCafeAudio(initialScene)
     setMute(isMuted())
-    const onLaunch = (e: Event) => {
+    const onLaunch = async (e: Event) => {
       const name = (e as CustomEvent).detail
       if (typeof name !== 'string' || !name) return
       if (name.startsWith('space:')) { window.location.href = '/space/' + name.slice(6); return }
@@ -523,7 +542,18 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = name.slice(4)
         return
       }
-      go(name)
+      // king-of-the-hill: the door says "ORCHID", but entering it loads whoever
+      // currently holds MAIN — the branch that won its arena — not the frozen
+      // original. A branch or hub launches as itself; the ★ ORIGINAL bookmark
+      // (in the world chrome) always returns to the immortal original.
+      let target = name
+      if (!name.includes(' ⑂ ') && name !== 'CAFE' && name !== 'SUB-MAIN') {
+        try {
+          const lin = (await fetch(`/api/engine/save?action=load&slot=${encodeURIComponent('lineage:' + name.toUpperCase())}`).then(r => r.json()))?.data
+          if (lin?.mainHolder && lin.original && lin.mainHolder !== lin.original) target = lin.mainHolder
+        } catch { /* offline → the original is a fine fallback */ }
+      }
+      go(target)
     }
     // returning from auth with brewing intent
     if (new URLSearchParams(window.location.search).get('brew')) {
@@ -837,7 +867,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             <span className="cafe-sign text-xl px-1">{(subMode.name || '').toLowerCase()}</span>
             {who && !subMode.member && <button onClick={joinSub} className="brass-tab px-3 py-1.5 text-[10px]">JOIN</button>}
             {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
-              <button onClick={pinWorld} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>
+              <button onClick={openPin} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>
             )}
             {who && subMode.member && !subMode.owner && subMode.pinsLocked && (
               <span className="font-mono text-[9px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
@@ -848,10 +878,6 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {subMode.slug && (
               <button onClick={() => setChatWorld({ channel: 'chat:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · chat', subtitle: 'check in on this sub-main' })}
                 className="brass-tab px-3 py-1.5 text-[10px]">⌁ CHAT</button>
-            )}
-            {subMode.slug && (
-              <button onClick={() => setChatWorld({ channel: 'commons:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · commons', subtitle: 'this sub-main’s AIs, at scale' })}
-                className="brass-tab px-3 py-1.5 text-[10px]">◇ COMMONS</button>
             )}
           </>) : (
             !subMode?.haveOwn && (
@@ -946,7 +972,43 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           the full chat world over everything. */}
       <MainCommonsChat visible={scene === 'CAFE' && !modalUp && !voting && brewStep === 0 && !chatWorld}
         onEnter={() => setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })} />
+      {/* each sub-main gets the SAME prominent commons door as main, scoped to it */}
+      <MainCommonsChat
+        visible={scene === 'SUB-MAIN' && subMode?.mode === 'group' && !!subMode?.slug && !modalUp && !voting && !chatWorld}
+        channel={'commons:sub:' + (subMode?.slug || '')}
+        label={(subMode?.name || 'sub-main').toUpperCase() + ' COMMONS'}
+        onEnter={() => setChatWorld({ channel: 'commons:sub:' + subMode!.slug, title: (subMode?.name || 'sub-main') + ' · commons', subtitle: 'this sub-main’s AIs, at scale' })} />
       {chatWorld && <ChatWorld channel={chatWorld.channel} title={chatWorld.title} subtitle={chatWorld.subtitle} onExit={() => setChatWorld(null)} />}
+
+      {/* PIN A WORLD — live search box in the cafe's own colors (was a browser prompt) */}
+      {pinOpen && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-void/70 backdrop-blur-sm" onClick={() => setPinOpen(false)}>
+          <div className="w-[92%] max-w-md rounded-xl border border-brass/40 bg-void/95 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="cafe-sign text-lg">pin a world</div>
+              <button onClick={() => setPinOpen(false)} aria-label="close" className="font-mono text-glow/50 hover:text-glow text-sm px-1">×</button>
+            </div>
+            <input autoFocus value={pinQuery} onChange={e => setPinQuery(e.target.value)}
+              placeholder="search worlds on main…" maxLength={64}
+              className="w-full rounded-lg border border-brass/40 bg-void/60 px-3 py-2 font-mono text-[12px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-3" />
+            <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
+              {pinWorldList.length === 0 ? (
+                <div className="font-mono text-[10px] text-glow/30 px-2 py-4">loading worlds…</div>
+              ) : (() => {
+                const q = pinQuery.trim().toUpperCase()
+                const hits = pinWorldList.filter(w => w.name.includes(q)).slice(0, 40)
+                if (hits.length === 0) return <div className="font-mono text-[10px] text-glow/30 px-2 py-4">no world by that name on main</div>
+                return hits.map(w => (
+                  <button key={w.launch} onClick={() => doPin(w.name, w.launch)}
+                    className="text-left rounded-lg border border-brass/20 hover:border-flame/60 hover:bg-flame/10 px-3 py-2 font-mono text-[11px] tracking-[0.1em] text-steamer/90 hover:text-glow transition-colors">
+                    {w.name.toLowerCase()}
+                  </button>
+                ))
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* the cafe's ears — one small switch, bottom-right */}
       <button

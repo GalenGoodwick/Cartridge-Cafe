@@ -8,6 +8,7 @@ import { FieldSimulation } from './simulation'
 import { WorldSandbox } from './world-sandbox'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
+import VersionScrubber from './VersionScrubber'
 import PromptPanel from './PromptPanel'
 import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
@@ -195,12 +196,64 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen }))
   }, [plugOpen, instrOpen, branchesOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
+  // ── VERSIONS browser (save-points): a space's own version history on main ──
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [versionList, setVersionList] = useState<Array<{ version: number; note: string | null; createdAt: string; author?: { name: string | null } | null }>>([])
+  const [versionBusy, setVersionBusy] = useState(false)
+  const loadVersions = useCallback(async () => {
+    if (!spaceSlug) return
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`).then(x => x.json())
+      setVersionList(Array.isArray(r.versions) ? r.versions : [])
+    } catch { setVersionList([]) }
+  }, [spaceSlug])
   // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
   type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
   const [cellData, setCellData] = useState<CellDoc>({ viewers: {}, votes: {}, discussion: {} })
   const [cellDraft, setCellDraft] = useState('')
   const [discOpen, setDiscOpen] = useState<string | null>(null)
   const [riding, setRiding] = useState<string | null>(null)
+  // the lineage throne: who currently holds MAIN for this world, and the immortal
+  // original. When the tournament snags main from the founder, we reassure them —
+  // their original is never gone; the ★ bookmark always returns them to it.
+  const [worldLineage, setWorldLineage] = useState<{ original: string; mainHolder: string } | null>(null)
+  const [verMax, setVerMax] = useState(1)   // highest existing version of the ridden branch — bounds the ▸ scroller
+  // learn how many versions this branch actually has, so the scroller can't offer
+  // a step to a version that isn't there.
+  useEffect(() => {
+    if (!riding) { setVerMax(1); return }
+    const m = riding.match(/^(.*) · v(\d+)$/)
+    const ident = m ? m[1] : riding
+    let stop = false
+    fetch('/api/engine/scene?action=list').then(r => r.json()).then(({ scenes }) => {
+      if (stop) return
+      let mx = 1
+      for (const nm of (scenes || []) as string[]) {
+        const sm = nm.match(/^(.*) · v(\d+)$/)
+        if (sm && sm[1] === ident) mx = Math.max(mx, +sm[2])
+      }
+      setVerMax(mx)
+    }).catch(() => {})
+    return () => { stop = true }
+  }, [riding])
+  // ── MAIN's version scroller: a base world's own save-point history (the eye's
+  // backups), stepped with ◂/▸ just like a branch — main was missing this tab. ──
+  const [baseVers, setBaseVers] = useState<number[]>([])   // backup timestamps, newest first
+  const [baseVerPos, setBaseVerPos] = useState(0)          // 0 = LIVE; 1..N = backups (newest→oldest)
+  useEffect(() => {
+    const cur = playScene || ''
+    // base worlds only — not a branch (⑂), not the CAFE hub, not a DB space page.
+    // (uses playScene==='CAFE' directly — isHub is declared later in the component)
+    if (!cur || cur.includes(' ⑂ ') || cur === 'CAFE' || spaceSlug) { setBaseVers([]); setBaseVerPos(0); return }
+    let stop = false
+    fetch(`/api/engine/scene?action=versions&name=${encodeURIComponent(cur)}`).then(r => r.json()).then(j => {
+      if (stop) return
+      const vs = (Array.isArray(j.versions) ? j.versions : [])
+        .map((v: { timestamp: number }) => v.timestamp).sort((a: number, b: number) => b - a)
+      setBaseVers(vs); setBaseVerPos(0)
+    }).catch(() => {})
+    return () => { stop = true }
+  }, [playScene, spaceSlug])
   const whoRef = useRef('')
   useEffect(() => {
     let anon = ''
@@ -711,10 +764,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   // Save entire scene (all fields, effects, rules, hooks, world params)
   /** Snapshot the live world under a given name — the branch/version writer */
-  const saveSceneAs = useCallback(async (sceneName: string) => {
+  // Returns the name the scene was ACTUALLY saved under (the store forks on
+  // overwrite, so a save onto an existing branch lands as its next version), or
+  // null on failure. Callers use it to follow the real branch, not a guessed one.
+  const saveSceneAs = useCallback(async (sceneName: string): Promise<string | null> => {
     const sim = simulationRef.current
     const renderer = rendererRef.current
-    if (!sim) return false
+    if (!sim) return null
     const fields = sim.generateSnapshots()
     const stepHooks = sim.getStepHookSnapshots()
     const worldData = { ...sim.worldData }
@@ -743,32 +799,75 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       timestamp: Date.now(),
     }
     // no blank submissions — a branch version must contain a world
-    if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return false
+    if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return null
     try {
-      await fetch('/api/engine/scene', {
+      const r = await fetch('/api/engine/scene', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'save', name: sceneName, scene: sceneData }),
       })
-      return true
-    } catch { return false }
+      if (!r.ok) return null
+      const d = await r.json().catch(() => ({} as { savedAs?: string }))
+      return (d.savedAs as string) || sceneName   // fork-on-overwrite may bump the version
+    } catch { return null }
   }, [])
 
-  /** BRANCH: signed-out → auth; signed-in → fork the current world as yours, v1 */
+  /** Mint a BRANCH-scoped token for a scene branch (`BASE ⑂ handle · vN`). This is
+   *  the fix for "the AI overwrote main + the branch": a scoped token binds a
+   *  connected AI to THIS one branch — the bridge reads/writes only its snapshot,
+   *  never main or the global registry. Space worlds mint a uc_st_ token instead;
+   *  branches, being file-store scenes, get a stateless uc_sc_ token here. */
+  const mintBranchToken = useCallback(async (sceneName: string) => {
+    if (!sceneName.includes(' ⑂ ')) return null
+    setPlugBusy(true)
+    try {
+      const r = await fetch('/api/engine/scene/token', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: sceneName }),
+      })
+      const d = await r.json()
+      if (r.ok && d.token) { setPlugToken(d.token); return d.token as string }
+    } catch { /* ignore — briefing shows a minting-failed hint */ } finally { setPlugBusy(false) }
+    return null
+  }, [])
+
+  /** BRANCH KEY: the owner mints this branch's scoped uc_sc_ token and copies it —
+   *  the secret that lets an AI edit THIS branch (and nothing else). Hand it over. */
+  const copyBranchKey = useCallback(async () => {
+    const name = lastSceneRef.current || ''
+    if (!name.includes(' ⑂ ')) { showToast('branch a world first — only branches have keys', 'error'); return }
+    const tok = await mintBranchToken(name)
+    if (!tok) { showToast('could not mint — are you the branch owner?', 'error'); return }
+    try { await navigator.clipboard.writeText(tok); showToast('branch key copied — it edits only this branch', 'success') }
+    catch { showToast('clipboard blocked — reopen and try again', 'error') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mintBranchToken])
+
+  /** BRANCH: signed-out → auth; signed-in → fork the current world as yours.
+   *  An optional LABEL lets you field several distinct challengers of one world
+   *  (`BASE ⑂ handle · label · v1`); blank = your default branch (`BASE ⑂ handle`).
+   *  Re-branching an existing name doesn't clobber it — the store forks to the
+   *  next version, and we follow that ACTUAL name (no orphaned copy). */
   const handleBranch = useCallback(async () => {
     if (!me) { window.location.href = '/auth/signin'; return }
     const src = lastSceneRef.current || playScene || spaceSlug || ''
     if (!src) { showToast('load a world first', 'error'); return }
     const base = src.split(' ⑂ ')[0]
     const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    const name = `${base} ⑂ ${user} · v1`
-    if (await saveSceneAs(name)) {
-      lastSceneRef.current = name
-      showToast(`branch opened: ${name} — the eye is watching`, 'success')
+    const raw = window.prompt(`Name this branch of ${base} (optional — blank = your default branch):`, '')
+    if (raw === null) return   // cancelled
+    const label = raw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
+    const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
+    const savedAs = await saveSceneAs(name)
+    if (savedAs) {
+      lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
+      setPlugToken(null)                  // fresh branch → fresh scoped key
+      mintBranchToken(savedAs)            // scope the AI to the branch that actually exists
+      showToast(`branch opened: ${savedAs} — the eye is watching`, 'success')
       setPlugOpen(true)   // a branch without an AI is a car without keys
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, spaceSlug, saveSceneAs])
+  }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken])
 
   const handleSaveScene = useCallback(async () => {
     const sim = simulationRef.current
@@ -803,17 +902,33 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   }, [showToast, refreshSceneList])
 
   // Load a saved scene (replaces current state)
-  const handleLoadScene = useCallback(async (sceneName: string) => {
+  const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer) return
+    // Verify the target EXISTS before switching to it. The version scroller can ask
+    // for v(n+1); if there is no such version we must NOT advance the counter to a
+    // scene that isn't there ("a version number can't count up with nothing to
+    // switch to"). Fetch first; mutate refs only once the scene is confirmed.
+    // preScene: main's version scroller hands in a timestamped backup snapshot
+    // directly (it has no scene NAME to fetch by) — skip the fetch and use it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let scene: any = preScene
+    if (!scene) {
+      try {
+        const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
+        scene = (await resp.json()).scene
+      } catch { showToast('Failed to load scene', 'error'); return }
+    }
+    if (!scene) { showToast(`Scene "${sceneName}" not found`, 'error'); return }
+
+    // Confirmed — now switch. Navigating to a DIFFERENT scene/version invalidates
+    // any minted connect token (HMAC-bound to the scene you left); drop it so the
+    // next CONNECT AI mints one for where you are now.
+    if (sceneName !== lastSceneRef.current) setPlugToken(null)
     lastSceneRef.current = sceneName
     setRiding(sceneName.includes(' ⑂ ') ? sceneName : null)
     try {
-      const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
-      const { scene } = await resp.json()
-      if (!scene) { showToast(`Scene "${sceneName}" not found`, 'error'); return }
-
       // Clear current state — including the old world's audio
       audioRef.current.stopScore()
       audioRef.current.stopMusic(0.2)
@@ -897,6 +1012,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, getModCode, syncFields, updateSelectionMask])
 
+  /** MAIN version scroller step: pos 0 = LIVE, 1..N = backups (newest→oldest).
+   *  Loads a timestamped backup snapshot in place (via handleLoadScene's preScene)
+   *  — non-destructive: browsing an old version never overwrites the live world. */
+  const goBaseVer = useCallback(async (pos: number) => {
+    const cur = playScene || ''
+    if (!cur || pos < 0 || pos > baseVers.length) return
+    if (pos === 0) { await handleLoadScene(cur); setBaseVerPos(0); return }   // back to LIVE
+    const ts = baseVers[pos - 1]   // pos 1 → newest backup
+    try {
+      const j = await fetch(`/api/engine/scene?action=version&name=${encodeURIComponent(cur)}&timestamp=${ts}`).then(r => r.json())
+      if (j?.scene) { await handleLoadScene(cur, j.scene); setBaseVerPos(pos) }
+    } catch { /* offline — leave where we are */ }
+  }, [playScene, baseVers, handleLoadScene])
+
   // Delete a saved scene
   const handleDeleteScene = useCallback(async (sceneName: string) => {
     try {
@@ -948,6 +1077,37 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     window.addEventListener('cafe:portals', onPortals)
     return () => window.removeEventListener('cafe:portals', onPortals)
   }, [playScene])
+
+  // Follow the throne for the world we're in: who holds MAIN, and the immortal
+  // original. Polled so a promotion mid-session surfaces the reassurance + bookmark.
+  useEffect(() => {
+    const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+    if (!base || isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN') { setWorldLineage(null); return }
+    let stop = false
+    const load = () => fetch(`/api/engine/save?action=load&slot=${encodeURIComponent('lineage:' + base.toUpperCase())}`)
+      .then(r => r.json())
+      .then(d => { if (!stop && d?.data?.original) setWorldLineage({ original: d.data.original, mainHolder: d.data.mainHolder || d.data.original }) })
+      .catch(() => {})
+    load()
+    const t = setInterval(load, 20000)
+    return () => { stop = true; clearInterval(t) }
+  }, [playScene, spaceSlug, riding, isHub])
+
+  // Reassure the FOUNDER when their world's main gets snagged. The founder is the
+  // owner of the immortal original (its handle). If that's you and a challenger now
+  // holds main, we say so ONCE — the work isn't gone; ★ ORIGINAL always returns you.
+  useEffect(() => {
+    if (!worldLineage || !me) return
+    const { original, mainHolder } = worldLineage
+    if (!original || mainHolder === original) return   // still the founder's throne
+    const om = original.match(/ ⑂ ([^·]+?)(?: ·|$)/)   // handle of a branch-original (house worlds have none)
+    const founderHandle = om ? om[1].trim() : null
+    const myHandle = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+    if (!founderHandle || founderHandle !== myHandle) return
+    const key = `snag-toast:${original}:${mainHolder}`
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1') } catch { /* private mode → toast each visit */ }
+    showToast('A challenger won MAIN — but your original is immortal.', 'info', 'Nothing is lost. Tap ★ ORIGINAL to return to it anytime.')
+  }, [worldLineage, me, showToast])
 
   // Play mode: the shell can freeze the world (back-button confirm dialog)
   useEffect(() => {
@@ -1080,6 +1240,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             try { scenePreloadCache.set(playScene, structuredClone(data)) } catch { /* uncloneable — skip the cache */ }
           }
         }
+        // STALE-LOAD GUARD: a newer scene may have been requested while we
+        // awaited this fetch. If so, this load is stale — abandon it before it
+        // paints. Without this, an out-of-order resolve painted the WRONG world
+        // (a just-previewed Orchid) over the one you actually opened (a
+        // Lighthouse branch). Only the current target may render.
+        if (playLoadedRef.current !== playScene) return
         const scene = data.scene || data.snapshot || data
         if (!scene || !scene.fields) return
         if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
@@ -1915,7 +2081,15 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           const m = cur.match(/· v(\d+)$/)
           const next = m ? cur.replace(/· v\d+$/, `· v${+m[1] + 1}`) : `${cur} · v2`
           lastSceneRef.current = next
-          saveSceneAs(next).then(ok => { if (ok) showToast(`eye: ${next.split(' ⑂ ')[1]} saved`, 'success') })
+          // the save may DEDUPE (identical to the last version) → it returns the
+          // existing version's name; follow it so we don't leave a gap or point at
+          // a version that was never created.
+          saveSceneAs(next).then(savedAs => {
+            if (savedAs) {
+              lastSceneRef.current = savedAs
+              if (savedAs === next) showToast(`eye: ${next.split(' ⑂ ')[1]} saved`, 'success')
+            }
+          })
         }
       }
 
@@ -4179,6 +4353,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       if (playScene) return   // play sessions never write back
       // A hidden tab is paused — it must not renew the writer lease with frozen state
       if (document.hidden) return
+      // Riding a branch: the live world is the BRANCH, whose home is its scene
+      // (the eye versions it there). Syncing it here would overwrite MAIN with the
+      // branch — the exact data-loss where building a branch clobbered the root.
+      if (lastSceneRef.current.includes(' ⑂ ')) return
       const sim = simulationRef.current
       if (!sim || sim.fields.size === 0) return
       try {
@@ -4554,10 +4732,34 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                       try { if (v) localStorage.setItem('cc-presence-off', '1'); else localStorage.removeItem('cc-presence-off') } catch { /* fine */ }
                     })}
                   </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>restart with R</span>
+                    {toggleBtn(!!wd?.['rResetKey'], () => {
+                      const sim = simulationRef.current
+                      if (!sim) return
+                      sim.worldData['rResetKey'] = !sim.worldData['rResetKey']
+                      setToolsTick(n => n + 1)   // space worlds persist it with the snapshot
+                    })}
+                  </div>
                   <div className="text-[9px] text-white/35 leading-relaxed">
-                    multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways.
+                    multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start.
                   </div>
                 </div>
+                {lastSceneRef.current?.includes(' ⑂ ') && (
+                  <div className="px-3 py-2.5 border-b border-white/10">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span>branch key</span>
+                      <button onClick={copyBranchKey}
+                        title="copy this branch's secret key — hand it to an AI to edit ONLY this branch"
+                        className="px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
+                        🔑 COPY
+                      </button>
+                    </div>
+                    <div className="text-[9px] text-white/35 leading-relaxed mt-1.5">
+                      the secret that edits ONLY this branch — never main. Owner-only; hand it to your AI.
+                    </div>
+                  </div>
+                )}
                 <div className="px-3 py-2">
                   <div className="text-[9px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
                   <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
@@ -4615,60 +4817,52 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 {uiDockOpen ? '★ CLOSE' : '★'}
               </button>
             )}
+            {/* the founder's bookmark: main got snagged by a challenger, but the
+                immortal original is one tap away — stays out of the dock so it can
+                never feel buried. Shown whenever the throne isn't the original. */}
+            {!isHub && worldLineage && worldLineage.mainHolder !== worldLineage.original && (
+              <button
+                title="Return to the original — it's immortal and always here, even when a challenger holds main"
+                onClick={() => {
+                  const orig = worldLineage.original
+                  if (orig.startsWith('space:')) window.location.href = '/space/' + orig.slice(6)
+                  else handleLoadScene(orig)
+                }}
+                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-amber-500/15 backdrop-blur border border-amber-400/40 text-amber-200/90 hover:bg-amber-500/25 transition-colors"
+              >
+                ★ ORIGINAL
+              </button>
+            )}
             {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
-            {/* restart-on-entry lives with the tools, not buried in the manual */}
-            {(isOwner || !spaceId) && !isHub && (
-              <button
-                title="When ON, entering this world always starts from the beginning — no resuming"
-                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-                onClick={() => {
-                  const s = simulationRef.current
-                  if (!s) return
-                  const on = !s.worldData.resetOnEntry
-                  s.worldData.resetOnEntry = on
-                  setAiPulse(v => v + 1)   // nudge a re-render
-                  const key = spaceId ? undefined : playScene
-                  if (key) {
-                    fetch('/api/engine/save', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: on, rResetKey: !!s.worldData.rResetKey } }),
-                    }).catch(() => {})
-                  }
-                }}
-              >
-                ↻ RESTART: {simulationRef.current?.worldData?.resetOnEntry ? 'ON' : 'OFF'}
-              </button>
-            )}
-            {/* let players press R to reset the world to the start — opt-in per world */}
-            {(isOwner || !spaceId) && !isHub && (
-              <button
-                title="When ON, pressing R resets this world to the beginning"
-                className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-                onClick={() => {
-                  const s = simulationRef.current
-                  if (!s) return
-                  const on = !s.worldData.rResetKey
-                  s.worldData.rResetKey = on
-                  setAiPulse(v => v + 1)
-                  const key = spaceId ? undefined : playScene
-                  if (key) {
-                    fetch('/api/engine/save', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ slot: 'world-settings:' + key, data: { resetOnEntry: !!s.worldData.resetOnEntry, rResetKey: on } }),
-                    }).catch(() => {})
-                  }
-                }}
-              >
-                ⟲ RESET (R): {simulationRef.current?.worldData?.rResetKey ? 'ON' : 'OFF'}
-              </button>
-            )}
-            {!isHub && <button
-              onClick={handleBranch}
-              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              title={me ? 'fork this world as your branch — the eye versions every AI edit' : 'sign in to branch this world'}
-            >
-              ⑂ BRANCH
-            </button>}
+            {/* A world's rules belong to whoever owns it. On a SPACE the owner sets
+                them in ⚙ WORLD TOOLS; on YOUR OWN branch you set them here — the
+                same rules, saved per-branch (world-settings:<branch>). A branch you
+                don't own, or a house world, shows nothing to change. */}
+            {!isHub && !spaceId && lastSceneRef.current.includes(' ⑂ ') && (() => {
+              const cur = lastSceneRef.current
+              const bm = cur.match(/ ⑂ ([^·]+?)(?: ·|$)/)
+              const myHandle = me ? me.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+              if (!bm || !myHandle || bm[1].trim() !== myHandle) return null   // only your own branch
+              const wd = simulationRef.current?.worldData
+              const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
+              const persist = () => {
+                const s = simulationRef.current; if (!s) return
+                fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ slot: 'world-settings:' + cur, data: {
+                    multiplayer: s.worldData.multiplayer, singlePlayer: s.worldData.singlePlayer, rResetKey: !!s.worldData.rResetKey } }) }).catch(() => {})
+              }
+              const chip = 'px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'
+              return (<>
+                <button className={chip} title="your branch's rule — players press R to restart it"
+                  onClick={() => { const s = simulationRef.current; if (!s) return; s.worldData.rResetKey = !s.worldData.rResetKey; setAiPulse(v => v + 1); persist() }}>
+                  ⟲ RESTART (R): {wd?.['rResetKey'] ? 'ON' : 'OFF'}
+                </button>
+                <button className={chip} title="your branch's rule — multiplayer or solo"
+                  onClick={() => { const s = simulationRef.current; if (!s) return; s.worldData.multiplayer = !mp; s.worldData.singlePlayer = mp; setAiPulse(v => v + 1); persist() }}>
+                  ⧉ MULTIPLAYER: {mp ? 'ON' : 'OFF'}
+                </button>
+              </>)
+            })()}
             {/* the hub carries ONE door to SUB-MAIN — a navigation world like
                 main whose shelf is the branches. In-shell travel, not a page. */}
             {isHub && playScene !== 'SUB-MAIN' && (
@@ -4679,20 +4873,38 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 ⑂ SUB-MAIN
               </button>
             )}
-            {/* version scroller — appears when riding a branch (never on hubs) */}
+            {/* BRANCH versions — the hybrid scrubber: ◂/▸ step · middle opens the list */}
             {!isHub && lastSceneRef.current.includes(' ⑂ ') && (() => {
               const cur = lastSceneRef.current
               const m = cur.match(/· v(\d+)$/)
               const n = m ? +m[1] : 1
               const at = (k: number) => cur.replace(/· v\d+$/, `· v${k}`)
               return (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
-                  <button className="hover:text-white px-1" disabled={n <= 1} onClick={() => handleLoadScene(at(n - 1))}>◂</button>
-                  <span className="tracking-[0.1em]">v{n}</span>
-                  <button className="hover:text-white px-1" onClick={() => handleLoadScene(at(n + 1))}>▸</button>
-                </div>
+                <VersionScrubber
+                  label={`v${n}`} total={verMax}
+                  canOlder={n > 1} canNewer={n < verMax}
+                  onOlder={() => handleLoadScene(at(n - 1))} onNewer={() => handleLoadScene(at(n + 1))}
+                  items={Array.from({ length: verMax }, (_, i) => { const v = verMax - i; return { key: `v${v}`, label: `v${v}`, active: v === n, onPick: () => handleLoadScene(at(v)) } })}
+                />
               )
             })()}
+            {/* MAIN versions — the SAME hybrid scrubber over this base world's save-points */}
+            {!isHub && !lastSceneRef.current.includes(' ⑂ ') && !spaceSlug && baseVers.length > 0 && (
+              <VersionScrubber
+                label={baseVerPos === 0 ? 'LIVE' : `v${baseVers.length + 1 - baseVerPos}`}
+                total={baseVers.length + 1}
+                canOlder={baseVerPos < baseVers.length} canNewer={baseVerPos > 0}
+                onOlder={() => goBaseVer(baseVerPos + 1)} onNewer={() => goBaseVer(baseVerPos - 1)}
+                items={[
+                  { key: 'live', label: 'LIVE', sub: 'now', active: baseVerPos === 0, onPick: () => goBaseVer(0) },
+                  ...baseVers.map((ts, i) => ({
+                    key: String(ts), label: `v${baseVers.length - i}`,
+                    sub: new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                    active: baseVerPos === i + 1, onPick: () => goBaseVer(i + 1),
+                  })),
+                ]}
+              />
+            )}
             {!isHub && <button
               onClick={async () => {
                 setBranchesOpen(v => !v)
@@ -4717,6 +4929,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             >
               ≡ BRANCHES
             </button>}
+            {/* VERSIONS — this world's own save-point history, right on main */}
+            {!isHub && spaceSlug && <button
+              onClick={() => { setVersionsOpen(v => !v); if (!versionsOpen) loadVersions() }}
+              title="browse this world's version history — save a point, or roll back"
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+            >
+              ⏱ VERSIONS
+            </button>}
             <button
               onClick={async () => {
                 setPlugOpen(v => !v)
@@ -4731,6 +4951,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                     const d = await r.json()
                     if (r.ok) setPlugToken(d.token)
                   } finally { setPlugBusy(false) }
+                } else if (!plugToken && !spaceSlug && lastSceneRef.current?.includes(' ⑂ ')) {
+                  // a cafe-shell branch (scene, not a space) → mint its scoped uc_sc_ token
+                  mintBranchToken(lastSceneRef.current)
                 }
               }}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -4792,6 +5015,15 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
+            {/* BRANCH sits at the bottom of the dock, right against the VOTE button —
+                branching feeds the vote (each branch is a candidate). */}
+            {!isHub && <button
+              onClick={handleBranch}
+              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              title={me ? 'fork this world as your branch — the eye versions every AI edit' : 'sign in to branch this world'}
+            >
+              ⑂ BRANCH
+            </button>}
             </>)}
           </div>
           {/* blank world + AI on the job → a quiet working spinner (no how-to box).
@@ -4876,6 +5108,65 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           )}
 
           {/* BRANCHES — the CELL: viewers gather, five unlock the vote, every branch has a table */}
+          {versionsOpen && spaceSlug && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setVersionsOpen(false)}>
+              <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] tracking-[0.25em] text-white/50">⏱ VERSIONS OF {(playScene || spaceSlug || '').toUpperCase()}</div>
+                  <button aria-label="Close" className="text-white/40 hover:text-white text-[13px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30" onClick={() => setVersionsOpen(false)}>✕</button>
+                </div>
+                {(isOwner || !spaceId) && (
+                  <button
+                    disabled={versionBusy}
+                    className="w-full text-left px-3 py-2 rounded-lg border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 transition-colors mb-3 disabled:opacity-40"
+                    onClick={async () => {
+                      setVersionBusy(true)
+                      try {
+                        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+                        }).then(x => x.json())
+                        showToast(r.deduped ? `no change since v${r.version?.version} — nothing to save` : `saved v${r.version?.version}`, 'success')
+                        await loadVersions()
+                      } catch { showToast('could not save version', 'error') } finally { setVersionBusy(false) }
+                    }}
+                  >
+                    ＋ SAVE A VERSION <span className="text-white/40 text-[10px]">— snapshot the world as it stands (identical saves are skipped)</span>
+                  </button>
+                )}
+                {versionList.length === 0 && <div className="text-white/35 text-[11px] px-1 py-2">no versions yet — save one, or the eye will as you build.</div>}
+                {versionList.map(v => (
+                  <div key={v.version} className="flex items-center gap-2 rounded-lg border border-white/10 mb-1.5 px-3 py-2">
+                    <span className="text-amber-200/90 tracking-[0.1em]">v{v.version}</span>
+                    <span className="flex-1 text-white/50 text-[10px] truncate">{v.note || (v.author?.name ? `by ${v.author.name}` : '—')}</span>
+                    <button
+                      className="text-[10px] text-white/50 hover:text-white px-1.5"
+                      title="preview this version in a new tab"
+                      onClick={() => window.open(`/space/${encodeURIComponent(spaceSlug)}?version=${v.version}`, '_blank')}
+                    >VIEW</button>
+                    {(isOwner || !spaceId) && (
+                      <button
+                        disabled={versionBusy}
+                        className="text-[10px] border border-white/15 rounded px-2 py-0.5 text-white/60 hover:text-white hover:border-white/40 disabled:opacity-40"
+                        title="restore this version as the live world (current state is saved first)"
+                        onClick={async () => {
+                          if (!window.confirm(`Restore v${v.version} as the live world? Your current state is saved as a new version first.`)) return
+                          setVersionBusy(true)
+                          try {
+                            await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions/${v.version}`, {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'apply' }),
+                            })
+                            showToast(`restored v${v.version} — reloading`, 'success')
+                            setTimeout(() => window.location.reload(), 600)
+                          } catch { showToast('restore failed', 'error') } finally { setVersionBusy(false) }
+                        }}
+                      >RESTORE</button>
+                    )}
+                  </div>
+                ))}
+                <div className="text-[9px] text-white/30 mt-2">save points are versions · restoring never destroys — the live world is snapshotted first</div>
+              </div>
+            </div>
+          )}
           {branchesOpen && (() => {
             const base = cellBase()
             const viewers = Object.keys(cellData.viewers)
@@ -4971,14 +5262,23 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           {/* CONNECT AI — the plug box: everything an agent needs to edit this branch */}
           {plugOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
-            const tok = plugToken || (spaceSlug ? (plugBusy ? '…minting…' : '(minting failed — are you the owner?)') : '<your ENGINE_AGENT_TOKEN — branch-scoped tokens land with the registry>')
-            const briefing = `Connect to my cartridge.cafe world${lastSceneRef.current ? ` branch "${lastSceneRef.current}"` : ''}:
+            const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — sign in as the owner and reopen CONNECT AI)')
+            const cur = lastSceneRef.current || ''
+            const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
+            const looking = bm
+              ? `You are looking at world "${bm[1]}" — branch by ${bm[2]}, version v${bm[3]}.`
+              : `You are looking at world "${cur}".`
+            const scope = bm
+              ? `This token is scoped to THIS branch: your edits continue it as v${Number(bm[3]) + 1}, v${Number(bm[3]) + 2}… (the eye auto-versions). Versions CONTINUE one branch. To bring a different take, make your OWN branch under your name (its own token) — that's a new challenger, not a version. The tournament, not edit access, decides which branch takes main; the original is immortal.`
+              : `The eye versions your edits automatically after each settled burst — just build.`
+            const briefing = `Connect to my cartridge.cafe ${bm ? `world "${bm[1]}" · branch "${bm[2]}" · v${bm[3]}` : `world "${cur}"`}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${tok}
+${looking}
 1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
 2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
 ${plugBrief.trim() ? 'BUILD THIS: ' + plugBrief.trim() : 'Ask me what to build, or read the world state and continue it.'}
-The eye versions your edits automatically after each settled burst — just build.`
+${scope}`
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
                 <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>

@@ -9,17 +9,17 @@ import { useCallback, useEffect, useState } from 'react'
 
 type Msg = { at: number; ai?: boolean; who?: string }
 
-export default function MainCommonsChat({ visible, onEnter }: { visible: boolean; onEnter: () => void }) {
+export default function MainCommonsChat({ visible, onEnter, channel = 'commons:main', label = 'THE COMMONS' }: { visible: boolean; onEnter: () => void; channel?: string; label?: string }) {
   const [aiLive, setAiLive] = useState(0)
 
   const poll = useCallback(async () => {
     try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('commons:main')).then(r => r.json())
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(channel)).then(r => r.json())
       const msgs: Msg[] = Array.isArray(j?.data?.msgs) ? j.data.msgs : []
       const now = Date.now()
       setAiLive(new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)).size)
     } catch { /* offline is fine */ }
-  }, [])
+  }, [channel])
 
   useEffect(() => {
     if (!visible) return
@@ -39,7 +39,7 @@ export default function MainCommonsChat({ visible, onEnter }: { visible: boolean
         {aiLive > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-mono font-bold flex items-center justify-center">{aiLive}</span>}
       </span>
       <span className="text-left">
-        <span className="block font-mono text-[11px] tracking-[0.22em] text-glow/90">THE COMMONS</span>
+        <span className="block font-mono text-[11px] tracking-[0.22em] text-glow/90">{label}</span>
         <span className="block font-mono text-[9px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
           {aiLive ? `${aiLive} AI live · enter ›` : 'the AI chat world · enter ›'}
         </span>

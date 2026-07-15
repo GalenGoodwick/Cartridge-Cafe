@@ -44,6 +44,13 @@ No world token yet? Brew a world on main first — its AI key works here too.`
     fetch('/api/auth/session').then(r => r.json()).then(s => setWho(s?.user?.name || null)).catch(() => {})
   }, [])
 
+  // ESC leaves the commons (same as ◂ BACK)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onExit() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onExit])
+
   const load = useCallback(async () => {
     try {
       const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(channel)).then(r => r.json())

@@ -1,34 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-
-/** Scenes are world-definitions with executable hooks — writes need identity.
- *  Dev keeps the frictionless local cartridge workflow; production requires
- *  a session or the engine agent token. */
-/** Store scenes are the global cartridge namespace: canonical HOUSE worlds
- *  (CAFE, HELIOS, …) and BRANCHES (`BASE ⑂ handle · vN`). Authority:
- *   · admin engine token → anything (house worlds ship via deploy anyway),
- *   · a signed-in user → only branches under THEIR OWN handle (the same
- *     email-local-part the brancher stamps into the name). You can open and
- *     edit your own branches; you can't touch a canonical world or anyone
- *     else's branch — the tournament, not edit access, decides which wins.
- *  Dev keeps the frictionless local workflow. */
-async function mayWriteScene(req: NextRequest, name: string): Promise<boolean> {
-  if (process.env.NODE_ENV !== 'production') return true
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const envToken = process.env.ENGINE_AGENT_TOKEN
-    if (envToken && authHeader.slice(7) === envToken) return true
-  }
-  const email = (await getServerSession(authOptions))?.user?.email
-  if (!email) return false
-  const bi = name.indexOf(' ⑂ ')
-  if (bi < 0) return false                       // canonical/house world — admin only
-  const vAt = name.lastIndexOf(' · v')
-  const author = (vAt > bi ? name.slice(bi + 3, vAt) : name.slice(bi + 3)).trim()
-  const myHandle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-  return author === myHandle                     // only your own branches
-}
+import { mayWriteScene } from '../scene-auth'
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
 
@@ -84,12 +55,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Not authorized to write this world' }, { status: 403 })
     }
     if (body.action === 'save' && body.scene) {
-      saveScene(body.name, body.scene)
+      // FORK-ON-OVERWRITE: never clobber an existing world in place. A save onto
+      // an existing name mints the NEXT version instead — so a build can't erase
+      // main or a branch (the branch-create/auth hole). Pass overwrite:true only
+      // for a deliberate head-update (the eye already saves to fresh names).
+      let target = body.name
+      if (body.overwrite !== true && loadScene(target)) {
+        const bm = target.match(/^(.*⑂\s*.+?)\s*·\s*v(\d+)\s*$/)
+        if (bm) {
+          let n = parseInt(bm[2], 10)
+          do { n++; target = `${bm[1]} · v${n}` } while (loadScene(target))   // branch → v(n+1)
+        } else {
+          const author = (typeof body.author === 'string' && body.author) || 'ai'
+          let n = 1; const base = `${body.name} ⑂ ${author}`
+          target = `${base} · v${n}`
+          while (loadScene(target)) { n++; target = `${base} · v${n}` }        // canonical → a fresh branch
+        }
+      }
+      // DEDUPE: a save-point identical to the version right before it shouldn't
+      // spawn a twin. Compare content (ignoring the volatile timestamp/name) to
+      // the predecessor version; if unchanged, keep the existing one.
+      const fp = (s: unknown): string => {
+        try { const o = { ...(s as Record<string, unknown>) }; delete o.timestamp; delete o.name; return JSON.stringify(o) }
+        catch { return JSON.stringify(s) }
+      }
+      const vm = target.match(/^(.*?)\s*·\s*v(\d+)\s*$/)
+      if (vm) {
+        const k = parseInt(vm[2], 10)
+        const predecessor = k > 1 ? `${vm[1]} · v${k - 1}` : vm[1].trim()   // v1's predecessor is the un-versioned name
+        const prev = predecessor ? loadScene(predecessor) : undefined
+        if (prev && fp(prev) === fp(body.scene)) {
+          return NextResponse.json({ ok: true, savedAs: predecessor, deduped: true, forked: false })
+        }
+      }
+      saveScene(target, body.scene)
       // first branch off a world stamps its lineage — the BASE is the immortal
       // original (king-of-the-hill promotion hangs off this record).
-      const bi = body.name.indexOf(' ⑂ ')
-      if (bi > 0) { try { await ensureLineage(body.name.slice(0, bi), body.name.slice(0, bi)) } catch { /* non-fatal */ } }
-      return NextResponse.json({ ok: true })
+      const bi = target.indexOf(' ⑂ ')
+      if (bi > 0) { try { await ensureLineage(target.slice(0, bi), target.slice(0, bi)) } catch { /* non-fatal */ } }
+      return NextResponse.json({ ok: true, savedAs: target, forked: target !== body.name })
     }
     if (body.action === 'revert' && body.timestamp) {
       const ok = revertScene(body.name, Number(body.timestamp))

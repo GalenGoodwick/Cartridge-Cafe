@@ -49,3 +49,18 @@ export async function isOriginal(base: string, launch: string): Promise<boolean>
   const lin = await getLineage(base)
   return !!lin && lin.original === launch
 }
+
+/** Crown a new throne-holder for a lineage. The tournament — not edit access —
+ *  drives this: when the world arena's champion settles, the winning scene swaps
+ *  in here and main renders it under the base. The original never changes and can
+ *  reclaim the throne by winning again. No-op if `holder` already reigns. */
+export async function setMainHolder(base: string, holder: string): Promise<Lineage | null> {
+  const lin = await getLineage(base)
+  if (!lin || !holder || lin.mainHolder === holder) return lin
+  const now = Date.now()
+  lin.history = [...(lin.history || []), { holder: lin.mainHolder, at: lin.reignSince || now }].slice(-50)
+  lin.mainHolder = holder
+  lin.reignSince = now
+  await saveGameSlot(slotOf(base), lin)
+  return lin
+}
