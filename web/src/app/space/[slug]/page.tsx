@@ -2,8 +2,7 @@ import { notFound } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import FieldEngine from '@/app/engine/FieldEngine'
-import SpaceToolbar from './SpaceToolbar'
+import SpaceStage from './SpaceStage'
 
 interface SpacePageProps {
   params: Promise<{ slug: string }>
@@ -58,18 +57,14 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
 
   return (
     <>
-      <FieldEngine
+      <SpaceStage
         spaceId={space.id}
         spaceSlug={space.slug}
-        isOwner={engineOwner}
-        versionView={Number.isFinite(versionView) ? versionView : undefined}
-      />
-      <SpaceToolbar
-        slug={space.slug}
-        name={space.name}
-        ownerName={space.owner?.name ?? null}
+        engineOwner={engineOwner}
         isOwner={isOwner}
         versionView={Number.isFinite(versionView) ? versionView : undefined}
+        name={space.name}
+        ownerName={space.owner?.name ?? null}
       />
     </>
   )

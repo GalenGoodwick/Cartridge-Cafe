@@ -51,6 +51,12 @@ type TDoc = {
 // on the constellation keeps a stale standing from lingering.
 const QUORUM = 3   // distinct voters a cell needs before it can speak — no single vote crowns anything
 const VOTE_LOCK_MS = 10 * 60_000   // once cast, a vote locks for ten minutes
+// The VOTE-rules gate is accept-once. localStorage is the durable store, but some
+// contexts DENY it (private mode, partitioned/sandboxed storage) — there, getItem
+// throws, `accepted` stays false, and the warning pops EVERY time. This module-
+// level flag is the in-memory fallback: once accepted it holds for the session
+// regardless of storage, so the gate never nags twice.
+let gateAcceptedMem = false
 // (the day-scale decay on a world's pull lives in the CAFE hook, where the constellation is drawn)
 
 const hash = (s: string) => {
@@ -83,7 +89,7 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, onReckoning, onPreview, onStageRect }: {
+export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, railTop, onReckoning, onPreview, onStageRect }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
   branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
@@ -95,6 +101,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   onCloseHome?: () => void       // ✕: undock and return to this arena's door
   sceneKey?: string              // the scene under the bar — changing it minimizes the panel
   rail?: boolean                 // in-world: sit in the right rail under the AI lamp, not bottom-center
+  railTop?: number               // in-world: the y (px) to seat the rail button at — just under the engine's UI dock, so VOTE lands beneath AI plugged/unplugged
   bubbles?: { name: string; x: number; y: number; r: number }[]   // live constellation bubble positions (screen px) — the 5 candidates get highlighted in place
   onReckoning?: (open: boolean) => void          // the vote overlay takes/releases the screen — the shell greys the world behind
   onPreview?: (world: string | null) => void     // render this world live in the stage (the engine swaps to it while the arena stays home)
@@ -102,6 +109,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
+  const [gate, setGate] = useState(false)   // THE VOTE gate — first-timers must read & accept the rules
   const [mounted, setMounted] = useState(false)   // drives the slide-in: false = panels at the edges, true = seated
   const [showInstr, setShowInstr] = useState(false)   // the how-to popover, from the grid's corner tab
   const [now, setNow] = useState(0)   // 1s tick, for the vote-lock countdown
@@ -124,8 +132,53 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const stopDwell = useCallback((w: string) => {
     const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] }
   }, [])
+  // WITNESS TIMER: a game must be watched for 10s to count — but the time
+  // ACCUMULATES across visits, so you can snap between games and each one banks
+  // whatever it's shown for. At 10s it earns its ✓ and the vote unlocks.
+  const WITNESS_MS = 10_000
+  const viewMs = useRef<Record<string, number>>({})
+  const focusRef = useRef<string | null>(null)
+  const [vtick, setVtick] = useState(0)
+  useEffect(() => { viewMs.current = {} }, [cellKey])   // fresh timers per cell
   // the world currently under your gaze — it fills the stage and owns the chat
   const [focus, setFocus] = useState<string | null>(null)
+  focusRef.current = focus
+  // accumulate the watched game's time (fine tick) and stamp ✓ at 10s
+  useEffect(() => {
+    const id = setInterval(() => {
+      const f = focusRef.current
+      if (f) {
+        const v = Math.min(WITNESS_MS, (viewMs.current[f] || 0) + 250)
+        viewMs.current[f] = v
+        if (v >= WITNESS_MS) markSeen(f)
+      }
+      setVtick(x => (x + 1) & 0xffff)
+    }, 250)
+    return () => clearInterval(id)
+  }, [markSeen])
+  // PRESENCE: everyone in this cell's reckoning heartbeats their name to a shared
+  // slot; each viewer prunes the stale and shows who else is watching. v0 rmw.
+  const [viewers, setViewers] = useState<{ who: string; at: number }[]>([])
+  useEffect(() => {
+    if (!open || !who) return
+    const vslot = 'cellviewers:' + slot + ':' + cellKey
+    let stop = false
+    const beat = async () => {
+      let cur: { who: string; at: number }[] = []
+      try {
+        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(vslot)).then(r => r.json())
+        if (Array.isArray(j?.data?.v)) cur = j.data.v
+      } catch { /* start fresh */ }
+      if (stop) return
+      const nowT = Date.now()
+      const next = [...cur.filter(v => v.who !== who && nowT - v.at < 12000), { who, at: nowT }].slice(-40)
+      setViewers(next)
+      fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot: vslot, data: { v: next } }) }).catch(() => {})
+    }
+    beat()
+    const id = setInterval(beat, 4000)
+    return () => { stop = true; clearInterval(id) }
+  }, [open, who, slot, cellKey])
   // the center hole: the engine reflows the world/constellation into exactly
   // this rect, so the vote panels frame a resized main rather than overlaying it.
   const stageRef = useRef<HTMLDivElement>(null)
@@ -349,7 +402,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // door arenas hand the raw world name to the shell (it resolves 'space:slug');
   // a world-page arena resolves 'MAIN'/branch names to a loadable scene itself.
   const previewName = (w: string) => branchesOf ? (previewMap.current[w] || w) : w
-  const load = (w: string) => { setFocus(w); loadChat(w); markSeen(w); onPreview?.(previewName(w)) }
+  const load = (w: string) => { setFocus(w); loadChat(w); onPreview?.(previewName(w)) }
   /** click: load at once. hover: focus + talk now, load after a short dwell. */
   const select = (w: string) => { const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] } load(w) }
   const gaze = (w: string) => {
@@ -363,18 +416,59 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
    *  in from the edges in step with the canvas resizing into the center, so no
    *  blank margin ever shows during the transition. */
   const enterReckoning = () => {
-    setOpen(true)
-    onReckoning?.(true)
+    // THE VOTE is a serious dynamic — first-timers must read the rules and accept
+    // before they can enter. Enforced against no rule they weren't first shown.
+    let accepted = gateAcceptedMem
+    try { accepted = accepted || localStorage.getItem('cc-vote-gate') === '1' } catch { /* storage denied — the memory flag still holds */ }
+    if (accepted) { setOpen(true); onReckoning?.(true) }
+    else setGate(true)
   }
-  const leaveReckoning = () => {
-    // reverse it: panels slide back out AS the canvas grows back to full — then
-    // unmount once they've met at the edges (same 320ms as the resize).
+  const acceptGate = () => {
+    gateAcceptedMem = true   // holds for the session even if storage is blocked
+    try { localStorage.setItem('cc-vote-gate', '1') } catch { /* ignore */ }
+    setGate(false); setOpen(true); onReckoning?.(true)
+  }
+  // the visual close: panels slide back out AS the canvas grows to full, then
+  // unmount once they've met at the edges (same 320ms as the resize).
+  const closeReckoning = useCallback(() => {
     setMounted(false)
     setFocus(null)
     onPreview?.(null)
     onStageRect?.(null)
     window.setTimeout(() => { setOpen(false); onReckoning?.(false) }, 320)
-  }
+  }, [onPreview, onStageRect, onReckoning])
+  // the reckoning takes the whole screen — so it must be exitable the way people
+  // reflexively try to exit fullscreen things: the browser BACK button and ESC.
+  // Opening pushes a throwaway history entry; back/ESC pop it (→ we just close),
+  // and the ✕ button pops it for us so the stack never leaks a dead entry.
+  const pushedState = useRef(false)
+  const leaveReckoning = useCallback(() => {
+    if (pushedState.current) { pushedState.current = false; try { window.history.back() } catch { closeReckoning() } }
+    else closeReckoning()
+  }, [closeReckoning])
+  // The back/ESC wiring must arm ONCE when the reckoning opens and disarm ONCE
+  // when it closes — never on every render. closeReckoning/leaveReckoning are
+  // recreated each render (they close over inline parent callbacks), so we reach
+  // them through refs and depend ONLY on `open`. (A prior version listed them as
+  // deps; with the 1s countdown re-rendering, the cleanup fired window.history
+  // .back() every second and walked the browser clean off the page. Never again.)
+  const closeRef = useRef(closeReckoning); closeRef.current = closeReckoning
+  const leaveRef = useRef(leaveReckoning); leaveRef.current = leaveReckoning
+  useEffect(() => {
+    if (!open) return
+    try { window.history.pushState({ ccReckoning: true }, ''); pushedState.current = true } catch { /* ignore */ }
+    const onPop = () => { pushedState.current = false; closeRef.current() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') leaveRef.current() }
+    window.addEventListener('popstate', onPop)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+      window.removeEventListener('keydown', onKey)
+      // closed by any other path (scene change, unmount) while our entry is still
+      // on the stack → pop it so back doesn't later swallow a real navigation.
+      if (pushedState.current) { pushedState.current = false; try { window.history.back() } catch { /* ignore */ } }
+    }
+  }, [open])
 
   // while the overlay is up, keep the focused world's talk fresh
   useEffect(() => {
@@ -394,7 +488,8 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     const hint = emptyHint
     if (!hint || roster.length >= 2) return null
     return (
-      <div className={rail ? 'fixed top-[205px] right-3 z-40' : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50'}>
+      <div className={rail ? 'fixed right-3 z-40' : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50'}
+        style={rail ? { top: railTop ?? 205 } : undefined}>
         <div className={`${pill} rounded-full px-4 py-2 border border-white/15 bg-void/60 text-white/40 backdrop-blur`}>
           {hint}
         </div>
@@ -421,8 +516,22 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
         {/* the header — the reckoning, and the world you're looking at, named here */}
         <div className={`pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/20 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : '-translate-y-full'}`}>
-          <div className={`${pill} text-amber-200/70`}>
-            ⚔ THE RECKONING{focus && <span className="text-white/45"> · {focus.toLowerCase()}</span>}
+          <div className="flex items-center gap-2">
+            <div className={`${pill} text-amber-200/70`}>
+              ⚔ THE RECKONING{focus && <span className="text-white/45"> · {focus.toLowerCase()}</span>}
+            </div>
+            {/* who else is in this cell right now */}
+            {viewers.length > 0 && (
+              <div className="flex items-center gap-1" title={viewers.map(v => v.who).join(', ')}>
+                <span className="text-white/35 text-[10px] font-mono">👁 {viewers.length}</span>
+                <div className="flex -space-x-1.5">
+                  {viewers.slice(0, 7).map((v, i) => (
+                    <span key={i} className="w-4.5 h-4.5 rounded-full border border-[#0d0906] flex items-center justify-center text-[8px] font-bold text-black"
+                      style={{ width: '18px', height: '18px', background: `hsl(${hash(v.who) % 360},55%,62%)` }}>{v.who[0]?.toUpperCase()}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <button onClick={leaveReckoning} title="leave the reckoning"
             className={`${pill} px-2.5 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
@@ -511,7 +620,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   }`}>
                   <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
                     <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
-                    {isSeen && !voted && <span className="absolute top-1.5 left-1.5 w-4 h-4 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[9px] flex items-center justify-center">✓</span>}
+                    {/* WITNESS TIMER, top-left: seconds left to watch (accumulates
+                        across visits) → ✓ at 10s. Amber while it's the one on stage. */}
+                    {seated && (() => {
+                      void vtick
+                      const ms = Math.min(WITNESS_MS, viewMs.current[w] || 0)
+                      if (ms >= WITNESS_MS) return <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[10px] flex items-center justify-center">✓</span>
+                      const left = Math.ceil((WITNESS_MS - ms) / 1000)
+                      const active = focus === w
+                      return <span title="watch 10s to witness · time accumulates"
+                        className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[9px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
+                    })()}
                     {/* THE VOTE BOX — top-right. Once cast, it locks for ten minutes
                         and shows the time remaining. */}
                     {seated && (() => {
@@ -558,26 +677,70 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                     : `voice cast for ${myVote.toLowerCase()} · tap another + to move it`
                 })()
               : seenAll ? 'all five witnessed — tap the + on your choice to vote'
-              : `load each world to witness it — ${seenN}/5 · the + unlocks at 5`}
+              : `watch each game 10s to witness it — ${seenN}/5 · time accumulates`}
           </div>
+          {/* FINALIZE — lock your vote and leave the cell at once, no waiting */}
+          {seated && (() => {
+            // a vote via finalize honors the same rule as the + : all five witnessed
+            // (or you already voted). Leaving WITHOUT a vote is the ✕ CLOSE above.
+            const chosen = myVote || (seenAll && focus && seen.has(focus) ? focus : null)
+            return (
+              <div className="flex justify-center mt-2 pointer-events-auto">
+                <button
+                  disabled={!chosen}
+                  onClick={() => { if (!myVote && chosen) vote(mci, chosen); leaveReckoning() }}
+                  title={chosen ? `finalize on ${chosen.toLowerCase()} and leave the cell` : 'witness all five, pick one, then finalize to leave'}
+                  className={`${pill} px-4 py-1.5 rounded-full border-2 font-bold tracking-wide transition-all ${
+                    chosen ? 'bg-emerald-500/90 border-emerald-300 text-black hover:scale-105 shadow-[0_0_16px_rgba(16,185,129,0.5)]'
+                           : 'bg-black/50 border-white/15 text-white/30 cursor-not-allowed'}`}>
+                  ✔ FINALIZE {chosen ? `· ${chosen.toLowerCase()}` : ''} & LEAVE
+                </button>
+              </div>
+            )
+          })()}
         </div>
       </div>
     )
   }
 
   return (
-    <div className={rail
-      ? 'fixed top-[205px] right-3 z-40 flex flex-col items-end gap-2'
-      : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2'}>
-      <button
-        onClick={enterReckoning}
-        className={`${pill} rounded-full px-4 py-2 border backdrop-blur transition-colors ${
-          doc.champion
-            ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
-            : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
-        }`}>
-        {rail ? `⚔ VOTE · T${doc.tier}` : `⚔ TIER ${doc.tier} · VOTE`}
-      </button>
-    </div>
+    <>
+      {gate && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setGate(false)}>
+          <div className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-y-auto rounded-lg border border-red-500/35 bg-[#0e0b07] p-7 font-mono text-[13px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 text-red-400 text-[12px] tracking-[0.22em] uppercase mb-5">
+              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Do not enter before reading
+            </div>
+            <p className="text-white/80 mb-4">THE VOTE is not a like button. It is a serious dynamic — and it can cost you your account.</p>
+            <div className="space-y-3 text-[12.5px] text-white/70">
+              <p><span className="text-amber-200">A cell is 60 minutes.</span> It holds several worlds. Play <em>any</em> of them and the cell is <em>yours</em> — you must give real time to <em>all</em> of them. Skip games and your score is wrecked.</p>
+              <p><span className="text-amber-200">Two scores.</span> XP — up to 60, one point per minute actually played. VOTE — up to 100, your interest. Play buys standing; the vote sorts what everyone sees first.</p>
+              <p><span className="text-amber-200">Your freedom.</span> Never touch a world and you leave freely for a new cell. Lock in a vote anytime to move on. Review as many cells as you like. Abandon without voting and your play time still counts.</p>
+              <p><span className="text-amber-200">The violation.</span> Leaving a cell you have <em>played</em> without giving time to each game. First offense: a warning strike (30 days to clear). A second <em>live</em> strike — <span className="text-red-400">your account is deleted.</span></p>
+              <p><span className="text-amber-200">The work survives you.</span> Any world that won, or that even one person enjoyed, stays — even if its maker is banned.</p>
+            </div>
+            <div className="flex items-center justify-between gap-3 mt-6">
+              <button onClick={() => setGate(false)} className="text-[11px] tracking-[0.18em] text-white/40 hover:text-white/70 px-2 py-1.5">NOT YET</button>
+              <button onClick={acceptGate} className="text-[11px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER — I ACCEPT</button>
+            </div>
+            <p className="text-white/30 text-[10px] tracking-[0.15em] mt-3 text-center">Enter only if you accept this.</p>
+          </div>
+        </div>
+      )}
+      <div className={rail
+        ? 'fixed right-3 z-40 flex flex-col items-end gap-2'
+        : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2'}
+        style={rail ? { top: railTop ?? 205 } : undefined}>
+        <button
+          onClick={enterReckoning}
+          className={`${pill} rounded-full px-4 py-2 border backdrop-blur transition-colors ${
+            doc.champion
+              ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
+              : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
+          }`}>
+          {rail ? `⚔ VOTE · T${doc.tier}` : `⚔ TIER ${doc.tier} · VOTE`}
+        </button>
+      </div>
+    </>
   )
 }

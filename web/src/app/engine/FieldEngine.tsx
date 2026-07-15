@@ -117,6 +117,10 @@ interface FieldEngineProps {
    *  world reflows into a framed box — the vote UI slides panels into the margins
    *  and the constellation resizes to what's left, instead of being overlaid. */
   viewport?: { top: number; right: number; bottom: number; left: number } | null
+  /** Reports the bottom (y px) of the top-right UI dock whenever it resizes, so
+   *  the shell can seat the in-world VOTE button directly under it — beneath the
+   *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
+  onDockRect?: (bottom: number) => void
 }
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
@@ -128,7 +132,7 @@ const ENGINE_BUILD = 'e5-fx-dbg'
 // DOWNLOAD only; one scene runs at a time. Dev hot-reload deletes an entry on edit.
 const scenePreloadCache = new Map<string, unknown>()
 
-export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -204,7 +208,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     if (!anon) { anon = 'anon-' + Math.random().toString(36).slice(2, 6); try { localStorage.setItem('cc-anon', anon) } catch { /* fine */ } }
     whoRef.current = me ? me.split('@')[0] : anon
   }, [me])
-  const cellBase = () => (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+  // spaceSlug fallback: on a space page the scene refs are unset until you branch/load,
+  // so the branch base (== the space slug) must come from spaceSlug or every branch view
+  // (list, "main", the cell/vote) resolves an empty base and shows nothing.
+  const cellBase = () => (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
   const castVoteFor = useCallback((author: string) => {
     setCellData(prev => {
       const doc = JSON.parse(JSON.stringify(prev)) as CellDoc
@@ -371,9 +378,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   // HUD elements (driven by worldData['hud'])
   const hudContainerRef = useRef<HTMLDivElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)   // the top-right UI dock — its bottom seats the VOTE button
   const hudElementCacheRef = useRef<Map<string, HTMLElement>>(new Map())
   const nameToIdRef = useRef<Map<string, string>>(new Map())
   const lastFieldCountRef = useRef<number>(0)
+
+  // Report the UI dock's live bottom (it grows/shrinks as the dock opens and as
+  // buttons appear) so the shell can seat the VOTE button right beneath it. A
+  // hidden dock (voting viewport) measures 0 → the shell uses its own fallback.
+  useEffect(() => {
+    if (!onDockRect) return
+    const el = dockRef.current
+    if (!el) return
+    const report = () => { const r = el.getBoundingClientRect(); onDockRect(r.height > 0 ? r.bottom : 0) }
+    report()
+    const ro = new ResizeObserver(report)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [onDockRect])
 
   // Camera
   const gridSize = DEFAULT_GRID_SIZE
@@ -693,15 +715,30 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim) return false
+    const fields = sim.generateSnapshots()
+    const stepHooks = sim.getStepHookSnapshots()
+    const worldData = { ...sim.worldData }
+    // ONLY the visuals THIS world uses. The renderer registry is GLOBAL — every
+    // visual from every world visited this session — so grabbing it whole scoops
+    // foreign visuals (fluid_base, garnet, …) into a branch snapshot (the ORCHID
+    // branch bug). Keep visuals attached to a field, or named in a hook/worldData
+    // (dynamic swaps); drop the rest.
+    const used = new Set<string>()
+    for (const f of fields) { const vn = (f as { visualTypeName?: string }).visualTypeName; if (vn) used.add(vn) }
+    const hay = JSON.stringify(stepHooks) + JSON.stringify(worldData)
     const sceneData = {
       name: sceneName,
-      fields: sim.generateSnapshots(),
+      fields,
       worldParams: sim.getWorldParams(),
-      worldData: { ...sim.worldData },
-      stepHooks: sim.getStepHookSnapshots(),
+      worldData,
+      stepHooks,
       interactionRules: [...sim.interactionRules],
       interactionEffects: [...sim.interactionEffects],
-      visualTypes: renderer ? renderer.getAllVisualTypes().map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
+      visualTypes: renderer
+        ? renderer.getAllVisualTypes()
+            .filter(vt => used.has(vt.name) || hay.includes(vt.name))
+            .map(vt => ({ name: vt.name, wgsl: vt.wgsl }))
+        : [],
       modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
       timestamp: Date.now(),
     }
@@ -720,7 +757,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   /** BRANCH: signed-out → auth; signed-in → fork the current world as yours, v1 */
   const handleBranch = useCallback(async () => {
     if (!me) { window.location.href = '/auth/signin'; return }
-    const src = lastSceneRef.current || playScene || ''
+    const src = lastSceneRef.current || playScene || spaceSlug || ''
     if (!src) { showToast('load a world first', 'error'); return }
     const base = src.split(' ⑂ ')[0]
     const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
@@ -731,7 +768,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       setPlugOpen(true)   // a branch without an AI is a car without keys
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, saveSceneAs])
+  }, [me, playScene, spaceSlug, saveSceneAs])
 
   const handleSaveScene = useCallback(async () => {
     const sim = simulationRef.current
@@ -4559,7 +4596,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
           {/* Mandatory world instructions + branch + AI status — top right, every world.
               On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
-          <div className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
+          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -4659,7 +4696,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             {!isHub && <button
               onClick={async () => {
                 setBranchesOpen(v => !v)
-                const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+                // on a space page lastSceneRef/playScene are unset until you branch or
+                // load — fall back to spaceSlug (the branch base) like handleBranch does,
+                // else the list bails empty and no branch ever shows.
+                const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
                 if (!base) return
                 try {
                   const { scenes } = await fetch('/api/engine/scene?action=list').then(r => r.json())
@@ -4865,7 +4905,14 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                       {full ? 'the cell is full — vote' : `${viewers.length}/5 · ${5 - viewers.length} more unlock the vote`}
                     </span>
                   </div>
-                  <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => { setBranchesOpen(false); handleLoadScene(base) }}>
+                  <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => {
+                    setBranchesOpen(false)
+                    // on a space, "main" is the space's own snapshot, not a scene named
+                    // after the slug — the scene store has no such entry, so returning to
+                    // the space page reloads main. (Play worlds keep the scene load.)
+                    if (spaceSlug) { window.location.href = `/space/${encodeURIComponent(spaceSlug)}` }
+                    else { handleLoadScene(base) }
+                  }}>
                     <span className="text-emerald-300/90">main</span>
                     <span className="text-white/40 text-[10px]"> — the world as it stands</span>
                   </button>

@@ -18,7 +18,8 @@ async function writeAllowed(req: NextRequest): Promise<boolean> {
   return !!session?.user?.email
 }
 
-type SubEntry = { name?: string; ownerId?: string; ownerName?: string; founded?: number; pinsLocked?: boolean; members?: Record<string, string>; shelf?: Record<string, unknown> }
+type Ban = { until: number; name?: string; by?: string }
+type SubEntry = { name?: string; ownerId?: string; ownerName?: string; founded?: number; pinsLocked?: boolean; members?: Record<string, string>; shelf?: Record<string, unknown>; admins?: string[]; bans?: Record<string, Ban> }
 type SubDoc = { v?: number; subs?: Record<string, SubEntry> }
 
 /** The group registry (submains:index) is a shared last-write-wins doc, but the
@@ -32,6 +33,8 @@ function validateSubmainsWrite(prevRaw: unknown, nextRaw: unknown, userId: strin
   if (!userId) return false
   const prev = (prevRaw as SubDoc | null)?.subs && (prevRaw as SubDoc).v === 1 ? (prevRaw as SubDoc).subs! : {}
   const nextSubs = next.subs
+  const now = Date.now()
+  const j = (v: unknown) => JSON.stringify(v ?? null)
 
   for (const slug of Object.keys(nextSubs)) {
     const g = nextSubs[slug]
@@ -39,18 +42,45 @@ function validateSubmainsWrite(prevRaw: unknown, nextRaw: unknown, userId: strin
     const before = prev[slug]
     if (!before) {
       if (g.ownerId !== userId) return false            // found only for yourself
+      // a fresh group can't pre-bake foreign admins or any bans (co-dev sub-mains
+      // are spawned through a privileged server path, not a browser save)
+      if ((g.admins || []).some(a => a !== userId)) return false
+      if (g.bans && Object.keys(g.bans).length) return false
       continue
     }
     if (g.ownerId !== before.ownerId || g.founded !== before.founded) return false  // ownership/birth immutable
-    if (before.ownerId === userId) continue             // the owner may do anything to their group
-    // a non-owner: metadata frozen; may pin (if a member and not locked) and join/leave self
+
+    // the unkickable set = founder + admins. A moderator is anyone in it.
+    const mods = new Set<string>([before.ownerId!, ...((before.admins as string[]) || [])])
+    const isMod = mods.has(userId)
+
+    // the admin roster is the OWNER's to set — no one else, not even another admin
+    if (j(g.admins || []) !== j(before.admins || []) && before.ownerId !== userId) return false
+
+    // an admin can never be kicked (removed from members) or banned — by ANYONE, incl. the owner
+    for (const u of mods) {
+      if (!g.members || !g.members[u]) return false
+      if (g.bans && g.bans[u]) return false
+    }
+
+    // the ban list is moderator-only to touch
+    if (j(g.bans || {}) !== j(before.bans || {}) && !isMod) return false
+
+    if (isMod) continue   // founder/admin: full latitude on the rest (invariants above already held)
+
+    // ── a non-moderator ── metadata frozen; may pin (member + unlocked) and join/leave self
     if (g.name !== before.name || g.pinsLocked !== before.pinsLocked || g.ownerName !== before.ownerName) return false
     const isMember = !!(before.members && before.members[userId])
-    if (JSON.stringify(g.shelf || {}) !== JSON.stringify(before.shelf || {}) && !(isMember && !before.pinsLocked)) return false
+    if (j(g.shelf || {}) !== j(before.shelf || {}) && !(isMember && !before.pinsLocked)) return false
     const mk = new Set([...Object.keys(before.members || {}), ...Object.keys(g.members || {})])
     for (const k of mk) {
       if (k === userId) continue                        // add/remove only YOURSELF
       if ((before.members || {})[k] !== (g.members || {})[k]) return false
+    }
+    // a live ban blocks re-joining
+    if (g.members?.[userId] && !before.members?.[userId]) {
+      const b = before.bans?.[userId]
+      if (b && b.until > now) return false
     }
   }
   // a group may only be dissolved by its owner

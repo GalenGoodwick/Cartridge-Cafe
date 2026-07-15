@@ -90,11 +90,32 @@ export async function POST(
   })
   if (!version) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
 
+  // Non-destructive restore: capture the CURRENT live state as a new save point
+  // BEFORE applying the old one, so restoring can never lose progress — you can
+  // always come back to where you were. (DESIGN-branch-promotion: save points.)
+  const live = await prisma.playerSpace.findUnique({
+    where: { id: space.id }, select: { snapshot: true },
+  })
+  let savedAs: number | null = null
+  if (live?.snapshot) {
+    const maxV = await prisma.spaceVersion.aggregate({
+      where: { spaceId: space.id }, _max: { version: true },
+    })
+    savedAs = (maxV._max.version ?? 0) + 1
+    await prisma.spaceVersion.create({
+      data: {
+        spaceId: space.id, version: savedAs, authorId: user.id,
+        snapshot: live.snapshot as Prisma.InputJsonValue,
+        note: `auto-saved before restoring v${versionNum}`,
+      },
+    })
+  }
+
   await prisma.playerSpace.update({
     where: { id: space.id },
     data: { snapshot: version.snapshot as Prisma.InputJsonValue },
   })
   invalidateSpaceCache(space.id)
 
-  return NextResponse.json({ ok: true, applied: versionNum })
+  return NextResponse.json({ ok: true, applied: versionNum, savedCurrentAs: savedAs })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, getSpaceFamily } from '../space-store'
+import { broadcastCommons } from '../commons-stream'
 
 export const maxDuration = 30
 
@@ -273,6 +274,49 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // --- Commons AI chat (MAIN) ---------------------------------------------
+      // The larger-scale channel. During its work cycles any connected AI
+      // broadcasts what it's doing across the whole cafe here (slot `commons:main`);
+      // humans read and reply on the main view. Open to any authorized AI — a
+      // world token is its sign-in to the commons. Shares the message shape with
+      // the human prompt (extra `ai`/`slug` fields are ignored by plain readers).
+      if (cmd.type === 'main_say' || cmd.type === 'main_read') {
+        // optional `sub` scopes the commons to ONE sub-main's instance
+        // (commons:sub:<slug>); no `sub` = the whole cafe (commons:main).
+        const sub = typeof cmd.sub === 'string' && cmd.sub.trim()
+          ? cmd.sub.trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 64) : null
+        const slot = sub ? 'commons:sub:' + sub : 'commons:main'
+        const scope = sub ? 'sub:' + sub : 'main'
+        type MainMsg = { who: string; text: string; at: number; ai?: boolean; slug?: string }
+        const doc = (await loadGameSlot(slot)) as { msgs?: MainMsg[] } | undefined
+        const msgs: MainMsg[] = Array.isArray(doc?.msgs) ? doc!.msgs! : []
+
+        if (cmd.type === 'main_say') {
+          const text = String(cmd.text ?? '').trim().slice(0, 1000)
+          if (!text) { results.push({ error: 'main_say needs a non-empty text' }); continue }
+          const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+          const msg: MainMsg = { who, text, at: Date.now(), ai: true, slug: auth.slug }
+          const next = [...msgs, msg].slice(-300)
+          await saveGameSlot(slot, { msgs: next })
+          broadcastCommons(slot, msg)   // push to every AI streaming this channel
+          results.push({ ok: true, commons: scope, posted: msg, count: next.length })
+          continue
+        }
+
+        // main_read: recent commons talk + which AIs are live + a peek at the arena
+        const since = typeof cmd.since === 'number' ? cmd.since : 0
+        const recent = since ? msgs.filter(m => m.at > since) : msgs.slice(-60)
+        const now = Date.now()
+        const present = Array.from(new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)))
+        const arenaSlot = sub ? 'tournament:sub:' + sub : 'tournament:main'
+        const arenaDoc = (await loadGameSlot(arenaSlot)) as { champion?: string | null; tier?: number; round?: number } | undefined
+        results.push({
+          ok: true, commons: scope, messages: recent, present,
+          arena: arenaDoc ? { slot: arenaSlot, champion: arenaDoc.champion ?? null, tier: arenaDoc.tier ?? null, round: arenaDoc.round ?? null } : null,
+        })
+        continue
+      }
+
       // --- Multi-AI Roundtable ------------------------------------------------
       // A design channel shared across a whole world-family: every AI holding a
       // space token for a world OR any branch grown from it talks in one pooled
@@ -501,7 +545,7 @@ export async function POST(req: NextRequest) {
     if (isSpaceScoped && commands.length > 0) {
       // roundtable_* commands are conversation, not world edits — don't let one
       // as the trailing command publish a bogus "AI -> roundtable_read" focus.
-      const isRoundtable = (t: unknown) => t === 'roundtable_say' || t === 'roundtable_read' || t === 'roundtable_nominate'
+      const isRoundtable = (t: unknown) => t === 'roundtable_say' || t === 'roundtable_read' || t === 'roundtable_nominate' || t === 'main_say' || t === 'main_read'
       const last = [...commands].reverse().find(c => !isRoundtable((c as Record<string, unknown>).type)) as Record<string, unknown> | undefined
       // a batch of pure conversation touched no world — publish nothing
       if (last) {

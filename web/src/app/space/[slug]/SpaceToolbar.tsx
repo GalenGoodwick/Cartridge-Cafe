@@ -18,11 +18,12 @@ interface SpaceToolbarProps {
   ownerName: string | null
   isOwner: boolean
   versionView?: number
+  railTop?: number   // seat the VOTE button under the engine's UI dock (AI lamp), not bottom-center
 }
 
 /** Floating world chrome: save points, history, remix, call-a-vote.
  *  Sits over the engine without touching it. */
-export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionView }: SpaceToolbarProps) {
+export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionView, railTop }: SpaceToolbarProps) {
   const [editingName, setEditingName] = useState(false)
   // worlds speak through cafe:caption everywhere — space pages must listen
   // too, or every AI-built world is mute on its own page
@@ -221,6 +222,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
     {/* the version arena: LIVE vs this world's save points — every page votes */}
     <TournamentBar
       visible
+      rail railTop={railTop}
       slot={`tournament:space:${slug}`}
       worlds={versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
       emptyHint="⚔ SAVE A POINT TO OPEN THE VERSION ARENA"

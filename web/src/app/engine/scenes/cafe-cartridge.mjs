@@ -353,6 +353,9 @@ try {
               owner: !!(who && G3 && G3.ownerId === who.id),
               pinsLocked: !!(G3 && G3.pinsLocked),
               members: G3 ? (G3.members || {}) : {},
+              ownerId: G3 ? (G3.ownerId || null) : null,
+              admins: G3 ? (G3.admins || []) : [],
+              bans: G3 ? (G3.bans || {}) : {},
               shelf: G3 ? Object.keys(G3.shelf || {}) : [],
             } }))
           }

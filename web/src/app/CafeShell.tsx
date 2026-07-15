@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import TournamentBar from '@/app/TournamentBar'
+import MainCommonsChat from '@/app/MainCommonsChat'
+import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
@@ -105,8 +107,16 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // the group layer: the SUB-MAIN world reports where we stand (viewer or
   // inside a group) and the shell draws FOUND / JOIN / PIN accordingly
-  const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean; owner?: boolean; pinsLocked?: boolean; members?: Record<string, string>; shelf?: string[] } | null>(null)
+  const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean; owner?: boolean; pinsLocked?: boolean; members?: Record<string, string>; ownerId?: string | null; admins?: string[]; bans?: Record<string, { until: number; name?: string; by?: string }>; shelf?: string[] } | null>(null)
   const [subTools, setSubTools] = useState(false)          // founder's moderation panel
+  const [chatWorld, setChatWorld] = useState<{ channel: string; title: string; subtitle?: string } | null>(null)   // the structural chat world you've entered
+  // deep-link: /?commons opens straight into the commons chat world
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (new URLSearchParams(window.location.search).has('commons')) {
+      setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })
+    }
+  }, [])
   const [who, setWho] = useState<{ id: string; name: string } | null>(null)
 
   const sceneRef = useRef(scene)
@@ -130,6 +140,7 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
   // engine renders the world you're hovering (previewScene) instead of the
   // constellation — scene stays 'CAFE' so the arena bar never unmounts.
   const [voting, setVoting] = useState(false)
+  const [dockBottom, setDockBottom] = useState(0)   // live bottom of the engine's UI dock — seats the in-world VOTE button under it
   const [previewScene, setPreviewScene] = useState<string | null>(null)
   const [stageRect, setStageRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
   const votingRef = useRef(false)
@@ -161,7 +172,7 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
   /** ── the group layer's pen: read-modify-write the sub-mains index.
    *  v0 truth model — a save-slot doc, last-write-wins, reconciled here,
    *  same law as the tournament until enforcement moves server-side. */
-  type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }>; pinsLocked?: boolean }
+  type SubEntry = { name: string; ownerId: string; ownerName: string; founded: number; members: Record<string, string>; shelf: Record<string, { launch: string; addedBy: string; at: number }>; pinsLocked?: boolean; admins?: string[]; bans?: Record<string, { until: number; name?: string; by?: string }> }
   /** Optimistic write loop: stamp the doc, write, read back. If someone else
    *  wrote in between (their stamp shows instead), replay our mutation on
    *  THEIR state — concurrent pins/joins merge instead of erasing each other. */
@@ -213,6 +224,8 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
     await mutateSubs(subs => {
       const s = subs[slug]
       if (!s) return 'this sub-main dissolved'
+      const b = s.bans?.[who.id]
+      if (b && b.until > Date.now()) return 'you are banned from this sub-main until ' + new Date(b.until).toLocaleDateString()
       s.members[who.id] = who.name
       return null
     })
@@ -248,18 +261,63 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
     })
   }
 
-  /** ── founder moderation: kick members, unpin worlds, open/close the shelf ── */
+  /** ── moderation: the founder AND admins kick/ban members; admins are unkickable.
+   *  A ban stands for one month (server-enforced in validateSubmainsWrite). ── */
+  const BAN_MS = 30 * 24 * 60 * 60_000
+  const canMod = (s: SubEntry) => !!who && (s.ownerId === who.id || (s.admins || []).includes(who.id))
+  const unkickable = (s: SubEntry, uid: string) => uid === s.ownerId || (s.admins || []).includes(uid)
+
   const kickMember = async (uid: string) => {
     const slug = subMode?.slug
     if (!who || !slug) return
     await mutateSubs(subs => {
       const s = subs[slug]
       if (!s) return 'this sub-main dissolved'
-      if (s.ownerId !== who.id) return 'only the founder moderates'
-      if (uid === s.ownerId) return 'the founder cannot kick themselves'
+      if (!canMod(s)) return 'only the founder or an admin moderates'
+      if (unkickable(s, uid)) return 'admins are unkickable'
       delete s.members[uid]
       return null
     })
+  }
+
+  const banUser = async (uid: string, name: string) => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    const ok = await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (!canMod(s)) return 'only the founder or an admin moderates'
+      if (unkickable(s, uid)) return 'admins cannot be banned'
+      s.bans = s.bans || {}
+      s.bans[uid] = { until: Date.now() + BAN_MS, name, by: who.name }
+      delete s.members[uid]
+      return null
+    })
+    if (ok) window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'banned ' + name + ' · 1 month', kind: 'tuned' } }))
+  }
+
+  const unbanUser = async (uid: string) => {
+    const slug = subMode?.slug
+    if (!who || !slug) return
+    await mutateSubs(subs => {
+      const s = subs[slug]
+      if (!s) return 'this sub-main dissolved'
+      if (!canMod(s)) return 'only the founder or an admin moderates'
+      if (s.bans) delete s.bans[uid]
+      return null
+    })
+  }
+
+  /** find a player by name — the search half of the kick/ban tool */
+  const [userQuery, setUserQuery] = useState('')
+  const [userResults, setUserResults] = useState<{ id: string; name: string | null; image: string | null }[]>([])
+  const searchUsers = async (q: string) => {
+    setUserQuery(q)
+    if (q.trim().length < 2) { setUserResults([]); return }
+    try {
+      const j = await fetch('/api/users/search?q=' + encodeURIComponent(q.trim())).then(r => r.json())
+      setUserResults(Array.isArray(j.users) ? j.users : [])
+    } catch { setUserResults([]) }
   }
   const unpinWorld = async (name: string) => {
     const slug = subMode?.slug
@@ -665,10 +723,34 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     return () => { cancelled = true }
   }, [scene])
 
+  // PLAY-TIME heartbeat — the substrate for XP + the Vote's factory order. While
+  // genuinely playing a game world (tab visible, recent input), beat the server
+  // every 10s; it rate-limits and accrues authoritatively, so this is a dumb
+  // signal, never a trusted counter. Idle > 60s or a hidden tab stops accruing.
+  useEffect(() => {
+    if (scene === 'CAFE' || scene === 'SUB-MAIN' || !scene) return
+    let lastActive = Date.now()
+    const bump = () => { lastActive = Date.now() }
+    window.addEventListener('pointermove', bump)
+    window.addEventListener('keydown', bump)
+    window.addEventListener('pointerdown', bump)
+    const iv = setInterval(() => {
+      if (document.hidden || Date.now() - lastActive > 60_000) return
+      fetch('/api/engine/playtime', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ world: scene }) }).catch(() => {})
+    }, 10_000)
+    return () => {
+      clearInterval(iv)
+      window.removeEventListener('pointermove', bump)
+      window.removeEventListener('keydown', bump)
+      window.removeEventListener('pointerdown', bump)
+    }
+  }, [scene])
+
   return (
     <>
       {ad && <AdInterstitial ad={ad} onClose={() => setAd(null)} />}
       <FieldEngine playScene={voting && previewScene ? previewScene : scene}
+        onDockRect={setDockBottom}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
 
       {/* the rolling tournament — every page is its own arena.
@@ -680,7 +762,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
-          rail={scene !== 'CAFE'}
+          rail={scene !== 'CAFE'} railTop={dockBottom ? dockBottom + 8 : undefined}
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
@@ -706,7 +788,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           slot={`tournament:world:${scene.split(' ⑂ ')[0]}`}
           branchesOf={scene.split(' ⑂ ')[0]}
           sceneKey={scene}
-          rail
+          rail railTop={dockBottom ? dockBottom + 8 : undefined}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }}
           onPreview={setPreviewScene}
           onStageRect={setStageRect}
@@ -760,8 +842,16 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {who && subMode.member && !subMode.owner && subMode.pinsLocked && (
               <span className="font-mono text-[9px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
             )}
-            {who && subMode.owner && (
+            {who && (subMode.owner || (subMode.admins || []).includes(who.id)) && (
               <button onClick={() => setSubTools(o => !o)} className="brass-tab px-3 py-1.5 text-[10px]">⚙ TOOLS</button>
+            )}
+            {subMode.slug && (
+              <button onClick={() => setChatWorld({ channel: 'chat:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · chat', subtitle: 'check in on this sub-main' })}
+                className="brass-tab px-3 py-1.5 text-[10px]">⌁ CHAT</button>
+            )}
+            {subMode.slug && (
+              <button onClick={() => setChatWorld({ channel: 'commons:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · commons', subtitle: 'this sub-main’s AIs, at scale' })}
+                className="brass-tab px-3 py-1.5 text-[10px]">◇ COMMONS</button>
             )}
           </>) : (
             !subMode?.haveOwn && (
@@ -771,38 +861,92 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* founder's moderation desk: members, pins, and the shelf rule */}
-      {scene === 'SUB-MAIN' && !modalUp && !voting && subTools && subMode?.mode === 'group' && subMode.owner && (
+      {/* the sub-chant moderation desk: members, kick/ban, pins, shelf rule.
+          Open to the founder AND admins (co-devs). Founder-only controls stay gated. */}
+      {scene === 'SUB-MAIN' && !modalUp && !voting && subTools && subMode?.mode === 'group' && (subMode.owner || (subMode.admins || []).includes(who?.id || '')) && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[90vw] max-h-[55vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3 font-mono text-[10px] tracking-[0.15em]">
-          <div className="flex items-center justify-between">
-            <span className="text-brass">SHELF RULE</span>
-            <button onClick={togglePins} className="brass-tab px-2 py-1">
-              {subMode.pinsLocked ? 'PINNING: FOUNDER ONLY' : 'PINNING: ALL MEMBERS'}
-            </button>
-          </div>
+          {subMode.owner && (
+            <div className="flex items-center justify-between">
+              <span className="text-brass">SHELF RULE</span>
+              <button onClick={togglePins} className="brass-tab px-2 py-1">
+                {subMode.pinsLocked ? 'PINNING: FOUNDER ONLY' : 'PINNING: ALL MEMBERS'}
+              </button>
+            </div>
+          )}
           <div>
             <div className="text-brass mb-1">MEMBERS · {Object.keys(subMode.members || {}).length}</div>
-            {Object.entries(subMode.members || {}).map(([uid, mName]) => (
-              <div key={uid} className="flex justify-between items-center py-0.5">
-                <span className="text-white/70">{mName}{uid === who?.id ? ' · founder' : ''}</span>
-                {uid !== who?.id && (
-                  <button onClick={() => kickMember(uid)} className="text-flame/80 hover:text-flame">KICK</button>
-                )}
-              </div>
-            ))}
+            {Object.entries(subMode.members || {}).map(([uid, mName]) => {
+              const unkick = uid === subMode?.ownerId || (subMode?.admins || []).includes(uid)
+              const badge = uid === subMode?.ownerId ? ' · founder' : (subMode?.admins || []).includes(uid) ? ' · admin' : ''
+              return (
+                <div key={uid} className="flex justify-between items-center py-0.5">
+                  <span className="text-white/70">{mName}{badge}</span>
+                  {!unkick && (
+                    <span className="flex gap-2">
+                      <button onClick={() => kickMember(uid)} className="text-flame/80 hover:text-flame">KICK</button>
+                      <button onClick={() => banUser(uid, mName)} className="text-red-400/80 hover:text-red-400">BAN</button>
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
+
+          {/* find any player by name, then kick or ban them from this sub-chant */}
           <div>
-            <div className="text-brass mb-1">PINNED WORLDS · {(subMode.shelf || []).length}</div>
-            {(subMode.shelf || []).length === 0 && <div className="text-white/35">nothing pinned yet</div>}
-            {(subMode.shelf || []).map(n => (
-              <div key={n} className="flex justify-between items-center py-0.5">
-                <span className="text-white/70">{n.toLowerCase()}</span>
-                <button onClick={() => unpinWorld(n)} className="text-flame/80 hover:text-flame">UNPIN</button>
-              </div>
-            ))}
+            <div className="text-brass mb-1">FIND A USER</div>
+            <input value={userQuery} onChange={e => searchUsers(e.target.value)}
+              placeholder="search a name to kick / ban…"
+              className="w-full bg-black/40 border border-white/15 rounded px-2 py-1.5 text-white/80 outline-none focus:border-amber-400/40 mb-1" />
+            {userResults.map(u => {
+              const unkick = u.id === subMode?.ownerId || (subMode?.admins || []).includes(u.id)
+              return (
+                <div key={u.id} className="flex justify-between items-center py-0.5">
+                  <span className="text-white/70">{u.name || u.id.slice(0, 6)}{(subMode?.members || {})[u.id] ? ' · member' : ''}</span>
+                  {unkick ? <span className="text-white/30">protected</span> : (
+                    <span className="flex gap-2">
+                      <button onClick={() => kickMember(u.id)} className="text-flame/80 hover:text-flame">KICK</button>
+                      <button onClick={() => banUser(u.id, u.name || 'user')} className="text-red-400/80 hover:text-red-400">BAN</button>
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
+
+          {/* the banned — a ban stands for one month; a moderator may lift it early */}
+          {Object.keys(subMode.bans || {}).length > 0 && (
+            <div>
+              <div className="text-brass mb-1">BANNED · {Object.keys(subMode.bans || {}).length}</div>
+              {Object.entries(subMode.bans || {}).map(([uid, b]) => (
+                <div key={uid} className="flex justify-between items-center py-0.5">
+                  <span className="text-white/45">{b.name || uid.slice(0, 6)} · until {new Date(b.until).toLocaleDateString()}</span>
+                  <button onClick={() => unbanUser(uid)} className="text-emerald-400/80 hover:text-emerald-400">UNBAN</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {subMode.owner && (
+            <div>
+              <div className="text-brass mb-1">PINNED WORLDS · {(subMode.shelf || []).length}</div>
+              {(subMode.shelf || []).length === 0 && <div className="text-white/35">nothing pinned yet</div>}
+              {(subMode.shelf || []).map(n => (
+                <div key={n} className="flex justify-between items-center py-0.5">
+                  <span className="text-white/70">{n.toLowerCase()}</span>
+                  <button onClick={() => unpinWorld(n)} className="text-flame/80 hover:text-flame">UNPIN</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* the commons chat WORLD — a structural door on main; entering it renders
+          the full chat world over everything. */}
+      <MainCommonsChat visible={scene === 'CAFE' && !modalUp && !voting && brewStep === 0 && !chatWorld}
+        onEnter={() => setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })} />
+      {chatWorld && <ChatWorld channel={chatWorld.channel} title={chatWorld.title} subtitle={chatWorld.subtitle} onExit={() => setChatWorld(null)} />}
 
       {/* the cafe's ears — one small switch, bottom-right */}
       <button

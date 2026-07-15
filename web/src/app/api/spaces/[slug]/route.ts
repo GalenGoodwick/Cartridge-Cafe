@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
+import { getLineage } from '../../engine/lineage'
 
 export const dynamic = 'force-dynamic'
 
@@ -169,6 +170,14 @@ export async function DELETE(
       }, { status: 409 })
     }
   } catch { /* save store unavailable — do not block on it */ }
+
+  // the immortal original of a lineage can never be deleted
+  try {
+    const lin = await getLineage(space.name)
+    if (lin && lin.original === 'space:' + slug) {
+      return NextResponse.json({ error: 'This is the original of its lineage — it can never be deleted.' }, { status: 409 })
+    }
+  } catch { /* lineage store unavailable — do not block on it */ }
 
   invalidateSpaceCache(space.id)
 

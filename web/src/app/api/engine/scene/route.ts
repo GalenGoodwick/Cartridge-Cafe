@@ -30,6 +30,7 @@ async function mayWriteScene(req: NextRequest, name: string): Promise<boolean> {
   return author === myHandle                     // only your own branches
 }
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene } from '../store'
+import { ensureLineage, getLineage } from '../lineage'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,6 +85,10 @@ export async function POST(req: NextRequest) {
     }
     if (body.action === 'save' && body.scene) {
       saveScene(body.name, body.scene)
+      // first branch off a world stamps its lineage — the BASE is the immortal
+      // original (king-of-the-hill promotion hangs off this record).
+      const bi = body.name.indexOf(' ⑂ ')
+      if (bi > 0) { try { await ensureLineage(body.name.slice(0, bi), body.name.slice(0, bi)) } catch { /* non-fatal */ } }
       return NextResponse.json({ ok: true })
     }
     if (body.action === 'revert' && body.timestamp) {
@@ -104,11 +109,20 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const body = await req.json()
-    if (body.name) {
-      const deleted = deleteScene(body.name)
-      return NextResponse.json({ ok: true, deleted })
+    if (!body.name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+    // the immortal original can never be deleted — by anyone, admin included.
+    const base = body.name.split(' ⑂ ')[0]
+    const lin = await getLineage(base)
+    if (lin && lin.original === body.name) {
+      return NextResponse.json({ error: 'This is the original — it can never be deleted' }, { status: 409 })
     }
-    return NextResponse.json({ error: 'name required' }, { status: 400 })
+    // authority: only your own branches, or admin. (Closes the old hole where the
+    // DELETE path had NO auth check and any caller could remove any world.)
+    if (!(await mayWriteScene(req, body.name))) {
+      return NextResponse.json({ error: 'Not authorized to delete this world' }, { status: 403 })
+    }
+    const deleted = deleteScene(body.name)
+    return NextResponse.json({ ok: true, deleted })
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
