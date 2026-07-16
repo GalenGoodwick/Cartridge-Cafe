@@ -16,6 +16,7 @@ interface SpaceToolbarProps {
   slug: string
   name: string
   ownerName: string | null
+  ownerId?: string | null
   isOwner: boolean
   versionView?: number
   railTop?: number   // seat the VOTE button under the engine's UI dock (AI lamp), not bottom-center
@@ -23,7 +24,20 @@ interface SpaceToolbarProps {
 
 /** Floating world chrome: save points, history, remix, call-a-vote.
  *  Sits over the engine without touching it. */
-export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionView, railTop }: SpaceToolbarProps) {
+export default function SpaceToolbar({ slug, name, ownerName, ownerId, isOwner, versionView, railTop }: SpaceToolbarProps) {
+  // WHAT is being viewed — the engine broadcasts the ridden scene name (or null
+  // for main) via cafe:viewing, so the title box always says world/branch/version/maker
+  const [viewingScene, setViewingScene] = useState<string | null>(null)
+  useEffect(() => {
+    const onViewing = (e: Event) => setViewingScene((e as CustomEvent).detail as string | null)
+    window.addEventListener('cafe:viewing', onViewing)
+    return () => window.removeEventListener('cafe:viewing', onViewing)
+  }, [])
+  // "BASE ⑂ handle · label · vN" → { author: "handle · label", handle, v }
+  const branchView = (() => {
+    const m = (viewingScene || '').match(/^.+? ⑂ (.+?) · v(\d+)$/)
+    return m ? { author: m[1], handle: m[1].split(' · ')[0], v: +m[2] } : null
+  })()
   const [editingName, setEditingName] = useState(false)
   // worlds speak through cafe:caption everywhere — space pages must listen
   // too, or every AI-built world is mute on its own page
@@ -78,6 +92,8 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
   const [flagOpen, setFlagOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const [aiToken, setAiToken] = useState<string | null>(null)
+  const [alterOk, setAlterOk] = useState(false)     // owner has read the "this alters LIVE" warning
+  const [alterBrief, setAlterBrief] = useState('')  // "what should the AI alter?" — embedded in the prompt
   const [flagReason, setFlagReason] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [aiStatus, setAiStatus] = useState<{
@@ -184,24 +200,32 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
     } finally { setBusy(false) }
   }
 
-  const connectAI = async () => {
-    setAiOpen(o => !o)
-    if (aiToken) return
+  // ALTER: the space token edits the LIVE world directly — warn before minting,
+  // keep a pre-alter save point, and say so in the instructions the AI gets.
+  const confirmAlter = async () => {
     setBusy(true)
     try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'AI agent' }),
-      })
-      const d = await r.json()
-      if (r.ok) setAiToken(d.token)
-      else flash(d.error || 'Could not mint a token')
+      // the save point is the way back — identical saves dedup server-side
+      await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'before alter' }),
+      }).catch(() => {})
+      if (!aiToken) {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'live alter' }),
+        })
+        const d = await r.json()
+        if (r.ok) setAiToken(d.token)
+        else { flash(d.error || 'Could not mint a token'); return }
+      }
+      setAlterOk(true)
     } finally { setBusy(false) }
   }
 
   const aiInstructions = aiToken
-    ? `Connect to my Unity Chant world "${name}":\nPOST commands to ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/bridge\nheader: Authorization: Bearer ${aiToken}\nFull docs: GET ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/guide (markdown). GET the bridge URL returns world state. Fields are INVISIBLE until given a visualType.`
+    ? `ALTER my Unity Chant world "${name}" — this token edits the LIVE world, every command lands on main immediately:\nPOST commands to ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/bridge\nheader: Authorization: Bearer ${aiToken}\nFull docs: GET ${typeof window !== 'undefined' ? window.location.origin : ''}/api/engine/guide (markdown). GET the bridge URL returns world state. Fields are INVISIBLE until given a visualType.${alterBrief.trim() ? `\nALTER THIS: ${alterBrief.trim()}` : ''}\nA pre-alter save point was kept — tell me when you finish so I can save the result as a version.`
     : ''
 
   const btn = 'brass-tab px-2.5 py-1 text-[10px] disabled:opacity-30'
@@ -265,7 +289,12 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
               {shownName}
             </span>
           )}
-          {ownerName && <span className="text-white/50"> · {ownerName}</span>}
+          {ownerName && (
+            <span className="text-white/50"> · {ownerId ? (
+              <a href={`/maker/${encodeURIComponent(ownerId)}`} title={`${ownerName}'s worlds`}
+                className="hover:text-[#ffdba8] hover:underline decoration-dotted underline-offset-4 transition-colors">{ownerName}</a>
+            ) : ownerName}</span>
+          )}
           {isOwner && (
             <button onClick={() => { setDelErr(''); setConfirmDel(true) }}
               title="delete this world"
@@ -273,8 +302,17 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
               ✕
             </button>
           )}
-          {versionView !== undefined && (
+          {/* what is on the glass: main LIVE · a save point · or a ridden branch (maker clickable) */}
+          {versionView !== undefined ? (
             <span className="ml-2 rounded bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[11px]">save point v{versionView} · read-only</span>
+          ) : branchView ? (
+            <span className="ml-2 rounded bg-purple-500/15 text-purple-200/90 px-1.5 py-0.5 text-[11px]">
+              ⑂ {branchView.author} · v{branchView.v} · by{' '}
+              <a href={`/maker/${encodeURIComponent(branchView.handle)}`} title={`${branchView.handle}'s worlds`}
+                className="hover:text-[#ffdba8] hover:underline decoration-dotted underline-offset-4 transition-colors">{branchView.handle}</a>
+            </span>
+          ) : (
+            <span className="ml-2 rounded bg-emerald-500/15 text-emerald-300/90 px-1.5 py-0.5 text-[11px]">LIVE</span>
           )}
           {aiStatus.aiActive ? (
             <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-500/15 text-emerald-300 px-1.5 py-0.5 text-[11px]">
@@ -306,7 +344,7 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
               ⟵ Back
             </button>
             {isOwner && <button className={btn} disabled={busy} onClick={savePoint}>Save point</button>}
-            {isOwner && <button className={btn} disabled={busy} onClick={connectAI}>Connect AI</button>}
+            {isOwner && <button className={btn} disabled={busy} title="alter the LIVE world with your AI — no branch" onClick={() => setAiOpen(o => !o)}>Alter</button>}
             <button className={btn} onClick={() => setOpen(o => !o)}>History</button>
             <button className={btn} disabled={busy} onClick={remix}>Remix</button>
             <button className={btn} disabled={busy} onClick={() => setFlagOpen(o => !o)}>Call a vote</button>
@@ -355,15 +393,32 @@ export default function SpaceToolbar({ slug, name, ownerName, isOwner, versionVi
         </div>
       )}
 
-      {/* connect-AI panel */}
+      {/* ALTER panel — warning first (this edits LIVE, no branch), then the key */}
       {aiOpen && (
         <div className="w-80 rounded-lg bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-2">
-          <div className="text-xs text-white/80 font-medium">Plug an AI into this world</div>
-          {aiToken ? (
+          {!alterOk ? (
             <>
+              <div className="text-xs text-amber-300/90 font-medium">⚠ Alter the live world</div>
               <div className="text-[11px] text-white/60">
-                This is your world&apos;s key — any AI holding it can build here. Shown once; revoke anytime from tokens.
+                This plugs an AI straight into the LIVE world — <span className="text-amber-200">no branch is made</span>.
+                Every edit lands on main, for everyone, as it happens. A save point of the world as it
+                stands is kept first; History is the way back.
               </div>
+              <div className="flex justify-end gap-1.5">
+                <button className={btn} onClick={() => setAiOpen(false)}>Cancel</button>
+                <button className={btn} disabled={busy} onClick={confirmAlter}>Alter live</button>
+              </div>
+            </>
+          ) : aiToken ? (
+            <>
+              <div className="text-xs text-white/80 font-medium">Alter the live world</div>
+              <div className="text-[11px] text-white/60">
+                This key edits the LIVE world directly. Shown once; revoke anytime from tokens.
+                When the AI settles, Save point records the result as a version — it is already main.
+              </div>
+              <input value={alterBrief} onChange={e => setAlterBrief(e.target.value)} maxLength={500}
+                placeholder="what should the AI alter? (optional)"
+                className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[11px] text-white/90 outline-none focus:border-white/35" />
               <pre className="text-[10px] text-white/80 bg-white/5 border border-white/10 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{aiInstructions}</pre>
               <button
                 className={btn}

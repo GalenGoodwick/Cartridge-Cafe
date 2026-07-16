@@ -8,7 +8,7 @@ import SpaceToolbar from './SpaceToolbar'
  *  the toolbar must share — the live bottom of the engine's top-right UI dock —
  *  so the VOTE button seats itself under the AI lamp instead of bottom-center,
  *  the same as it does inside the cafe shell. */
-export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName }: {
+export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName, ownerId }: {
   spaceId: string
   spaceSlug: string
   engineOwner: boolean
@@ -16,6 +16,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   versionView?: number
   name: string
   ownerName: string | null
+  ownerId?: string | null
 }) {
   const [dockBottom, setDockBottom] = useState(0)
   return (
@@ -31,6 +32,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         slug={spaceSlug}
         name={name}
         ownerName={ownerName}
+        ownerId={ownerId}
         isOwner={isOwner}
         versionView={versionView}
         railTop={dockBottom ? dockBottom + 8 : undefined}

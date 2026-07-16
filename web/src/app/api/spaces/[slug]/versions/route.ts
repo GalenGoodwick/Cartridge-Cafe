@@ -76,20 +76,23 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : null
 
-  const latest = await prisma.spaceVersion.findFirst({
+  const all = await prisma.spaceVersion.findMany({
     where: { spaceId: space.id },
     orderBy: { version: 'desc' },
     select: { id: true, version: true, note: true, createdAt: true, snapshot: true },
   })
 
-  // Dedupe: a save point identical to the current head is not a new version.
-  // (Player save points ARE versions — but two identical ones are one.)
-  if (latest && JSON.stringify(latest.snapshot) === JSON.stringify(space.snapshot)) {
-    const { snapshot: _omit, ...meta } = latest
+  // Dedupe: a save point byte-identical to ANY existing version is not a new
+  // version — you get the matching rung back. (Player save points ARE versions —
+  // but two identical ones are one, no matter how far apart they were saved.)
+  const currentStr = JSON.stringify(space.snapshot)
+  const match = all.find(v => JSON.stringify(v.snapshot) === currentStr)
+  if (match) {
+    const { snapshot: _omit, ...meta } = match
     return NextResponse.json({ version: meta, deduped: true })
   }
 
-  const nextVersion = (latest?.version ?? 0) + 1
+  const nextVersion = (all[0]?.version ?? 0) + 1
 
   const version = await prisma.spaceVersion.create({
     data: {

@@ -5,7 +5,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 interface SpaceManagementOverlayProps {
   spaceSlug: string
   spaceId: string
-  onCreatePortal: (childSlug: string, childName: string) => void
+  /** Render as a plain section inside another panel (WORLD TOOLS) instead of a
+   *  standalone top-right overlay. One toolbox, not two. */
+  embedded?: boolean
 }
 
 interface SpaceData {
@@ -22,12 +24,6 @@ interface TokenData {
   createdAt: string
 }
 
-interface ChildSpace {
-  id: string
-  slug: string
-  name: string
-}
-
 const PROD_URL = 'https://unionchant.vercel.app'
 
 function timeAgo(dateStr: string): string {
@@ -41,18 +37,16 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`
 }
 
-export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePortal }: SpaceManagementOverlayProps) {
-  const [open, setOpen] = useState(false)
+export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }: SpaceManagementOverlayProps) {
+  const [open, setOpen] = useState(!!embedded)
   const [space, setSpace] = useState<SpaceData | null>(null)
   const [tokens, setTokens] = useState<TokenData[]>([])
-  const [children, setChildren] = useState<ChildSpace[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   // Inline editing state
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
-  const [descValue, setDescValue] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Token generation
@@ -61,11 +55,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
   const [newToken, setNewToken] = useState<string | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
 
-  // Child space creation
-  const [showChildForm, setShowChildForm] = useState(false)
-  const [childName, setChildName] = useState('')
-  const [childCreating, setChildCreating] = useState(false)
-
   // Share
   const [linkCopied, setLinkCopied] = useState(false)
 
@@ -73,24 +62,18 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
     setLoading(true)
     setError('')
     try {
-      const [spaceRes, tokenRes, childRes] = await Promise.all([
+      const [spaceRes, tokenRes] = await Promise.all([
         fetch(`/api/spaces/${spaceSlug}`, { headers: { Origin: window.location.origin } }),
         fetch(`/api/spaces/${spaceSlug}/token`, { headers: { Origin: window.location.origin } }),
-        fetch(`/api/spaces/${spaceSlug}/children`, { headers: { Origin: window.location.origin } }),
       ])
       if (spaceRes.ok) {
         const { space: s } = await spaceRes.json()
         setSpace({ name: s.name, description: s.description, isPublic: s.isPublic })
         setNameValue(s.name)
-        setDescValue(s.description || '')
       }
       if (tokenRes.ok) {
         const { tokens: t } = await tokenRes.json()
         setTokens(t)
-      }
-      if (childRes.ok) {
-        const { children: c } = await childRes.json()
-        setChildren(c)
       }
     } catch {
       setError('Failed to load')
@@ -154,23 +137,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
     }
   }
 
-  const createChild = async () => {
-    if (!childName.trim() || childCreating) return
-    setChildCreating(true)
-    const res = await fetch(`/api/spaces/${spaceSlug}/children`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
-      body: JSON.stringify({ name: childName.trim() }),
-    })
-    if (res.ok) {
-      const { space: child } = await res.json()
-      setChildren(prev => [...prev, child])
-      setChildName('')
-      setShowChildForm(false)
-    }
-    setChildCreating(false)
-  }
-
   const copyToClipboard = async (text: string, setter: (v: boolean) => void) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -179,8 +145,8 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
     } catch { /* fallback: do nothing */ }
   }
 
-  // Collapsed state — gear button
-  if (!open) {
+  // Collapsed state — gear button (standalone mode only; embedded is always open)
+  if (!open && !embedded) {
     return (
       <button
         onClick={() => setOpen(true)}
@@ -193,7 +159,9 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
   }
 
   return (
-    <div className="absolute top-3 right-3 z-20 w-80 max-h-[70vh] flex flex-col bg-surface/95 backdrop-blur-sm border border-border rounded-lg overflow-hidden text-[10px] font-mono">
+    <div className={embedded
+      ? 'w-full max-h-[40vh] flex flex-col border-b border-border overflow-hidden text-[10px] font-mono'
+      : 'absolute top-3 right-3 z-20 w-80 max-h-[70vh] flex flex-col bg-surface/95 backdrop-blur-sm border border-border rounded-lg overflow-hidden text-[10px] font-mono'}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         {editingName ? (
@@ -215,12 +183,14 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
             {space?.name || spaceSlug}
           </button>
         )}
-        <button
-          onClick={() => setOpen(false)}
-          className="ml-2 text-muted hover:text-foreground flex-shrink-0 w-4 h-4 flex items-center justify-center"
-        >
-          x
-        </button>
+        {!embedded && (
+          <button
+            onClick={() => setOpen(false)}
+            className="ml-2 text-muted hover:text-foreground flex-shrink-0 w-4 h-4 flex items-center justify-center"
+          >
+            x
+          </button>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -231,37 +201,24 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
           <div className="px-3 py-4 text-error text-center">{error}</div>
         ) : (
           <>
-            {/* Settings */}
+            {/* Visibility — the world's one front-door switch */}
             <div className="px-3 py-2 border-b border-border">
-              <div className="text-muted mb-1.5">settings</div>
-              <div className="space-y-1.5">
-                <div>
-                  <textarea
-                    value={descValue}
-                    onChange={e => setDescValue(e.target.value)}
-                    onBlur={() => patchSpace({ description: descValue.trim() || null })}
-                    placeholder="description..."
-                    rows={2}
-                    className="w-full bg-background border border-border rounded px-2 py-1 text-foreground text-[10px] font-mono resize-none outline-none focus:border-accent/50"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">visibility</span>
-                  <button
-                    onClick={() => {
-                      const next = !space?.isPublic
-                      setSpace(prev => prev ? { ...prev, isPublic: next } : prev)
-                      patchSpace({ isPublic: next })
-                    }}
-                    className={`px-2 py-0.5 rounded border transition-colors ${
-                      space?.isPublic
-                        ? 'bg-success/15 text-success border-success/30'
-                        : 'bg-warning/15 text-warning border-warning/30'
-                    }`}
-                  >
-                    {space?.isPublic ? 'public' : 'private'}
-                  </button>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted">visibility</span>
+                <button
+                  onClick={() => {
+                    const next = !space?.isPublic
+                    setSpace(prev => prev ? { ...prev, isPublic: next } : prev)
+                    patchSpace({ isPublic: next })
+                  }}
+                  className={`px-2 py-0.5 rounded border transition-colors ${
+                    space?.isPublic
+                      ? 'bg-success/15 text-success border-success/30'
+                      : 'bg-warning/15 text-warning border-warning/30'
+                  }`}
+                >
+                  {space?.isPublic ? 'public' : 'private'}
+                </button>
               </div>
             </div>
 
@@ -350,62 +307,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, onCreatePor
               </div>
             </div>
 
-            {/* Sub-Spaces */}
-            <div className="px-3 py-2">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-muted">sub-spaces ({children.length})</span>
-                <button
-                  onClick={() => setShowChildForm(!showChildForm)}
-                  className="text-accent hover:text-accent-hover transition-colors"
-                >
-                  {showChildForm ? 'cancel' : '+ create'}
-                </button>
-              </div>
-
-              {/* Child creation form */}
-              {showChildForm && (
-                <div className="flex items-center gap-1 mb-1.5">
-                  <input
-                    value={childName}
-                    onChange={e => setChildName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') createChild() }}
-                    placeholder="space name..."
-                    className="flex-1 bg-background border border-border rounded px-2 py-1 text-foreground text-[10px] font-mono outline-none focus:border-accent/50"
-                    autoFocus
-                  />
-                  <button
-                    onClick={createChild}
-                    disabled={childCreating}
-                    className="px-2 py-1 bg-accent/15 text-accent border border-accent/30 rounded hover:bg-accent/30 transition-colors disabled:opacity-50"
-                  >
-                    {childCreating ? '...' : 'create'}
-                  </button>
-                </div>
-              )}
-
-              {/* Children list */}
-              <div className="space-y-1">
-                {children.map(c => (
-                  <div key={c.id} className="flex items-center gap-1.5 group">
-                    <a
-                      href={`/space/${c.slug}`}
-                      className="text-foreground hover:text-accent transition-colors truncate flex-1"
-                    >
-                      {c.name}
-                    </a>
-                    <button
-                      onClick={() => onCreatePortal(c.slug, c.name)}
-                      className="px-1.5 py-0.5 bg-purple/10 text-purple border border-purple/30 rounded hover:bg-purple/20 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-                    >
-                      portal
-                    </button>
-                  </div>
-                ))}
-                {children.length === 0 && !showChildForm && (
-                  <div className="text-muted-light py-1">no sub-spaces</div>
-                )}
-              </div>
-            </div>
           </>
         )}
       </div>

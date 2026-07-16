@@ -65,6 +65,7 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
         versionView={Number.isFinite(versionView) ? versionView : undefined}
         name={space.name}
         ownerName={space.owner?.name ?? null}
+        ownerId={space.owner?.id ?? null}
       />
     </>
   )

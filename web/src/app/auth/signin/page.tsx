@@ -20,6 +20,9 @@ function SignInInner() {
   const callbackUrl = params.get('callbackUrl') || '/'
   const errorCode = params.get('error')
   const [providers, setProviders] = useState<Record<string, unknown> | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
 
   // only offer doors that actually open
   useEffect(() => {
@@ -58,6 +61,39 @@ function SignInInner() {
                 CONTINUE WITH GITHUB
               </button>
             )}
+            {/* the ledger door — email + word (CredentialsProvider was always wired; now it has a handle) */}
+            <div className="flex items-center gap-3 pt-1">
+              <div className="flex-1 h-px bg-brass/20" />
+              <span className="font-mono text-[9px] tracking-[0.3em] text-grounds">OR THE LEDGER</span>
+              <div className="flex-1 h-px bg-brass/20" />
+            </div>
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (busy) return
+                setBusy(true)
+                await signIn('credentials', { email, password, callbackUrl })
+                setBusy(false)
+              }}
+            >
+              <input
+                type="email" value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="email" autoComplete="email" required
+                className="w-full rounded-lg bg-void/40 border border-brass/25 focus:border-flame/60 outline-none text-steamer font-mono text-[11px] px-4 py-3 placeholder:text-grounds"
+              />
+              <input
+                type="password" value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="password" autoComplete="current-password" required
+                className="w-full rounded-lg bg-void/40 border border-brass/25 focus:border-flame/60 outline-none text-steamer font-mono text-[11px] px-4 py-3 placeholder:text-grounds"
+              />
+              <button
+                type="submit" disabled={busy}
+                className="w-full rounded-lg border border-brass/30 hover:border-flame/60 text-steamer/80 hover:text-glow font-mono text-[11px] tracking-[0.2em] px-6 py-3.5 transition-all disabled:opacity-50"
+              >
+                {busy ? 'CHECKING THE LEDGER…' : 'SIGN THE LEDGER'}
+              </button>
+            </form>
           </div>
         </div>
         <a href="/" className="brass-tab inline-block px-2 py-1 text-[10px] mt-6 arrive" style={{ animationDelay: '0.2s' }}>
