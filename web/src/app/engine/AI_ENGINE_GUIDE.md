@@ -45,6 +45,37 @@ GET requests return engine state (fields, world data, params).
 
 ---
 
+## Player Icons (BREW YOUR ICON — the player's cursor)
+
+A player's cursor in the cafe hubs (MAIN and SUB-MAIN) is a brewed icon. The BREW
+YOUR ICON panel hands the player a prompt containing an **icon token** (`uc_it_…`) —
+that token authorizes exactly ONE command, `set_player_icon`, landing on the player
+who minted it. No world, no world creation, no other access. A space token
+(`uc_st_…`) also works: the icon lands on the space's owner.
+
+```json
+POST /api/engine/bridge          Authorization: Bearer uc_it_…
+{"type": "set_player_icon", "icon": {"fx": 0, "hue": 0.9, "size": 1.3, "wgsl": "<glyph>"}}
+```
+
+- `fx` 0–4 — preset fallback look (0 comet · 1 ring · 2 eyes · 3 spark · 4 walking cup)
+- `hue` 0–1 (cosine palette), `size` 0.5–2 — tint and scale for the preset AND the glyph cell
+- `wgsl` (optional but the point) — a CUSTOM GLYPH that replaces the preset entirely.
+  One function, ≤6KB, no bindings/imports, exactly this signature:
+  `fn visual_glyph(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f`
+  `uv` spans -1..1 inside a small bounded cursor cell; animate off `time`; return
+  `vec4f(rgb, alpha)`, alpha 0 outside the shape. The engine renders it as a tiny
+  field riding the cursor — the cell caps its size, and the standard pre-flight
+  hazard screen vets it before it touches the GPU.
+
+SAFETY IS A HARD RULE: no strobing or flashing, no rapid brightness swings, no
+unbounded loops. Bold is welcome; seizure-bait is rejected culture-wide.
+
+`GET /api/engine/bridge` with an icon token returns `{ icon }` — read it back to
+confirm. The player's open brew panel picks the change up live (2s poll).
+
+---
+
 ## Player Worlds (Spaces)
 
 Besides the global world, every player can own worlds at `/space/<slug>`. Agents connect to a

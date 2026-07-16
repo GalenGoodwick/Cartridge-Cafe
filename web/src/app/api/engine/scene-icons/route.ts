@@ -24,5 +24,9 @@ export async function GET() {
     if (!iconWgsl) continue
     out.push({ name: up, hue: dominantHue(scene.fields || []), iconWgsl })
   }
-  return NextResponse.json({ icons: out })
+  // edge-cacheable: no session, house scenes change rarely — first visitor pays
+  // the compose, everyone else gets the icons instantly for 30s (SWR for 2min)
+  return NextResponse.json({ icons: out }, {
+    headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120' },
+  })
 }

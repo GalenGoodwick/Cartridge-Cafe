@@ -373,6 +373,21 @@ export function applyCommandToSnapshotObject(
       break
     }
 
+    case 'remove_effect': {
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (f && f.effects) f.effects = f.effects.filter(e => e.id !== (cmd.effectId as string))
+      break
+    }
+
+    case 'clear_effect': {
+      // no fieldId = strip every field's stack, matching the live-engine command
+      for (const f of snap.fields) {
+        if (cmd.fieldId && f.id !== cmd.fieldId) continue
+        if (f.effects) f.effects = []
+      }
+      break
+    }
+
     case 'set_world_params': {
       if (cmd.params) {
         snap.worldParams = { ...snap.worldParams, ...(cmd.params as Record<string, unknown>) } as SceneSnapshot['worldParams']

@@ -57,16 +57,49 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   // ring · 2 eyes · 3 spark), hue 0..1, size. Lives in localStorage and rides to
   // the shader via window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
-  const [icon, setIcon] = useState<{ fx: number; hue: number; size: number }>({ fx: 0, hue: 0.55, size: 1 })
+  const [icon, setIcon] = useState<{ fx: number; hue: number; size: number; wgsl?: string }>({ fx: 0, hue: 0.55, size: 1 })
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('cafeIcon') || 'null')
-      if (saved && typeof saved.fx === 'number') setIcon({ fx: saved.fx, hue: saved.hue ?? 0.55, size: saved.size ?? 1 })
+      if (saved && typeof saved.fx === 'number') setIcon({ fx: saved.fx, hue: saved.hue ?? 0.55, size: saved.size ?? 1, wgsl: typeof saved.wgsl === 'string' ? saved.wgsl : undefined })
     } catch { /* first brew */ }
+    // an AI may have brewed the icon through the bridge (set_player_icon) —
+    // the server copy wins over the local one, so it follows you across browsers
+    fetch('/api/engine/player-icon').then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.icon && typeof d.icon.fx === 'number') setIcon({ fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined }) })
+      .catch(() => { /* offline is fine — localStorage carried it */ })
   }, [])
+  // the panel's ICON TOKEN — minted on open, folded into the copied prompt so
+  // the AI can set_player_icon with no world and no space token. Re-minting
+  // revokes the previous token (one live icon key per player).
+  const [iconToken, setIconToken] = useState('')
+  useEffect(() => {
+    if (!iconOpen) return
+    fetch('/api/engine/player-icon', { method: 'POST' }).then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.token) setIconToken(d.token) })
+      .catch(() => { /* signed out — the copied prompt will say so */ })
+  }, [iconOpen])
+  // while the brew panel is open, watch for the AI's confirmation landing
+  useEffect(() => {
+    if (!iconOpen) return
+    const iv = setInterval(() => {
+      fetch('/api/engine/player-icon').then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.icon && typeof d.icon.fx === 'number') setIcon(prev => (prev.fx === d.icon.fx && prev.hue === d.icon.hue && prev.size === d.icon.size && prev.wgsl === d.icon.wgsl) ? prev : { fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined }) })
+        .catch(() => {})
+    }, 2000)
+    return () => clearInterval(iv)
+  }, [iconOpen])
+  // don't persist the untouched default — in dev, StrictMode's double-mount
+  // otherwise writes it over the stored icon before the second mount's load
+  // effect reads it (the icon "forgot itself" on reload). Once icon is a NEW
+  // object (loaded from storage/server or brewed), persisting is safe.
+  const initialIconRef = useRef(icon)
   useEffect(() => {
     ;(window as unknown as { __cafeIcon?: typeof icon }).__cafeIcon = icon
-    try { localStorage.setItem('cafeIcon', JSON.stringify(icon)) } catch { /* private mode */ }
+    if (icon !== initialIconRef.current) {
+      try { localStorage.setItem('cafeIcon', JSON.stringify(icon)) } catch { /* private mode */ }
+    }
+    window.dispatchEvent(new CustomEvent('cafe:icon'))   // the engine rebuilds the glyph cursor
   }, [icon])
   const [iconPrompt, setIconPrompt] = useState('')
   const [iconCopied, setIconCopied] = useState(false)
@@ -78,8 +111,17 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
     const o = window.location.origin
     const text = `Brew my cartridge.cafe player icon: "${p}".
 
-First GET ${o}/api/engine/guide and read it. Then author a SMALL, GENTLE avatar effect for me and set it as my icon through the bridge (${o}/api/engine/bridge).
-Hard rules — the icon must be safe: no strobing or flashing, no rapid brightness swings, no unbounded loops, bounded size. A calm dancing glyph. Reply to confirm once it's set.`
+Author a custom WGSL glyph — this IS my cursor in the cafe, so make it live up to the description. Set it with one call:
+
+POST ${o}/api/engine/bridge
+Authorization: Bearer ${iconToken || '<open the brew panel while signed in to mint your icon token>'}
+Body: {"type":"set_player_icon","icon":{"fx":<0-4 preset fallback>,"hue":<0-1>,"size":<0.5-2>,"wgsl":"<the glyph>"}}
+
+The glyph is one WGSL function, under 6KB, no bindings, exactly this signature:
+fn visual_glyph(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f
+uv spans -1..1 inside the icon's small cursor cell; animate off time; return vec4f(rgb, alpha) with alpha 0 outside the shape. Also pick fx/hue/size so the preset fallback echoes the idea. Full engine guide: ${o}/api/engine/guide
+
+Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightness swings, no unbounded loops (the cell caps its size). Within that, go as bold and alive as the description demands. Reply to confirm once it's set.`
     try {
       await navigator.clipboard.writeText(text)
       setIconCopied(true); setTimeout(() => setIconCopied(false), 1800)
@@ -110,10 +152,21 @@ Hard rules — the icon must be safe: no strobing or flashing, no rapid brightne
   const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean; owner?: boolean; pinsLocked?: boolean; members?: Record<string, string>; ownerId?: string | null; admins?: string[]; bans?: Record<string, { until: number; name?: string; by?: string }>; shelf?: string[] } | null>(null)
   const [subTools, setSubTools] = useState(false)          // founder's moderation panel
   const [chatWorld, setChatWorld] = useState<{ channel: string; title: string; subtitle?: string } | null>(null)   // the structural chat world you've entered
-  // deep-link: /?commons opens straight into the commons chat world
+  // LANDING ON MAIN ALWAYS SHOWS MAIN. Whatever path brought you back (ESC,
+  // back button, crumbs, a door), an open commons never greets you — the shelf
+  // does. Opening the commons doesn't change `scene`, so this only fires on
+  // actual arrivals, never on the open itself.
+  useEffect(() => {
+    if (scene === 'CAFE') setChatWorld(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene])
+  // deep-link: /?commons opens straight into the commons chat world — ONCE, and
+  // the URL is scrubbed immediately so browser-back / reload can never resurrect
+  // the commons over main. The commons only ever opens by explicit click after this.
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (new URLSearchParams(window.location.search).has('commons')) {
+      window.history.replaceState({}, '', '/')
       setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })
     }
   }, [])
@@ -513,6 +566,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     setCaption(null)
     setConfirmLeave(false)
     setModalUp(false)   // a panel left open in the old world must not latch shut the new one
+    setChatWorld(null)  // the commons never follows you: returning to main lands on the SHELF, always
     setPortals([])
     portalsBlockRef.current = Date.now() + 600
     if (name !== 'SUB-MAIN') {   // leaving the group layer resets it to the viewer
@@ -778,6 +832,17 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
 
   return (
     <>
+      {/* BOOT SPINNER — the door publishes portals on its first live frame;
+          until then the canvas is black (engine compiling, scene loading).
+          A DOM ring covers that gap so loading is visible from first paint. */}
+      {scene === 'CAFE' && portals.length === 0 && (
+        <div className="fixed inset-0 z-30 pointer-events-none flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 rounded-full border-2 border-brass/20 border-t-flame/70 animate-spin" />
+            <div className="font-mono text-[9px] tracking-[0.3em] text-crema/40 uppercase">the shelf is waking</div>
+          </div>
+        </div>
+      )}
       {ad && <AdInterstitial ad={ad} onClose={() => setAd(null)} />}
       <FieldEngine playScene={voting && previewScene ? previewScene : scene}
         onDockRect={setDockBottom}
@@ -969,7 +1034,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
 
       {/* the commons chat WORLD — a structural door on main; entering it renders
-          the full chat world over everything. */}
+          the full chat world over everything. The door waits for the room:
+          it appears WITH the woken shelf, never popping in over the boot
+          spinner or the return-from-a-world transition. */}
       <MainCommonsChat visible={scene === 'CAFE' && !modalUp && !voting && brewStep === 0 && !chatWorld}
         onEnter={() => setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })} />
       {/* each sub-main gets the SAME prominent commons door as main, scoped to it */}
@@ -978,7 +1045,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         channel={'commons:sub:' + (subMode?.slug || '')}
         label={(subMode?.name || 'sub-main').toUpperCase() + ' COMMONS'}
         onEnter={() => setChatWorld({ channel: 'commons:sub:' + subMode!.slug, title: (subMode?.name || 'sub-main') + ' · commons', subtitle: 'this sub-main’s AIs, at scale' })} />
-      {chatWorld && <ChatWorld channel={chatWorld.channel} title={chatWorld.title} subtitle={chatWorld.subtitle} onExit={() => setChatWorld(null)} />}
+      {/* render-gated too: the commons can ONLY exist over a dock scene — never
+          over a world, never during a transition frame */}
+      {chatWorld && (scene === 'CAFE' || scene === 'SUB-MAIN') && <ChatWorld channel={chatWorld.channel} title={chatWorld.title} subtitle={chatWorld.subtitle} onExit={() => setChatWorld(null)} />}
 
       {/* PIN A WORLD — live search box in the cafe's own colors (was a browser prompt) */}
       {pinOpen && (
@@ -1146,7 +1215,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[11px] tracking-[0.15em] text-void transition-colors">
                 STAY
               </button>
-              <button onClick={() => { pause(false); skipCrumbRef.current = true; go(crumbRef.current.pop() || 'CAFE') }}
+              <button onClick={() => {
+                pause(false); skipCrumbRef.current = true
+                // Back means THE DOCK. The crumb trail can carry world names
+                // (stale-portal pushes) — never follow it into another world.
+                const c = crumbRef.current.pop()
+                go(c === 'CAFE' || c === 'SUB-MAIN' ? c : 'CAFE')
+              }}
                 className="brass-tab px-5 py-2 text-[11px]">
                 LEAVE
               </button>

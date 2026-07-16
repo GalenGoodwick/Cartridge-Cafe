@@ -22,6 +22,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ name, versions: listSceneVersions(name) })
   }
 
+  // lightweight change-detection for open tabs: just the stamp, not the world
+  if (action === 'stat' && name) {
+    const scene = loadScene(name)
+    if (!scene) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
+    return NextResponse.json({ name, timestamp: (scene as { timestamp?: number }).timestamp ?? 0 })
+  }
+
   if (action === 'version' && name) {
     const ts = parseInt(searchParams.get('timestamp') || '')
     const scene = loadSceneVersion(name, ts)

@@ -156,6 +156,9 @@ export class FieldRenderer {
   // satisfied for every world, even those that never sample it.
   private iconBuffer: GPUBuffer | null = null
   private iconBufferCapacity = 0
+  // last FULL-roster atlas as plain pixels — the caller caches these so coming
+  // back to main re-uploads instead of re-rendering every world's shader
+  private _iconAtlasCPU: Uint32Array | null = null
 
   // Pre-allocated typed arrays (reused every frame to avoid GC pressure)
   private _frameUniformData = new Float32Array(16)
@@ -1441,11 +1444,22 @@ export class FieldRenderer {
         // of every icon popping in together after the whole roster finishes.
         this.uploadIconAtlas(atlas)
         onSlot?.(it.slot)
+        // PACING: after the pipeline cache warms, all icons complete within
+        // milliseconds — visually a batch. A short beat between reveals makes
+        // the shelf fill in one bubble at a time (spinner → face), which is
+        // the honest picture of what's happening.
+        if (onSlot) await new Promise(res => setTimeout(res, 90))
       }
     }
     target.destroy(); readBuf.destroy(); uni.destroy()
+    // full-roster renders leave their pixels behind for the icon cache
+    // (single-item calls — hover animation — must not clobber it)
+    if (items.length > 1) this._iconAtlasCPU = atlas
     return rendered
   }
+
+  /** The last full icon atlas as CPU pixels, for cache-and-restore on return to main. */
+  getIconAtlasCPU(): Uint32Array | null { return this._iconAtlasCPU }
 
   /** Compile a standalone pipeline that runs one world visual over a 64² quad.
    *  Cached by WGSL; null (and cached as null) if it doesn't compile or isn't

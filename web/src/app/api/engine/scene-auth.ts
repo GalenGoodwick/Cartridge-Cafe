@@ -28,6 +28,7 @@ export async function mayWriteScene(req: NextRequest, name: string): Promise<boo
   // taken up to the first ' · '. Without this, a labeled branch parses its author
   // as "handle · label" and its own owner is locked out in production.
   const handle = name.slice(bi + 3).split(' · ')[0].trim()
+  if (handle === 'main' || handle === 'winner') return false   // reserved namespaces — the winner's podium copies, minted only by election
   const myHandle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
   return handle === myHandle                     // only your own branches (any label)
 }

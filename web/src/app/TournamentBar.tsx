@@ -275,6 +275,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         const bestName: Record<string, string> = {}
         for (const n of (j.scenes || []) as string[]) {
           if (!n.startsWith(branchesOf + ' ⑂ ')) continue
+          if (n.startsWith(branchesOf + ' ⑂ main · v') || n.startsWith(branchesOf + ' ⑂ winner · v')) continue   // podium copies already won — never contestants
           const vAt = n.lastIndexOf(' · v')
           const base = vAt > 0 ? n.slice(0, vAt) : n
           const ver = vAt > 0 ? (parseInt(n.slice(vAt + 4), 10) || 0) : 0
@@ -608,6 +609,39 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             <div className={`${pill} text-amber-200/70`}>
               ⚔ THE RECKONING{focus && <span className="text-white/45"> · {focus.toLowerCase()}</span>}
             </div>
+            {/* where you stand: tier depth, your cell, its voices — and how the
+                whole tier is breathing (every cell's quorum), since no cell
+                resolves until ALL of them gather five. */}
+            {(() => {
+              const tiers = Math.max(1, Math.ceil(Math.log(Math.max(roster.length, 2)) / Math.log(5)))
+              const voices = new Set(Object.keys(cell.votes)).size
+              const voters = Object.keys(cell.votes)
+              return (
+                <div className="flex items-center gap-2">
+                  <span className={`${pill} text-white/50`}>
+                    TIER {doc.tier}/{tiers} · CELL {seated ? mci + 1 : '—'}/{doc.cells.length} · VOICES {voices}/{QUORUM}
+                  </span>
+                  {voters.length > 0 && (
+                    <div className="flex -space-x-1.5" title={'voted: ' + voters.join(', ')}>
+                      {voters.slice(0, 7).map((v, i) => (
+                        <span key={i} className="rounded-full border border-[#0d0906] flex items-center justify-center text-[8px] font-bold text-black"
+                          style={{ width: '16px', height: '16px', background: `hsl(${hash(v) % 360},50%,58%)` }}>{v[0]?.toUpperCase()}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1" title="every cell must gather five voices before the tier resolves">
+                    {doc.cells.map((c, i) => {
+                      const cv = new Set(Object.keys(c.votes)).size
+                      return (
+                        <span key={i} className={`text-[9px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/35'}`}>
+                          {cv >= QUORUM ? '●' : `${cv}/${QUORUM}`}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
             {/* who else is in this cell right now */}
             {viewers.length > 0 && (
               <div className="flex items-center gap-1" title={viewers.map(v => v.who).join(', ')}>

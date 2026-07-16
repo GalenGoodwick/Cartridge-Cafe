@@ -52,6 +52,64 @@ fn cf_player(local0: vec2f, dir: vec2f, phase: f32, fx: i32, tint: vec3f) -> vec
     let star = pow(max(0.0, cos(ang * 5.0 + phase * 2.0)), 6.0);
     return tint * exp(-d2 * 3.0) * (0.5 + star * 1.4) * 1.5;
   }
+  if (fx == 4) {
+    // THE WALKING CUP — a cream cup with a handle, striding on stub legs.
+    // Drawn solid over the glow layer; tint only warms the steam. All motion
+    // rides the same slow dance phase — no strobe, no flash.
+    let wt = phase * 0.9;
+    let lean = 0.07 * sin(wt);
+    var q = local0;
+    q = vec2f(q.x * cos(lean) + q.y * sin(lean), -q.x * sin(lean) + q.y * cos(lean));
+    q.y = q.y + 0.05 * abs(sin(wt)) - 0.06;
+    var cup = vec3f(0.0);
+    var cov = 0.0;
+    // two stub legs, half a phase apart (screen +y is down)
+    for (var li: i32 = 0; li < 2; li++) {
+      let lph = wt + f32(li) * 3.14159;
+      let hip = vec2f(-0.11 + 0.22 * f32(li), 0.34);
+      let foot = vec2f(hip.x + 0.11 * sin(lph), 0.56 - 0.07 * max(0.0, sin(lph + 1.5708)));
+      let pa = q - hip; let ba = foot - hip;
+      let hseg = clamp(dot(pa, ba) / max(dot(ba, ba), 0.0001), 0.0, 1.0);
+      let dleg = length(pa - ba * hseg) - 0.055;
+      let mleg = smoothstep(0.02, -0.02, dleg);
+      cup = mix(cup, vec3f(0.93, 0.88, 0.80), mleg); cov = max(cov, mleg);
+      let dboot = length(q - foot - vec2f(0.02, 0.02)) - 0.07;
+      let mboot = smoothstep(0.02, -0.02, dboot);
+      cup = mix(cup, vec3f(0.42, 0.27, 0.16), mboot); cov = max(cov, mboot);
+    }
+    // body — rounded box; handle — a ring on the right
+    let bq = abs(q - vec2f(0.0, 0.0)) - vec2f(0.30, 0.32) + vec2f(0.12);
+    let dbody = length(max(bq, vec2f(0.0))) + min(max(bq.x, bq.y), 0.0) - 0.12;
+    let dring = abs(length(q - vec2f(0.40, 0.02)) - 0.13) - 0.05;
+    let dcup = min(dbody, dring);
+    let mcup = smoothstep(0.02, -0.02, dcup);
+    cup = mix(cup, vec3f(0.95, 0.91, 0.84), mcup); cov = max(cov, mcup);
+    // rim band + coffee at the top (up is -y)
+    let rq = abs(q - vec2f(0.0, -0.30)) - vec2f(0.295, 0.055);
+    let drim = max(rq.x, rq.y);
+    let mrim = smoothstep(0.015, -0.015, drim) * mcup;
+    cup = mix(cup, vec3f(0.34, 0.20, 0.11), mrim);
+    // sleepy face — two happy-closed eyes and a small smile, inked into the cream
+    let deL = length((q - vec2f(-0.12, -0.06)) * vec2f(1.0, 1.8)) - 0.045;
+    let deR = length((q - vec2f(0.12, -0.06)) * vec2f(1.0, 1.8)) - 0.045;
+    let dsm = length((q - vec2f(0.0, 0.10)) * vec2f(1.0, 1.6)) - 0.06;
+    let dsm2 = length((q - vec2f(0.0, 0.06)) * vec2f(1.0, 1.6)) - 0.075;
+    let face = max(smoothstep(0.012, -0.012, deL), max(smoothstep(0.012, -0.012, deR),
+               smoothstep(0.012, -0.012, dsm) * smoothstep(-0.012, 0.012, dsm2)));
+    cup = mix(cup, vec3f(0.30, 0.19, 0.12), face * mcup);
+    // steam — two faint wisps rising on the slow beat, tinted by the brew
+    var steam = vec3f(0.0);
+    for (var si: i32 = 0; si < 2; si++) {
+      let fsi = f32(si);
+      let rise = fract(phase * 0.05 + fsi * 0.5);
+      let wp = vec2f((fsi - 0.5) * 0.16 + 0.05 * sin(phase * 0.4 + fsi * 2.0 + rise * 5.0), -0.45 - rise * 0.42);
+      let ds = dot(q - wp, q - wp);
+      steam += (vec3f(0.75, 0.72, 0.68) + tint * 0.25) * exp(-ds * 70.0) * (1.0 - rise) * rise * 3.2 * 0.35;
+    }
+    // solid cup over a soft warm halo; additive-safe (bounded, calm)
+    let halo = tint * exp(-d2 * 2.4) * 0.22;
+    return cup * 1.9 + steam + halo * (1.0 - cov);
+  }
   // 0: comet glow (default)
   let g = body * 1.3 + nose * 1.6;
   let eye = local - fdir * 0.30;                     // a pupil pushed forward — a clear aim
@@ -223,12 +281,31 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // look/hue/size are BREWED: read from the uniform tail (packed after all the
   // bubbles, so bubble offsets never move). fx, hue, size = uni(sb, sb+1, sb+2).
   let sb = 6 + i32(uni(3) + 0.5) * 4;
-  let selfFx = i32(uni(sb) + 0.5);
+  // fx -1 = a custom BREWED GLYPH field is riding the cursor instead — the
+  // preset dance (and its soft core) stands down. round(), not +0.5: the old
+  // truncation folded -1 back to 0 and the comet haunted the glyph.
+  let selfFx = i32(round(uni(sb)));
   let selfHue = uni(sb + 1);
   let selfSize = max(uni(sb + 2), 0.25);
   let selfTint = 0.5 + 0.5 * cos(6.2831 * (selfHue + vec3f(0.0, 0.33, 0.67)));
-  col += cf_player((uv - mp) * (4.5 / selfSize), vec2f(0.0, 1.0), t * 1.6, selfFx, selfTint * 1.3) * 1.1;
-  col += selfTint * 0.9 * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a soft core in your hue
+  if (selfFx >= 0) {
+    col += cf_player((uv - mp) * (4.5 / selfSize), vec2f(0.0, 1.0), t * 1.6, selfFx, selfTint * 1.3) * 1.1;
+    col += selfTint * 0.9 * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a soft core in your hue
+  } else {
+    // BREWED GLYPH — the player's own WGSL fills the mod_playerglyph container
+    // (a no-op until the engine swaps it in). Same seat as the presets, but a
+    // tighter cell: a glyph fills its whole cell to |uv|=1, so the preset scale
+    // read twice as large as intended. 9.0 ≈ a cursor-sized icon at size 1.
+    // The distance guard is the frame budget: only pixels inside the cell pay
+    // for the glyph at all — user code can be arbitrarily fancy without taxing
+    // the other ~99% of the screen.
+    let gd = uv - mp;
+    let gcell = selfSize / 9.0;
+    if (dot(gd, gd) < gcell * gcell * 1.1) {
+      let gl = mod_playerglyph(gd * (9.0 / selfSize), t);
+      col += gl.rgb * clamp(gl.a, 0.0, 1.0) * 1.5;
+    }
+  }
 
   // the OTHER players — their live cursors, dancing, so you see them move around
   // the cafe. Packed after the self-icon: count at sb+3, then (x, y, hue) each.
@@ -460,7 +537,7 @@ try {
           // before the first icon pass lands, an un-styled bubble (style 8) shows
           // a spinner instead of flashing the default emblem
           const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
-          B.iconLoading = B.iconSlot == null && B.style >= 8 && !ready
+          B.iconLoading = B.style >= 8 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black)
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -628,14 +705,17 @@ try {
     const B = U.bubbles[n]
     // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
-    const styleInt = (B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
+    const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
     u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
   const ic = (typeof window !== 'undefined' && window.__cafeIcon) || {}
-  u.push(ic.fx | 0, typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
+  // BREWED GLYPH: when the engine has swapped the player's own WGSL into the
+  // shader's mod_playerglyph container, fx packs as -1 — the shader draws the
+  // glyph in the preset's seat and the preset stands down.
+  u.push(wd.__glyphOn === 1 ? -1 : (ic.fx | 0), typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
   // the dancing shader effect IS the other player here — suppress the DOM cursor
   // pip that would otherwise draw a dot on top of it
   wd.noPresenceCursors = true
@@ -674,7 +754,9 @@ const scene = {
   interactionRules: [],
   interactionEffects: [],
   visualTypes: [{ name: 'cf_world', wgsl: WORLD }],
-  modules: [],
+  // the BREWED GLYPH container: a no-op the engine swaps for the player's own
+  // WGSL (FieldEngine, on cafe:icon). The world shader calls it at the cursor.
+  modules: [{ name: 'playerglyph', wgsl: 'fn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' }],
   timestamp: Date.now(),
 }
 

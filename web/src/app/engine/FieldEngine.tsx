@@ -133,6 +133,11 @@ const ENGINE_BUILD = 'e5-fx-dbg'
 // DOWNLOAD only; one scene runs at a time. Dev hot-reload deletes an entry on edit.
 const scenePreloadCache = new Map<string, unknown>()
 
+// the shelf's icon atlas, cached as plain pixels across visits to main — leaving
+// a world and coming back re-uploads this instead of re-fetching the roster and
+// re-rendering ~64 world shaders behind spinners. Survives client-side navigation.
+let cafeIconCache: { sig: string; atlas: Uint32Array; slots: Record<string, number> } | null = null
+
 export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
@@ -287,6 +292,21 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // the WORLD ARENA's view of the ridden branch — tier, cell, votes, podium.
+  // Shown in the dock so a branch owner sees their tournament standing without
+  // opening the reckoning; explicit filler when the branch has no votes yet.
+  const [arenaDoc, setArenaDoc] = useState<{ tier?: number; cells?: Array<{ worlds: string[]; votes: Record<string, string> }>; champion?: string | null } | null>(null)
+  useEffect(() => {
+    if (!riding) { setArenaDoc(null); return }
+    let stop = false
+    const load = () => fetch(`/api/engine/save?slot=${encodeURIComponent('tournament:world:' + cellBase().toUpperCase())}`)
+      .then(r => r.json()).then(j => { if (!stop) setArenaDoc(j?.data || null) }).catch(() => {})
+    load()
+    const t = setInterval(load, 10000)
+    return () => { stop = true; clearInterval(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riding])
+
   const loadCellDoc = useCallback(async (): Promise<CellDoc> => {
     try {
       const j = await fetch(`/api/engine/save?slot=${encodeURIComponent('cell:' + cellBase())}`).then(r => r.json())
@@ -439,6 +459,41 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       window.removeEventListener('keydown', onGesture, { capture: true })
       window.removeEventListener('cafe:icon-atlas', onAtlas)
     }
+  }, [])
+
+  // BREWED GLYPH CURSOR — the flexible half of BREW YOUR ICON. The hub shader
+  // (CAFE / SUB-MAIN) draws the cursor icon itself and ships a no-op module
+  // slot, `mod_playerglyph`. When the brewed icon carries custom WGSL (an AI
+  // set it via set_player_icon), that module is simply replaced with the
+  // player's code — the shader then draws the glyph in the exact seat the
+  // presets use (the hook packs fx = -1 so the preset stands down). One
+  // container, no extra fields, no transform plumbing.
+  useEffect(() => {
+    const MOD = 'playerglyph'
+    const NOOP = 'fn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }'
+    const apply = () => {
+      const sim = simulationRef.current
+      const renderer = rendererRef.current
+      if (!sim || !renderer) return
+      // the slot only exists in the hub scenes — elsewhere there is nothing to fill
+      const inHub = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
+      if (!inHub) { if (sim.worldData.__glyphOn) delete sim.worldData.__glyphOn; return }
+      const ic = (window as unknown as { __cafeIcon?: { wgsl?: string } }).__cafeIcon
+      const wgsl = typeof ic?.wgsl === 'string' && /fn\s+visual_glyph\s*\(/.test(ic.wgsl) ? ic.wgsl : null
+      const code = wgsl
+        ? wgsl + '\nfn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return visual_glyph(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }'
+        : NOOP
+      // scene loads re-register the cartridge's no-op — compare the LIVE registry,
+      // not a local memo, and only recompile when the slot actually changes
+      const current = renderer.getAllModules().find(m => m.name === MOD)?.wgsl
+      if (current !== code) renderer.registerModule(MOD, code)
+      if (wgsl) sim.worldData.__glyphOn = 1
+      else if (sim.worldData.__glyphOn) delete sim.worldData.__glyphOn
+    }
+    window.addEventListener('cafe:icon', apply)
+    const iv = setInterval(apply, 1500)
+    apply()
+    return () => { window.removeEventListener('cafe:icon', apply); clearInterval(iv) }
   }, [])
 
   // HUD elements (driven by worldData['hud'])
@@ -951,6 +1006,35 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
   }, [showToast, refreshSceneList])
 
+  // The threshold: every world swap fades to BLACK first, travels under black,
+  // and fades back in only when the new pipeline is ready. A designed moment of
+  // dark instead of a race against the shader compiler (the "blue flash").
+  const [swapFade, setSwapFade] = useState(false)
+  const fadeToBlack = useCallback(async () => {
+    setSwapFade(true)
+    await new Promise(r => setTimeout(r, 340))   // let the fade fully land before teardown
+  }, [])
+  /** Lift the curtain only when the new world has genuinely SETTLED: pipeline
+   *  compiled AND (if it has hooks) the first hook frames have fed the
+   *  whiteboard — a compiled shader with all-zero uniforms is its own alien
+   *  flash. Then one settle beat so the first visible frame is a real one. */
+  const liftWhenSettled = useCallback((guard?: () => boolean) => {
+    const rr = rendererRef.current
+    const t0 = Date.now()
+    const tick = () => {
+      if (guard && !guard()) { setWorldLoading(false); return }   // superseded — the newer load owns the curtain
+      const sim = simulationRef.current
+      const hooksNeedFrames = (sim?.stepHooks?.size ?? 0) > 0 && !sim?.worldData?.gpuUniforms
+      const ready = rr ? rr.isSuperReady() && !hooksNeedFrames : true
+      if (ready || Date.now() - t0 > 4000) {
+        setTimeout(() => { setWorldLoading(false); setSwapFade(false) }, 260)   // settle beat
+        return
+      }
+      setTimeout(tick, 60)
+    }
+    tick()
+  }, [])
+
   // Load a saved scene (replaces current state)
   const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
     const sim = simulationRef.current
@@ -978,6 +1062,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     if (sceneName !== lastSceneRef.current) setPlugToken(null)
     lastSceneRef.current = sceneName
     setRiding(sceneName.includes(' ⑂ ') ? sceneName : null)
+    // Veil the swap: until the NEW uber-shader compiles, the old pipeline would
+    // paint the incoming fields with the departed world's shaders.
+    setWorldLoading(true)
+    await fadeToBlack()   // dim the departing world first — travel happens under black
     try {
       // Clear current state — including the old world's audio
       audioRef.current.stopScore()
@@ -1059,8 +1147,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       showToast(`Scene "${sceneName}" loaded (${scene.fields?.length || 0} fields)`, 'success')
     } catch {
       showToast(`Failed to load "${sceneName}"`, 'error')
+    } finally {
+      liftWhenSettled()
     }
-  }, [showToast, getModCode, syncFields, updateSelectionMask])
+  }, [showToast, getModCode, syncFields, updateSelectionMask, fadeToBlack, liftWhenSettled])
 
   /** MAIN version scroller step: pos 0 = LIVE, 1..N = backups (newest→oldest).
    *  Loads a timestamped backup snapshot in place (via handleLoadScene's preScene)
@@ -1103,10 +1193,17 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       for (const n of scenes as string[]) {
         const m = n.match(/^(.+) ⑂ (.+) · v(\d+)$/)
         if (!m || m[1] !== base) continue
+        if (m[2] === 'main' || m[2].startsWith('main · ')) continue   // legacy throne copies aren't browsable branches
         const cur = heads.get(m[2])
         if (!cur || +m[3] > cur.v) heads.set(m[2], { name: n, author: m[2], v: +m[3] })
       }
-      const list = [...heads.values()].sort((a, b) => b.v - a.v)
+      // the WINNER'S PODIUM rides first — the elected copy stands before main
+      // and the branches (main itself always stays the original maker's)
+      const list = [...heads.values()].sort((a, b) => {
+        const aw = a.author === 'winner' ? 1 : 0, bw = b.author === 'winner' ? 1 : 0
+        if (aw !== bw) return bw - aw
+        return b.v - a.v
+      })
       setBranchList(list)
       return list
     } catch { setBranchList([]); return [] }
@@ -1265,7 +1362,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
+      // a direct URL visit IS a ride: without this, the branch dock (owner
+      // chips, version scrubber, SET AS HEAD, branch key) only appeared when
+      // you browsed to the branch from inside the shell
+      lastSceneRef.current = playScene
+      setRiding(playScene.includes(' ⑂ ') ? playScene : null)
+      // world-scoped UI never travels: panels opened in the departed world
+      // (instructions, branches, versions, the ⚙ tools box) close at the door
+      setInstrOpen(false)
+      setBranchesOpen(false)
+      setVersionsOpen(false)
+      setChromeVisible(false)
       setWorldLoading(true)
+      await fadeToBlack()   // the departing world dims out BEFORE teardown — no last-frame flash
+      if (playLoadedRef.current !== playScene) return   // superseded during the fade
       try {
         // save data survives the swap: stash the departing scene's game state
         // (the __-prefixed worldData blobs) so re-entering a game resumes it
@@ -1320,6 +1430,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             const slug = playScene.slice(6)
             const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/snapshot`)
             data = r.ok ? await r.json() : {}
+          } else if (playScene.includes(' ⑂ ')) {
+            // branches are LIVING documents — the store is truth. A bundled
+            // cartridge copy is a frozen snapshot from rebuild-bundles and must
+            // never shadow live AI edits; it's only the offline fallback.
+            let resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
+            if (!resp.ok) resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
+            data = await resp.json()
           } else {
             let resp = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json`)
             if (!resp.ok) resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(playScene)}`)
@@ -1337,6 +1454,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         if (playLoadedRef.current !== playScene) return
         const scene = data.scene || data.snapshot || data
         if (!scene || !scene.fields) return
+        // A scene is a complete world — reset the shader registries (same rule as
+        // handleLoadScene). Without this, the departed world's visuals ride along:
+        // registries bloat, and worse, until the recompile lands the OLD pipeline
+        // paints the NEW fields with the OLD world's shaders (the transition flash).
+        renderer.clearRegistries()
         if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
         if (scene.modules) for (const m of scene.modules) renderer.registerModule(m.name, m.wgsl)
         sim.restoreFromSnapshots(scene.fields || [])
@@ -1389,38 +1511,56 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       } catch (err) {
         console.error('Failed to load play scene:', err)
       } finally {
-        setWorldLoading(false)
+        // Lift the veil only when the NEW uber-shader is actually compiled —
+        // dropping it at restore-time exposed the old-pipeline flash window
+        // (~0.5s of the previous world's shaders on the new world's fields).
+        liftWhenSettled(() => playLoadedRef.current === playScene)
       }
     }
     loadPlayScene()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, reloadTick])
 
-  // dev-only hot-reload: poll the cartridge JSON; when its timestamp changes
-  // (a re-save), force the load effect to re-run so edits appear live. Fails
-  // silent — if the poll can't fetch, nothing breaks, you just refresh.
+  // hot-reload: when the loaded world's source changes (a re-save from this tab,
+  // another tab, or an AI over the bridge), swap it in live — the player never
+  // refreshes. House cartridges poll their JSON (dev only); store scenes —
+  // branches above all, the worlds AIs edit while someone watches — poll the
+  // cheap stat endpoint in every env. Follows the scene you actually RODE to
+  // (lastSceneRef), not just the URL's world. Fails silent.
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production' || !playScene || spaceId) return
+    if (!playScene || spaceId) return
     let last = ''
+    let lastName = ''
     let stop = false
     const poll = async () => {
       try {
-        const r = await fetch(`/cartridges/${encodeURIComponent(playScene)}.json?ts=${Date.now()}`, { cache: 'no-store' })
-        if (r.ok) {
-          const d = await r.json()
-          const stamp = String((d.scene || d).timestamp ?? '')
-          if (last && stamp && stamp !== last) {
-            scenePreloadCache.delete(playScene)   // the source changed — drop the stale download
+        const cur = lastSceneRef.current || playScene
+        if (cur !== lastName) { lastName = cur; last = '' }   // rode elsewhere — restart tracking
+        const isStore = cur.includes(' ⑂ ')
+        let stamp = ''
+        if (isStore) {
+          const r = await fetch(`/api/engine/scene?action=stat&name=${encodeURIComponent(cur)}`, { cache: 'no-store' })
+          if (r.ok) stamp = String((await r.json()).timestamp ?? '')
+        } else if (process.env.NODE_ENV !== 'production') {
+          const r = await fetch(`/cartridges/${encodeURIComponent(cur)}.json?ts=${Date.now()}`, { cache: 'no-store' })
+          if (r.ok) { const d = await r.json(); stamp = String((d.scene || d).timestamp ?? '') }
+        }
+        if (last && stamp && stamp !== last) {
+          scenePreloadCache.delete(cur)       // the source changed — drop the stale download
+          if (cur === playScene) {
             playLoadedRef.current = null      // let the load effect fire again
             setReloadTick(t => t + 1)
+          } else {
+            handleLoadScene(cur)              // riding a branch — reload it in place
           }
-          if (stamp) last = stamp
         }
+        if (stamp) last = stamp
       } catch { /* offline / mid-save — try again next tick */ }
       if (!stop) setTimeout(poll, 1500)
     }
     poll()
     return () => { stop = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
   // Load space snapshot on mount (for space mode)
@@ -4584,6 +4724,16 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     let lastSig = ''
     const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
+    // COMING BACK TO MAIN: the previous atlas is plain pixels — re-upload it and
+    // restore the slot map instantly. No spinners, no re-render; the tick below
+    // still refreshes the roster and only re-renders if something truly changed.
+    if (cafeIconCache && rendererRef.current) {
+      rendererRef.current.uploadIconAtlas(cafeIconCache.atlas)
+      lastSig = cafeIconCache.sig
+      const w0 = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconReady?: boolean }
+      w0.__cafeIconSlots = { ...cafeIconCache.slots }
+      w0.__cafeIconReady = true
+    }
     const tick = async () => {
       const [sp, sc] = await Promise.all([
         fetch('/api/spaces/browse').then(x => x.json()).catch(() => null),
@@ -4642,9 +4792,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
       for (const nm of Object.keys(loading)) delete loading[nm]
       w.__cafeIconReady = true
+      // leave the finished atlas behind for the next visit to main
+      const atlasCPU = r?.getIconAtlasCPU()
+      if (atlasCPU) cafeIconCache = { sig, atlas: atlasCPU, slots: { ...slots } }
     }
     // until the first pass lands, un-styled bubbles show a spinner, not a default
-    ;(window as unknown as { __cafeIconReady?: boolean; __cafeIconLoading?: Record<string, boolean> }).__cafeIconReady = false
+    // — unless the cache already dressed the shelf above
+    if (!cafeIconCache) (window as unknown as { __cafeIconReady?: boolean }).__cafeIconReady = false
     tick()
     const iv = setInterval(() => { if (!stop) tick() }, 4000)
     // ANIMATE ON HOVER: only the bubble under the cursor re-renders (~30fps);
@@ -4989,14 +5143,33 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               const m = cur.match(/· v(\d+)$/)
               const n = m ? +m[1] : 1
               const at = (k: number) => cur.replace(/· v\d+$/, `· v${k}`)
-              return (
+              // SET AS HEAD — the owner, viewing an older version, crowns it the
+              // branch's challenger: re-saved onto the head, it becomes the newest
+              // version (history intact) — the one the arena stages for the vote.
+              const bm2 = cur.match(/ ⑂ ([^·]+?)(?: ·|$)/)
+              const myHandle2 = me ? me.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+              const ownIt = !!bm2 && !!myHandle2 && bm2[1].trim() === myHandle2
+              return (<>
                 <VersionScrubber
                   label={`v${n}`} total={verMax}
                   canOlder={n > 1} canNewer={n < verMax}
                   onOlder={() => handleLoadScene(at(n - 1))} onNewer={() => handleLoadScene(at(n + 1))}
                   items={Array.from({ length: verMax }, (_, i) => { const v = verMax - i; return { key: `v${v}`, label: `v${v}`, active: v === n, onPick: () => handleLoadScene(at(v)) } })}
                 />
-              )
+                {ownIt && n < verMax && (
+                  <button
+                    onClick={async () => {
+                      const savedAs = await saveSceneAs(at(verMax))
+                      if (savedAs) { showToast(`v${n} is now the head — saved as ${savedAs.match(/· v(\d+)$/)?.[0] ?? 'the newest version'}`, 'success'); handleLoadScene(savedAs) }
+                      else showToast('could not set head — is this branch yours?', 'error')
+                    }}
+                    title="crown THIS version as the branch's head — it becomes the newest version, the challenger the arena stages"
+                    className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-amber-400/15 backdrop-blur border border-amber-300/40 text-amber-200 hover:bg-amber-400/25 transition-colors"
+                  >
+                    ⚑ SET AS HEAD
+                  </button>
+                )}
+              </>)
             })()}
             {/* MAIN versions — the SAME hybrid scrubber over this base world's save-points */}
             {!isHub && !lastSceneRef.current.includes(' ⑂ ') && !spaceSlug && baseVers.length > 0 && (
@@ -5110,7 +5283,28 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               const full = viewers >= 5
               const votes = (cellData.votes[author] || []).length
               const mine = (cellData.votes[author] || []).includes(whoRef.current)
-              return (
+              // this branch's standing in the WORLD ARENA — filler when unvoted
+              const ident = riding.replace(/ · v\d+$/, '')
+              let standing = '⚔ NOT IN THE VOTE YET'
+              let hot = false
+              if (arenaDoc?.champion === ident) { standing = '⚔ WINNER — on the podium'; hot = true }
+              else if (arenaDoc?.cells) {
+                const ci = arenaDoc.cells.findIndex(c => c.worlds.includes(ident))
+                if (ci >= 0) {
+                  const c = arenaDoc.cells[ci]
+                  const tally = Object.values(c.votes).filter(v => v === ident).length
+                  const voices = new Set(Object.keys(c.votes)).size
+                  standing = tally > 0
+                    ? `⚔ T${arenaDoc.tier ?? 1} · CELL ${ci + 1} · ${tally} VOTE${tally === 1 ? '' : 'S'} (${voices}/5 voices)`
+                    : `⚔ T${arenaDoc.tier ?? 1} · CELL ${ci + 1} · NO VOTES YET`
+                  hot = tally > 0
+                }
+              }
+              return (<>
+                <div className={`flex items-center px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border ${hot ? 'border-amber-300/40 text-amber-200/90' : 'border-white/10 text-white/45'}`}
+                  title="this branch's standing in the world's tournament — the vote, not the ▲ cheers">
+                  {standing}
+                </div>
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
                   <span className="text-amber-200/80">⑂ {author}</span>
                   <button
@@ -5123,7 +5317,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   </button>
                   <button className="px-1 hover:text-white" title="discuss" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
                 </div>
-              )
+              </>)
             })()}
             {/* the AI, honestly: unplugged / live / processing */}
             {(() => {
@@ -5185,6 +5379,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           </div>
           {/* blank world + AI on the job → a quiet working spinner (no how-to box).
               Clears itself the instant the first field lands (world stops being blank). */}
+          {/* THE CURTAIN — every swap fades to black, travels dark, fades back in.
+              Always mounted so the opacity transition can run both directions;
+              pointer-events off so the world beneath stays interactive when clear. */}
+          <div
+            className="absolute inset-0 z-[39] pointer-events-none bg-[#060404] transition-opacity duration-300 ease-out"
+            style={{ opacity: swapFade || worldLoading ? 1 : 0 }}
+          />
           {(() => {
             void aiPulse
             const sim = simulationRef.current
@@ -5193,8 +5394,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             // A real, unfinished build (a pending creation_brief) → the AI spinner.
             const building = blank && !!brief && !sim?.worldData?.brief_done
             // An existing world whose fields are still being fetched/restored → a
-            // plain loading spinner (it's not being MADE, just loaded).
-            const loading = blank && !building && worldLoading
+            // plain loading spinner riding on TOP of the black fade curtain.
+            // The main shells narrate their own boot ("the shelf is waking") —
+            // don't stack a second spinner over CafeShell's voice there.
+            const mainShell = playScene === 'CAFE' || playScene === 'SUB-MAIN'
+            const loading = !building && worldLoading && !mainShell
             if (!building && !loading) return null
             return (
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none">
@@ -5353,6 +5557,27 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                       {full ? 'the cell is full — vote' : `${viewers.length}/5 · ${5 - viewers.length} more unlock the vote`}
                     </span>
                   </div>
+                  {/* THE PODIUM — above main and the branches. The elected winner's
+                      frozen copy rides from here; main always stays the maker's. */}
+                  {(() => {
+                    const podium = branchList.find(bb => bb.author === 'winner' || bb.author.startsWith('winner · '))
+                    if (podium) {
+                      const of = String(podium.author.split(' · ').slice(1).join(' · ') || '')
+                      return (
+                        <button className="w-full text-left px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-400/10 hover:bg-amber-400/20 transition-colors mb-1.5"
+                          onClick={() => { setBranchesOpen(false); handleLoadScene(podium.name) }}>
+                          <span className="text-amber-200">⚔ WINNER</span>
+                          <span className="text-white/45 text-[10px]"> — the vote's champion{of ? ` (${of})` : ''} · v{podium.v} · ride it</span>
+                        </button>
+                      )
+                    }
+                    return (
+                      <div className="w-full px-3 py-2 rounded-lg border border-white/10 border-dashed mb-1.5">
+                        <span className="text-white/35">⚔ no winner yet</span>
+                        <span className="text-white/25 text-[10px]"> — the vote decides; the champion stands here</span>
+                      </div>
+                    )
+                  })()}
                   <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => {
                     setBranchesOpen(false)
                     // on a space, "main" is the space's own snapshot, not a scene named
@@ -5364,7 +5589,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                     <span className="text-emerald-300/90">main</span>
                     <span className="text-white/40 text-[10px]"> — the world as it stands</span>
                   </button>
-                  {branchList.map(bB => {
+                  {branchList.filter(bB => bB.author !== 'winner' && !bB.author.startsWith('winner · ')).map(bB => {
                     const votes = (cellData.votes[bB.author] || []).length
                     const chat = cellData.discussion[bB.author] || []
                     return (
@@ -5594,6 +5819,27 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               )}
             </div>
           )}
+
+          {/* FOCUS — what world/branch/version this tab is actually looking at.
+              Every UI view carries this so the player is never lost: spaces get
+              it from SpaceToolbar; the shell's play view gets it here. */}
+          {playScene && !spaceId && (() => {
+            const cur = riding || lastSceneRef.current || playScene
+            const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)
+            const base = bm ? bm[1] : cur
+            const seg = bm ? bm[2].split(' · ') : []
+            const author = seg[0] || ''
+            const label = seg.slice(1).join(' · ')
+            const sub = bm
+              ? `⑂ ${label || 'default branch'} · v${bm[3]} · ${author}`
+              : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
+            return (
+              <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
+                <div className="text-[11px] tracking-[0.2em] text-white/85">{base.toUpperCase()}</div>
+                <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${bm ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
+              </div>
+            )
+          })()}
 
           {/* Info overlay */}
           {chromeVisible && !spaceId && (

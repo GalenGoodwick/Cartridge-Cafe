@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
@@ -13,6 +14,7 @@ interface BridgeAuth {
   authorized: boolean
   spaceId: string | null    // null = legacy global mode
   ownerId: string | null
+  iconUserId?: string       // uc_it_ icon token — may ONLY brew this player's icon
   slug?: string
   spaceName?: string
   sceneName?: string        // set = branch-scoped (file-store scene); read/write isolated to it
@@ -32,6 +34,17 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
     const result = await validateSpaceToken(token)
     if (!result) return { authorized: false, spaceId: null, ownerId: null }
     return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName }
+  }
+
+  // Icon token path — minted by the BREW YOUR ICON panel, carried in the copied
+  // prompt. It authorizes exactly ONE thing: set_player_icon, landing on the
+  // player who minted it. No world, no scene, no state access — the brew flow
+  // needs no world creation at all.
+  if (token.startsWith('uc_it_')) {
+    const hash = crypto.createHash('sha256').update(token).digest('hex')
+    const doc = (await loadGameSlot('icon-token:' + hash)) as { userId?: string } | undefined
+    if (!doc?.userId) return { authorized: false, spaceId: null, ownerId: null }
+    return { authorized: true, spaceId: null, ownerId: null, iconUserId: doc.userId }
   }
 
   // Branch (scene) token path — stateless, bound to ONE scene name. Read/write
@@ -117,6 +130,12 @@ export async function GET(req: NextRequest) {
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Icon-scoped: the only readable state is the icon itself
+  if (auth.iconUserId) {
+    const icon = await loadGameSlot('player-icon:' + auth.iconUserId)
+    return NextResponse.json({ icon: icon ?? null, scope: 'player-icon' })
   }
 
   // Space-scoped: return snapshot from DB
@@ -309,6 +328,12 @@ export async function POST(req: NextRequest) {
         await new Promise(r => setTimeout(r, 100))
       }
 
+      // Icon tokens brew the icon. Only that.
+      if (auth.iconUserId && cmd.type !== 'set_player_icon') {
+        results.push({ type: cmd.type, error: 'this token only brews the player icon — send set_player_icon' })
+        continue
+      }
+
       // reset: clear server-side store alongside browser reset. NEVER for a
       // branch token — resetStore() wipes the GLOBAL engine; a scoped 'reset'
       // clears only this scene's snapshot, handled by applyCommandToScene below.
@@ -320,6 +345,53 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'save_experience') {
         const result = await saveExperience(cmd, req)
         results.push(result)
+        continue
+      }
+
+      // --- Player icon (BREW YOUR ICON) ---------------------------------------
+      // The brew panel's copied prompt tells an AI to "set it as my icon through
+      // the bridge" — this is that command, finally real. Auth: an icon token
+      // (uc_it_, minted by the brew panel — the no-world-needed path) or a space
+      // token (the icon lands on the space's owner). Values are clamped
+      // server-side to the fixed safe vocabulary — an AI cannot author a strobe
+      // here even if it tries. Stored per-player (slot player-icon:<uid>); the
+      // cafe shell picks it up on load and while the brew panel is open.
+      if (cmd.type === 'set_player_icon') {
+        const iconUid = auth.iconUserId || auth.ownerId
+        if (!iconUid) {
+          results.push({ type: cmd.type, error: 'an icon token (from the brew panel) or a space token is required — the icon belongs to a player' })
+          continue
+        }
+        const o = (cmd.icon ?? cmd) as Record<string, unknown>
+        const numv = (v: unknown, lo: number, hi: number, d: number) => {
+          const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
+        }
+        const fxRaw = Math.round(Number(o.fx))
+        const icon: Record<string, unknown> = {
+          fx: fxRaw >= 0 && fxRaw <= 4 ? fxRaw : 0,
+          hue: numv(o.hue, 0, 1, 0.55),
+          size: numv(o.size, 0.5, 2, 1),
+        }
+        // FLEXIBLE GLYPH — a full WGSL visual body may replace the presets.
+        // Free inside a bounded cell: the glyph renders as a small FIELD that
+        // tracks the player, so the engine's own field bounds cap its size and
+        // the client pre-flight screen vets the code before it touches the GPU.
+        // Server-side we only bound the SOURCE: modest length, one function,
+        // the visual_glyph signature, no bindings/imports of its own.
+        if (typeof o.wgsl === 'string' && o.wgsl.trim()) {
+          const w = o.wgsl.trim()
+          if (w.length > 6000) {
+            results.push({ type: cmd.type, error: 'glyph wgsl too large (6KB max) — an icon is a glyph, not a world' })
+            continue
+          }
+          if (!/fn\s+visual_glyph\s*\(/.test(w) || /@group|@binding|var\s*<\s*(storage|uniform)/.test(w)) {
+            results.push({ type: cmd.type, error: 'glyph must define fn visual_glyph(uv, sdf, color, time, params, behind) -> vec4f and declare no bindings' })
+            continue
+          }
+          icon.wgsl = w
+        }
+        await saveGameSlot('player-icon:' + iconUid, icon)
+        results.push({ type: cmd.type, ok: true, icon: { ...icon, wgsl: icon.wgsl ? '(custom glyph, ' + String(icon.wgsl).length + 'B)' : undefined } })
         continue
       }
 

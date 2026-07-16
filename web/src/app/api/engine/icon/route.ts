@@ -16,7 +16,7 @@ const SYSTEM_PROMPT = `You design a player's little dancing avatar for a cafe of
 
 Schema (all fields required):
 {
-  "fx":   integer 0-3,   // the look: 0 = comet (a glowing tail), 1 = ring (a halo), 2 = eyes (a face that looks around), 3 = spark (a five-point star)
+  "fx":   integer 0-3,   // the look: 0 = comet (a glowing tail), 1 = ring (a halo), 2 = eyes (a face that looks around), 3 = spark (a five-point star), 4 = cup (a little walking coffee cup)
   "hue":  number 0.0-1.0,// color around the wheel: 0 red, ~0.15 gold, ~0.35 green, ~0.55 cyan, ~0.7 blue/purple, ~0.85 magenta
   "size": number 0.5-2.0 // 0.5 small & quick, 1.0 normal, 2.0 large & mellow
 }
@@ -35,7 +35,7 @@ function clampIcon(raw: unknown): Icon {
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
   }
   const fxRaw = Math.round(Number(o.fx))
-  const fx = fxRaw >= 0 && fxRaw <= 3 ? fxRaw : 0
+  const fx = fxRaw >= 0 && fxRaw <= 4 ? fxRaw : 0
   return {
     fx,
     hue: num(o.hue, 0, 1, DEFAULT_ICON.hue),
