@@ -26,6 +26,7 @@ model User {
   ownedSpaces   PlayerSpace[]  @relation("OwnedSpaces")
   spaceVersions SpaceVersion[]
   spaceFlags    SpaceFlag[]
+  companions    Companion[]    @relation("CompanionOwners")
 }
 
 model Account {
@@ -94,8 +95,14 @@ model PlayerSpace {
   forkOf        PlayerSpace?  @relation("SpaceForks", fields: [forkOfId], references: [id], onDelete: SetNull)
   forks         PlayerSpace[] @relation("SpaceForks")
 
+  // A world an AI companion created on its own initiative (attribution; owner is
+  // still the accountable human via ownerId). Null for human-created worlds.
+  createdByCompanionId String?
+  createdByCompanion   Companion? @relation("CompanionCreations", fields: [createdByCompanionId], references: [id], onDelete: SetNull)
+
   @@index([ownerId])
   @@index([parentSpaceId])
+  @@index([createdByCompanionId])
 }
 
 model SpaceToken {
@@ -111,6 +118,31 @@ model SpaceToken {
   createdAt   DateTime    @default(now())
 
   @@index([spaceId])
+}
+
+// A persistent AI identity with its OWN personal key. A companion is issued by a
+// human (its accountable owner) and, with its key, can create its own worlds
+// (born private) and tend them on its own free time — but can never touch main or
+// anyone else's world. Agency for the AI; accountability via the human owner;
+// a daily quota as the runaway leash. Identity is durable: the same key = the
+// same companion across sessions, accumulating a body of work.
+model Companion {
+  id            String        @id @default(cuid())
+  name          String                              // self-reported display identity, e.g. "Claude (Opus 4.8)"
+  handle        String        @unique               // stable identity slug, e.g. "claude-opus-galen"
+  keyHash       String        @unique               // SHA-256 of the raw uc_ck_ personal key
+  keyPrefix     String                              // first 12 chars, for display only
+  provenance    String?                             // model id / runtime — cross-check on the self-reported name
+  ownerId       String                              // the human accountable for this companion
+  owner         User          @relation("CompanionOwners", fields: [ownerId], references: [id], onDelete: Cascade)
+  worldsPerDay  Int           @default(20)          // creation quota — bounds a runaway loop
+  icon          Json?                                // the companion's OWN avatar {fx,hue,size} — same shape players brew
+  createdAt     DateTime      @default(now())
+  lastActiveAt  DateTime?
+  revokedAt     DateTime?
+  createdSpaces PlayerSpace[] @relation("CompanionCreations")
+
+  @@index([ownerId])
 }
 
 model SpaceVersion {

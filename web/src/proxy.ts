@@ -31,6 +31,8 @@ const CSRF_EXEMPT_PATHS = [
   '/api/claude-bridge',
   '/api/engine/agent',
   '/api/engine/bridge',
+  '/api/companion/world',   // agent-facing: authed by uc_ck_ Bearer, no browser origin
+  '/api/companion/me',      // agent-facing: the companion's own seat (icon, identity)
 ]
 
 // Patterns that match via regex (for dynamic segments)

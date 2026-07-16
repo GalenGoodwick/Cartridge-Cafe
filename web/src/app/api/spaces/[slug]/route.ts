@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
+import { loadGameSlot, saveGameSlot } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
 
 export const dynamic = 'force-dynamic'
@@ -159,17 +160,9 @@ export async function DELETE(
       error: 'Cannot delete: this world has been flagged into a vote. The community holds a stake until it resolves.',
     }, { status: 409 })
   }
-  // live in a cell: the engine save store keeps cell:<NAME> slots
-  try {
-    const saveRes = await fetch(`${_req.nextUrl.origin}/api/engine/save?action=list`)
-    const saves = await saveRes.json()
-    const key = 'cell:' + space.name.toUpperCase()
-    if ((saves.slots || []).some((sl: { slot: string }) => sl.slot.toUpperCase() === key)) {
-      return NextResponse.json({
-        error: 'Cannot delete: this world is live in a cell. Deleting a candidate mid-vote would be unfair.',
-      }, { status: 409 })
-    }
-  } catch { /* save store unavailable — do not block on it */ }
+  // (being live in a cell no longer blocks deletion — everything here is live
+  //  state, so the cell HEALS instead: TournamentBar prunes non-roster worlds on
+  //  its next beat — votes for the dead release, an emptied cell completes.)
 
   // the immortal original of a lineage can never be deleted
   try {
@@ -182,6 +175,21 @@ export async function DELETE(
   invalidateSpaceCache(space.id)
 
   await prisma.playerSpace.delete({ where: { id: space.id } })
+
+  // LIVE-STATE HYGIENE — a deleted world leaves WITH its state. Its direct
+  // slots die here; its seat in any bracket heals client-side (the prune law).
+  // Best-effort: the deletion above already succeeded.
+  try {
+    const up = space.name.toUpperCase()
+    await prisma.engineSlot.deleteMany({
+      where: { slot: { in: [`tournament:space:${slug}`, `cell:${up}`, `world-chat:${up}`] } },
+    })
+    const uni = (await loadGameSlot('cafe:universe')) as { bubbles?: Record<string, unknown> } | undefined
+    if (uni?.bubbles?.[up]) {
+      delete uni.bubbles[up]
+      await saveGameSlot('cafe:universe', uni)
+    }
+  } catch { /* hygiene is best-effort */ }
 
   return NextResponse.json({ ok: true })
 }

@@ -162,6 +162,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
   const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
+  // ALTER — the owner's CONNECT AI on a live space edits MAIN directly (a space
+  // token is live-scoped, there is no eye on the DB path). The warning box makes
+  // that explicit before any token is handed out; a pre-alter save point is kept.
+  const [alterWarnOpen, setAlterWarnOpen] = useState(false)
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
@@ -172,14 +176,15 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   const [branchesOpen, setBranchesOpen] = useState(false)
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
-  const [uiDockOpen, setUiDockOpen] = useState(false)
+  const [uiDockOpen, setUiDockOpen] = useState(true)   // the world menu greets you open; ★ tucks it away
 
   // ESC closes the topmost open panel and stops there — it must never fall
   // through a modal into "leave this world" (the shell's ESC handler)
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (plugOpen) setPlugOpen(false)
+      if (alterWarnOpen) setAlterWarnOpen(false)
+      else if (plugOpen) setPlugOpen(false)
       else if (instrOpen) { setInstrOpen(false); setInstrEdit(false) }
       else if (branchesOpen) setBranchesOpen(false)
       else return
@@ -188,13 +193,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     window.addEventListener('keydown', onEsc, { capture: true })
     return () => window.removeEventListener('keydown', onEsc, { capture: true })
-  }, [plugOpen, instrOpen, branchesOpen])
+  }, [alterWarnOpen, plugOpen, instrOpen, branchesOpen])
 
   // tell the shell when a panel is up so its overlays (count pills, hover
   // cards) duck out from under the modal
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen }))
-  }, [plugOpen, instrOpen, branchesOpen])
+    window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen || alterWarnOpen }))
+  }, [plugOpen, instrOpen, branchesOpen, alterWarnOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
   // ── VERSIONS browser (save-points): a space's own version history on main ──
   const [versionsOpen, setVersionsOpen] = useState(false)
@@ -207,12 +212,19 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       setVersionList(Array.isArray(r.versions) ? r.versions : [])
     } catch { setVersionList([]) }
   }, [spaceSlug])
+  // load up front on a space: the ⏱ VERSIONS ◂/▸ arrows need the roster to step
+  useEffect(() => { loadVersions() }, [loadVersions])
   // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
   type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
   const [cellData, setCellData] = useState<CellDoc>({ viewers: {}, votes: {}, discussion: {} })
   const [cellDraft, setCellDraft] = useState('')
   const [discOpen, setDiscOpen] = useState<string | null>(null)
   const [riding, setRiding] = useState<string | null>(null)
+  // the space page's title box shows WHAT is being viewed — tell it when we
+  // ride a branch (or step back to main). Detail = full scene name or null.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('cafe:viewing', { detail: riding }))
+  }, [riding])
   // the lineage throne: who currently holds MAIN for this world, and the immortal
   // original. When the tournament snags main from the founder, we reassure them —
   // their original is never gone; the ★ bookmark always returns them to it.
@@ -487,6 +499,21 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   // World mode: the world is just the world — editor chrome hides behind a toggle
   const [chromeVisible, setChromeVisible] = useState(!spaceId && !playScene)
+  // (public/private moved into the merged WORLD TOOLS panel — the embedded
+  //  SpaceManagementOverlay's "visibility" is the single front-door control)
+  // DIRECT EDIT KEYS: the branch/version scene name being keyed (empty = current branch)
+  const [keyScene, setKeyScene] = useState('')
+  // ONE toolbox everywhere — WORLD TOOLS also serves a ⑂ branch that is YOURS
+  // (matches the ownership rule the legacy chip row used: handle in the branch name)
+  const ownBranchTools = (() => {
+    const cur = lastSceneRef?.current || ''
+    const bm = cur.match(/ ⑂ ([^·]+?)(?: ·|$)/)
+    const myHandle = me ? me.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+    return !spaceId && !!bm && !!myHandle && bm[1].trim() === myHandle
+  })()
+  // the panel itself shows to EVERY viewer of a space or branch — ownership only
+  // unlocks the editing sections (same UI, ownership-gated tools)
+  const onBranchScene = !spaceId && (lastSceneRef?.current || '').includes(' ⑂ ')
 
   // Saved scenes list (server-side persistent)
   const [savedScenes, setSavedScenes] = useState<string[]>([])
@@ -831,43 +858,66 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     return null
   }, [])
 
-  /** BRANCH KEY: the owner mints this branch's scoped uc_sc_ token and copies it —
-   *  the secret that lets an AI edit THIS branch (and nothing else). Hand it over. */
-  const copyBranchKey = useCallback(async () => {
-    const name = lastSceneRef.current || ''
-    if (!name.includes(' ⑂ ')) { showToast('branch a world first — only branches have keys', 'error'); return }
-    const tok = await mintBranchToken(name)
-    if (!tok) { showToast('could not mint — are you the branch owner?', 'error'); return }
-    try { await navigator.clipboard.writeText(tok); showToast('branch key copied — it edits only this branch', 'success') }
-    catch { showToast('clipboard blocked — reopen and try again', 'error') }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mintBranchToken])
+  // (branch-key copy lives in WORLD TOOLS → DIRECT EDIT KEYS now, via mintBranchToken)
 
-  /** BRANCH: signed-out → auth; signed-in → fork the current world as yours.
+  /** CREATE BRANCH, the methodical way (same contract as brewing a world):
+   *  1 · name it in a real panel (blank = your default branch) · 2 · the branch
+   *  opens and the CONNECT AI box appears with its scoped key + briefing.
    *  An optional LABEL lets you field several distinct challengers of one world
-   *  (`BASE ⑂ handle · label · v1`); blank = your default branch (`BASE ⑂ handle`).
-   *  Re-branching an existing name doesn't clobber it — the store forks to the
-   *  next version, and we follow that ACTUAL name (no orphaned copy). */
-  const handleBranch = useCallback(async () => {
+   *  (`BASE ⑂ handle · label · v1`). Re-branching an existing name doesn't
+   *  clobber it — the store forks to the next version and we follow that name. */
+  const [branchCreateOpen, setBranchCreateOpen] = useState(false)
+  const [branchLabel, setBranchLabel] = useState('')
+  const createBranch = useCallback(async (labelRaw: string) => {
     if (!me) { window.location.href = '/auth/signin'; return }
     const src = lastSceneRef.current || playScene || spaceSlug || ''
     if (!src) { showToast('load a world first', 'error'); return }
     const base = src.split(' ⑂ ')[0]
     const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    const raw = window.prompt(`Name this branch of ${base} (optional — blank = your default branch):`, '')
-    if (raw === null) return   // cancelled
-    const label = raw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
+    const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
     const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
     const savedAs = await saveSceneAs(name)
     if (savedAs) {
       lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
       setPlugToken(null)                  // fresh branch → fresh scoped key
       mintBranchToken(savedAs)            // scope the AI to the branch that actually exists
+      setBranchCreateOpen(false)
       showToast(`branch opened: ${savedAs} — the eye is watching`, 'success')
-      setPlugOpen(true)   // a branch without an AI is a car without keys
+      setPlugOpen(true)   // step 2 of the method: connect your AI
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken])
+  const handleBranch = useCallback(() => {
+    if (!me) { window.location.href = '/auth/signin'; return }
+    setBranchLabel('')
+    setBranchCreateOpen(v => !v)
+  }, [me])
+
+  /** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
+   *  the live-scoped token, open the plug box. The altered world IS main — the
+   *  save point is the way back. */
+  const beginAlter = useCallback(async () => {
+    if (!spaceSlug) return
+    setAlterWarnOpen(false)
+    try {
+      await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'before alter' }),
+      })
+    } catch { /* the save point is a courtesy, not a gate */ }
+    if (!plugToken) {
+      setPlugBusy(true)
+      try {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'live alter' }),
+        })
+        const d = await r.json()
+        if (r.ok) setPlugToken(d.token)
+      } finally { setPlugBusy(false) }
+    }
+    setPlugOpen(true)
+  }, [spaceSlug, plugToken])
 
   const handleSaveScene = useCallback(async () => {
     const sim = simulationRef.current
@@ -1040,6 +1090,45 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       showToast(`Failed to delete "${sceneName}"`, 'error')
     }
   }, [showToast, refreshSceneList])
+
+  /** The branch heads of the current base world — one entry per branch (its
+   *  newest version). Shared by the ≡ BRANCHES panel and the ◂/▸ quick-browse
+   *  arrows on ⑂ BRANCH. */
+  const loadBranchHeads = useCallback(async () => {
+    const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+    if (!base) return [] as Array<{ name: string; author: string; v: number }>
+    try {
+      const { scenes } = await fetch('/api/engine/scene?action=list').then(r => r.json())
+      const heads = new Map<string, { name: string; author: string; v: number }>()
+      for (const n of scenes as string[]) {
+        const m = n.match(/^(.+) ⑂ (.+) · v(\d+)$/)
+        if (!m || m[1] !== base) continue
+        const cur = heads.get(m[2])
+        if (!cur || +m[3] > cur.v) heads.set(m[2], { name: n, author: m[2], v: +m[3] })
+      }
+      const list = [...heads.values()].sort((a, b) => b.v - a.v)
+      setBranchList(list)
+      return list
+    } catch { setBranchList([]); return [] }
+  }, [playScene, spaceSlug])
+
+  /** ◂/▸ on the BRANCH button: step the ring [main, branch, branch, …] — quick
+   *  browsing for everyone, owner or visitor. Looking is free. */
+  const stepBranch = useCallback(async (dir: 1 | -1) => {
+    const list = await loadBranchHeads()
+    if (list.length === 0) { showToast('no branches yet — ⑂ BRANCH to open one', 'info'); return }
+    const ring = ['main', ...list.map(b => b.name)]
+    const cur = lastSceneRef.current || ''
+    const curAuthor = cur.match(/^.+ ⑂ (.+) · v\d+$/)?.[1] ?? ''
+    // riding a branch that vanished → findIndex -1 → idx 0 → treated as main
+    const idx = curAuthor ? Math.max(0, 1 + list.findIndex(b => b.author === curAuthor)) : 0
+    const next = ring[(idx + dir + ring.length) % ring.length]
+    if (next === 'main') {
+      // on a space, main is the space's own snapshot — not a scene by that name
+      if (spaceSlug) window.location.href = `/space/${encodeURIComponent(spaceSlug)}`
+      else handleLoadScene(cur.split(' ⑂ ')[0] || (playScene || ''))
+    } else handleLoadScene(next)
+  }, [loadBranchHeads, spaceSlug, playScene, handleLoadScene, showToast])
 
   // Play mode: the screen, heard. Every ~600ms sample the rendered frame at
   // 8x8 and dispatch its mood (brightness, warmth, busy-ness) for the audio
@@ -4500,7 +4589,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         fetch('/api/spaces/browse').then(x => x.json()).catch(() => null),
         fetch('/api/engine/scene-icons').then(x => x.json()).catch(() => null),
       ])
-      if ((!sp && !sc) || stop) return
+      if ((!sp && !sc) || stop) {
+        // no data (offline / API down): resolve the first-load spinners to
+        // emblems rather than letting them sweep forever
+        ;(window as unknown as { __cafeIconReady?: boolean }).__cafeIconReady = true
+        return
+      }
       // player worlds (spaces) AND house scenes both get their real shader icon
       const players = ((sp?.spaces || []) as Array<{ name?: string; slug: string; blank?: boolean; hue?: number; iconWgsl?: string }>)
         .filter(s => !s.blank && s.iconWgsl).map(s => ({ name: (s.name || s.slug).toUpperCase(), hue: s.hue, iconWgsl: s.iconWgsl as string }))
@@ -4574,52 +4668,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 
-  // Portal visual WGSL (swirling vortex shader)
-  const PORTAL_WGSL = `fn visual_portal(uv: vec2f, sdf: f32, col: vec4f, time: f32, p: vec4f, behind: vec4f) -> vec4f {
-  let a = smoothstep(0.5, -0.5, sdf);
-  if (a < 0.01) { return vec4f(0.0); }
-  let pol = polar(uv);
-  let swirl = pol.y + pol.x * 3.0 - time * 2.0;
-  let spiralCount = 3.0 + p.x * 3.0;
-  let spiral = 0.5 + 0.5 * sin(swirl * spiralCount);
-  let tunnel = exp(-pol.x * 2.0);
-  let n = fbm(uv * 4.0 + time * 0.3, 3);
-  let rimVal = ring(uv, 0.7, 0.15);
-  let c = col.rgb * spiral * (0.5 + n * 0.5) + col.rgb * rimVal * 2.0;
-  let centerMask = tunnel * 0.6;
-  let finalC = mix(c, behind.rgb, centerMask * behind.a);
-  return vec4f(finalC, a * col.a);
-}`
-
-  // Create a portal field linking to a child space
-  const handleCreatePortal = useCallback((childSlug: string, childName: string) => {
-    const sim = simulationRef.current
-    const renderer = rendererRef.current
-    if (!sim || !renderer) return
-
-    // Register portal visual type (idempotent — reuses existing ID if already registered)
-    const { id: portalVtId } = renderer.registerVisualType('portal', PORTAL_WGSL)
-
-    const id = genFieldId()
-    const portalColor: [number, number, number, number] = [0.133, 0.827, 0.933, 1.0]
-    sim.createField(id, `Portal to ${childName}`, portalColor)
-
-    const camera = cameraRef.current
-    sim.setPosition(id, Math.round(camera.x), Math.round(camera.y))
-
-    const field = sim.fields.get(id)
-    if (field) {
-      field.shapeType = 'circle'
-      field.radius = 30
-      field.visualType = portalVtId
-      field.visualTypeName = 'portal'
-      field.visualParams = [0.5, 0, 0, 0]
-      field.properties.set('portalTarget', childSlug)
-      field.properties.set('portalType', 'space')
-    }
-
-    syncFields()
-  }, [syncFields])
+  // (sub-space portal creation removed with the sub-spaces tool — WORLD TOOLS
+  //  carries DIRECT EDIT KEYS instead)
 
   return (
     <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}
@@ -4698,7 +4748,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             )
           })()}
 
-          {spaceId && (
+          {/* ONE toolbox everywhere — every viewer of a space or branch gets it;
+              ownership only unlocks the editing sections inside. */}
+          {(spaceId || onBranchScene) && (
             <button
               onClick={() => setChromeVisible(v => !v)}
               className="absolute bottom-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -4707,10 +4759,20 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             </button>
           )}
 
-          {/* WORLD TOOLS — the space panel: contents + the two switches. */}
-          {spaceId && chromeVisible && (() => {
+          {/* WORLD TOOLS — one panel, every tier. Viewers see presence + contents;
+              the owner (space) or branch-holder additionally gets law + keys + mgmt. */}
+          {(spaceId || onBranchScene) && chromeVisible && (() => {
             const wd = simulationRef.current?.worldData
             const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
+            const canEditLaw = spaceId ? isOwner : ownBranchTools
+            // branch rules persist per-branch (same slot the legacy chip row used)
+            const persistBranchRules = () => {
+              if (spaceId) return
+              const s = simulationRef.current; if (!s) return
+              fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slot: 'world-settings:' + (lastSceneRef.current || ''), data: {
+                  multiplayer: s.worldData.multiplayer, singlePlayer: s.worldData.singlePlayer, rResetKey: !!s.worldData.rResetKey } }) }).catch(() => {})
+            }
             const toggleBtn = (on: boolean, onClick: () => void) => (
               <button onClick={onClick}
                 className={`px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] transition-colors ${on
@@ -4720,16 +4782,18 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               </button>
             )
             return (
-              <div className="absolute bottom-14 right-3 z-40 w-72 rounded-xl bg-black/75 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl overflow-hidden">
+              <div className="absolute bottom-14 right-3 z-40 w-80 max-h-[78vh] overflow-y-auto rounded-xl bg-black/75 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
                 <div className="px-3 py-2 border-b border-white/10 text-[10px] tracking-[0.25em] text-white/50">WORLD TOOLS</div>
-                {isOwner && (
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
-                    className="w-full text-left px-3 py-2 border-b border-white/10 text-[11px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
-                    ✕ delete this world
-                  </button>
+                {/* one toolbox: name/visibility/share/tokens live here too */}
+                {isOwner && spaceSlug && spaceId && (
+                  <SpaceManagementOverlay
+                    embedded
+                    spaceSlug={spaceSlug}
+                    spaceId={spaceId}
+                  />
                 )}
                 <div className="px-3 py-2.5 space-y-2.5 border-b border-white/10">
+                  {canEditLaw && (
                   <div className="flex items-center justify-between text-[11px]">
                     <span>multiplayer</span>
                     {toggleBtn(mp, () => {
@@ -4737,9 +4801,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                       if (!sim) return
                       sim.worldData['multiplayer'] = !mp
                       sim.worldData['singlePlayer'] = mp
+                      persistBranchRules()
                       setToolsTick(n => n + 1)
                     })}
                   </div>
+                  )}
                   <div className="flex items-center justify-between text-[11px]">
                     <span>player presence</span>
                     {toggleBtn(!presenceOff, () => {
@@ -4748,34 +4814,81 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                       try { if (v) localStorage.setItem('cc-presence-off', '1'); else localStorage.removeItem('cc-presence-off') } catch { /* fine */ }
                     })}
                   </div>
+                  {canEditLaw && (
                   <div className="flex items-center justify-between text-[11px]">
                     <span>restart with R</span>
                     {toggleBtn(!!wd?.['rResetKey'], () => {
                       const sim = simulationRef.current
                       if (!sim) return
                       sim.worldData['rResetKey'] = !sim.worldData['rResetKey']
-                      setToolsTick(n => n + 1)   // space worlds persist it with the snapshot
+                      persistBranchRules()
+                      setToolsTick(n => n + 1)   // spaces persist with the snapshot; branches via world-settings slot
                     })}
                   </div>
+                  )}
                   <div className="text-[9px] text-white/35 leading-relaxed">
-                    multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start.
+                    {canEditLaw
+                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start."
+                      : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
                   </div>
                 </div>
-                {lastSceneRef.current?.includes(' ⑂ ') && (
-                  <div className="px-3 py-2.5 border-b border-white/10">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span>branch key</span>
-                      <button onClick={copyBranchKey}
-                        title="copy this branch's secret key — hand it to an AI to edit ONLY this branch"
-                        className="px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
-                        🔑 COPY
-                      </button>
+                {canEditLaw && (() => {
+                  // DIRECT EDIT KEYS — mint the credential that lets an AI edit each tier:
+                  // world (live space, uc_st_) · branch / version (any ⑂ scene name, uc_sc_).
+                  // Canonical mains stay admin-only — the original is immortal.
+                  const defaultKeyScene = lastSceneRef.current?.includes(' ⑂ ') ? lastSceneRef.current : ''
+                  const sceneName = (keyScene || defaultKeyScene).trim()
+                  const mintWorldKey = async () => {
+                    try {
+                      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/token`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: 'direct edit' }),
+                      })
+                      const d = await r.json()
+                      if (!r.ok || !d.token) { showToast(d.error || 'could not mint a world key', 'error'); return }
+                      await navigator.clipboard.writeText(d.token)
+                      showToast('world key copied — it edits this world LIVE', 'success')
+                    } catch { showToast('clipboard blocked — try again', 'error') }
+                  }
+                  const mintSceneKey = async () => {
+                    if (!sceneName.includes(' ⑂ ')) { showToast('branches and versions only — a canonical world stays admin-only', 'error'); return }
+                    const tok = await mintBranchToken(sceneName)
+                    if (!tok) { showToast('could not mint — are you the owner of that branch?', 'error'); return }
+                    try { await navigator.clipboard.writeText(tok); showToast('key copied — it edits only ' + sceneName, 'success') }
+                    catch { showToast('clipboard blocked — try again', 'error') }
+                  }
+                  return (
+                    <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
+                      <div className="text-[9px] tracking-[0.2em] text-white/40">DIRECT EDIT KEYS</div>
+                      {spaceSlug && spaceId && (
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span>world <span className="text-white/35">(live)</span></span>
+                          <button onClick={mintWorldKey}
+                            title="mint + copy a key that edits this world live over the bridge"
+                            className="px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
+                            🔑 MINT + COPY
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 text-[11px]">
+                        <input
+                          value={keyScene || defaultKeyScene}
+                          onChange={e => setKeyScene(e.target.value)}
+                          placeholder="WORLD ⑂ you · v1"
+                          title="a branch or version scene name — the key edits ONLY it, never main"
+                          className="flex-1 min-w-0 bg-white/5 border border-white/15 focus:border-amber-300/50 outline-none rounded px-2 py-1 text-[10px] text-white/80 placeholder:text-white/25"
+                        />
+                        <button onClick={mintSceneKey}
+                          className="px-2 py-0.5 rounded-full border text-[10px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors flex-shrink-0">
+                          🔑 MINT
+                        </button>
+                      </div>
+                      <div className="text-[9px] text-white/35 leading-relaxed">
+                        world key edits the LIVE world. the named key edits only that branch or version (any ⑂ name, e.g. · v2) — never main. hand either to an AI.
+                      </div>
                     </div>
-                    <div className="text-[9px] text-white/35 leading-relaxed mt-1.5">
-                      the secret that edits ONLY this branch — never main. Owner-only; hand it to your AI.
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
                 <div className="px-3 py-2">
                   <div className="text-[9px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
                   <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
@@ -4788,6 +4901,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                     {fields.size === 0 && <div className="text-[10px] text-white/30">an empty world, waiting</div>}
                   </div>
                 </div>
+                {isOwner && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
+                    className="w-full text-left px-3 py-2 border-t border-white/10 text-[11px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
+                    ✕ delete this world
+                  </button>
+                )}
               </div>
             )
           })()}
@@ -4850,35 +4970,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               </button>
             )}
             {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
-            {/* A world's rules belong to whoever owns it. On a SPACE the owner sets
-                them in ⚙ WORLD TOOLS; on YOUR OWN branch you set them here — the
-                same rules, saved per-branch (world-settings:<branch>). A branch you
-                don't own, or a house world, shows nothing to change. */}
-            {!isHub && !spaceId && lastSceneRef.current.includes(' ⑂ ') && (() => {
-              const cur = lastSceneRef.current
-              const bm = cur.match(/ ⑂ ([^·]+?)(?: ·|$)/)
-              const myHandle = me ? me.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
-              if (!bm || !myHandle || bm[1].trim() !== myHandle) return null   // only your own branch
-              const wd = simulationRef.current?.worldData
-              const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
-              const persist = () => {
-                const s = simulationRef.current; if (!s) return
-                fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ slot: 'world-settings:' + cur, data: {
-                    multiplayer: s.worldData.multiplayer, singlePlayer: s.worldData.singlePlayer, rResetKey: !!s.worldData.rResetKey } }) }).catch(() => {})
-              }
-              const chip = 'px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'
-              return (<>
-                <button className={chip} title="your branch's rule — players press R to restart it"
-                  onClick={() => { const s = simulationRef.current; if (!s) return; s.worldData.rResetKey = !s.worldData.rResetKey; setAiPulse(v => v + 1); persist() }}>
-                  ⟲ RESTART (R): {wd?.['rResetKey'] ? 'ON' : 'OFF'}
-                </button>
-                <button className={chip} title="your branch's rule — multiplayer or solo"
-                  onClick={() => { const s = simulationRef.current; if (!s) return; s.worldData.multiplayer = !mp; s.worldData.singlePlayer = mp; setAiPulse(v => v + 1); persist() }}>
-                  ⧉ MULTIPLAYER: {mp ? 'ON' : 'OFF'}
-                </button>
-              </>)
-            })()}
+            {/* (branch rule chips removed — YOUR OWN branch now gets the same
+                ⚙ WORLD TOOLS panel a space gets, persisting to the same
+                world-settings:<branch> slot. One toolbox, every tier.) */}
             {/* the hub carries ONE door to SUB-MAIN — a navigation world like
                 main whose shelf is the branches. In-shell travel, not a page. */}
             {isHub && playScene !== 'SUB-MAIN' && (
@@ -4922,39 +5016,47 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               />
             )}
             {!isHub && <button
-              onClick={async () => {
-                setBranchesOpen(v => !v)
-                // on a space page lastSceneRef/playScene are unset until you branch or
-                // load — fall back to spaceSlug (the branch base) like handleBranch does,
-                // else the list bails empty and no branch ever shows.
-                const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
-                if (!base) return
-                try {
-                  const { scenes } = await fetch('/api/engine/scene?action=list').then(r => r.json())
-                  const heads = new Map<string, { name: string; author: string; v: number }>()
-                  for (const n of scenes as string[]) {
-                    const m = n.match(/^(.+) ⑂ (.+) · v(\d+)$/)
-                    if (!m || m[1] !== base) continue
-                    const cur = heads.get(m[2])
-                    if (!cur || +m[3] > cur.v) heads.set(m[2], { name: n, author: m[2], v: +m[3] })
-                  }
-                  setBranchList([...heads.values()].sort((a, b) => b.v - a.v))
-                } catch { setBranchList([]) }
-              }}
+              onClick={() => { setBranchesOpen(v => !v); loadBranchHeads() }}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               ≡ BRANCHES
             </button>}
-            {/* VERSIONS — this world's own save-point history, right on main */}
-            {!isHub && spaceSlug && <button
-              onClick={() => { setVersionsOpen(v => !v); if (!versionsOpen) loadVersions() }}
-              title="browse this world's version history — save a point, or roll back"
-              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-            >
-              ⏱ VERSIONS
-            </button>}
+            {/* VERSIONS — this world's own save-point history, right on main.
+                Same hybrid as BRANCH: ◂/▸ step through versions (?version=N views),
+                the middle button opens the full panel (save a point / roll back). */}
+            {!isHub && spaceSlug && (() => {
+              const vs = versionList.map(v => v.version).sort((a, b) => a - b)   // [v1 … vN]; LIVE sits after vN
+              const cur = versionView                                            // undefined = LIVE
+              const idx = cur === undefined ? vs.length : vs.indexOf(cur)
+              const go = (v: number | undefined) => {
+                window.location.href = v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`
+              }
+              const canOlder = cur === undefined ? vs.length > 0 : idx > 0
+              const canNewer = cur !== undefined
+              return (
+                <div className="flex items-stretch rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[10px]">
+                  <button disabled={!canOlder} title="older version"
+                    onClick={() => go(cur === undefined ? vs[vs.length - 1] : vs[idx - 1])}
+                    className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">◂</button>
+                  <button
+                    onClick={() => { setVersionsOpen(v => !v); if (!versionsOpen) loadVersions() }}
+                    title="browse this world's version history — save a point, or roll back"
+                    className="px-2 py-1.5 tracking-[0.15em] text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                  >
+                    ⏱ {cur === undefined ? 'VERSIONS' : `v${cur}`}
+                  </button>
+                  <button disabled={!canNewer} title="newer version — ▸ past the newest returns to LIVE"
+                    onClick={() => go(idx + 1 < vs.length ? vs[idx + 1] : undefined)}
+                    className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">▸</button>
+                </div>
+              )
+            })()}
             <button
               onClick={async () => {
+                // owner on their LIVE space: CONNECT AI *is* ALTER (the space token
+                // edits main directly) — say so before handing out the key
+                const alterMode = !!spaceSlug && !!isOwner && !(lastSceneRef.current || '').includes(' ⑂ ')
+                if (alterMode && !plugOpen) { setAlterWarnOpen(true); return }
                 setPlugOpen(v => !v)
                 if (!plugToken && spaceSlug) {
                   setPlugBusy(true)
@@ -4972,9 +5074,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   mintBranchToken(lastSceneRef.current)
                 }
               }}
+              title={spaceSlug && isOwner && !(lastSceneRef.current || '').includes(' ⑂ ')
+                ? 'plug an AI into the LIVE world — it alters main directly, no branch'
+                : undefined}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
-              ⚡ CONNECT AI
+              {spaceSlug && isOwner && !(lastSceneRef.current || '').includes(' ⑂ ') ? '⚡ ALTER' : '⚡ CONNECT AI'}
             </button>
             {(isOwner || !spaceId) && spaceSlug && (
               <button
@@ -5031,15 +5136,51 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
-            {/* BRANCH sits at the bottom of the dock, right against the VOTE button —
-                branching feeds the vote (each branch is a candidate). */}
-            {!isHub && <button
-              onClick={handleBranch}
-              className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              title={me ? 'fork this world as your branch — the eye versions every AI edit' : 'sign in to branch this world'}
-            >
-              ⑂ BRANCH
-            </button>}
+            {/* CREATE BRANCH sits at the bottom of the dock, right against the VOTE
+                button — branching feeds the vote (each branch is a candidate).
+                GREEN = the create action, unmistakably. Under it, the ◂/▸ browse
+                row steps the family (main → each branch head) — no sign-in needed. */}
+            {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[10px]">
+              <button
+                onClick={handleBranch}
+                className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
+                title={me ? 'open your own branch of this world — name it, then connect your AI' : 'sign in to branch this world'}
+              >
+                ⑂ CREATE BRANCH
+              </button>
+              <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
+                <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
+                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
+                <span className="px-1 py-1 text-[9px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
+                <button onClick={() => stepBranch(1)} title="next branch — browse the family"
+                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
+              </div>
+              {/* the methodical create panel: 1 · name it · 2 · AI connects with its
+                  scoped key (the plug box opens itself the moment the branch exists) */}
+              {branchCreateOpen && (
+                <div className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
+                  <div className="text-[10px] tracking-[0.25em] text-emerald-200/80 mb-1.5">⑂ CREATE BRANCH</div>
+                  <div className="text-[9px] text-white/40 leading-relaxed mb-2">
+                    1 · name your branch (blank = your default) · 2 · it opens with a scoped
+                    AI key — the CONNECT AI box appears with the briefing to copy.
+                  </div>
+                  <input
+                    autoFocus value={branchLabel} onChange={e => setBranchLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') createBranch(branchLabel); if (e.key === 'Escape') setBranchCreateOpen(false) }}
+                    placeholder="branch name (optional)"
+                    className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[11px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50"
+                  />
+                  <div className="flex gap-1.5">
+                    <button onClick={() => createBranch(branchLabel)}
+                      className="flex-1 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[10px] tracking-[0.15em] transition-colors">
+                      OPEN + CONNECT AI
+                    </button>
+                    <button onClick={() => setBranchCreateOpen(false)} aria-label="cancel"
+                      className="px-2 py-1.5 rounded border border-white/15 text-white/50 hover:text-white text-[10px] transition-colors">✕</button>
+                  </div>
+                </div>
+              )}
+            </div>}
             </>)}
           </div>
           {/* blank world + AI on the job → a quiet working spinner (no how-to box).
@@ -5275,42 +5416,100 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
             )
           })()}
 
-          {/* CONNECT AI — the plug box: everything an agent needs to edit this branch */}
+          {/* ALTER — the warning gate in front of the owner's live plug: no token
+              until the owner has read what "live" means. BRANCH INSTEAD is the out. */}
+          {alterWarnOpen && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setAlterWarnOpen(false)}>
+              <div className="max-w-md w-[92%] rounded-xl border border-amber-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="text-[11px] tracking-[0.25em] text-amber-300/90 mb-3">⚠ ALTER THE LIVE WORLD</div>
+                <p className="text-white/70 text-[11px] mb-2">
+                  This plugs an AI straight into the LIVE world — <span className="text-amber-200">no branch is made</span>.
+                  Every edit lands on main, for everyone, as it happens.
+                </p>
+                <p className="text-white/50 text-[11px] mb-4">
+                  A save point of the world as it stands is kept first; what the AI leaves becomes the new main.
+                  ⏱ VERSIONS is the way back.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    className="text-[10px] tracking-[0.15em] border border-white/20 rounded px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                    onClick={() => { setAlterWarnOpen(false); handleBranch() }}
+                  >
+                    ⑂ BRANCH INSTEAD
+                  </button>
+                  <button
+                    className="text-[10px] tracking-[0.15em] rounded px-3 py-1.5 bg-amber-500/80 hover:bg-amber-400 text-black transition-colors"
+                    onClick={beginAlter}
+                  >
+                    ALTER LIVE
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CONNECT AI / ALTER — the plug box: everything an agent needs to edit
+              this branch, or (owner on a live space) to alter main directly */}
           {plugOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
             const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — sign in as the owner and reopen CONNECT AI)')
             const cur = lastSceneRef.current || ''
             const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
+            // the space token edits LIVE (no eye on the DB path) — the box must say so
+            const alter = !bm && !!spaceSlug && !!isOwner
             const looking = bm
               ? `You are looking at world "${bm[1]}" — branch by ${bm[2]}, version v${bm[3]}.`
-              : `You are looking at world "${cur}".`
+              : `You are looking at world "${cur || spaceSlug}".`
             const scope = bm
               ? `This token is scoped to THIS branch: your edits continue it as v${Number(bm[3]) + 1}, v${Number(bm[3]) + 2}… (the eye auto-versions). Versions CONTINUE one branch. To bring a different take, make your OWN branch under your name (its own token) — that's a new challenger, not a version. The tournament, not edit access, decides which branch takes main; the original is immortal.`
-              : `The eye versions your edits automatically after each settled burst — just build.`
-            const briefing = `Connect to my cartridge.cafe ${bm ? `world "${bm[1]}" · branch "${bm[2]}" · v${bm[3]}` : `world "${cur}"`}:
+              : alter
+                ? `This token edits the LIVE world DIRECTLY — every command lands on main immediately, for everyone. No branch. A save point of the pre-alter world was kept; when you finish, tell the owner so they can SAVE VERSION to record the result.`
+                : `The eye versions your edits automatically after each settled burst — just build.`
+            const briefing = `${alter ? 'ALTER' : 'Connect to'} my cartridge.cafe ${bm ? `world "${bm[1]}" · branch "${bm[2]}" · v${bm[3]}` : `world "${cur || spaceSlug}"${alter ? ' — LIVE' : ''}`}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${tok}
 ${looking}
 1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
 2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
-${plugBrief.trim() ? 'BUILD THIS: ' + plugBrief.trim() : 'Ask me what to build, or read the world state and continue it.'}
+${plugBrief.trim() ? (alter ? 'ALTER THIS: ' : 'BUILD THIS: ') + plugBrief.trim() : alter ? 'Ask me what to alter, or read the world state and continue it.' : 'Ask me what to build, or read the world state and continue it.'}
 ${scope}`
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
-                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[12px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[11px] tracking-[0.25em] text-white/50">⚡ CONNECT YOUR AI</div>
+                    <div className={`text-[11px] tracking-[0.25em] ${alter ? 'text-amber-300/80' : 'text-white/50'}`}>{alter ? '⚡ ALTER THE LIVE WORLD' : '⚡ CONNECT YOUR AI'}</div>
                     <div className="flex items-center gap-1.5 text-[9px] tracking-[0.2em] text-white/50">
                       <span className={`inline-block w-2 h-2 rounded-full ${agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
                       {agentConnected ? 'LIVE' : 'WAITING'}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-2 text-[11px]">Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.</p>
+                  <p className="text-white/60 mb-2 text-[11px]">
+                    {alter
+                      ? 'Describe the alteration, then paste this to any AI (Claude, or anything that speaks HTTP). It edits the LIVE world — main changes as it works. When it settles, SAVE VERSION records the result.'
+                      : 'Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.'}
+                  </p>
                   <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
-                    placeholder="what should the AI build in this branch? (optional)"
+                    placeholder={alter ? 'what should the AI alter in the live world? (optional)' : 'what should the AI build in this branch? (optional)'}
                     className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[12px] text-white/90 outline-none focus:border-white/35 mb-3" />
                   <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[11px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
                   <div className="flex gap-2 mt-3 justify-end">
+                    {alter && spaceSlug && (
+                      <button
+                        className="text-[10px] tracking-[0.15em] border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 rounded px-3 py-1 transition-colors mr-auto"
+                        title="snapshot the altered world as a version — it is already main; this records it"
+                        onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ note: plugBrief.trim() ? `alter: ${plugBrief.trim().slice(0, 80)}` : 'alter' }),
+                            }).then(x => x.json())
+                            showToast(r.deduped ? `no change since v${r.version?.version} — nothing to save` : `altered world saved as v${r.version?.version} — it is main`, 'success')
+                          } catch { showToast('could not save version', 'error') }
+                        }}
+                      >
+                        ✓ SAVE VERSION
+                      </button>
+                    )}
                     <button
                       className="text-[10px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
                       onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
@@ -5374,14 +5573,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           {/* Space breadcrumb — shown when in a child space */}
           {spaceSlug && <SpaceBreadcrumb spaceSlug={spaceSlug} />}
 
-          {/* Space management overlay — owner only */}
-          {isOwner && spaceSlug && spaceId && (
-            <SpaceManagementOverlay
-              spaceSlug={spaceSlug}
-              spaceId={spaceId}
-              onCreatePortal={handleCreatePortal}
-            />
-          )}
+          {/* Space management now lives inside WORLD TOOLS (one toolbox) */}
 
           {/* Pixel hover tooltip */}
           {pixelInfo && !playScene && (

@@ -32,6 +32,35 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient()
 // Cache in all environments to reuse across warm invocations
 globalForPrisma.prisma = prisma
 
+// Schema bootstrap — the house pattern (see ensureSlotTable): no migration files
+// exist, so additive DDL ships as idempotent statements run once per instance.
+// This carries the Companion feature onto any database the app points at —
+// without it, the new Prisma client selects PlayerSpace.createdByCompanionId
+// on a DB that lacks it and every un-narrowed space query 500s.
+const bootKey = '__prisma_ddl_boot'
+const gb = globalThis as unknown as { [key: string]: boolean | undefined }
+if (!gb[bootKey]) {
+  gb[bootKey] = true
+  void (async () => {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "PlayerSpace" ADD COLUMN IF NOT EXISTS "createdByCompanionId" TEXT`)
+      await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Companion" (
+        "id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "handle" TEXT NOT NULL UNIQUE,
+        "keyHash" TEXT NOT NULL UNIQUE, "keyPrefix" TEXT NOT NULL, "provenance" TEXT,
+        "ownerId" TEXT NOT NULL, "worldsPerDay" INTEGER NOT NULL DEFAULT 20,
+        "icon" JSONB, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "lastActiveAt" TIMESTAMP(3), "revokedAt" TIMESTAMP(3)
+      )`)
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Companion" ADD COLUMN IF NOT EXISTS "icon" JSONB`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Companion_ownerId_idx" ON "Companion"("ownerId")`)
+      await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PlayerSpace_createdByCompanionId_idx" ON "PlayerSpace"("createdByCompanionId")`)
+    } catch (e) {
+      console.error('[prisma] schema bootstrap failed (will retry next cold start):', e)
+      gb[bootKey] = false
+    }
+  })()
+}
+
 // Connection warmer: ping every 20s to prevent Neon cold starts
 const WARM_INTERVAL = 20_000
 const warmKey = '__prisma_warm_interval'

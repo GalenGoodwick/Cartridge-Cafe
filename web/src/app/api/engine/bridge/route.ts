@@ -5,6 +5,7 @@ import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToS
 import { validateSceneToken } from '../scene-token'
 import { loadScene, saveScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
+import { prisma } from '@/lib/prisma'
 
 export const maxDuration = 30
 
@@ -246,6 +247,19 @@ export async function POST(req: NextRequest) {
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // AI PRESENCE — a working AI has a body. Any authed bridge command beats the
+  // same cc_presence table the human heartbeat uses (one body per id, a beat
+  // moves it), so the AI is docked in its world's head-count while it builds.
+  // Fire-and-forget: presence must never fail a build command.
+  if (auth.spaceName) {
+    const scene = String(auth.spaceName).toUpperCase().slice(0, 120)
+    prisma.$executeRawUnsafe(
+      `INSERT INTO cc_presence (id, scene, seen) VALUES ($1, $2, now())
+       ON CONFLICT (id) DO UPDATE SET scene = $2, seen = now()`,
+      'ai:' + (auth.slug || scene.toLowerCase()), scene,
+    ).catch(() => {})
   }
 
   try {

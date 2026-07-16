@@ -336,6 +336,32 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       save(next)
       return next
     }
+    // PRUNE THE DEAD — everything here is live state, so a deleted world must
+    // LEAVE its cell on the next beat, not haunt it (the mirror law of GROW).
+    // Votes cast for the dead are released — those voters may vote again; a
+    // dead champion loses the crown (a world that no longer exists cannot
+    // reign). Guarded on a real roster (≥2) so one transient empty fetch can't
+    // wipe a living bracket; a wrongly-pruned survivor rejoins via GROW below.
+    if (d.cells.length > 0 && r.length >= 2) {
+      const alive = new Set(r)
+      const deadChamp = !!d.champion && !alive.has(d.champion)
+      if (deadChamp || d.cells.some(c => c.worlds.some(w => !alive.has(w)))) {
+        const cells = d.cells
+          .map(c => {
+            const ws = c.worlds.filter(w => alive.has(w))
+            const votes: Record<string, string> = {}
+            for (const [voter, w] of Object.entries(c.votes)) if (alive.has(w)) votes[voter] = w
+            return { ...c, worlds: ws, votes }
+          })
+          .filter(c => c.worlds.length > 0)   // an emptied cell is done — time to done
+        const reached: Record<string, number> = {}
+        for (const [w, t] of Object.entries(d.reached)) if (alive.has(w)) reached[w] = t
+        const pruned: TDoc = { ...d, cells, reached }
+        if (deadChamp) { pruned.champion = null; pruned.champTier = 0; pruned.championAt = nowT }
+        save(pruned)
+        return pruned   // the 6s beat carries the law onward (quorum, next tier)
+      }
+    }
     // GROW THE OPEN CELL — a branch created mid-round joins the cell you're in
     // rather than waiting for the next deal. Any roster contestant not yet in a
     // cell drops into an open one (≤5 per cell) so a fresh challenger is votable
