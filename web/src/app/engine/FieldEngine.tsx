@@ -2931,6 +2931,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // worlds.
       const rScale = (sim.worldData['renderScale'] as number | undefined) ?? 1.0
       if (rScale !== renderer.renderScale) renderer.setRenderScale(rScale)
+      // per-world pixel budget: detail-heavy but cheap-per-pixel worlds can buy
+      // back full retina sharpness (the 2.2M default upscales ~30-50% on hidpi,
+      // which reads as soft focus). Clamped so no world can order a GPU-killer.
+      const budget = sim.worldData['maxBufferPixels']
+      const wantPx = typeof budget === 'number' ? Math.max(1_000_000, Math.min(6_500_000, budget)) : 2_200_000
+      if (wantPx !== renderer.maxBufferPixels) renderer.maxBufferPixels = wantPx
 
       // Process particle emission requests from worldData
       const emitParticle = sim.worldData['__emit_particles'] as { x: number; y: number; count: number; color?: [number, number, number]; velX?: number; velY?: number; spread?: number; size?: number; life?: number } | undefined

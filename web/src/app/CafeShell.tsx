@@ -31,6 +31,10 @@ const ADS_ENABLED = false
 
 /** The world IS the interface. The only HTML: the sign, two small doors,
  *  and a name that appears at your cursor when a window notices you. */
+// ONE hub-button style — both the cafe dock and the sub-main hub use it, so the
+// two hubs read as the same layer (surface:'hub'), not two different UIs.
+const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
+
 export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: string }) {
   const [scene, setScene] = useState(initialScene)
   // the contained ad shown on game-world entry; server decides if the viewer /
@@ -925,32 +929,31 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* the group layer's controls — found in the viewer, join/pin inside.
-          Before the world's first report arrives, assume the viewer: the
-          FOUND door must never be invisible on an empty group layer. */}
+      {/* the group layer's controls — same PLACE + STYLE as the cafe dock's
+          (top-right, rounded), so main→sub-main isn't a jarring re-layout. The
+          sub-main's name shows under the title (like MY WORLDS), not inline. */}
       {scene === 'SUB-MAIN' && !modalUp && !voting && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2">
+        <div className="fixed top-5 right-6 z-50 flex gap-2">
           {subMode?.mode === 'group' ? (<>
             <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
-              className="brass-tab px-3 py-1.5 text-[10px]">◂ SUB-MAINS</button>
-            <span className="cafe-sign text-xl px-1">{(subMode.name || '').toLowerCase()}</span>
-            {who && !subMode.member && <button onClick={joinSub} className="brass-tab px-3 py-1.5 text-[10px]">JOIN</button>}
+              className={hubBtn}>⟵ SUB-MAINS</button>
+            {who && !subMode.member && <button onClick={joinSub} className={hubBtn}>JOIN</button>}
             {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
-              <button onClick={openPin} className="brass-tab px-3 py-1.5 text-[10px]">+ PIN A WORLD</button>
+              <button onClick={openPin} className={hubBtn}>+ PIN A WORLD</button>
             )}
             {who && subMode.member && !subMode.owner && subMode.pinsLocked && (
-              <span className="font-mono text-[9px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
+              <span className="self-center font-mono text-[9px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
             )}
             {who && (subMode.owner || (subMode.admins || []).includes(who.id)) && (
-              <button onClick={() => setSubTools(o => !o)} className="brass-tab px-3 py-1.5 text-[10px]">⚙ TOOLS</button>
+              <button onClick={() => setSubTools(o => !o)} className={hubBtn}>⚙ TOOLS</button>
             )}
             {subMode.slug && (
               <button onClick={() => setChatWorld({ channel: 'chat:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · chat', subtitle: 'check in on this sub-main' })}
-                className="brass-tab px-3 py-1.5 text-[10px]">⌁ CHAT</button>
+                className={hubBtn}>⌁ CHAT</button>
             )}
           </>) : (
             !subMode?.haveOwn && (
-              <button onClick={foundSub} className="brass-tab px-3 py-1.5 text-[10px]">⌂ FOUND YOURS</button>
+              <button onClick={foundSub} className={hubBtn}>⌂ FOUND YOURS</button>
             )
           )}
         </div>
@@ -1232,8 +1235,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* the sign and two small doors — the only permanent chrome */}
-      {!inGame && !voting && (
+      {/* the sign — the permanent chrome for BOTH hubs (cafe main + sub-main),
+          so the title sits top-left in the same place on each. */}
+      {(scene === 'CAFE' || scene === 'SUB-MAIN') && !voting && (
         <>
           <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
             <div className="cafe-sign text-2xl">
@@ -1247,24 +1251,27 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 {mine}&apos;s worlds
               </div>
             )}
+            {scene === 'SUB-MAIN' && subMode?.mode === 'group' && subMode.name && (
+              <div className="font-mono text-[10px] tracking-[0.3em] text-brass uppercase mt-2">
+                ⑂ {subMode.name}
+              </div>
+            )}
           </div>
+          {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
             {mine ? (
-              <button onClick={commons} className="rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all">
-                ⟵ THE COMMONS
-              </button>
+              <button onClick={commons} className={hubBtn}>⟵ THE COMMONS</button>
             ) : (
-              <button onClick={myWorlds} className="rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all">
-                MY WORLDS
-              </button>
+              <button onClick={myWorlds} className={hubBtn}>MY WORLDS</button>
             )}
-            <button onClick={() => setIconOpen(o => !o)} className={`rounded-lg border px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] transition-all ${iconOpen ? 'border-flame/60 text-glow' : 'border-brass/40 hover:border-flame/60 text-steamer/80 hover:text-glow'}`}>
+            <button onClick={() => setIconOpen(o => !o)} className={`${hubBtn} ${iconOpen ? 'border-flame/60 text-glow' : ''}`}>
               BREW ICON
             </button>
             <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
               BREW YOURS
             </button>
           </div>
+          )}
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
           {iconOpen && (
