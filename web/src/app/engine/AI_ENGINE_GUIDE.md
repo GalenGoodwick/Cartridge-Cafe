@@ -653,9 +653,9 @@ fn visual_sphere(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, be
 
 ### World Uniforms — the shared whiteboard
 
-64 floats shared by ALL visuals and interaction shaders. Write them from a step hook
+256 floats shared by ALL visuals and interaction shaders. Write them from a step hook
 (`sim.worldData.gpuUniforms = [...]`) or via the bridge (`set_world_data {"data": {"gpuUniforms": [...]}}`);
-read them in any shader with `uni(i)` (i = 0..63) or `uni4(i)` (vec4 rows, i = 0..15).
+read them in any shader with `uni(i)` (i = 0..255) or `uni4(i)` (vec4 rows, i = 0..63).
 
 This is how cross-field state flows: the sea shader can read the boat's position, terrain can
 react to every entity, one clock can drive every field. Upload happens once per frame and only
@@ -669,6 +669,44 @@ wd.gpuUniforms = [boat.x, boat.y, boat.heading, windX, windY, gust]
 // any visual: read it
 let boatPos = vec2f(uni(0), uni(1));
 ```
+
+### Entity Populations — the flock buffer
+
+For a POPULATION of entities (flocks, bullets, crowds, particles-with-gameplay), do NOT
+create a field per entity — every field is a real GPU cost, and dozens of them will hang
+the machine. And don't hand-pack the whiteboard — it caps out around 120 entities. Use
+the population buffer: up to **4095 entities**, one buffer, zero extra dispatches.
+
+The step hook simulates entities as a plain array, then publishes them as flat floats,
+**4 per entity** — the convention is `[x, y, angle, aux]`, but all four slots are yours:
+
+```js
+// step hook: simulate however you like, publish 4 floats per entity
+const P = new Array(birds.length * 4)
+for (let i = 0; i < birds.length; i++) {
+  const b = birds[i]
+  P[i*4+0] = b.x; P[i*4+1] = b.y
+  P[i*4+2] = Math.atan2(b.vy, b.vx)   // angle
+  P[i*4+3] = b.state                   // aux: hp, kind, phase — anything
+}
+wd.gpuPopulation = P
+```
+```wgsl
+// any visual: draw ALL of them in one pass (cap the loop, break at popCount())
+for (var i = 0; i < 4095; i++) {
+  if (i >= popCount()) { break; }
+  let e = pop(i);                      // vec4f: x, y, angle, aux
+  let d = pixCoord - e.xy;
+  if (dot(d, d) > 64.0) { continue; }  // early reject — keeps the loop cheap
+  let q = rot2(-e.z) * d;              // entity-local frame, +x = heading
+  // ...draw the entity silhouette from q...
+}
+```
+
+Count comes from the array length (`length / 4`). `gpuPopulation` is per-frame render
+output like `gpuUniforms`: rebuild it every frame, never read it back, and it is not
+persisted into snapshots. Boids for ~400 entities is fine on the CPU (O(n²) at 400 =
+160K pair checks); past that, use a spatial grid in the hook.
 
 ### Cell Shaders — the previous frame is the world's memory
 
@@ -1128,9 +1166,9 @@ which is the point: the bubble shows what you actually built.
 
 10. **Safari vs Chrome** — Chrome's WebGPU (Dawn) handles complex compute shaders much better than Safari (Metal). Target Chrome for heavy shaders. Safari accumulates GPU state across shader recompilations.
 
-11. **Multiple fields** — each field with a `visualType` adds a compute dispatch. Keep the number of superimposed fields reasonable (2-4 for complex visuals).
+11. **Multiple fields** — each field with a `visualType` adds a compute dispatch. Keep the number of superimposed fields reasonable (2-4 for complex visuals). **Hard cap: 16 field-effect dispatches per frame** — beyond that the engine drops the excess and quarantines them (`dispatch-budget` in the quarantine log). A field-per-entity design (one field per bird/particle/creature) will hit this: 42 fields once froze an entire machine. For flocks and swarms, draw all entities in ONE field's shader (the megashader pattern) or ride the superimposed uber-pass, which is a single dispatch no matter how many fields it carries.
 
-12. **Uber-shader compile budget** — all visual types compile into a single compute shader. Complex shaders across multiple fields compound. Keep total nested loop iterations under ~100 per visual. If 3 visuals each have 8x4 nested loops = 96 iterations each, the combined shader may exceed GPU compile limits or timeout.
+12. **Uber-shader compile budget** — all visual types compile into a single compute shader. Complex shaders across multiple fields compound. Keep total nested loop iterations under ~100 per visual. If 3 visuals each have 8x4 nested loops = 96 iterations each, the combined shader may exceed GPU compile limits or timeout. Enforced caps: a single for-loop bound over **8192** quarantines the visual (a per-pixel loop that long stalls the GPU for seconds per frame), and the combined uber-shader source is budgeted at **300KB** — over budget, the largest visuals are shed and quarantined until the sum fits. Every quarantine posts to the log (`GET /api/engine/quarantine`) with the reason, so read it when a visual goes missing.
 
 13. **Many-field scenes: set `worldData.noPixelSampling = true`** — skips the per-field GPU
     readback that stalls one frame per second (visible black flash) once a scene has ~10+ fields.

@@ -150,6 +150,12 @@ export class FieldRenderer {
   private worldUniBuffer: GPUBuffer | null = null
   private _worldUniData = new Float32Array(256)   // whiteboard: uni(0..255)
   private _worldUniDirty = true
+  // entity population: header vec4 (count in .x) + 4095 entities × vec4f = 64KB,
+  // bound as UNIFORM everywhere so it never counts against the 8-storage-buffer
+  // compute cap (the same Firefox constraint that shaped the whiteboard).
+  private popBuffer: GPUBuffer | null = null
+  private _popData = new Float32Array(16384)
+  private _popDirty = true
 
   // Icon atlas — packed RGBA8 screenshots (64x64/slot) the cafe door samples
   // into its bubbles. Always allocated (min 1 u32) so the super layout is
@@ -314,6 +320,22 @@ export class FieldRenderer {
   private static readonly HAZARD_MAX_WGSL_BYTES = 60_000      // one visual's source
   private static readonly HAZARD_MAX_ARRAY_ELEMENTS = 2047    // WGSL const-array hard cap
   private static readonly HAZARD_MAX_BAKED_ELEMENTS = 8192    // total array-literal elements
+  // Per-frame ceiling on field-effect passes. Each one is a FULLSCREEN pass
+  // every frame — sustained load the source-size caps above cannot see. A
+  // field-per-entity world (42 bird fields ≈ 45 dispatches) hung the GPU and
+  // froze the whole machine. Superimposed fields are exempt: they share one
+  // uber-shader dispatch regardless of count. See enforceDispatchBudget().
+  private static readonly HAZARD_MAX_EFFECT_DISPATCHES = 16
+  private _dispatchBudgetReported = 0   // over-budget count last reported (0 = in budget)
+  // Ceiling on a single numeric for-loop bound inside one visual. Runs per
+  // pixel per frame, so 100k iterations in ONE innocent-sized shader is the
+  // same machine-freeze as 45 dispatches. Generous vs the 32-48 typical.
+  private static readonly HAZARD_MAX_LOOP_BOUND = 8192
+  // Combined source budget for the uber-shader. Each visual is individually
+  // capped at 60KB, but ALL of them concatenate into ONE createShaderModule —
+  // forty legal visuals can hand the compiler a multi-MB source and hang it
+  // (the same freeze the per-visual cap exists to stop, arriving as a sum).
+  private static readonly HAZARD_MAX_UBER_BYTES = 300_000
 
   // Shader module registry (reusable WGSL utility functions)
   private moduleRegistry: Map<string, ModuleEntry> = new Map()
@@ -562,6 +584,7 @@ export class FieldRenderer {
     this.iconBuffer = null
     this.iconBufferCapacity = 0
     this.worldUniBuffer = null
+    this.popBuffer = null
     this.propagationPipeline = null
 
     // ── fault surface: a dead GPU must SAY SO. Device loss and uncaptured
@@ -630,6 +653,15 @@ export class FieldRenderer {
       // UNIFORM for the super-compute stage (keeps that stage at 8 storage buffers
       // for Firefox); STORAGE because the frame/render path still binds it as one.
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    })
+
+    // Entity populations: worldData.gpuPopulation (flat floats, 4 per entity)
+    // reaches every visual/effect shader as pop(i) / popCount(). 65536 bytes =
+    // 4096 vec4f = 1 header + 4095 entities — exactly the guaranteed uniform
+    // binding limit, so thousands of entities cost zero extra dispatches.
+    this.popBuffer = device.createBuffer({
+      size: 65536,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
 
     this.effectUniformBuf = device.createBuffer({
@@ -900,6 +932,8 @@ export class FieldRenderer {
         // the whiteboard: effects read uni() just like visuals — this is what
         // lets input (cursor/keys, written by a hook) reach the compute layer.
         { binding: 1, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        // the population: effects read pop()/popCount() just like visuals
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
       ],
     })
 
@@ -956,6 +990,8 @@ export class FieldRenderer {
         // storage buffers — Firefox caps that stage at 8; a 9th fails to create.
         { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        // the population — UNIFORM for the same 8-storage-cap reason as worldUni
+        { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
       ],
     })
 
@@ -1267,6 +1303,7 @@ export class FieldRenderer {
         entries: [
           { binding: 0, resource: { buffer: this.effectUniformBuf! } },
           { binding: 1, resource: { buffer: this.worldUniBuffer! } },
+          { binding: 2, resource: { buffer: this.popBuffer! } },
         ],
       })
     }
@@ -1485,6 +1522,8 @@ ${getShaderUtilities()}
 // safe stubs so a world visual that reaches for live state still COMPILES here
 fn uni(i: i32) -> f32 { return 0.0; }
 fn uni4(i: i32) -> vec4f { return vec4f(0.0); }
+fn pop(i: i32) -> vec4f { return vec4f(0.0); }
+fn popCount() -> i32 { return 0; }
 fn pix() -> vec2f { return vec2f(0.0); }
 fn prevHere() -> vec4f { return vec4f(0.0); }
 fn prevAt(o: vec2f) -> vec4f { return vec4f(0.0); }
@@ -1954,8 +1993,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       const renderEffects: FieldEffectData[] = []
 
       if (fieldEffects && fieldEffects.length > 0) {
+        const budgeted = this.enforceDispatchBudget(fieldEffects)
         if (this.useComputeEffects && this.clearComputePipeline && this.blitPipeline) {
-          for (const effect of fieldEffects) {
+          for (const effect of budgeted) {
             const computeEntry = this.fieldComputeEntries.get(effect.programKey)
             if (computeEntry && this.sharedComputePipelines.has(computeEntry.wgslHash)) {
               computeEffects.push(effect)
@@ -1964,7 +2004,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
             }
           }
         } else {
-          renderEffects.push(...fieldEffects)
+          renderEffects.push(...budgeted)
         }
       }
 
@@ -2242,9 +2282,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (fieldEffects.length > 0) {
       const computeEffects: FieldEffectData[] = []
       const renderEffects: FieldEffectData[] = []
+      const budgeted = this.enforceDispatchBudget(fieldEffects)
 
       if (this.useComputeEffects && this.clearComputePipeline && this.blitPipeline) {
-        for (const effect of fieldEffects) {
+        for (const effect of budgeted) {
           const ce = this.fieldComputeEntries.get(effect.programKey)
           if (ce && this.sharedComputePipelines.has(ce.wgslHash)) {
             computeEffects.push(effect)
@@ -2253,7 +2294,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
           }
         }
       } else {
-        renderEffects.push(...fieldEffects)
+        renderEffects.push(...budgeted)
       }
 
       // Stage all effect uniforms
@@ -3025,6 +3066,18 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (w.length > FieldRenderer.HAZARD_MAX_WGSL_BYTES) {
       return { reason: `oversized WGSL source (${(w.length / 1024).toFixed(0)}KB > ${(FieldRenderer.HAZARD_MAX_WGSL_BYTES / 1024).toFixed(0)}KB) — would hang the GPU compiler`, ...stats }
     }
+    // A small shader can still be a machine-freezer: one for-loop bounded by a
+    // huge literal runs per pixel per frame — a single dispatch that takes
+    // seconds. Catches the naive case; deliberately obfuscated bounds pass,
+    // but AI-authored code writes its bounds as literals.
+    const loopRe = /for\s*\(\s*var\s+\w+[^;{]*;\s*\w+\s*<=?\s*(\d+)/g
+    let lm: RegExpExecArray | null
+    while ((lm = loopRe.exec(w)) !== null) {
+      const bound = parseInt(lm[1], 10)
+      if (bound > FieldRenderer.HAZARD_MAX_LOOP_BOUND) {
+        return { reason: `loop bound of ${bound} iterations exceeds the ${FieldRenderer.HAZARD_MAX_LOOP_BOUND} cap — a per-pixel loop this long stalls the GPU for seconds per frame (march steps are typically 32-48)`, ...stats }
+      }
+    }
     return null
   }
 
@@ -3046,6 +3099,24 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       }
     }
     if (hazards.length > 0) this.reportQuarantine('preflight', hazards)
+    // COMBINED budget: individually-legal visuals still concatenate into one
+    // shader module. Over budget, shed the largest visuals (most likely the
+    // hazard, least likely a small load-bearing one) until the sum fits.
+    let total = safe.reduce((n, v) => n + (v.wgsl || '').length, 0)
+    if (total > FieldRenderer.HAZARD_MAX_UBER_BYTES) {
+      const shed: Array<Record<string, unknown>> = []
+      const bySize = [...safe].sort((a, b) => (b.wgsl || '').length - (a.wgsl || '').length)
+      for (const v of bySize) {
+        if (total <= FieldRenderer.HAZARD_MAX_UBER_BYTES) break
+        v.broken = true
+        v.error = `[pre-flight] shed to fit the ${(FieldRenderer.HAZARD_MAX_UBER_BYTES / 1024).toFixed(0)}KB combined uber-shader budget`
+        total -= (v.wgsl || '').length
+        shed.push({ name: v.name, reason: v.error, wgslBytes: (v.wgsl || '').length })
+        console.error(`[Super] PRE-FLIGHT quarantine '${v.name}': ${v.error}`)
+      }
+      this.reportQuarantine('uber-size', shed)
+      return safe.filter(v => !v.broken)
+    }
     return safe
   }
 
@@ -3066,6 +3137,25 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
         keepalive: true,   // survive a navigation/tab-close after the freeze
       }).catch(() => {})
     } catch { /* telemetry must never throw into the render path */ }
+  }
+
+  /** PRE-FLIGHT dispatch budget. Keeps the first HAZARD_MAX_EFFECT_DISPATCHES
+   *  field effects, drops the rest, and reports the drop once per over-budget
+   *  count (this runs every frame — it must not spam). The fix for a dropped
+   *  world is fewer effects, not a higher cap: merge entities into one field's
+   *  shader (the megashader pattern) or ride the superimposed uber-pass. */
+  private enforceDispatchBudget(effects: FieldEffectData[]): FieldEffectData[] {
+    const max = FieldRenderer.HAZARD_MAX_EFFECT_DISPATCHES
+    if (effects.length <= max) { this._dispatchBudgetReported = 0; return effects }
+    if (this._dispatchBudgetReported !== effects.length) {
+      this._dispatchBudgetReported = effects.length
+      console.error(`[Super] DISPATCH BUDGET: ${effects.length} field effects > ${max}/frame — dropping ${effects.length - max}. Merge entities into fewer fields (megashader) instead of one field each.`)
+      this.reportQuarantine('dispatch-budget', effects.slice(max).map((e) => ({
+        name: e.fieldId,
+        reason: `over dispatch budget: ${effects.length} field effects, cap ${max}/frame`,
+      })))
+    }
+    return effects.slice(0, max)
   }
 
   /** Compile each visual in isolation to find the ones that break the
@@ -3226,6 +3316,35 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this._worldUniDirty = false
   }
 
+  /** Write the entity population (worldData.gpuPopulation → pop(i)/popCount()).
+   *  Flat floats, 4 per entity [x, y, angle, aux]; up to 4095 entities.
+   *  Cheap: skips upload when values unchanged. */
+  updatePopulation(vals: number[] | Float32Array): void {
+    const count = Math.min(4095, Math.floor(vals.length / 4))
+    let changed = false
+    if (this._popData[0] !== count) { this._popData[0] = count; changed = true }
+    const n = count * 4
+    for (let i = 0; i < n; i++) {
+      const v = Number.isFinite(vals[i]) ? vals[i] : 0
+      if (this._popData[4 + i] !== v) { this._popData[4 + i] = v; changed = true }
+    }
+    if (changed) this._popDirty = true
+  }
+
+  private flushPopulation(): void {
+    if (!this.device) return
+    if (!this.popBuffer) {
+      this.popBuffer = this.device.createBuffer({
+        size: 65536,  // 4096 vec4f: header + 4095 entities (uniform binding max)
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      })
+      this._popDirty = true
+    }
+    if (!this._popDirty) return
+    this.device.queue.writeBuffer(this.popBuffer, 0, this._popData)
+    this._popDirty = false
+  }
+
   /** Ensure the interaction buffer exists and is large enough */
   private ensureInteractionBuffer(count: number): void {
     const device = this.device!
@@ -3281,6 +3400,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     }
 
     this.flushWorldUniforms()
+    this.flushPopulation()
     const pixelCount = bufferW * bufferH
     this.ensureSuperFieldBuffer(fields.length)
     this.ensureHitIdBuffer(pixelCount)
@@ -3368,6 +3488,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
           { binding: 6, resource: { buffer: this.prevAccumBuf! } },
           { binding: 7, resource: { buffer: this.worldUniBuffer! } },
           { binding: 8, resource: { buffer: this.iconBuffer! } },
+          { binding: 9, resource: { buffer: this.popBuffer! } },
         ],
       })
       this._lastSuperFieldCount = fields.length
