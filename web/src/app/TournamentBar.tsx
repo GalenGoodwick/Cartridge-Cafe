@@ -383,6 +383,36 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         return grown
       }
     }
+    // ONE VOICE PER TIER — a mid-tier GROW changes cells.length, and the hash
+    // seat used to reseat voters away from their cast vote, letting a second
+    // vote land in another cell. Heal any such doc: keep each voter's latest
+    // cast (voteAt), release the rest.
+    if (d.cells.length > 1) {
+      const latest: Record<string, { i: number; at: number }> = {}
+      let dupes = false
+      d.cells.forEach((c, i) => {
+        for (const voter of Object.keys(c.votes)) {
+          const at = c.voteAt?.[voter] ?? 0
+          if (voter in latest) { dupes = true; if (at > latest[voter].at) latest[voter] = { i, at } }
+          else latest[voter] = { i, at }
+        }
+      })
+      if (dupes) {
+        const cells = d.cells.map((c, i) => {
+          const votes: Record<string, string> = {}
+          const voteAt: Record<string, number> = {}
+          for (const [voter, w] of Object.entries(c.votes)) {
+            if (latest[voter].i !== i) continue
+            votes[voter] = w
+            if (c.voteAt?.[voter] !== undefined) voteAt[voter] = c.voteAt[voter]
+          }
+          return { ...c, votes, voteAt }
+        })
+        const healed: TDoc = { ...d, cells }
+        save(healed)
+        return healed   // the 6s beat carries the law onward
+      }
+    }
     // the tier resolves ONLY once EVERY cell has gathered QUORUM distinct
     // voices. No timer: a cast vote can be moved and the talk keeps going until
     // enough of the cell has weighed in. This is the guard that makes a single
@@ -444,9 +474,16 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     return () => { stop = true; clearInterval(t) }
   }, [visible, slot, reconcile])
 
-  // UC: you are dealt into ONE cell per tier — your voice lives there only
-  const myCellIdx = (d: TDoc): number =>
-    who && d.cells.length > 0 ? hash(who + ':' + d.round + ':' + d.tier) % d.cells.length : -1
+  // UC: you are dealt into ONE cell per tier — your voice lives there only.
+  // A cast vote ANCHORS your seat: GROW can add a cell mid-tier, which changes
+  // cells.length and would reseat you by hash away from your standing vote —
+  // stranding it in a cell you can no longer see or change. The hash deals
+  // only the not-yet-voted.
+  const myCellIdx = (d: TDoc): number => {
+    if (!who || d.cells.length === 0) return -1
+    const anchored = d.cells.findIndex(c => who in c.votes)
+    return anchored >= 0 ? anchored : hash(who + ':' + d.round + ':' + d.tier) % d.cells.length
+  }
 
   const vote = (cellIdx: number, world: string) => {
     if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
