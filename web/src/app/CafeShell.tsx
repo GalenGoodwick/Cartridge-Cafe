@@ -957,6 +957,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           sub-main's name shows under the title (like MY WORLDS), not inline. */}
       {scene === 'SUB-MAIN' && !modalUp && !voting && (
         <div className="fixed top-5 right-6 z-50 flex gap-2">
+          {!who && (
+            <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
+              className={`${hubBtn} border-flame/50 text-glow`}>SIGN IN</button>
+          )}
           {subMode?.mode === 'group' ? (<>
             {who && !subMode.member && <button onClick={joinSub} className={hubBtn}>JOIN</button>}
             {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
@@ -1280,11 +1284,27 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           </div>
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
+            {/* signed-out gets the door said out loud — every AI prompt box
+                (CONNECT AI, BREW ICON, BREW YOURS) needs a session to mint its
+                key, so the way in must be visible, not discovered on failure */}
+            {!who && (
+              <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
+                className={`${hubBtn} border-flame/50 text-glow`}>SIGN IN</button>
+            )}
             {/* mine-mode's way out is the universal ◂ strip (top-left) */}
             {!mine && (
               <button onClick={myWorlds} className={hubBtn}>MY WORLDS</button>
             )}
-            <button onClick={() => setIconOpen(o => !o)} className={`${hubBtn} ${iconOpen ? 'border-flame/60 text-glow' : ''}`}>
+            <button onClick={async () => {
+              // an AI prompt box: its token mint needs a session — auth first,
+              // with a live re-check so a slow session fetch doesn't bounce a
+              // signed-in player
+              if (!who) {
+                const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+                if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
+              }
+              setIconOpen(o => !o)
+            }} className={`${hubBtn} ${iconOpen ? 'border-flame/60 text-glow' : ''}`}>
               BREW ICON
             </button>
             <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">

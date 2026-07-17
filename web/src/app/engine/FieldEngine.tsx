@@ -5354,6 +5354,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             })()}
             <button
               onClick={async () => {
+                // an AI prompt box: its key mint needs a session. Auth FIRST —
+                // signed out used to open the box and hand over a briefing with
+                // '(minting failed)' where the key belongs. Live re-check so a
+                // slow session fetch doesn't bounce a signed-in player.
+                if (!me) {
+                  const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+                  if (!sess?.user) {
+                    window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)
+                    return
+                  }
+                  setMe(sess.user.email || sess.user.name || null)
+                }
                 // owner on their LIVE space: CONNECT AI *is* ALTER (the space token
                 // edits main directly) — say so before handing out the key
                 const alterMode = can(ctx, 'alterLive')
