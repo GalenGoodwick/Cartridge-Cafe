@@ -2,8 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { saveGameSlot, loadGameSlot, listGameSlots, deleteGameSlot } from '../store'
+import { readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
 
 export const dynamic = 'force-dynamic'
+
+/** Every slot deletion — dev or prod — lands in quarantine-log.json, the same
+ *  ledger the renderer's hazard screens report to, so a wiped slot is never
+ *  silent: a human sees it in the log file, an AI reads it via
+ *  GET /api/engine/quarantine. Deletion is rare and destructive; the record
+ *  must outlive the caller. Fire-and-forget: logging must never block a delete. */
+function recordDeletion(slot: string, deleted: boolean, via: string): void {
+  console.warn(`[save] DELETE slot='${slot}' deleted=${deleted} via=${via}`)
+  try {
+    const logPath = join(process.cwd(), 'quarantine-log.json')
+    let log: unknown[] = []
+    try { log = JSON.parse(readFileSync(logPath, 'utf-8')) as unknown[] } catch { /* fresh log */ }
+    log.push({
+      at: new Date().toISOString(),
+      phase: 'slot-delete',
+      hazards: [{ name: slot, reason: `slot ${deleted ? 'deleted' : 'delete attempted (did not exist)'} via ${via}` }],
+    })
+    if (log.length > 100) log = log.slice(-100)
+    writeFileSync(logPath, JSON.stringify(log, null, 2))
+  } catch { /* the delete already happened; a logging failure must not 500 it */ }
+}
 
 /** Same posture as the scene route: dev keeps the frictionless local workflow;
  *  production requires a session or the engine agent token. */
@@ -171,7 +194,9 @@ export async function DELETE(req: NextRequest) {
   try {
     const body = await req.json()
     if (typeof body.slot === 'string') {
-      return NextResponse.json({ ok: true, deleted: await deleteGameSlot(body.slot) })
+      const deleted = await deleteGameSlot(body.slot)
+      recordDeletion(body.slot, deleted, process.env.NODE_ENV !== 'production' ? 'dev' : 'agent-token')
+      return NextResponse.json({ ok: true, deleted })
     }
     return NextResponse.json({ error: 'slot required' }, { status: 400 })
   } catch {
