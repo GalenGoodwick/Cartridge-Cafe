@@ -588,6 +588,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // unlocks the editing sections (same UI, ownership-gated tools)
   const onBranchScene = !spaceId && (lastSceneRef?.current || '').includes(' ⑂ ')
 
+  // which space version is on the glass, CLIENT-side — starts at the server
+  // prop, then the ⏱ scrubber hot-swaps it in place (no reload). Because ctx.view
+  // derives from THIS, hot-swapping to an old version flips can(ctx,'editLaw') &c.
+  // to read-only automatically — no separate gating to thread.
+  const [spaceVer, setSpaceVer] = useState<number | undefined>(versionView)
+
   // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
   // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
   // branch / riding / owner tangle. See lib/worldContext.ts + DESIGN-unified-chrome.md.
@@ -600,7 +606,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // deriveContext resolves the same role it always did.
     spaceOwnerId: isOwner ? 'self' : 'other',
     myUserId: 'self',
-    versionView,
+    versionView: spaceId ? spaceVer : versionView,
     riding: !!riding,
   })
 
@@ -1243,6 +1249,25 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (j?.scene) { await handleLoadScene(cur, j.scene); setBaseVerPos(pos) }
     } catch { /* offline — leave where we are */ }
   }, [playScene, baseVers, handleLoadScene])
+
+  /** #3 — hot-swap a SPACE version in place (no reload), the same way the vote
+   *  reckoning previews a `space:` snapshot: fetch it, hand it to the proven
+   *  clear+restore (handleLoadScene), and mark the client version so ctx.view
+   *  (and thus the read-only gates) follow. Owner-only — the owner's own hooks
+   *  are trusted; a visitor keeps the server-rendered reload path so an
+   *  untrusted version's JS never auto-installs. */
+  const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
+    if (!spaceSlug) return
+    try {
+      const q = v === undefined ? '' : `?version=${v}`
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`)
+      if (!r.ok) return
+      const data = await r.json()          // { snapshot: {...} }
+      await handleLoadScene(`space:${spaceSlug}`, data)
+      setSpaceVer(v)
+      window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
+    } catch { /* leave where we are */ }
+  }, [spaceSlug, handleLoadScene])
 
   // Delete a saved scene
   const handleDeleteScene = useCallback(async (sceneName: string) => {
@@ -5293,10 +5318,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 the middle button opens the full panel (save a point / roll back). */}
             {!isHub && spaceSlug && (() => {
               const vs = versionList.map(v => v.version).sort((a, b) => a - b)   // [v1 … vN]; LIVE sits after vN
-              const cur = versionView                                            // undefined = LIVE
+              const cur = spaceVer                                               // undefined = LIVE (client-tracked)
               const idx = cur === undefined ? vs.length : vs.indexOf(cur)
               const go = (v: number | undefined) => {
-                window.location.href = v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`
+                // owner → hot-swap in place (no reload); visitor → server-rendered
+                // reload so an untrusted version's JS is never auto-installed
+                if (isOwner) hotLoadSpaceVersion(v)
+                else window.location.href = v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`
               }
               const canOlder = cur === undefined ? vs.length > 0 : idx > 0
               const canNewer = cur !== undefined
@@ -5911,11 +5939,16 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
             // the cafe main renders with playScene='CAFE', so gate on surface.
             const branchy = ctx.kind === 'branch' || ctx.kind === 'winner'
             const sub = branchy ? undefined
-              : spaceId ? (versionView !== undefined ? `save point v${versionView} · read-only` : 'main · live')
+              : spaceId ? (spaceVer !== undefined ? `save point v${spaceVer} · read-only` : 'main · live')
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
             const back = () => {
-              // a version view backs out to live first
-              if (spaceId && versionView !== undefined) { window.location.href = `/space/${spaceSlug}`; return }
+              // viewing a space version backs out to LIVE first (hot-swap for the
+              // owner, reload for a visitor)
+              if (spaceId && spaceVer !== undefined) {
+                if (isOwner) hotLoadSpaceVersion(undefined)
+                else window.location.href = `/space/${spaceSlug}`
+                return
+              }
               // inside the cafe shell → its leave-confirm (in-shell scene swap, no
               // reload). This is the ONE back button; CafeShell no longer draws its own.
               if (playScene && !spaceId) { window.dispatchEvent(new CustomEvent('cafe:back')); return }
