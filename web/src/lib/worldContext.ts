@@ -28,6 +28,8 @@ export interface WorldIdentity {
   base: string
   /** branch author handle, if kind === 'branch' | 'winner' */
   author?: string
+  /** branch label (the segments between handle and version), if any */
+  label?: string
   /** version number parsed off the name, if any */
   version?: number
   /** the DB slug, if kind === 'space' */
@@ -111,11 +113,15 @@ export function identify(loaded: string, slug?: string): { kind: WorldKind; iden
   }
   const base = loaded.slice(0, bi)
   const rest = loaded.slice(bi + BRANCH_SEP.length)
-  const author = rest.split(' · ')[0].trim()   // handle up to first ' · '
+  const segs = rest.split(' · ')
+  const author = segs[0].trim()                 // handle up to first ' · '
   const vm = loaded.match(/ · v(\d+)$/)
   const version = vm ? parseInt(vm[1], 10) : undefined
+  // label = the segments between the handle and the trailing vN (if present)
+  const mid = vm ? segs.slice(1, -1) : segs.slice(1)
+  const label = mid.join(' · ').trim() || undefined
   const kind: WorldKind = author === 'winner' ? 'winner' : 'branch'
-  return { kind, identity: { base, author, version, loaded } }
+  return { kind, identity: { base, author, label, version, loaded } }
 }
 
 /** the sanitized handle for the signed-in email (matches scene-auth). */

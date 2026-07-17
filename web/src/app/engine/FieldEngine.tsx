@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
+import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
 import { WorldSandbox } from './world-sandbox'
@@ -587,6 +588,22 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // the panel itself shows to EVERY viewer of a space or branch — ownership only
   // unlocks the editing sections (same UI, ownership-gated tools)
   const onBranchScene = !spaceId && (lastSceneRef?.current || '').includes(' ⑂ ')
+
+  // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
+  // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
+  // branch / riding / owner tangle. See lib/worldContext.ts + DESIGN-unified-chrome.md.
+  const ctx: WorldContext = deriveContext({
+    surface: (playScene === 'CAFE' || playScene === 'SUB-MAIN') ? 'hub' : 'world',
+    loaded: riding || lastSceneRef?.current || playScene || spaceSlug || '',
+    slug: spaceSlug,
+    email: me,
+    // FieldEngine already knows ownership as booleans — synthesize ids so
+    // deriveContext resolves the same role it always did.
+    spaceOwnerId: isOwner ? 'self' : 'other',
+    myUserId: 'self',
+    versionView,
+    riding: !!riding,
+  })
 
   // Saved scenes list (server-side persistent)
   const [savedScenes, setSavedScenes] = useState<string[]>([])
@@ -5904,19 +5921,16 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
           {playScene && !spaceId && (() => {
-            const cur = riding || lastSceneRef.current || playScene
-            const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)
-            const base = bm ? bm[1] : cur
-            const seg = bm ? bm[2].split(' · ') : []
-            const author = seg[0] || ''
-            const label = seg.slice(1).join(' · ')
-            const sub = bm
-              ? `⑂ ${label || 'default branch'} · v${bm[3]} · ${author}`
+            // driven by the unified context (lib/worldContext). Same output.
+            const { kind, identity: id } = ctx
+            const branchy = kind === 'branch' || kind === 'winner'
+            const sub = branchy
+              ? `⑂ ${id.label || 'default branch'} · v${id.version ?? 1} · ${id.author}`
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
             return (
               <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
-                <div className="text-[11px] tracking-[0.2em] text-white/85">{base.toUpperCase()}</div>
-                <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${bm ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
+                <div className="text-[11px] tracking-[0.2em] text-white/85">{id.base.toUpperCase()}</div>
+                <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
               </div>
             )
           })()}
