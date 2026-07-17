@@ -5015,7 +5015,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           {(spaceId || onBranchScene) && chromeVisible && (() => {
             const wd = simulationRef.current?.worldData
             const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
-            const canEditLaw = spaceId ? isOwner : ownBranchTools
+            const canEditLaw = can(ctx, 'editLaw')
             // branch rules persist per-branch (same slot the legacy chip row used)
             const persistBranchRules = () => {
               if (spaceId) return
@@ -5243,9 +5243,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               // SET AS HEAD — the owner, viewing an older version, crowns it the
               // branch's challenger: re-saved onto the head, it becomes the newest
               // version (history intact) — the one the arena stages for the vote.
-              const bm2 = cur.match(/ ⑂ ([^·]+?)(?: ·|$)/)
-              const myHandle2 = me ? me.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
-              const ownIt = !!bm2 && !!myHandle2 && bm2[1].trim() === myHandle2
+              const ownIt = can(ctx, 'setHead')
               return (<>
                 <VersionScrubber
                   label={`v${n}`} total={verMax}
