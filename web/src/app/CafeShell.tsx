@@ -689,6 +689,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         setWho(w)
       }
     }).catch(() => {})
+    // the ONE back button (engine's identity strip) asks us to leave a world
+    const onBack = () => { if (confirmRef.current) stay(); else openConfirm() }
+    window.addEventListener('cafe:back', onBack)
     window.addEventListener('cafe:launch', onLaunch)
     window.addEventListener('cafe:hover', onHover)
     window.addEventListener('cafe:caption', onCaption)
@@ -700,6 +703,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     window.addEventListener('cafe:submode', onSubMode)
     window.addEventListener('resize', onResize)
     return () => {
+      window.removeEventListener('cafe:back', onBack)
       window.removeEventListener('cafe:launch', onLaunch)
       window.removeEventListener('cafe:hover', onHover)
       window.removeEventListener('cafe:caption', onCaption)
@@ -1189,18 +1193,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* every level: a way back, top-left. It pauses and asks. Hidden in vote
-          mode — the reckoning has its own ✕ CLOSE, and this arc was poking out
-          below its header. */}
-      {inGame && !voting && (
-        <button
-          onClick={() => (confirmLeave ? stay() : openConfirm())}
-          aria-label="Back to the cafe"
-          className="fixed top-4 left-4 z-50 w-9 h-9 rounded-full border border-brass/50 bg-void/70 backdrop-blur-sm text-glow/80 hover:text-glow hover:border-brass font-mono text-sm transition-colors"
-        >
-          ◂
-        </button>
-      )}
+      {/* the way back is now the ONE identity-strip button the engine draws
+          (top-left). It dispatches cafe:back → the same pause-and-ask below.
+          No second ◂ button here. */}
       {inGame && confirmLeave && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-void/60 backdrop-blur-[2px]"
           onClick={stay}>

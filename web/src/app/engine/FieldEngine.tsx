@@ -5914,8 +5914,11 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               : spaceId ? (versionView !== undefined ? `save point v${versionView} · read-only` : 'main · live')
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
             const back = () => {
-              // a version view backs out to live first; otherwise history, else the cafe
+              // a version view backs out to live first
               if (spaceId && versionView !== undefined) { window.location.href = `/space/${spaceSlug}`; return }
+              // inside the cafe shell → its leave-confirm (in-shell scene swap, no
+              // reload). This is the ONE back button; CafeShell no longer draws its own.
+              if (playScene && !spaceId) { window.dispatchEvent(new CustomEvent('cafe:back')); return }
               if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
               else window.location.href = '/'
             }
