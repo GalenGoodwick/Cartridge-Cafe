@@ -151,9 +151,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** DELETE /api/engine/save  Body: { slot: string } */
+/** DELETE /api/engine/save  Body: { slot: string }
+ *  Deleting is destructive in a way writing isn't — slots are shared live
+ *  state (tournaments, the group registry, the universe layout) and no browser
+ *  flow deletes them. So unlike POST, a session is NOT enough in production:
+ *  only the engine agent token may delete. Dev stays frictionless. */
+async function deleteAllowed(req: NextRequest): Promise<boolean> {
+  if (process.env.NODE_ENV !== 'production') return true
+  const authHeader = req.headers.get('authorization')
+  if (!authHeader?.startsWith('Bearer ')) return false
+  const envToken = process.env.ENGINE_AGENT_TOKEN
+  return !!envToken && authHeader.slice(7) === envToken
+}
+
 export async function DELETE(req: NextRequest) {
-  if (!(await writeAllowed(req))) {
+  if (!(await deleteAllowed(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
