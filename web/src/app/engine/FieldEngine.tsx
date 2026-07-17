@@ -5958,6 +5958,15 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               // inside the cafe shell → its leave-confirm (in-shell scene swap, no
               // reload). This is the ONE back button; CafeShell no longer draws its own.
               if (playScene && !spaceId) { window.dispatchEvent(new CustomEvent('cafe:back')); return }
+              // a space at LIVE goes UP, never history.back(): version-stepping
+              // pushes ?version=N entries, so history walks you to an older cut
+              // of the SAME world (the direct-join trap). Up = the base world's
+              // room; a space named without lineage goes to the cafe.
+              if (spaceId) {
+                const base = (spaceName || '').split(' ⑂ ')[0].trim()
+                window.location.href = base && base !== (spaceName || '').trim() ? `/play/${encodeURIComponent(base)}` : '/'
+                return
+              }
               if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
               else window.location.href = '/'
             }

@@ -929,17 +929,35 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
+      {/* THE universal back — the same ◂ strip the engine draws inside worlds,
+          extended to every shell surface with an "up" to go to. One glyph, one
+          place (top-left, under the sign), one style, everywhere: group →
+          SUB-MAINS, SUB-MAIN hub → CAFE, MY WORLDS → CAFE. Only the CAFE root
+          has no back. Replaces the per-surface ⟵ buttons that used to live in
+          the top-right clusters. */}
+      {!modalUp && !voting && (() => {
+        const up = scene === 'SUB-MAIN'
+          ? (subMode?.mode === 'group'
+              ? { label: 'SUB-MAINS', leave: () => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null } }
+              : { label: 'CAFE', leave: () => go('CAFE') })
+          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: commons } : null)
+        if (!up) return null
+        return (
+          <div className="fixed left-6 top-24 z-50">
+            <button onClick={up.leave} title="back"
+              className="px-2.5 py-1 rounded-lg font-mono text-[11px] text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">
+              ◂ <span className="text-[9px] tracking-[0.2em] text-white/45">{up.label}</span>
+            </button>
+          </div>
+        )
+      })()}
+
       {/* the group layer's controls — same PLACE + STYLE as the cafe dock's
           (top-right, rounded), so main→sub-main isn't a jarring re-layout. The
           sub-main's name shows under the title (like MY WORLDS), not inline. */}
       {scene === 'SUB-MAIN' && !modalUp && !voting && (
         <div className="fixed top-5 right-6 z-50 flex gap-2">
-          {/* the way back to the cafe — the SUB-MAIN hub had none after the
-              old ◂ was removed (that was the regression). Always present here. */}
-          <button onClick={() => go('CAFE')} className={hubBtn}>⟵ CAFE</button>
           {subMode?.mode === 'group' ? (<>
-            <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
-              className={hubBtn}>⟵ SUB-MAINS</button>
             {who && !subMode.member && <button onClick={joinSub} className={hubBtn}>JOIN</button>}
             {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
               <button onClick={openPin} className={hubBtn}>+ PIN A WORLD</button>
@@ -1262,9 +1280,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           </div>
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
-            {mine ? (
-              <button onClick={commons} className={hubBtn}>⟵ THE COMMONS</button>
-            ) : (
+            {/* mine-mode's way out is the universal ◂ strip (top-left) */}
+            {!mine && (
               <button onClick={myWorlds} className={hubBtn}>MY WORLDS</button>
             )}
             <button onClick={() => setIconOpen(o => !o)} className={`${hubBtn} ${iconOpen ? 'border-flame/60 text-glow' : ''}`}>
