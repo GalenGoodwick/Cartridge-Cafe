@@ -3,6 +3,13 @@
 Grid: 512x512. Auth: `Authorization: Bearer <ENGINE_AGENT_TOKEN>`.
 Base URL: `http://localhost:3000`
 
+> **Shaders are WGSL (WebGPU), not GLSL.** This doc predates the WebGPU engine;
+> shader params named `glsl` still work as legacy aliases, but `wgsl` is the
+> primary param and all shader code must be WGSL. The authoritative, current
+> agent doc is `src/app/engine/AI_ENGINE_GUIDE.md` — prefer it, and prefer
+> `define_visual` + `visualType` (the `visual_NAME` signature) over raw
+> `add_effect` for new work.
+
 ---
 
 ## Endpoints
@@ -33,7 +40,7 @@ Each FieldSnapshot:
   "name": "Alpha",
   "color": [0.9, 0.3, 0.1, 1.0],
   "transform": { "x": 256, "y": 256, "rotation": 0, "scale": 1.0, "vx": 0, "vy": 0, "vr": 0 },
-  "effects": [{ "id": "effect_1_123", "author": "agent", "glsl": "...", "description": "...", "blend": "alpha", "order": 10 }],
+  "effects": [{ "id": "effect_1_123", "author": "agent", "wgsl": "...", "description": "...", "blend": "alpha", "order": 10 }],
   "memory": [ ... ],
   "proximity": [{ "fieldId": "field_2_456", "fieldName": "Beta", "distance": -5, "direction": [0.7, 0.7], "overlapping": true }],
   "properties": { "hp": 100 },
@@ -70,20 +77,21 @@ Send commands. Single: `{ "type": "...", ... }`. Batch: `{ "commands": [ ... ] }
 
 | type | params | description |
 |------|--------|-------------|
-| `add_effect` | `fieldId, glsl, blend?, author?, description?, order?` | Add GLSL effect to field |
-| `update_effect` | `fieldId, effectId, glsl, description?, blend?` | Recompile effect in place (no visual gap) |
+| `define_visual` | `name, wgsl` | Register a visual type; fields with matching `visualType` render with it (preferred path) |
+| `add_effect` | `fieldId, wgsl, blend?, author?, description?, order?` | Add WGSL effect to field (`glsl` accepted as legacy alias) |
+| `update_effect` | `fieldId, effectId, wgsl, description?, blend?` | Recompile effect in place (no visual gap) |
 | `remove_effect` | `fieldId, effectId` | Remove single effect |
 | `clear_effect` | `fieldId?` | Clear all effects from field (or all fields) |
-| `add_state_shader` | `glsl, description?` | GPU state update (runs per pixel per frame) |
+| `add_state_shader` | `wgsl, description?` | GPU state update (runs per pixel per frame) |
 | `remove_state_shader` | (none) | Remove state update shader |
-| `register_glsl_mod` | `id, code` | Register reusable GLSL utility (injected into all shaders) |
-| `remove_glsl_mod` | `id` | Remove GLSL mod |
+| `register_glsl_mod` | `id, code` | Register reusable WGSL utility (injected into all shaders; command name is historical) |
+| `remove_glsl_mod` | `id` | Remove WGSL mod |
 
 ### Interactions
 
 | type | params | description |
 |------|--------|-------------|
-| `add_interaction_effect` | `glsl, fieldA?, fieldB?, author?, description?, blend?, spread?, order?, precedence?, hooks?` | GLSL shader rendered at field overlap pixels |
+| `add_interaction_effect` | `wgsl, fieldA?, fieldB?, author?, description?, blend?, spread?, order?, precedence?, hooks?` | WGSL shader rendered at field overlap pixels |
 | `remove_interaction_effect` | `effectId` | Remove interaction shader |
 | `define_interaction` | `rule: { trigger, effect, fieldA?, fieldB?, triggerDistance?, effectParams?, description? }` | Behavioral interaction rule |
 | `remove_interaction` | `ruleId` | Remove interaction rule |
@@ -115,56 +123,41 @@ Send commands. Single: `{ "type": "...", ... }`. Batch: `{ "commands": [ ... ] }
 
 ---
 
-## GLSL Signatures
+## WGSL Signatures
 
-### Field Effect Shader
+### Visual Type Shader (preferred — via `define_visual`)
 
-```glsl
-vec4 fieldEffect(vec2 coord, vec2 regionMin, vec2 regionMax, float time, vec4 params)
+```wgsl
+fn visual_NAME(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f
+```
+
+See `src/app/engine/AI_ENGINE_GUIDE.md` for the full contract, available
+uniforms, and examples.
+
+### Field Effect Shader (legacy — via `add_effect`)
+
+```wgsl
+fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f
 ```
 
 - `coord`: pixel center in grid coords (0-512)
 - `regionMin/Max`: field bounding box
 - `time`: seconds since engine start
-- `params`: field color RGBA (from `u_effectParams`)
+- `params`: field color RGBA
 - Returns: RGBA color. Alpha=0 is transparent. **The shader defines the field's shape via alpha.**
-
-Available uniforms:
-```glsl
-uniform vec4 u_fieldTransform;    // (posX, posY, rotation, scale)
-uniform vec4 u_effectBounds;      // (minX, minY, maxX, maxY)
-uniform vec4 u_effectParams;      // field color RGBA
-uniform sampler2D u_colorTex;     // field presence data
-uniform sampler2D u_stateTex;     // shared state texture
-uniform sampler2D u_fieldMask;    // field shape mask (R8)
-uniform float u_time;
-uniform float u_gridSize;         // 512.0
-uniform vec2 u_camera;
-uniform vec2 u_resolution;
-uniform float u_zoom;
-```
 
 ### Interaction Effect Shader
 
-```glsl
-vec4 interactionEffect(vec2 coord, vec2 regionMin, vec2 regionMax, float time, vec4 params)
-```
-
-Same as fieldEffect, plus extra uniforms:
-```glsl
-uniform vec4 u_fieldAColor;       // RGBA of field A
-uniform vec4 u_fieldBColor;       // RGBA of field B
-uniform vec4 u_fieldATransform;   // (x, y, rotation, scale) of field A
-uniform vec4 u_fieldBTransform;   // (x, y, rotation, scale) of field B
-uniform sampler2D u_overlapCount; // R8: field count per pixel
+```wgsl
+fn interactionEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f
 ```
 
 Output alpha is multiplied by the overlap mask. If `precedence: true`, underlying field pixels are cleared first.
 
 ### State Update Shader
 
-```glsl
-vec4 cellUpdate(vec2 coord, vec4 state, vec4 color, float time, float dt)
+```wgsl
+fn cellUpdate(coord: vec2f, state: vec4f, color: vec4f, time: f32, dt: f32) -> vec4f
 ```
 
 Runs per pixel per frame. Returns new state value (clamped 0-1). Multiple cellUpdate functions have their deltas summed (additive composition).
@@ -175,46 +168,56 @@ Runs per pixel per frame. Returns new state value (clamped 0-1). Multiple cellUp
 
 All shaders have these functions pre-loaded:
 
+### Entity Population
+```wgsl
+fn pop(i: i32) -> vec4f                  // entity i: [x, y, angle, aux]
+fn popCount() -> i32                     // how many entities are live
+```
+Step hooks publish up to 4095 entities as flat floats (4 per entity) via
+`worldData.gpuPopulation`; one shader draws them all — never one field per entity.
+See `src/app/engine/AI_ENGINE_GUIDE.md` § Entity Populations.
+
 ### Noise
-```glsl
-float hash11(float p)           // random [0,1]
-float hash21(vec2 p)            // random [0,1] from 2D
-vec2 hash22(vec2 p)             // random vec2
-float vnoise(vec2 p)            // value noise [0,1]
-float gnoise(vec2 p)            // gradient noise [-1,1]
-float fbm(vec2 p, int octaves)  // fractal brownian motion (max 8 octaves)
-vec2 warp(vec2 p, float strength, float time)  // animated domain warping
+```wgsl
+fn hash11(p: f32) -> f32                 // random [0,1]
+fn hash21(p: vec2f) -> f32               // random [0,1] from 2D
+fn hash22(p: vec2f) -> vec2f             // random vec2
+fn vnoise(p: vec2f) -> f32               // value noise [0,1]
+fn gnoise(p: vec2f) -> f32               // gradient noise [-1,1]
+fn fbm(p: vec2f, octaves: i32) -> f32    // fractal brownian motion (max 8 octaves)
+fn fbm3(p: vec2f) -> f32                 // fbm shorthands: fbm3..fbm6
+fn warp(p: vec2f, strength: f32, time: f32) -> vec2f  // animated domain warping
 ```
 
 ### SDF Primitives
-```glsl
-float sdCircle(vec2 p, float r)
-float sdBox(vec2 p, vec2 b)
-float sdRoundedBox(vec2 p, vec2 b, float r)
-float sdSegment(vec2 p, vec2 a, vec2 b)
-float sdEquilateralTriangle(vec2 p, float r)
-float sdStar(vec2 p, float r, int n, float m)
+```wgsl
+fn sdCircle(p: vec2f, r: f32) -> f32
+fn sdBox(p: vec2f, b: vec2f) -> f32
+fn sdRoundedBox(p: vec2f, b: vec2f, r: f32) -> f32
+fn sdSegment(p: vec2f, a: vec2f, b: vec2f) -> f32
+fn sdEquilateralTriangle(p: vec2f, r: f32) -> f32
+fn sdStar(p: vec2f, r: f32, n: i32, m: f32) -> f32
 ```
 
 ### SDF Operations
-```glsl
-float opUnion(float d1, float d2)
-float opSubtract(float d1, float d2)
-float opIntersect(float d1, float d2)
-float opSmoothUnion(float d1, float d2, float k)
-float opSmoothSubtract(float d1, float d2, float k)
+```wgsl
+fn opUnion(d1: f32, d2: f32) -> f32
+fn opSubtract(d1: f32, d2: f32) -> f32
+fn opIntersect(d1: f32, d2: f32) -> f32
+fn opSmoothUnion(d1: f32, d2: f32, k: f32) -> f32
+fn opSmoothSubtract(d1: f32, d2: f32, k: f32) -> f32
 ```
 
 ### Color & Transform
-```glsl
-vec3 hsv2rgb(vec3 c)
-vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d)
-mat2 rot2(float angle)
-vec2 regionUV(vec2 coord, vec2 regionMin, vec2 regionMax)          // [0,1]
-vec2 regionUVCentered(vec2 coord, vec2 regionMin, vec2 regionMax)  // [-1,1]
-vec2 regionUVAspect(vec2 coord, vec2 regionMin, vec2 regionMax)    // aspect-corrected [-1,1]
-float diffuseLight(vec2 p, vec2 lightPos, float falloff)
-vec3 glow(float d, vec3 col, float intensity, float radius)
+```wgsl
+fn hsv2rgb(c: vec3f) -> vec3f
+fn palette(t: f32, a: vec3f, b: vec3f, c: vec3f, d: vec3f) -> vec3f
+fn rot2(angle: f32) -> mat2x2f
+fn regionUV(coord: vec2f, regionMin: vec2f, regionMax: vec2f) -> vec2f          // [0,1]
+fn regionUVCentered(coord: vec2f, regionMin: vec2f, regionMax: vec2f) -> vec2f  // [-1,1]
+fn regionUVAspect(coord: vec2f, regionMin: vec2f, regionMax: vec2f) -> vec2f    // aspect-corrected [-1,1]
+fn diffuseLight(p: vec2f, lightPos: vec2f, falloff: f32) -> f32
+fn glow(d: f32, col: vec3f, intensity: f32, radius: f32) -> vec3f
 ```
 
 ---
@@ -226,7 +229,7 @@ vec3 glow(float d, vec3 col, float intensity, float radius)
   "type": "add_interaction_effect",
   "fieldA": "field_1_xxx",
   "fieldB": "field_2_xxx",
-  "glsl": "vec4 interactionEffect(...) { ... }",
+  "wgsl": "fn interactionEffect(...) -> vec4f { ... }",
   "blend": "alpha",
   "spread": 5,
   "precedence": true,
