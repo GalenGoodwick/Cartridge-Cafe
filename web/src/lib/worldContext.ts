@@ -99,6 +99,21 @@ export function tokenKind(ctx: WorldContext): 'space' | 'branch' | null {
   return null                                 // house/winner: admin-only
 }
 
+/** the ONE "what am I looking at" sub-line — main/branch/version/save-point,
+ *  worded identically wherever it appears (the world FOCUS chip AND the space
+ *  title badge). Host-only details it can't know (a base world's local backup
+ *  number, a space's save-point number) come in via opts. */
+export function focusSubline(ctx: WorldContext, opts?: { backupVersion?: number; saveVersion?: number }): string {
+  const { kind, identity: id, view } = ctx
+  if (kind === 'branch') return `⑂ ${id.label || 'default branch'} · v${id.version ?? 1} · ${id.author}`
+  if (kind === 'winner') return '⚔ winner · on the podium'
+  if (view === 'readonlySave' || view === 'version') {
+    const v = opts?.saveVersion ?? opts?.backupVersion ?? id.version
+    return `${kind === 'space' ? 'save point' : 'main · backup'}${v ? ` v${v}` : ''}${kind === 'space' ? ' · read-only' : ''}`
+  }
+  return 'main · live'   // house live AND space live → the same words
+}
+
 // ─── deriving the context ───
 
 const BRANCH_SEP = ' ⑂ '   // ' ⑂ '

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import TournamentBar from '@/app/TournamentBar'
+import { deriveContext, focusSubline } from '@/lib/worldContext'
 
 interface VersionMeta {
   id: string
@@ -302,18 +303,24 @@ export default function SpaceToolbar({ slug, name, ownerName, ownerId, isOwner, 
               ✕
             </button>
           )}
-          {/* what is on the glass: main LIVE · a save point · or a ridden branch (maker clickable) */}
-          {versionView !== undefined ? (
-            <span className="ml-2 rounded bg-amber-500/20 text-amber-300 px-1.5 py-0.5 text-[11px]">save point v{versionView} · read-only</span>
-          ) : branchView ? (
+          {/* what is on the glass — worded by the SHARED focusSubline so the space
+              title says exactly what a world's FOCUS chip says (main · live /
+              save point vN). A ridden branch keeps its clickable maker link. */}
+          {branchView ? (
             <span className="ml-2 rounded bg-purple-500/15 text-purple-200/90 px-1.5 py-0.5 text-[11px]">
               ⑂ {branchView.author} · v{branchView.v} · by{' '}
               <a href={`/maker/${encodeURIComponent(branchView.handle)}`} title={`${branchView.handle}'s worlds`}
                 className="hover:text-[#ffdba8] hover:underline decoration-dotted underline-offset-4 transition-colors">{branchView.handle}</a>
             </span>
-          ) : (
-            <span className="ml-2 rounded bg-emerald-500/15 text-emerald-300/90 px-1.5 py-0.5 text-[11px]">LIVE</span>
-          )}
+          ) : (() => {
+            const ctx = deriveContext({ surface: 'world', loaded: slug, slug, spaceOwnerId: isOwner ? 'self' : 'other', myUserId: 'self', versionView })
+            const readonly = versionView !== undefined
+            return (
+              <span className={`ml-2 rounded px-1.5 py-0.5 text-[11px] ${readonly ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/15 text-emerald-300/90'}`}>
+                {focusSubline(ctx, { saveVersion: versionView })}
+              </span>
+            )
+          })()}
           {aiStatus.aiActive ? (
             <span className="ml-2 inline-flex items-center gap-1 rounded bg-emerald-500/15 text-emerald-300 px-1.5 py-0.5 text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

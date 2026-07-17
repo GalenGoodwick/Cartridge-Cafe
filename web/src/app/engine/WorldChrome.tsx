@@ -13,7 +13,7 @@
 
 import { useMemo } from 'react'
 import TournamentBar from '@/app/TournamentBar'
-import { WorldContext, can, tokenKind, rosterFor } from '@/lib/worldContext'
+import { WorldContext, can, tokenKind, rosterFor, focusSubline } from '@/lib/worldContext'
 
 /** everything WorldChrome needs from whatever owns the engine. The host wires
  *  these to FieldEngine's existing refs/callbacks — no new behavior, just one
@@ -73,12 +73,8 @@ const chipHot =
  *  line the bare context can't know (e.g. a base world's "backup vN" position,
  *  or a space's human name); otherwise it's derived from ctx. */
 export function FocusChip({ ctx, nameOverride, subOverride }: { ctx: WorldContext; nameOverride?: string; subOverride?: string }) {
-  const { kind, identity: id, view } = ctx
-  const sub = subOverride ?? (
-    kind === 'branch' ? `⑂ ${id.label || 'default branch'} · v${id.version ?? 1} · ${id.author}`
-    : kind === 'winner' ? '⚔ winner · on the podium'
-    : kind === 'space' ? (view === 'readonlySave' ? 'save point · read-only' : 'your world')
-    : (view === 'version' ? 'main · a backup' : 'main · live'))
+  const { kind, identity: id } = ctx
+  const sub = subOverride ?? focusSubline(ctx)
   const branchy = kind === 'branch' || kind === 'winner'
   return (
     <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
