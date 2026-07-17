@@ -4995,7 +4995,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
           {/* ONE toolbox everywhere — every viewer of a space or branch gets it;
               ownership only unlocks the editing sections inside. */}
-          {(spaceId || onBranchScene) && (
+          {can(ctx, 'toolsPanel') && (
             <button
               onClick={() => setChromeVisible(v => !v)}
               className="absolute bottom-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -5006,7 +5006,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
 
           {/* WORLD TOOLS — one panel, every tier. Viewers see presence + contents;
               the owner (space) or branch-holder additionally gets law + keys + mgmt. */}
-          {(spaceId || onBranchScene) && chromeVisible && (() => {
+          {can(ctx, 'toolsPanel') && chromeVisible && (() => {
             const wd = simulationRef.current?.worldData
             const mp = !(wd?.['singlePlayer'] === true || wd?.['multiplayer'] === false)
             const canEditLaw = can(ctx, 'editLaw')
@@ -5317,7 +5317,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               onClick={async () => {
                 // owner on their LIVE space: CONNECT AI *is* ALTER (the space token
                 // edits main directly) — say so before handing out the key
-                const alterMode = !!spaceSlug && !!isOwner && !(lastSceneRef.current || '').includes(' ⑂ ')
+                const alterMode = can(ctx, 'alterLive')
                 if (alterMode && !plugOpen) { setAlterWarnOpen(true); return }
                 setPlugOpen(v => !v)
                 if (!plugToken && spaceSlug) {
@@ -5336,12 +5336,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                   mintBranchToken(lastSceneRef.current)
                 }
               }}
-              title={spaceSlug && isOwner && !(lastSceneRef.current || '').includes(' ⑂ ')
+              title={can(ctx, 'alterLive')
                 ? 'plug an AI into the LIVE world — it alters main directly, no branch'
                 : undefined}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
-              {spaceSlug && isOwner && !(lastSceneRef.current || '').includes(' ⑂ ') ? '⚡ ALTER' : '⚡ CONNECT AI'}
+              {can(ctx, 'alterLive') ? '⚡ ALTER' : '⚡ CONNECT AI'}
             </button>
             {(isOwner || !spaceId) && spaceSlug && (
               <button

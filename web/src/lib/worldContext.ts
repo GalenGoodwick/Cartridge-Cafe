@@ -55,7 +55,8 @@ export interface WorldContext {
 /** capabilities — the boolean tangle, tabulated once. `can(ctx, x)` replaces
  *  the scattered `spaceId && …` / `lastScene.includes(' ⑂ ') && ownIt` gates. */
 export type Capability =
-  | 'worldTools'    // the ⚙ WORLD TOOLS panel (contents + law + keys)
+  | 'toolsPanel'    // the ⚙ WORLD TOOLS panel is offered (any viewer of a space/branch; sections inside are owner-gated)
+  | 'worldTools'    // the owner-only editing sections of that panel
   | 'mintKey'       // mint an AI edit token (type varies by kind)
   | 'versions'      // open the version/save-point history (view is universal)
   | 'setHead'       // crown a version the head / make-this-live / restore
@@ -79,6 +80,7 @@ export function can(ctx: WorldContext, cap: Capability): boolean {
     case 'vote':         return true
     case 'createBranch': return ctx.surface === 'world'
     case 'versions':     return ctx.surface === 'world'
+    case 'toolsPanel':   return kind === 'space' || kind === 'branch'   // offered to any viewer; sections inside gate on ownership
     case 'worldTools':   return isOwner(role) && (kind === 'space' || kind === 'branch')
     case 'editLaw':      return isOwner(role) && (kind === 'space' || kind === 'branch') && mutable
     case 'mintKey':      return isOwner(role) && (kind === 'space' || kind === 'branch')
