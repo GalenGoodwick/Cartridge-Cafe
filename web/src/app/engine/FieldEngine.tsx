@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
+import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
 import { WorldSandbox } from './world-sandbox'
@@ -5886,18 +5887,12 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
           {playScene && !spaceId && (() => {
-            // driven by the unified context (lib/worldContext). Same output.
-            const { kind, identity: id } = ctx
-            const branchy = kind === 'branch' || kind === 'winner'
-            const sub = branchy
-              ? `⑂ ${id.label || 'default branch'} · v${id.version ?? 1} · ${id.author}`
+            // the SHARED FocusChip (WorldChrome) — same output. The base-world
+            // backup position is a host detail ctx can't know, so pass it in.
+            const branchy = ctx.kind === 'branch' || ctx.kind === 'winner'
+            const sub = branchy ? undefined
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
-            return (
-              <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
-                <div className="text-[11px] tracking-[0.2em] text-white/85">{id.base.toUpperCase()}</div>
-                <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
-              </div>
-            )
+            return <FocusChip ctx={ctx} subOverride={sub} />
           })()}
 
           {/* Info overlay */}

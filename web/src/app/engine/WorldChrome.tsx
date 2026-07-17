@@ -68,18 +68,21 @@ const chipHot =
   'backdrop-blur border border-amber-300/40 text-amber-200 hover:bg-amber-400/25 transition-colors'
 
 /** the FOCUS chip — the single "what am I looking at" element (was built twice:
- *  FieldEngine's chip + SpaceToolbar's badge). */
-function FocusChip({ ctx }: { ctx: WorldContext }) {
+ *  FieldEngine's chip + SpaceToolbar's badge). Exported so every host renders
+ *  THIS one, not its own copy. `subOverride` lets a host supply a display sub-
+ *  line the bare context can't know (e.g. a base world's "backup vN" position,
+ *  or a space's human name); otherwise it's derived from ctx. */
+export function FocusChip({ ctx, nameOverride, subOverride }: { ctx: WorldContext; nameOverride?: string; subOverride?: string }) {
   const { kind, identity: id, view } = ctx
-  const sub =
-    kind === 'branch' ? `⑂ ${id.author}${id.version ? ` · v${id.version}` : ''}`
+  const sub = subOverride ?? (
+    kind === 'branch' ? `⑂ ${id.label || 'default branch'} · v${id.version ?? 1} · ${id.author}`
     : kind === 'winner' ? '⚔ winner · on the podium'
     : kind === 'space' ? (view === 'readonlySave' ? 'save point · read-only' : 'your world')
-    : (view === 'version' ? 'main · a backup' : 'main · live')
+    : (view === 'version' ? 'main · a backup' : 'main · live'))
   const branchy = kind === 'branch' || kind === 'winner'
   return (
     <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
-      <div className="text-[11px] tracking-[0.2em] text-white/85">{id.base.toUpperCase()}</div>
+      <div className="text-[11px] tracking-[0.2em] text-white/85">{(nameOverride || id.base).toUpperCase()}</div>
       <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
     </div>
   )
