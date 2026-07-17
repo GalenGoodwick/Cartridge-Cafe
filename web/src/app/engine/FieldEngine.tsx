@@ -304,16 +304,9 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
   // so the branch base (== the space slug) must come from spaceSlug or every branch view
   // (list, "main", the cell/vote) resolves an empty base and shows nothing.
   const cellBase = () => (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
-  const castVoteFor = useCallback((author: string) => {
-    setCellData(prev => {
-      const doc = JSON.parse(JSON.stringify(prev)) as CellDoc
-      for (const k of Object.keys(doc.votes)) doc.votes[k] = (doc.votes[k] || []).filter(nm => nm !== whoRef.current)
-      doc.votes[author] = [...(doc.votes[author] || []), whoRef.current]
-      saveCellDoc(doc)
-      return doc
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // NOTE: cellData now carries only presence (viewers) + discussion. Voting was
+  // a SECOND tally here (a parallel quorum-of-5 nobody counted) — removed. The
+  // one and only vote is the ⚔ reckoning (TournamentBar / the tournament doc).
   // the WORLD ARENA's view of the ridden branch — tier, cell, votes, podium.
   // Shown in the dock so a branch owner sees their tournament standing without
   // opening the reckoning; explicit filler when the branch has no votes yet.
@@ -5371,13 +5364,11 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 ◆ MAKE ICON
               </button>
             )}
-            {/* juror mode: riding a branch, the viewer votes and speaks from the saddle */}
+            {/* juror mode: riding a branch. ONE vote lives in the ⚔ reckoning
+                (TournamentBar) — here we show the authoritative standing (read
+                from the real tournament doc) + a way to discuss. No second cast. */}
             {riding && (() => {
               const author = (riding.split(' ⑂ ')[1] || '').split(' · ')[0]
-              const viewers = Object.keys(cellData.viewers).length
-              const full = viewers >= 5
-              const votes = (cellData.votes[author] || []).length
-              const mine = (cellData.votes[author] || []).includes(whoRef.current)
               // this branch's standing in the WORLD ARENA — filler when unvoted
               const ident = riding.replace(/ · v\d+$/, '')
               let standing = '⚔ NOT IN THE VOTE YET'
@@ -5397,20 +5388,12 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
               }
               return (<>
                 <div className={`flex items-center px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border ${hot ? 'border-amber-300/40 text-amber-200/90' : 'border-white/10 text-white/45'}`}
-                  title="this branch's standing in the world's tournament — the vote, not the ▲ cheers">
+                  title="this branch's standing in the world's tournament — cast your vote in the ⚔ reckoning">
                   {standing}
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
                   <span className="text-amber-200/80">⑂ {author}</span>
-                  <button
-                    disabled={!full}
-                    title={full ? 'vote for this branch' : `cell votes at 5 (${viewers}/5)`}
-                    className={`px-1.5 rounded border transition-colors ${mine ? 'border-emerald-400/60 text-emerald-300' : 'border-white/15 hover:text-white'} disabled:opacity-30`}
-                    onClick={() => castVoteFor(author)}
-                  >
-                    ▲ {votes}
-                  </button>
-                  <button className="px-1 hover:text-white" title="discuss" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
+                  <button className="px-1 hover:text-white" title="discuss this branch" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
                 </div>
               </>)
             })()}
@@ -5625,10 +5608,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
           )}
           {branchesOpen && (() => {
             const base = cellBase()
-            const viewers = Object.keys(cellData.viewers)
-            const full = viewers.length >= 5
-            const myVote = Object.keys(cellData.votes).find(k => (cellData.votes[k] || []).includes(whoRef.current))
-            const castVote = castVoteFor
+            const viewers = Object.keys(cellData.viewers)   // presence only — the vote lives in the ⚔ reckoning
             const say = (author: string) => {
               const text = cellDraft.trim()
               if (!text) return
@@ -5643,14 +5623,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                     <div className="text-[11px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
                     <button aria-label="Close" className="text-white/40 hover:text-white text-[13px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
                   </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[10px] text-white/40">CELL</span>
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <span key={i} className={`inline-block w-2 h-2 rounded-full ${i < viewers.length ? 'bg-emerald-400' : 'bg-white/15'}`} />
-                    ))}
-                    <span className="text-[10px] text-white/40">
-                      {full ? 'the cell is full — vote' : `${viewers.length}/5 · ${5 - viewers.length} more unlock the vote`}
-                    </span>
+                  <div className="flex items-center gap-2 mb-3 text-[10px] text-white/40">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>{viewers.length} here now</span>
+                    <span className="text-white/25">· ride, discuss — cast your vote in the ⚔ reckoning</span>
                   </div>
                   {/* THE PODIUM — above main and the branches. The elected winner's
                       frozen copy rides from here; main always stays the maker's. */}
@@ -5685,7 +5661,6 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                     <span className="text-white/40 text-[10px]"> — the world as it stands</span>
                   </button>
                   {branchList.filter(bB => bB.author !== 'winner' && !bB.author.startsWith('winner · ')).map(bB => {
-                    const votes = (cellData.votes[bB.author] || []).length
                     const chat = cellData.discussion[bB.author] || []
                     return (
                       <div key={bB.name} className="rounded-lg border border-white/10 mb-1.5">
@@ -5694,16 +5669,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                             <span className="text-amber-200/90">⑂ {bB.author}</span>
                             <span className="text-white/40 text-[10px]"> — v{bB.v} · ride it</span>
                           </button>
-                          <button className="px-2 py-1 text-[10px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
+                          <button className="mr-2 px-2 py-1 text-[10px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
                             💬{chat.length > 0 ? chat.length : ''}
-                          </button>
-                          <button
-                            disabled={!full}
-                            title={full ? 'cast your vote' : 'the cell votes at 5 viewers'}
-                            className={`mr-2 px-2 py-1 rounded text-[10px] border transition-colors ${myVote === bB.author ? 'border-emerald-400/60 text-emerald-300' : 'border-white/15 text-white/50 hover:text-white'} disabled:opacity-30`}
-                            onClick={() => castVote(bB.author)}
-                          >
-                            ▲ {votes}
                           </button>
                         </div>
                         {discOpen === bB.author && (
