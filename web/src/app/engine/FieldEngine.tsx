@@ -106,9 +106,11 @@ fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, para
 interface FieldEngineProps {
   spaceId?: string
   spaceSlug?: string
-  /** the space's human name — so the ONE FOCUS chip titles a space exactly like
-   *  it titles a world (SpaceToolbar used to own this). */
+  /** the space's human name + owner — so the ONE FOCUS chip titles a space
+   *  exactly like it titles a world (SpaceToolbar used to own this). */
   spaceName?: string
+  spaceOwnerName?: string | null
+  spaceOwnerId?: string | null
   isOwner?: boolean
   /** View a historical save point instead of the live world (read-only demo mode) */
   versionView?: number
@@ -164,7 +166,7 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, spaceName, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -5902,14 +5904,28 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           {/* FOCUS — what world/branch/version this tab is actually looking at.
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
-          {(playScene || spaceId) && (() => {
-            // the ONE FocusChip (WorldChrome) — titles a world AND a space now.
-            // Host-only details ctx can't know are passed in.
+          {ctx.surface === 'world' && (playScene || spaceId) && (() => {
+            // the ONE identity strip: a UNIVERSAL back button, and the world
+            // detail (name · owner / main·live) to its RIGHT. Host-only details
+            // ctx can't know are passed in. NOT on the hub (CAFE/SUB-MAIN) —
+            // the cafe main renders with playScene='CAFE', so gate on surface.
             const branchy = ctx.kind === 'branch' || ctx.kind === 'winner'
             const sub = branchy ? undefined
               : spaceId ? (versionView !== undefined ? `save point v${versionView} · read-only` : 'main · live')
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
-            return <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} subOverride={sub} />
+            const back = () => {
+              // a version view backs out to live first; otherwise history, else the cafe
+              if (spaceId && versionView !== undefined) { window.location.href = `/space/${spaceSlug}`; return }
+              if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()
+              else window.location.href = '/'
+            }
+            return (
+              <div className="absolute left-3 top-16 z-40 flex items-stretch gap-1.5">
+                <button onClick={back} title="back"
+                  className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
+                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} subOverride={sub} inline />
+              </div>
+            )
           })()}
 
           {/* Info overlay */}

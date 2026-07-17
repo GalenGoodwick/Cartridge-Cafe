@@ -31,6 +31,22 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   const [msg, setMsg] = useState('')
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(''), 3500) }
 
+  // worlds speak through cafe:caption — a space page must listen too, or every
+  // AI-built world is mute on its own page (this was SpaceToolbar's; restored).
+  const [caption, setCaption] = useState<{ text: string; kind: string } | null>(null)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onCaption = (e: Event) => {
+      const d = (e as CustomEvent).detail as { text: string; kind: string } | null
+      if (timer) clearTimeout(timer)
+      if (!d || (!d.text && d.kind !== 'typing')) { setCaption(null); return }
+      setCaption(d)
+      if (d.kind !== 'typing') timer = setTimeout(() => setCaption(null), d.kind === 'hint' ? 6000 : 3200)
+    }
+    window.addEventListener('cafe:caption', onCaption)
+    return () => { window.removeEventListener('cafe:caption', onCaption); if (timer) clearTimeout(timer) }
+  }, [])
+
   const loadVersions = useCallback(async () => {
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`)
@@ -94,6 +110,8 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         spaceId={spaceId}
         spaceSlug={spaceSlug}
         spaceName={name}
+        spaceOwnerName={ownerName}
+        spaceOwnerId={ownerId}
         isOwner={engineOwner}
         versionView={versionView}
         onDockRect={setDockBottom}
@@ -110,6 +128,18 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         railTop={dockBottom ? dockBottom + 8 : undefined}
         emptyHint="⚔ SAVE A POINT TO OPEN THE VERSION ARENA"
       />
+
+      {/* a world's OSD — captions/hints, restored from SpaceToolbar */}
+      {caption && (caption.text || caption.kind === 'typing') && (
+        <div className="fixed top-8 left-10 z-50 pointer-events-none select-none font-mono uppercase tracking-[0.3em]"
+          style={{
+            color: caption.kind === 'hint' ? 'rgba(140,255,170,0.45)' : 'rgb(140,255,170)',
+            fontSize: caption.kind === 'hint' ? 11 : 22,
+            textShadow: '0 0 8px rgba(80,255,140,0.8), 0 0 28px rgba(80,255,140,0.35)',
+          }}>
+          {caption.text}{caption.kind === 'typing' ? '▮' : ''}
+        </div>
+      )}
 
       {msg && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[10px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
 

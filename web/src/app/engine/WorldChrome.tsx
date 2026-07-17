@@ -72,13 +72,20 @@ const chipHot =
  *  THIS one, not its own copy. `subOverride` lets a host supply a display sub-
  *  line the bare context can't know (e.g. a base world's "backup vN" position,
  *  or a space's human name); otherwise it's derived from ctx. */
-export function FocusChip({ ctx, nameOverride, subOverride }: { ctx: WorldContext; nameOverride?: string; subOverride?: string }) {
+export function FocusChip({ ctx, nameOverride, ownerName, ownerId, subOverride, inline }: {
+  ctx: WorldContext; nameOverride?: string; ownerName?: string; ownerId?: string; subOverride?: string; inline?: boolean
+}) {
   const { kind, identity: id } = ctx
   const sub = subOverride ?? focusSubline(ctx)
   const branchy = kind === 'branch' || kind === 'winner'
   return (
-    <div className="absolute left-3 top-16 z-40 pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
-      <div className="text-[11px] tracking-[0.2em] text-white/85">{(nameOverride || id.base).toUpperCase()}</div>
+    <div className={`${inline ? '' : 'absolute left-3 top-16 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
+      <div className="text-[11px] tracking-[0.2em] text-white/85">
+        {(nameOverride || id.base).toUpperCase()}
+        {ownerName && <span className="text-white/45 tracking-normal"> · {ownerId
+          ? <a href={`/maker/${encodeURIComponent(ownerId)}`} title={`${ownerName}'s worlds`} className="pointer-events-auto hover:text-white hover:underline decoration-dotted underline-offset-4 transition-colors">{ownerName}</a>
+          : ownerName}</span>}
+      </div>
       <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
     </div>
   )
