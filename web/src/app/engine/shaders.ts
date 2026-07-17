@@ -736,14 +736,14 @@ ${EFFECT_UNIFORM_STRUCT}
 // step hook writes to worldData.gpuUniforms reaches effects here via uni().
 @group(2) @binding(1) var<storage, read> effWorldUni: array<vec4f>;
 fn uni(i: i32) -> f32 {
-  let v = effWorldUni[clamp(i, 0, 95) / 4];
-  let c = clamp(i, 0, 95) % 4;
+  let v = effWorldUni[clamp(i, 0, 255) / 4];
+  let c = clamp(i, 0, 255) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 23)]; }
+fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 63)]; }
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -897,14 +897,14 @@ ${EFFECT_UNIFORM_STRUCT}
 // step hook writes to worldData.gpuUniforms reaches effects here via uni().
 @group(2) @binding(1) var<storage, read> effWorldUni: array<vec4f>;
 fn uni(i: i32) -> f32 {
-  let v = effWorldUni[clamp(i, 0, 95) / 4];
-  let c = clamp(i, 0, 95) % 4;
+  let v = effWorldUni[clamp(i, 0, 255) / 4];
+  let c = clamp(i, 0, 255) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 23)]; }
+fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 63)]; }
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -1608,7 +1608,7 @@ struct InteractionGPU {
 @group(1) @binding(4) var<storage, read_write> ixBuf: array<vec4f>;
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
-@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 24>;
+@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 64>;
 // icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
 // The cafe door samples a world's real screenshot INTO its bubble with this —
 // same shader pass as the bubble, so the face can never detach. Empty for
@@ -1619,14 +1619,14 @@ struct InteractionGPU {
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
 // Every visual and interaction shader can read them: uni(0)..uni(63), or uni4(0)..uni4(15).
 fn uni(i: i32) -> f32 {
-  let v = worldUni[clamp(i, 0, 95) / 4];
-  let c = clamp(i, 0, 95) % 4;
+  let v = worldUni[clamp(i, 0, 255) / 4];
+  let c = clamp(i, 0, 255) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 23)]; }
+fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
@@ -2152,7 +2152,7 @@ ${moduleCode}
 @group(1) @binding(4) var<storage, read_write> ixBuf: array<vec4f>;
 @group(1) @binding(5) var<storage, read_write> ixTypeBuf: array<u32>;
 @group(1) @binding(6) var<storage, read> prevAccumBuf: array<vec4f>;
-@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 24>;
+@group(1) @binding(7) var<uniform> worldUni: array<vec4f, 64>;
 // icon atlas: packed RGBA8 (one u32 per texel), 64x64 per slot, row-major top-down.
 // The cafe door samples a world's real screenshot INTO its bubble with this —
 // same shader pass as the bubble, so the face can never detach. Empty for
@@ -2163,14 +2163,14 @@ ${moduleCode}
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
 // Every visual and interaction shader can read them: uni(0)..uni(63), or uni4(0)..uni4(15).
 fn uni(i: i32) -> f32 {
-  let v = worldUni[clamp(i, 0, 95) / 4];
-  let c = clamp(i, 0, 95) % 4;
+  let v = worldUni[clamp(i, 0, 255) / 4];
+  let c = clamp(i, 0, 255) % 4;
   if (c == 0) { return v.x; }
   if (c == 1) { return v.y; }
   if (c == 2) { return v.z; }
   return v.w;
 }
-fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 23)]; }
+fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.

@@ -308,16 +308,33 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   }
 
   // the OTHER players — their live cursors, dancing, so you see them move around
-  // the cafe. Packed after the self-icon: count at sb+3, then (x, y, hue) each.
+  // the cafe. Packed after the self-icon: count at sb+3, then (x, y, hue, seat)
+  // each. seat >= 0 means their BREWED GLYPH sits in that mod_pg slot — draw
+  // their real icon; seat -1 is the comet everyone starts as.
   let ob = sb + 3;
   let nOthers = i32(uni(ob) + 0.5);
   for (var k = 0; k < nOthers; k++) {
-    let opos = vec2f(uni(ob + 1 + k * 3), uni(ob + 2 + k * 3));
-    let ohue = uni(ob + 3 + k * 3);
+    let opos = vec2f(uni(ob + 1 + k * 4), uni(ob + 2 + k * 4));
+    let ohue = uni(ob + 3 + k * 4);
+    let oseat = i32(round(uni(ob + 4 + k * 4)));
     let otint = 0.5 + 0.5 * cos(6.2831 * (ohue + vec3f(0.0, 0.33, 0.67)));
-    // smaller than your own effect (self is /4.5) — other players read as lesser
-    // presence; no center pip, the dance IS the player.
-    col += cf_player((uv - opos) * 6.5, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.3) * 1.05;
+    if (oseat >= 0) {
+      // their glyph, slightly smaller than your own (13 vs your 9) — same
+      // distance guard: only pixels inside their cell run their code
+      let od = uv - opos;
+      let ocell = 1.0 / 13.0;
+      if (dot(od, od) < ocell * ocell * 1.2) {
+        var og = vec4f(0.0);
+        if (oseat == 0) { og = mod_pg0(od * 13.0, t); }
+        else if (oseat == 1) { og = mod_pg1(od * 13.0, t); }
+        else { og = mod_pg2(od * 13.0, t); }
+        col += og.rgb * clamp(og.a, 0.0, 1.0) * 1.4;
+      }
+    } else {
+      // smaller than your own effect (self is /4.5) — other players read as lesser
+      // presence; no center pip, the dance IS the player.
+      col += cf_player((uv - opos) * 6.5, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.3) * 1.05;
+    }
   }
 
   if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.01); }
@@ -723,11 +740,13 @@ try {
   // interpolation in the engine's presence loop), so just pack them. Screen coords
   // (256 = center). Capped so we never overrun the 96-float buffer.
   const others = Array.isArray(wd.presence) ? wd.presence : []
-  const cap = Math.max(0, Math.min(others.length, 8, Math.floor((96 - u.length - 1) / 3)))
+  const cap = Math.max(0, Math.min(others.length, 12, Math.floor((256 - u.length - 1) / 4)))
   u.push(cap)
   for (let k = 0; k < cap; k++) {
     const o = others[k] || {}
-    u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360)
+    // stride 4: x, y, hue, glyph seat (mod_pg0-2 in the shader; -1 = comet)
+    const sl = Number.isFinite(o.slot) ? o.slot : -1
+    u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360, sl)
   }
   wd.gpuUniforms = u
 } catch (e) { /* keep the door open */ }
@@ -754,9 +773,15 @@ const scene = {
   interactionRules: [],
   interactionEffects: [],
   visualTypes: [{ name: 'cf_world', wgsl: WORLD }],
-  // the BREWED GLYPH container: a no-op the engine swaps for the player's own
-  // WGSL (FieldEngine, on cafe:icon). The world shader calls it at the cursor.
-  modules: [{ name: 'playerglyph', wgsl: 'fn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' }],
+  // the BREWED GLYPH containers: no-ops the engine swaps for real cursor WGSL.
+  // playerglyph = YOUR icon (from cafe:icon); pg0-2 = up to three OTHER
+  // players' icons, arriving over presence. The shader calls them at cursors.
+  modules: [
+    { name: 'playerglyph', wgsl: 'fn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' },
+    { name: 'pg0', wgsl: 'fn mod_pg0(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' },
+    { name: 'pg1', wgsl: 'fn mod_pg1(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' },
+    { name: 'pg2', wgsl: 'fn mod_pg2(uv: vec2f, t: f32) -> vec4f { return vec4f(0.0); }' },
+  ],
   timestamp: Date.now(),
 }
 

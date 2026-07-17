@@ -138,6 +138,27 @@ const scenePreloadCache = new Map<string, unknown>()
 // re-rendering ~64 world shaders behind spinners. Survives client-side navigation.
 let cafeIconCache: { sig: string; atlas: Uint32Array; slots: Record<string, number> } | null = null
 
+// BREWED GLYPH — the player's cursor WGSL, wrapped to fill the hub shader's
+// mod_playerglyph container (a no-op until swapped). Shared by the scene
+// loader (overlay BEFORE the first compile — one compile per hub entry, no
+// second stall) and the cafe:icon watcher (recompile only on a real change).
+const playerGlyphWgsl = (): string | null => {
+  if (typeof window === 'undefined') return null
+  const ic = (window as unknown as { __cafeIcon?: { wgsl?: string } }).__cafeIcon
+  return typeof ic?.wgsl === 'string' && /fn\s+visual_glyph\s*\(/.test(ic.wgsl) ? ic.wgsl : null
+}
+const wrapPlayerGlyph = (wgsl: string): string =>
+  wgsl + '\nfn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return visual_glyph(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }'
+// OTHER players' glyphs arrive over presence and share ONE uber-shader — every
+// function a glyph declares is renamed into its slot's namespace so two
+// players' visual_glyph (and any helpers) can coexist. Slots pg0..pg2.
+const wrapOtherGlyph = (wgsl: string, slot: number): string => {
+  let code = wgsl
+  const names = new Set(Array.from(wgsl.matchAll(/\bfn\s+([A-Za-z_]\w*)\s*\(/g), m => m[1]))
+  for (const n of names) code = code.replace(new RegExp('\\b' + n + '\\b', 'g'), `${n}_pg${slot}`)
+  return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
+}
+
 export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
@@ -478,11 +499,8 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       // the slot only exists in the hub scenes — elsewhere there is nothing to fill
       const inHub = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
       if (!inHub) { if (sim.worldData.__glyphOn) delete sim.worldData.__glyphOn; return }
-      const ic = (window as unknown as { __cafeIcon?: { wgsl?: string } }).__cafeIcon
-      const wgsl = typeof ic?.wgsl === 'string' && /fn\s+visual_glyph\s*\(/.test(ic.wgsl) ? ic.wgsl : null
-      const code = wgsl
-        ? wgsl + '\nfn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return visual_glyph(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }'
-        : NOOP
+      const wgsl = playerGlyphWgsl()
+      const code = wgsl ? wrapPlayerGlyph(wgsl) : NOOP
       // scene loads re-register the cartridge's no-op — compare the LIVE registry,
       // not a local memo, and only recompile when the slot actually changes
       const current = renderer.getAllModules().find(m => m.name === MOD)?.wgsl
@@ -601,6 +619,10 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     try { const v = !!localStorage.getItem('cc-presence-off'); setPresenceOff(v); presenceOffRef.current = v } catch { /* fine */ }
   }, [])
   const presenceIdRef = useRef<string>('')
+  // other players' brewed-glyph seats (pid → slot 0-2, pid → wgsl). Lives at
+  // component level so the scene loader can re-overlay live seats after a
+  // reload re-registers the cartridge's no-op modules.
+  const otherGlyphsRef = useRef<{ slots: Map<string, number>; code: Map<string, string> }>({ slots: new Map(), code: new Map() })
   useEffect(() => {
     if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10)
     const id = presenceIdRef.current
@@ -612,9 +634,40 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     // shader already reads. The room key ('cursors:'+world) is the sharding seam:
     // for >~25 players, join 'cursors:'+world+'#2', etc. Hue is derived from each
     // id, so colors are stable without threading color through every move.
-    const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL || 'http://localhost:8080'
+    // dev seam: localStorage cc-presence-url points ONE tab at a local server
+    // (server.js changes can be exercised without touching everyone's env)
+    let presenceOverride: string | null = null
+    try { presenceOverride = localStorage.getItem('cc-presence-url') } catch { /* fine */ }
+    const PRESENCE_URL = presenceOverride || process.env.NEXT_PUBLIC_PRESENCE_URL || 'http://localhost:8080'
     const instance = 'cursors:' + world
     const hueOf = (pid: string) => { let h = 0; for (let i = 0; i < pid.length; i++) h = (h * 31 + pid.charCodeAt(i)) % 360; return h }
+    // OTHER players' BREWED GLYPHS — their cursor WGSL rides presence (auth →
+    // room player). Up to 3 seats: each gets a namespaced module (mod_pg0-2)
+    // in the uber-shader; everyone past that dances as a comet. Seats are
+    // sticky per player id so a busy room doesn't thrash recompiles. A fresh
+    // room starts with fresh seats.
+    const og = otherGlyphsRef.current
+    og.slots.clear(); og.code.clear()
+    const glyphSlots = og.slots
+    const glyphOf = og.code
+    const noteGlyph = (pid: string, glyph: unknown) => {
+      if (pid === id) return
+      const w = typeof glyph === 'string' && glyph.length <= 8192 && /fn\s+visual_glyph\s*\(/.test(glyph) ? glyph : null
+      if (!w) { glyphOf.delete(pid); return }
+      if (glyphOf.get(pid) === w && glyphSlots.has(pid)) return
+      glyphOf.set(pid, w)
+      let slot = glyphSlots.get(pid)
+      if (slot === undefined) {
+        const used = new Set(glyphSlots.values())
+        for (let s = 0; s < 3; s++) if (!used.has(s)) { slot = s; break }
+        if (slot === undefined) return   // no seat free — comet for them
+        glyphSlots.set(pid, slot)
+      }
+      const renderer = rendererRef.current
+      if (!renderer) return
+      const code = wrapOtherGlyph(w, slot)
+      if (renderer.getAllModules().find(m => m.name === 'pg' + slot)?.wgsl !== code) renderer.registerModule('pg' + slot, code)
+    }
     // Entity interpolation: buffer timestamped samples per player, then each frame
     // render each one ~INTERP_DELAY ms in the PAST, blending the two samples that
     // straddle that time. Sparse network updates → perfectly smooth curved motion
@@ -656,19 +709,26 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
     }
     console.log('[cursors] connecting to', PRESENCE_URL, 'room', instance, 'as', id)
     const socket: Socket = io(PRESENCE_URL, { transports: ['websocket', 'polling'], reconnection: true })
+    const announce = () => {
+      socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: world, glyph: playerGlyphWgsl() })
+    }
     socket.on('connect', () => {
       console.log('[cursors] connected', socket.id)
-      socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: world })
+      announce()
       socket.emit('join-instance', { instance })
     })
+    // icon brewed mid-session → re-auth; the server updates the live room
+    // player and re-announces, so peers pick the new glyph up without a rejoin
+    const onIconChange = () => { if (socket.connected) announce() }
+    window.addEventListener('cafe:icon', onIconChange)
     socket.on('connect_error', (e: Error) => console.warn('[cursors] connect_error →', PRESENCE_URL, e.message))
-    socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number }> }) => {
+    socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number; glyph?: string | null }> }) => {
       const ids = new Set(list.map(p => p.id))
       for (const pid of Array.from(buffers.keys())) if (!ids.has(pid)) buffers.delete(pid)
-      for (const p of list) pushSample(p.id, p.rx ?? 0.5, p.ry ?? 0.5)
+      for (const p of list) { pushSample(p.id, p.rx ?? 0.5, p.ry ?? 0.5); noteGlyph(p.id, p.glyph) }
       publish()
     })
-    socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number } }) => { pushSample(player.id, player.rx ?? 0.5, player.ry ?? 0.5); publish() })
+    socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number; glyph?: string | null } }) => { pushSample(player.id, player.rx ?? 0.5, player.ry ?? 0.5); noteGlyph(player.id, player.glyph); publish() })
     socket.on('player-left', ({ playerId }: { playerId: string }) => { buffers.delete(playerId); publish() })
     socket.on('player-moved', ({ playerId, rx, ry }: { playerId: string; rx: number; ry: number }) => { pushSample(playerId, rx, ry); publish() })
     // per-frame: write the INTERPOLATED positions to worldData.presence for the
@@ -679,11 +739,13 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       const wdp = sim?.worldData
       if (sim && wdp && !(wdp['singlePlayer'] === true || wdp['multiplayer'] === false) && !presenceOffRef.current) {
         const renderT = Date.now() - INTERP_DELAY
-        const others: Array<{ id: string; x: number; y: number; hue: number }> = []
+        const others: Array<{ id: string; x: number; y: number; hue: number; slot: number }> = []
         for (const [pid, buf] of buffers) {
           if (pid === id || buf.length === 0) continue
           const s = sampleAt(buf, renderT)
-          others.push({ id: pid, x: s.rx * gridSize, y: s.ry * gridSize, hue: hueOf(pid) })
+          // slot = which mod_pg seat holds this player's brewed glyph (-1 = comet)
+          const slot = glyphOf.has(pid) ? (glyphSlots.get(pid) ?? -1) : -1
+          others.push({ id: pid, x: s.rx * gridSize, y: s.ry * gridSize, hue: hueOf(pid), slot })
           if (others.length >= 25) break
         }
         wdp['presence'] = others
@@ -710,7 +772,7 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
       lastX = x; lastY = y
       socket.emit('position', { rx: x / gridSize, ry: y / gridSize })
     }, 66)
-    return () => { clearInterval(iv); cancelAnimationFrame(raf); socket.disconnect() }
+    return () => { clearInterval(iv); cancelAnimationFrame(raf); window.removeEventListener('cafe:icon', onIconChange); socket.disconnect() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, playScene])
   const spaceHeld = useRef(false)
@@ -1461,6 +1523,24 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
         renderer.clearRegistries()
         if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
         if (scene.modules) for (const m of scene.modules) renderer.registerModule(m.name, m.wgsl)
+        // BREWED GLYPH: swap the player's cursor code into the hub's container
+        // NOW, before the first compile — swapping it after (the cafe:icon
+        // watcher's job) forced a second full uber-shader recompile per entry,
+        // which read as a multi-second stall.
+        {
+          const gw = playerGlyphWgsl()
+          if (gw && scene.modules?.some((m: { name: string }) => m.name === 'playerglyph')) {
+            renderer.registerModule('playerglyph', wrapPlayerGlyph(gw))
+            sim.worldData.__glyphOn = 1
+          }
+          // same for OTHER players' live seats — the cartridge just registered
+          // no-ops over them; restore before the compile, not after it
+          const og = otherGlyphsRef.current
+          for (const [pid, slot] of og.slots) {
+            const w = og.code.get(pid)
+            if (w) renderer.registerModule('pg' + slot, wrapOtherGlyph(w, slot))
+          }
+        }
         sim.restoreFromSnapshots(scene.fields || [])
         for (const field of sim.fields.values()) {
           if (field.visualTypeName) {

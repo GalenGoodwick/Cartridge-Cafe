@@ -148,7 +148,7 @@ export class FieldRenderer {
   private stateUniformBuf: GPUBuffer | null = null
   // World uniforms — the shared "whiteboard" hooks write and all shaders read
   private worldUniBuffer: GPUBuffer | null = null
-  private _worldUniData = new Float32Array(96)   // whiteboard: uni(0..95)
+  private _worldUniData = new Float32Array(256)   // whiteboard: uni(0..255)
   private _worldUniDirty = true
 
   // Icon atlas — packed RGBA8 screenshots (64x64/slot) the cafe door samples
@@ -623,10 +623,10 @@ export class FieldRenderer {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     })
 
-    // The whiteboard: 64 floats written from worldData.gpuUniforms each frame,
+    // The whiteboard: 256 floats written from worldData.gpuUniforms each frame,
     // visible to every visual/interaction shader as uni(i) / uni4(i)
     this.worldUniBuffer = device.createBuffer({
-      size: 384, // 24 vec4f = 96 floats (must match _worldUniData + the lazy path)
+      size: 1024, // 64 vec4f = 256 floats (must match _worldUniData + the lazy path)
       // UNIFORM for the super-compute stage (keeps that stage at 8 storage buffers
       // for Firefox); STORAGE because the frame/render path still binds it as one.
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -3201,9 +3201,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.hitIdPixelCount = pixelCount
   }
 
-  /** Write the world-uniform whiteboard (up to 96 floats). Cheap: skips upload when values unchanged. */
+  /** Write the world-uniform whiteboard (up to 256 floats). Cheap: skips upload when values unchanged. */
   updateWorldUniforms(vals: number[] | Float32Array): void {
-    const n = Math.min(96, vals.length)
+    const n = Math.min(256, vals.length)
     let changed = false
     for (let i = 0; i < n; i++) {
       const v = Number.isFinite(vals[i]) ? vals[i] : 0
@@ -3216,7 +3216,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (!this.device) return
     if (!this.worldUniBuffer) {
       this.worldUniBuffer = this.device.createBuffer({
-        size: 384,   // 24 vec4f = 96 floats
+        size: 1024,   // 64 vec4f = 256 floats
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       })
       this._worldUniDirty = true
