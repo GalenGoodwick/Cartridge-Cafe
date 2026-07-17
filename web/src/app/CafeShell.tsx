@@ -934,6 +934,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           sub-main's name shows under the title (like MY WORLDS), not inline. */}
       {scene === 'SUB-MAIN' && !modalUp && !voting && (
         <div className="fixed top-5 right-6 z-50 flex gap-2">
+          {/* the way back to the cafe — the SUB-MAIN hub had none after the
+              old ◂ was removed (that was the regression). Always present here. */}
+          <button onClick={() => go('CAFE')} className={hubBtn}>⟵ CAFE</button>
           {subMode?.mode === 'group' ? (<>
             <button onClick={() => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null }}
               className={hubBtn}>⟵ SUB-MAINS</button>
