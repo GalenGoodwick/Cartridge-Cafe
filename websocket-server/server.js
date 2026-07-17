@@ -107,16 +107,30 @@ io.on('connection', (socket) => {
   console.log(`Connected: ${socket.id}`)
 
   // Client sends auth with identity
-  socket.on('auth', ({ userId, name, color, spaceSlug }) => {
+  socket.on('auth', ({ userId, name, color, spaceSlug, glyph }) => {
+    const prev = sockets.get(socket.id)
     const playerInfo = {
       userId,
       name,
       color,
       spaceSlug: spaceSlug || null,   // the player's world, if they have one
-      currentInstance: null,
+      // BREWED GLYPH — the player's cursor WGSL rides presence so other clients
+      // can draw them as their real icon. Bounded: oversized is dropped.
+      glyph: typeof glyph === 'string' && glyph.length <= 8192 ? glyph : null,
+      currentInstance: prev ? prev.currentInstance : null,
     }
     sockets.set(socket.id, playerInfo)
-    console.log(`Authenticated: ${userId} (${name})`)
+    // re-auth while already seated (icon brewed mid-session): update the live
+    // room player and re-announce them so peers pick up the new glyph
+    if (playerInfo.currentInstance) {
+      const room = rooms.get(playerInfo.currentInstance)
+      const p = room && room.get(socket.id)
+      if (p) {
+        p.glyph = playerInfo.glyph
+        socket.to(playerInfo.currentInstance).emit('player-joined', { player: p, instance: playerInfo.currentInstance })
+      }
+    }
+    console.log(`Authenticated: ${userId} (${name})${playerInfo.glyph ? ' +glyph' : ''}`)
   })
 
   // Client joins an instance (room)
@@ -148,6 +162,7 @@ io.on('connection', (socket) => {
       id: playerInfo.userId,
       name: playerInfo.name,
       color: playerInfo.color,
+      glyph: playerInfo.glyph || null,   // the brewed cursor WGSL, if any
       rx: playerInfo.rx || 0.5,
       ry: playerInfo.ry || 0.5,
     }

@@ -106,6 +106,9 @@ fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, para
 interface FieldEngineProps {
   spaceId?: string
   spaceSlug?: string
+  /** the space's human name — so the ONE FOCUS chip titles a space exactly like
+   *  it titles a world (SpaceToolbar used to own this). */
+  spaceName?: string
   isOwner?: boolean
   /** View a historical save point instead of the live world (read-only demo mode) */
   versionView?: number
@@ -161,7 +164,7 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, spaceName, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -5409,6 +5412,19 @@ export default function FieldEngine({ spaceId, spaceSlug, isOwner, versionView, 
                 </div>
               )
             })()}
+            {/* SPACE flows — folded in from the retired SpaceToolbar. The buttons
+                live in the ONE dock; the modals/fetches live in SpaceStage,
+                reached by these window events. */}
+            {spaceId && (
+              <div className="flex items-center gap-1">
+                <button className="px-2 py-1 rounded-lg text-[9px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
+                  title="fork this world into a new one you own" onClick={() => window.dispatchEvent(new CustomEvent('cafe:remix-world'))}>⑂ REMIX</button>
+                <button className="px-2 py-1 rounded-lg text-[9px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
+                  title="open a resolution the commons can weigh in on" onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}>⚖ VOTE</button>
+                <a href="/?commons=1" className="px-2 py-1 rounded-lg text-[9px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
+                  title="back to the cafe">⌂ CAFE</a>
+              </div>
+            )}
             {/* CREATE BRANCH sits at the bottom of the dock, right against the VOTE
                 button — branching feeds the vote (each branch is a candidate).
                 GREEN = the create action, unmistakably. Under it, the ◂/▸ browse
@@ -5886,13 +5902,14 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           {/* FOCUS — what world/branch/version this tab is actually looking at.
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
-          {playScene && !spaceId && (() => {
-            // the SHARED FocusChip (WorldChrome) — same output. The base-world
-            // backup position is a host detail ctx can't know, so pass it in.
+          {(playScene || spaceId) && (() => {
+            // the ONE FocusChip (WorldChrome) — titles a world AND a space now.
+            // Host-only details ctx can't know are passed in.
             const branchy = ctx.kind === 'branch' || ctx.kind === 'winner'
             const sub = branchy ? undefined
+              : spaceId ? (versionView !== undefined ? `save point v${versionView} · read-only` : 'main · live')
               : (baseVerPos > 0 ? `main · backup v${baseVers.length + 1 - baseVerPos}` : 'main · live')
-            return <FocusChip ctx={ctx} subOverride={sub} />
+            return <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} subOverride={sub} />
           })()}
 
           {/* Info overlay */}
