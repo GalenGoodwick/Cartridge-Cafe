@@ -1,0 +1,56 @@
+(version 1)
+
+;; ─────────────────────────────────────────────────────────────────────────
+;; cartridge.cafe house-AI build sandbox.
+;;
+;; Wraps each headless `claude -p` build so a stranger's creation brief runs
+;; with your Mac's private files walled off. Deny-list posture: allow by
+;; default (so the claude CLI + its Keychain auth + Bun temp/pipes just work),
+;; then carve OUT read AND write on the sensitive paths a hostile prompt would
+;; target — so an injected brief can neither exfiltrate nor trash them.
+;;
+;; KNOWN LIMITS (by design, accepted for the sandbox-exec approach):
+;;  - Network is NOT host-restricted — sandbox-exec can't reliably pin to
+;;    cartridge.cafe, so outbound is open. The filesystem denials are the wall:
+;;    an injected brief can reach the net but has nothing of yours to send.
+;;  - The Claude credential itself (Keychain "Claude Safe Storage" + the
+;;    ~/.claude config) MUST stay reachable for the subscription to work, so it
+;;    is the one secret still in reach. A separate macOS user would close this.
+;;
+;; Invoke: sandbox-exec -D SCRATCH=<dir> -f build-sandbox.sb <claude> -p ...
+;; ─────────────────────────────────────────────────────────────────────────
+
+(allow default)
+
+;; keep the -D SCRATCH param referenced (redundant under allow-default, but
+;; documents the per-build working dir and validates the invocation)
+(allow file-write* (subpath (param "SCRATCH")))
+
+;; ── Wall off private user data: no read, no write ────────────────────────
+;; (blocks both exfiltration and tampering by an injected brief)
+(deny file-read* file-write*
+  ;; keys, credentials, cloud config
+  (subpath "/Users/galengoodwick/.ssh")
+  (subpath "/Users/galengoodwick/.aws")
+  (subpath "/Users/galengoodwick/.gnupg")
+  (subpath "/Users/galengoodwick/.kube")
+  ;; NOT all of ~/.config — claude needs ~/.config/configstore. Deny only the
+  ;; credential-bearing tools that live there.
+  (subpath "/Users/galengoodwick/.config/gh")        ;; GitHub CLI token
+  (subpath "/Users/galengoodwick/.config/neonctl")   ;; Neon DB credentials
+  (literal "/Users/galengoodwick/.npmrc")
+  (literal "/Users/galengoodwick/.netrc")
+  (literal "/Users/galengoodwick/.zsh_history")
+  (literal "/Users/galengoodwick/.bash_history")
+
+  ;; ALL your source repos + their .env secrets live under Documents
+  (subpath "/Users/galengoodwick/Documents")
+  (subpath "/Users/galengoodwick/Desktop")
+
+  ;; personal data + browser/mail stores
+  (subpath "/Users/galengoodwick/Library/Messages")
+  (subpath "/Users/galengoodwick/Library/Mail")
+  (subpath "/Users/galengoodwick/Library/Cookies")
+  (subpath "/Users/galengoodwick/Library/Application Support/Google")
+  (subpath "/Users/galengoodwick/Library/Application Support/Firefox")
+  (subpath "/Users/galengoodwick/Library/Safari"))

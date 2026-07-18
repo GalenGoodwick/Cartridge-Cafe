@@ -1,0 +1,71 @@
+{
+ "name": "ASCENT",
+ "fields": [
+  {
+   "id": "as_f",
+   "name": "Ascent",
+   "color": [
+    0.01,
+    0.01,
+    0.04,
+    1
+   ],
+   "effects": [],
+   "memory": [],
+   "proximity": [],
+   "properties": {},
+   "transform": {
+    "x": 256,
+    "y": 256,
+    "rotation": 0,
+    "scale": 1,
+    "vx": 0,
+    "vy": 0,
+    "vr": 0
+   },
+   "shapeType": "rect",
+   "w": 512,
+   "h": 512,
+   "visualTypeName": "ascent",
+   "noHit": true,
+   "noCollide": true
+  }
+ ],
+ "worldParams": {
+  "gravity": 0,
+  "friction": 1,
+  "collisionForce": 0,
+  "boundaryMode": "open",
+  "bounciness": 0,
+  "gravitationalConstant": 0
+ },
+ "worldData": {
+  "noPixelSampling": true,
+  "instructions": "ASCENT — a one-thumb climb.\n\nA light rises on its own up a narrow channel. DRAG left and right to weave it past the drifting rings. Touch and hold to steer; let go and it holds its line.\n\nThe higher you climb the faster it goes. Your score is height. Tap to rise, tap to retry.",
+  "postProcess": {
+   "bloomIntensity": 0.8,
+   "bloomThreshold": 0.45,
+   "exposure": 1.05,
+   "vignetteStrength": 0.4,
+   "vignetteRadius": 0.8
+  }
+ },
+ "stepHooks": [
+  {
+   "id": "as_climb",
+   "author": "fable",
+   "description": "ASCENT: a rising light you drag past drifting hazards; height is score",
+   "code": "\ntry {\n  const wd = sim.worldData\n  const CH = 0.60          // channel half-width the light travels within\n  const LY = 0.42          // the light's fixed screen height (lower third)\n  const AHEAD = 1.7        // how far above the light hazards are born\n  const R_HAZ = 0.13       // hazard radius\n  if (!wd.__as || wd.__fresh) {\n    delete wd.__fresh\n    wd.__as = { alive: 0, started: 0, climb: 0, lx: 0, speed: 0.55,\n      haz: [], nextSpawn: 1.2, best: wd.__as ? wd.__as.best : 0,\n      flash: 0, hist: [], mn: 0, milestone: 0, t: 0 }\n  }\n  const G = wd.__as\n  const pdt = Math.min(dt, 0.05)\n  G.t += pdt\n\n  const mx = ((wd.mouse_x ?? 256) - 256) / 256\n  const down = !!wd.mouse_down\n  const mn = wd.mouse_down_n || 0\n  const tapped = mn > G.mn\n  if (tapped) G.mn = mn\n\n  const reset = () => {\n    G.alive = 1; G.started = 1; G.climb = 0; G.lx = 0; G.speed = 0.55\n    G.haz = []; G.nextSpawn = 1.2; G.hist = []; G.milestone = 0\n    wd.__play_sound = { frequency: 330, duration: 0.18, volume: 0.2, type: 'sine' }\n  }\n\n  // tap to begin, and tap to retry after a fall\n  if (tapped && G.started < 0.5) reset()\n  else if (tapped && G.alive < 0.5 && G.started > 0.5) reset()\n\n  if (G.alive > 0.5) {\n    // steer: the light eases toward the thumb's x while it's down\n    if (down) {\n      const target = Math.max(-CH, Math.min(CH, mx))\n      G.lx += (target - G.lx) * Math.min(1, pdt * 13)\n    }\n\n    // climb: speed creeps up the higher you get\n    G.speed = 0.55 + Math.min(0.9, G.climb * 0.012)\n    G.climb += G.speed * pdt\n\n    // record the trail (climb-keyed) so the tail shows the true path\n    G.hist.push({ c: G.climb, x: G.lx })\n    if (G.hist.length > 200) G.hist.shift()\n\n    // spawn hazards ahead; density rises with height\n    if (G.climb >= G.nextSpawn) {\n      const pair = G.climb > 8 && Math.random() < 0.35\n      const mk = () => {\n        const x0 = (Math.random() * 2 - 1) * (CH - 0.05)\n        G.haz.push({ y: G.climb + AHEAD, x0, amp: 0.1 + Math.random() * 0.28,\n          ph: Math.random() * 6.28, sp: 0.6 + Math.random() * 1.1, r: R_HAZ })\n      }\n      mk(); if (pair) mk()\n      G.nextSpawn = G.climb + Math.max(0.55, 0.95 - G.climb * 0.01)\n    }\n\n    // milestone chime every 100 \"metres\"\n    const m = Math.floor(G.climb * 10)\n    if (m >= G.milestone + 100) { G.milestone = Math.floor(m / 100) * 100\n      wd.__play_sound = { frequency: 660, duration: 0.12, volume: 0.16, type: 'triangle' } }\n\n    // move + test hazards\n    for (let i = G.haz.length - 1; i >= 0; i--) {\n      const hz = G.haz[i]\n      const hx = Math.max(-CH, Math.min(CH, hz.x0 + hz.amp * Math.sin(G.t * hz.sp + hz.ph)))\n      const screenY = LY - (hz.y - G.climb)\n      hz._x = hx; hz._sy = screenY\n      if (screenY > 1.35) { G.haz.splice(i, 1); continue }\n      // collision with the light\n      if (Math.abs(hx - G.lx) < 0.12 && Math.abs(screenY - LY) < 0.11) {\n        G.alive = 0; G.flash = 1\n        if (Math.floor(G.climb * 10) > G.best) G.best = Math.floor(G.climb * 10)\n        wd.__play_sound = { frequency: 70, duration: 0.5, volume: 0.4, type: 'sine' }\n      }\n    }\n  } else {\n    // dead or waiting: hazards hold, flash decays\n    for (const hz of G.haz) { hz._x = hz._x ?? hz.x0; hz._sy = hz._sy ?? -2 }\n  }\n  G.flash = Math.max(0, G.flash - pdt * 1.6)\n\n  // ── HUD ── (the engine anchors text at its LEFT edge — no centering — so\n  // everything is a deliberately left-aligned title card / score readout)\n  const meters = Math.floor(G.climb * 10)\n  if (G.started < 0.5) {\n    wd.hud = [{ id: 'as_t', type: 'text', x: '8%', y: '36%', fontSize: '46px', color: '#dff6ff', text: 'ASCENT' },\n              { id: 'as_h', type: 'text', x: '8%', y: '47%', fontSize: '15px', color: '#8fb6c9', text: 'drag to weave · tap to rise' }]\n  } else if (G.alive < 0.5) {\n    wd.hud = [{ id: 'as_s', type: 'text', x: '8%', y: '36%', fontSize: '42px', color: '#ffffff', text: meters + ' m' },\n              { id: 'as_b', type: 'text', x: '8%', y: '46%', fontSize: '15px', color: '#8fb6c9', text: 'best ' + G.best + ' m' },\n              { id: 'as_r', type: 'text', x: '8%', y: '53%', fontSize: '15px', color: '#ffcf8f', text: 'tap to retry' }]\n  } else {\n    wd.hud = [{ id: 'as_s', type: 'text', x: '6%', y: '5%', fontSize: '24px', color: '#dff6ff', text: '▲ ' + meters + ' m' }]\n  }\n\n  // ── uniforms ──\n  const u = new Array(48).fill(0)\n  u[0] = G.lx; u[1] = LY; u[2] = G.alive; u[3] = G.climb\n  u[4] = G.flash; u[5] = CH; u[6] = G.started\n  u[7] = Math.min(1, (G.speed - 0.55) / 0.9)\n  // trail: 8 samples spaced 0.06 in screen-space below the light\n  for (let i = 0; i < 8; i++) {\n    const targetC = G.climb - (i + 1) * 0.06\n    let bx = G.lx\n    for (let k = G.hist.length - 1; k >= 0; k--) { if (G.hist[k].c <= targetC) { bx = G.hist[k].x; break } }\n    u[8 + i] = bx\n  }\n  // hazards: nearest 8 to the light\n  const vis = G.haz.filter(h => h._sy != null && h._sy > -1.6 && h._sy < 1.4)\n    .sort((a, b) => Math.abs(a._sy - LY) - Math.abs(b._sy - LY)).slice(0, 8)\n  for (let i = 0; i < vis.length; i++) {\n    const o = 16 + i * 3\n    u[o] = vis[i]._x; u[o + 1] = vis[i]._sy; u[o + 2] = vis[i].r\n  }\n  u[40] = G.t\n  wd.gpuUniforms = u\n} catch (e) { /* the climb forgives a stumble */ }\n"
+  }
+ ],
+ "interactionRules": [],
+ "interactionEffects": [],
+ "visualTypes": [
+  {
+   "name": "ascent",
+   "wgsl": "\nfn as_hue(h: f32) -> vec3f {\n  return 0.5 + 0.5 * cos(6.2831853 * (h + vec3f(0.0, 0.33, 0.66)));\n}\n\n// the deep well the light climbs: a vertical gradient with a scrolling nebula\n// and sparse stars, parallaxed by how far you've climbed\nfn as_well(p: vec2f, climb: f32, t: f32) -> vec3f {\n  let up = clamp(0.5 - p.y * 0.5, 0.0, 1.0);\n  var c = mix(vec3f(0.020, 0.020, 0.055), vec3f(0.006, 0.010, 0.030), up);\n  // nebula drifts down as you rise\n  let q = vec2f(p.x * 0.9, p.y * 0.7 + climb * 0.5);\n  c += vec3f(0.05, 0.06, 0.13) * fbm(q + vec2f(t * 0.02, 0.0), 4) * (0.5 + up);\n  // stars, also scrolling with the climb\n  let sp = vec2f(p.x * 7.0, p.y * 7.0 + climb * 3.0);\n  let h = hash21(floor(sp));\n  if (h > 0.972) {\n    c += vec3f(0.7, 0.78, 0.95) * smoothstep(0.16, 0.0, length(fract(sp) - 0.5)) * (0.4 + 0.6 * sin(t * 2.0 + h * 50.0));\n  }\n  return c;\n}\n\nfn visual_ascent(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  let t = time;\n  let lx = uni(0);\n  let LY = uni(1);\n  let alive = uni(2);\n  let climb = uni(3);\n  let flash = uni(4);\n  let CH = uni(5);\n  let started = uni(6);\n  let speedN = uni(7);\n\n  // death shake: the whole field jitters as the light shatters\n  var p = uv;\n  p += flash * 0.018 * vec2f(sin(t * 83.0), cos(t * 71.0));\n\n  var col = as_well(p, climb, t);\n\n  // ── the channel walls: two glowing rails the light must stay between ──\n  let wallX = CH + 0.14;\n  let rail = smoothstep(0.06, 0.0, abs(abs(p.x) - wallX));\n  col += vec3f(0.25, 0.5, 0.7) * rail * 0.6;\n  // a soft haze past the rails so the playfield reads as a lit column\n  col *= mix(1.0, 0.45, smoothstep(wallX, wallX + 0.35, abs(p.x)));\n\n  // ── the trail: fading embers below the light where it has been ──\n  for (var i = 0; i < 8; i++) {\n    let tx = uni(8 + i);\n    let ty = LY + f32(i + 1) * 0.055;\n    let d = p - vec2f(tx, ty);\n    let fall = 1.0 - f32(i) / 8.0;\n    col += mix(vec3f(0.2, 0.7, 1.0), vec3f(0.9, 0.4, 1.0), speedN) * exp(-dot(d, d) * 900.0) * fall * 0.5;\n  }\n\n  // ── hazards: drifting rings of danger ──\n  for (var i = 0; i < 8; i++) {\n    let b = 16 + i * 3;\n    let r = uni(b + 2);\n    if (r > 0.001) {\n      let hp = vec2f(uni(b), uni(b + 1));\n      let d = length(p - hp);\n      let pulse = 0.5 + 0.5 * sin(t * 5.0 + f32(i) * 1.7);\n      // bright ring + warm core\n      let ring = exp(-pow((d - r) / (0.02 + 0.02 * pulse), 2.0));\n      let coreGlow = exp(-d * d * 26.0);\n      let danger = mix(vec3f(1.0, 0.35, 0.18), vec3f(1.0, 0.7, 0.2), pulse);\n      col += danger * ring * 1.4;\n      col += vec3f(0.6, 0.12, 0.05) * coreGlow * 0.5;\n    }\n  }\n\n  // ── the light: the player. A hot core with a soft halo ──\n  if (started > 0.5) {\n    let ld = p - vec2f(lx, LY);\n    let dist = length(ld);\n    let heat = mix(vec3f(0.5, 0.85, 1.0), vec3f(1.0, 0.55, 0.95), speedN);\n    // when dead the core dims to an ember\n    let vigor = mix(0.25, 1.0, alive);\n    col += heat * exp(-dist * dist * 1500.0) * 2.6 * vigor;         // core\n    col += heat * exp(-dist * dist * 120.0) * 0.7 * vigor;          // halo\n    col += vec3f(1.0) * exp(-dist * dist * 5000.0) * vigor;         // white pip\n  }\n\n  // death wash\n  col = mix(col, vec3f(0.9, 0.12, 0.08), flash * 0.5);\n\n  col = col / (1.0 + col * 0.15);   // filmic-ish, lets the glows bloom\n  if (col.x != col.x || col.y != col.y || col.z != col.z) { col = vec3f(0.02); }\n  return vec4f(clamp(col, vec3f(0.0), vec3f(20.0)), 1.0);\n}"
+  }
+ ],
+ "modules": [],
+ "timestamp": 1784344970291
+}

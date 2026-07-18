@@ -20,9 +20,11 @@ async function sessionUserId(): Promise<string | null> {
  *  AI-brewed icon lands without a manual localStorage step. */
 export async function GET() {
   const uid = await sessionUserId()
-  if (!uid) return NextResponse.json({ icon: null })
+  if (!uid) return NextResponse.json({ icon: null, signedIn: false })
   const icon = await loadGameSlot('player-icon:' + uid)
-  return NextResponse.json({ icon: icon ?? null })
+  // signedIn lets the shell tell "nothing brewed" (server truth: wear the
+  // default) apart from "signed out" (localStorage carries what it has)
+  return NextResponse.json({ icon: icon ?? null, signedIn: true })
 }
 
 /** POST /api/engine/player-icon — mint the player's ICON TOKEN (uc_it_…).

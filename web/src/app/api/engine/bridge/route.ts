@@ -4,6 +4,7 @@ import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionR
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
 import { validateSceneToken } from '../scene-token'
+import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
 import { prisma } from '@/lib/prisma'
@@ -626,6 +627,10 @@ export async function POST(req: NextRequest) {
           const sceneResult = applyCommandToScene(auth.sceneName!, cmd)
           if (sceneResult.fieldId) cmd.fieldId = sceneResult.fieldId
           results.push({ ...sceneResult, scene: auth.sceneName })
+          // advance the branch's authored revision — a tab standing in this
+          // branch adopts the edit live (branches never push, so there is no
+          // clobber to prevent; the poll is purely so no refresh is needed)
+          bumpWorldRev(sceneKey(auth.sceneName!))
         } catch (e) {
           batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
           break   // stop the batch; we roll the scene back below
@@ -643,6 +648,9 @@ export async function POST(req: NextRequest) {
           // it propagates to open tabs via SSE (fixes the "deploy doesn't stick" flap)
           const gb = globalThis as unknown as { __spaceBridgeWrite?: Map<string, number> }
           ;(gb.__spaceBridgeWrite ??= new Map()).set(auth.spaceId!, Date.now())
+          // and advance the authored revision so a playing tab ADOPTS this edit
+          // live (pulls + hot-applies) instead of only deferring, then clobbering
+          bumpWorldRev(spaceKey(auth.spaceId!))
         } catch (e) {
           batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
           break   // stop the batch; we roll the snapshot back below

@@ -59,7 +59,17 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params
-  const owned = await getOwnedSpace(slug)
+  // the HOUSE AI: the admin engine token may mint a build key for any world —
+  // this is how the resident builder answers creation briefs without the owner
+  // pasting anything anywhere ("an AI lives here")
+  const bearerTok = req.headers.get('authorization')?.slice(7)
+  const isHouse = !!process.env.ENGINE_AGENT_TOKEN && bearerTok === process.env.ENGINE_AGENT_TOKEN
+  const owned = isHouse
+    ? await (async () => {
+        const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })
+        return sp ? { userId: sp.ownerId, spaceId: sp.id } : null
+      })()
+    : await getOwnedSpace(slug)
   if (!owned) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
