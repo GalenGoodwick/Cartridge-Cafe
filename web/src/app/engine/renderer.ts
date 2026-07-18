@@ -545,9 +545,23 @@ export class FieldRenderer {
     if (!adapter) {
       console.error('No WebGPU adapter found')
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('cc:fault', {
-          detail: { kind: 'gpu-lost', message: 'The GPU is unavailable — it likely needs a restart. Fully quit the browser (Cmd+Q) and reopen.' },
-        }))
+        // the same WebGL2 tell the SupportGate uses: alive = WebGPU
+        // specifically is off (flag/policy); dead = acceleration off or the
+        // GPU process crashed. Say the right fix, and REPORT it — an engine
+        // that dies silently after the gate passed is a dark window with no
+        // witness.
+        let gl2 = 'dead'
+        try { const c = document.createElement('canvas'); const g = c.getContext('webgl2'); if (g) { const dbg = g.getExtension('WEBGL_debug_renderer_info'); gl2 = 'alive · ' + String(dbg ? g.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)).slice(0, 60) } } catch { /* dead */ }
+        const msg = gl2 === 'dead'
+          ? 'The GPU is unreachable — graphics acceleration may be off, or the GPU process crashed. Check chrome://settings/system → graphics acceleration, then fully quit the browser (Cmd+Q) and reopen.'
+          : 'WebGPU is switched off in this browser (WebGL2 still works). Try chrome://flags/#enable-unsafe-webgpu — or ask your admin, on a managed machine.'
+        window.dispatchEvent(new CustomEvent('cc:fault', { detail: { kind: 'gpu-lost', message: msg } }))
+        try {
+          void fetch('/api/engine/quarantine', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+            body: JSON.stringify({ phase: 'engine-init', url: window.location?.href, hazards: [{ name: 'no-adapter', reason: 'engine init: adapter null after retry · WebGL2 ' + gl2 + ' · ' + (navigator.userAgent || '').slice(0, 120) }] }),
+          }).catch(() => {})
+        } catch { /* telemetry never blocks */ }
       }
       return false
     }
