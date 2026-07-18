@@ -664,7 +664,7 @@ try {
         const at = Date.now()
         U.sharedAt = at
         const out = {}
-        for (const n of U.order) {
+        for (const n of Object.keys(U.bubbles)) {
           const B = U.bubbles[n]
           if (B) out[n] = { x: Math.round(B.x * 10) / 10, y: Math.round(B.y * 10) / 10, born: B.born }
         }
