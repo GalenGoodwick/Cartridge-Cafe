@@ -21,6 +21,11 @@ export async function mayWriteScene(req: NextRequest, name: string): Promise<boo
   }
   const email = (await getServerSession(authOptions))?.user?.email
   if (!email) return false
+  // the site's human admins (ADMIN_EMAILS) hold the same authority as the
+  // engine token — without this, the owner couldn't SET MAIN on a canonical
+  // world from their own signed-in browser
+  const admins = (process.env.ADMIN_EMAILS || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean)
+  if (admins.includes(email.toLowerCase())) return true
   const bi = name.indexOf(' ⑂ ')
   if (bi < 0) return false                       // canonical/house world — admin only
   // The HANDLE is the first segment after ⑂. A branch may carry an optional label

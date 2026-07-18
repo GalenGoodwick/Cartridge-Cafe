@@ -6237,6 +6237,25 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                 <button onClick={back} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
                 <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} subOverride={sub} inline />
+                {branchy && playScene && (
+                  <button
+                    title="players joining this world see the version you're looking at"
+                    onClick={async () => {
+                      const base = playScene.split(' ⑂ ')[0].trim()
+                      const r = await fetch('/api/engine/lineage/set-main', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ base, holder: playScene }),
+                      })
+                      const d = await r.json().catch(() => ({}))
+                      window.dispatchEvent(new CustomEvent('cafe:caption', { detail: {
+                        text: r.ok ? `♛ main now serves ${playScene.split(' ⑂ ')[1] || playScene}` : (d.error || 'could not set main'),
+                        kind: r.ok ? 'hint' : 'error',
+                      } }))
+                    }}
+                    className="pointer-events-auto px-2.5 rounded-lg font-mono text-[10px] tracking-[0.15em] text-amber-200/80 hover:text-amber-100 bg-black/55 backdrop-blur border border-amber-300/25 hover:border-amber-300/60 transition-colors">
+                    ♛ SET MAIN
+                  </button>
+                )}
               </div>
             )
           })()}
