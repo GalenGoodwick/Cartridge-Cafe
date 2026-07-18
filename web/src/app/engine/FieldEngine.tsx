@@ -5336,7 +5336,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {/* Mandatory world instructions + branch + AI status — top right, every world.
               On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
-          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' ? 'top-16' : 'top-3'}`}>
+          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -5676,10 +5676,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             )
           })()}
           {instrOpen && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInstrOpen(false); setInstrEdit(false) }}>
+            <div className={`absolute right-36 z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}>
+              {/* anchored to the grid's top-right under its button — a reference
+                  card, not a curtain: the vote rail and the world stay visible
+                  and clickable while it's open (✕ or ESC closes) */}
               <div
-                className="max-w-md w-[90%] max-h-[70%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[13px] leading-relaxed text-white/85"
-                onClick={e => e.stopPropagation()}
+                className="w-[380px] max-w-[80vw] max-h-[62vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 backdrop-blur p-5 font-mono text-[13px] leading-relaxed text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[11px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>

@@ -7,6 +7,7 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
+import { useIsMobile } from '@/lib/useIsMobile'
 
 const BLURBS: Record<string, string> = {
   'FABRIC': 'bend starlight',
@@ -58,19 +59,30 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [mute, setMute] = useState(false)
   const [blocked, setBlocked] = useState(false)
   // BREW YOUR ICON — the local player's dancing avatar. fx = look (0 comet · 1
-  // ring · 2 eyes · 3 spark), hue 0..1, size. Lives in localStorage and rides to
-  // the shader via window.__cafeIcon (packed at the uniform tail by the hook).
+  // ring · 2 eyes · 3 spark · 4 cup · 5 the un-brewed DEFAULT: a big black
+  // cursor with a white pointer — not brewable, only ever the starting state),
+  // hue 0..1, size. Lives in localStorage and rides to the shader via
+  // window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
-  const [icon, setIcon] = useState<{ fx: number; hue: number; size: number; wgsl?: string }>({ fx: 0, hue: 0.55, size: 1 })
+  const [icon, setIcon] = useState<{ fx: number; hue: number; size: number; wgsl?: string }>({ fx: 5, hue: 0.55, size: 1 })
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('cafeIcon') || 'null')
-      if (saved && typeof saved.fx === 'number') setIcon({ fx: saved.fx, hue: saved.hue ?? 0.55, size: saved.size ?? 1, wgsl: typeof saved.wgsl === 'string' ? saved.wgsl : undefined })
+      // scrub the ACCIDENTAL comet: a StrictMode double-mount once persisted
+      // the untouched {fx:0, hue:0.55, size:1} default — it reads as brewed
+      // but never was, and it kept the un-brewed default cursor from landing
+      const accidental = saved && saved.fx === 0 && saved.hue === 0.55 && saved.size === 1 && !saved.wgsl
+      if (saved && typeof saved.fx === 'number' && !accidental) setIcon({ fx: saved.fx, hue: saved.hue ?? 0.55, size: saved.size ?? 1, wgsl: typeof saved.wgsl === 'string' ? saved.wgsl : undefined })
     } catch { /* first brew */ }
     // an AI may have brewed the icon through the bridge (set_player_icon) —
-    // the server copy wins over the local one, so it follows you across browsers
+    // the server copy wins over the local one, so it follows you across
+    // browsers. Signed in with NOTHING brewed is also server truth: wear the
+    // default cursor, whatever stale localStorage claims.
     fetch('/api/engine/player-icon').then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.icon && typeof d.icon.fx === 'number') setIcon({ fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined }) })
+      .then(d => {
+        if (d?.icon && typeof d.icon.fx === 'number') setIcon({ fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined })
+        else if (d?.signedIn) setIcon({ fx: 5, hue: 0.55, size: 1 })
+      })
       .catch(() => { /* offline is fine — localStorage carried it */ })
   }, [])
   // the panel's ICON TOKEN — minted on open, folded into the copied prompt so
@@ -83,14 +95,21 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
       .then(d => { if (d?.token) setIconToken(d.token) })
       .catch(() => { /* signed out — the copied prompt will say so */ })
   }, [iconOpen])
-  // while the brew panel is open, watch for the AI's confirmation landing
+  // watch for the AI's brew landing — fast while the panel is open, slow in the
+  // background otherwise, so an icon set from a terminal session hot-swaps the
+  // cursor without a reload (setIcon → cafe:icon → the engine recompiles the
+  // glyph module). Hidden tabs skip the beat.
   useEffect(() => {
-    if (!iconOpen) return
-    const iv = setInterval(() => {
+    const look = () => {
+      if (document.hidden) return
       fetch('/api/engine/player-icon').then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.icon && typeof d.icon.fx === 'number') setIcon(prev => (prev.fx === d.icon.fx && prev.hue === d.icon.hue && prev.size === d.icon.size && prev.wgsl === d.icon.wgsl) ? prev : { fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined }) })
+        .then(d => {
+          if (d?.icon && typeof d.icon.fx === 'number') setIcon(prev => (prev.fx === d.icon.fx && prev.hue === d.icon.hue && prev.size === d.icon.size && prev.wgsl === d.icon.wgsl) ? prev : { fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined })
+          else if (d?.signedIn) setIcon(prev => (prev.fx === 5 && !prev.wgsl) ? prev : { fx: 5, hue: 0.55, size: 1 })
+        })
         .catch(() => {})
-    }, 2000)
+    }
+    const iv = setInterval(look, iconOpen ? 2000 : 12000)
     return () => clearInterval(iv)
   }, [iconOpen])
   // don't persist the untouched default — in dev, StrictMode's double-mount
@@ -203,6 +222,14 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const votingRef = useRef(false)
   votingRef.current = voting
   const [mainRoster, setMainRoster] = useState<string[]>([])
+  // MOBILE: the hub sim (cafe-cartridge.mjs) reads this global to drop worlds a
+  // phone can't play. Publish it here so React's device detection is the single
+  // source of truth; the sim polls the shelf every couple seconds and re-honors.
+  const isMobile = useIsMobile()
+  useEffect(() => {
+    ;(window as unknown as { __cafeMobile?: boolean; __cafePoke?: number }).__cafeMobile = isMobile
+    ;(window as unknown as { __cafePoke?: number }).__cafePoke = Date.now()   // nudge the sim to re-roster now
+  }, [isMobile])
   const launchMapRef = useRef<Record<string, string>>({})
   const travelTo = (name: string) => {
     window.dispatchEvent(new CustomEvent('cafe:launch', { detail: launchMapRef.current[name] || name }))
@@ -654,7 +681,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       if (captionTimer.current) clearTimeout(captionTimer.current)
       if (!d || (!d.text && d.kind !== 'typing')) { setCaption(null); return }
       setCaption(d)
-      if (d.kind !== 'typing') captionTimer.current = setTimeout(() => setCaption(null), d.kind === 'hint' ? 6000 : 3200)
+      if (d.kind !== 'typing') captionTimer.current = setTimeout(() => setCaption(null), 3000)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -902,7 +929,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {portals.length > 0 && hover && !modalUp && !voting && (mouse.x !== 0 || mouse.y !== 0) && (
         <div
           className="fixed z-50 pointer-events-none select-none rounded-xl bg-black/60 backdrop-blur-sm border border-brass/20 px-3.5 py-2.5"
-          style={{ left: Math.min(mouse.x + 18, Math.max(0, vp.w - 250)), top: Math.max(8, mouse.y - 8) }}
+          style={{ left: Math.min(mouse.x + 30, Math.max(0, vp.w - 250)), top: Math.max(8, mouse.y - 8) }}
         >
           <div className="cafe-sign text-xl leading-none">{hover.toLowerCase()}</div>
           <div className="font-mono text-[9px] tracking-[0.25em] text-crema/60 uppercase mt-1.5">
