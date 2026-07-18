@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { mayWriteScene } from '../scene-auth'
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene, hydrateScene, hydrateAllScenes } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
+import { isAdmin } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,12 @@ export async function GET(req: NextRequest) {
 
   if (action === 'list') {
     await hydrateAllScenes()   // bridge-built branches live in Neon, not this lambda's disk
-    return NextResponse.json({ scenes: listScenes() })
+    let names = listScenes()
+    // private worlds are unlisted for everyone but the keeper
+    if (!(await isAdmin(req.headers.get('authorization')))) {
+      names = names.filter(n => !(loadScene(n) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private)
+    }
+    return NextResponse.json({ scenes: names })
   }
 
   if (action === 'versions' && name) {

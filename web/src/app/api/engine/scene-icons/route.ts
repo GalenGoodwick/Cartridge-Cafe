@@ -15,6 +15,7 @@ export async function GET() {
   await hydrateAllScenes()
   const out: { name: string; hue: number | null; iconWgsl: string }[] = []
   for (const name of listScenes()) {
+    if ((loadScene(name) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private) { continue }   // unlisted
     const up = name.toUpperCase()
     if (name === 'CAFE' || name === 'SUB-MAIN' || name.includes(' ⑂ ') || STYLED.has(up)) continue
     type S = { fields?: IconField[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown } }

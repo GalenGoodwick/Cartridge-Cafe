@@ -27,6 +27,8 @@ export default function SupportGate({ children }: { children: React.ReactNode })
       } catch { /* telemetry never blocks the gate */ }
     }
     const decide = async () => {
+      // pure-DOM rooms need no GPU — the keeper's panel must open on any machine
+      try { if (window.location.pathname.startsWith('/admin')) { setVerdict('ok'); return } } catch { /* ssr */ }
       // the escape hatch was used before and the engine worked → trust the
       // machine over the probe from then on
       try { if (sessionStorage.getItem('cc-gate-override') === '1') { setVerdict('ok'); return } } catch { /* private mode */ }

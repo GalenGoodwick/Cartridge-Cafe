@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
   // ── the catalogue ──
   const worlds: Array<Record<string, unknown>> = []
   for (const name of listScenes()) {
+    if ((loadScene(name) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private) { continue }   // unlisted
     if (name === 'CAFE' || name === 'SUB-MAIN') continue   // hubs are doors, not games
     try {
       const s = loadScene(name) as unknown as Sceneish | null
