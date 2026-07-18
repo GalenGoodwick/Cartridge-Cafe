@@ -9,6 +9,7 @@ type Verdict = 'ok' | 'mobile' | 'nogpu' | 'blocked' | null
 
 export default function SupportGate({ children }: { children: React.ReactNode }) {
   const [verdict, setVerdict] = useState<Verdict>(null)
+  const [why, setWhy] = useState('')
 
   useEffect(() => {
     let reported = false
@@ -26,13 +27,16 @@ export default function SupportGate({ children }: { children: React.ReactNode })
       } catch { /* telemetry never blocks the gate */ }
     }
     const decide = async () => {
+      // the escape hatch was used before and the engine worked → trust the
+      // machine over the probe from then on
+      try { if (sessionStorage.getItem('cc-gate-override') === '1') { setVerdict('ok'); return } } catch { /* private mode */ }
       const smallOrTouch =
         window.innerWidth < 820 ||
         (('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1100)
       if (smallOrTouch) { setVerdict('mobile'); return }
 
       const gpu = (navigator as unknown as { gpu?: { requestAdapter(opts?: unknown): Promise<unknown> } }).gpu
-      if (!gpu) { setVerdict('nogpu'); report('nogpu', 'navigator.gpu missing — browser has no WebGPU API'); return }
+      if (!gpu) { setVerdict('nogpu'); setWhy('navigator.gpu missing — this browser build has no WebGPU API'); report('nogpu', 'navigator.gpu missing — browser has no WebGPU API'); return }
       try {
         const adapter = await gpu.requestAdapter()
         if (adapter) { setVerdict('ok'); return }
@@ -40,9 +44,10 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         // A software fallback adapter distinguishes "driver/acceleration blocked"
         // from "no adapter of any kind".
         const fallback = await gpu.requestAdapter({ forceFallbackAdapter: true }).catch(() => null)
-        setVerdict('blocked')
-        report('blocked', fallback ? 'hardware adapter null, software fallback exists — acceleration off or GPU blocklisted' : 'no adapter at all — driver/blocklist/policy')
-      } catch (e) { setVerdict('blocked'); report('blocked', 'requestAdapter threw: ' + String(e).slice(0, 80)) }
+        const why2 = fallback ? 'hardware adapter: none · software fallback: present — acceleration off or GPU blocklisted' : 'no adapter at all — driver, blocklist, or policy'
+        setVerdict('blocked'); setWhy(why2)
+        report('blocked', why2)
+      } catch (e) { const w2 = 'requestAdapter threw: ' + String(e).slice(0, 80); setVerdict('blocked'); setWhy(w2); report('blocked', w2) }
     }
     decide()
     // a phone held sideways, or a desktop window dragged tiny, re-checks
@@ -102,6 +107,24 @@ export default function SupportGate({ children }: { children: React.ReactNode })
               then the lights come on.</>
           )}
         </p>
+        {!mobile && (
+          <>
+            <div style={{ marginTop: 16, fontSize: 10, color: 'rgba(201,184,150,0.45)', lineHeight: 1.6 }}>
+              {why || 'webgpu probe failed'}
+            </div>
+            {/* the probe can be wrong — let the machine overrule it. If the
+                world renders after stepping in, the gate mis-detected. */}
+            <button
+              onClick={() => { try { sessionStorage.setItem('cc-gate-override', '1') } catch { /* private mode */ } window.location.reload() }}
+              style={{
+                marginTop: 18, padding: '8px 18px', borderRadius: 10, cursor: 'pointer',
+                border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.12)',
+                color: '#ffdba8', fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.15em',
+              }}>
+              STEP IN ANYWAY
+            </button>
+          </>
+        )}
         <div style={{
           marginTop: 22, fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase',
           color: 'rgba(245,176,76,0.4)',

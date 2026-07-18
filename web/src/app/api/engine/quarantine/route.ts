@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync } from 'fs'
+import { loadGameSlot, saveGameSlot } from '../store'
 import { join } from 'path'
 
 export const dynamic = 'force-dynamic'
@@ -43,12 +44,22 @@ interface Report {
   hazards: Hazard[]
 }
 
-function readLog(): Report[] {
+function readLogDisk(): Report[] {
   try {
     return JSON.parse(readFileSync(LOG_PATH, 'utf-8')) as Report[]
   } catch {
     return []
   }
+}
+// the log must OUTLIVE the lambda that took the report — same serverless
+// trap scenes fell into: a visitor's diagnostic posted to one instance and
+// evaporated for every other. Neon slot first, per-instance disk as fallback.
+async function readLog(): Promise<Report[]> {
+  try {
+    const db = (await loadGameSlot('quarantine-log')) as Report[] | undefined
+    if (Array.isArray(db)) return db
+  } catch { /* fall through to disk */ }
+  return readLogDisk()
 }
 
 function clip(s: unknown, n: number): string | undefined {
@@ -91,16 +102,12 @@ export async function POST(req: NextRequest) {
     hazards,
   }
 
-  const log = readLog()
+  const log = await readLog()
   log.push(report)
   // Keep the most recent MAX_ENTRIES.
   const trimmed = log.slice(-MAX_ENTRIES)
-  try {
-    writeFileSync(LOG_PATH, JSON.stringify(trimmed, null, 2), 'utf-8')
-  } catch (err) {
-    console.error('[quarantine] failed to persist report:', err)
-    return NextResponse.json({ error: 'Failed to persist' }, { status: 500 })
-  }
+  await saveGameSlot('quarantine-log', trimmed)   // durable — survives the lambda
+  try { writeFileSync(LOG_PATH, JSON.stringify(trimmed, null, 2), 'utf-8') } catch { /* disk is best-effort on serverless */ }
 
   console.error(
     `[quarantine] ${report.phase}: ${hazards.map((h) => `${h.name} — ${h.reason}`).join(' | ')}`,
@@ -110,5 +117,5 @@ export async function POST(req: NextRequest) {
 
 /** GET /api/engine/quarantine — read the log back (for an AI or a dashboard). */
 export async function GET() {
-  return NextResponse.json({ reports: readLog() })
+  return NextResponse.json({ reports: await readLog() })
 }
