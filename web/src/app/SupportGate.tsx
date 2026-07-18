@@ -49,7 +49,17 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         // A software fallback adapter distinguishes "driver/acceleration blocked"
         // from "no adapter of any kind".
         const fallback = await gpu.requestAdapter({ forceFallbackAdapter: true }).catch(() => null)
-        const why2 = fallback ? 'hardware adapter: none · software fallback: present — acceleration off or GPU blocklisted' : 'no adapter at all — driver, blocklist, or policy'
+        // WebGL2 is the tell: alive while WebGPU is dead = WebGPU specifically
+        // is switched off (enterprise policy / flag — common on managed
+        // machines); both dead = acceleration is off entirely. Pins the cause
+        // without asking the visitor anything.
+        let gl2 = 'dead'
+        try { const c = document.createElement('canvas'); const g = c.getContext('webgl2'); if (g) { const dbg = g.getExtension('WEBGL_debug_renderer_info'); gl2 = 'alive · ' + String(dbg ? g.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)).slice(0, 60) } } catch { /* dead */ }
+        const why2 = fallback
+          ? 'hardware adapter: none · software fallback: present — acceleration off or GPU blocklisted'
+          : gl2 === 'dead'
+            ? 'no adapter + WebGL2 dead — graphics acceleration is OFF entirely: chrome://settings/system → use graphics acceleration → Relaunch'
+            : 'no WebGPU adapter but WebGL2 is ' + gl2 + ' — WebGPU itself is switched off: chrome://flags/#enable-unsafe-webgpu, or an admin policy on a managed machine'
         // on touch a blocked adapter is still best explained as "newer browser"
         if (touch) { setWhy(why2); report('mobile-blocked', why2); setVerdict('mobile'); return }
         setVerdict('blocked'); setWhy(why2)
