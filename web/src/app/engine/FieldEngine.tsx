@@ -147,18 +147,19 @@ let cafeIconCache: { sig: string; atlas: Uint32Array; slots: Record<string, numb
 
 // The module cache dies with the page, and leaving a world for MAIN is a full
 // navigation — so the shelf re-rendered every icon on every return. Persist the
-// finished atlas (~1MB) in sessionStorage: one tab session renders each icon once.
+// finished atlas (~1MB) in localStorage: rendered once per MACHINE, not per tab —
+// new tabs and restarts get instant faces (sessionStorage died with each tab).
 function iconCacheSave(c: NonNullable<typeof cafeIconCache>): void {
   try {
     const bytes = new Uint8Array(c.atlas.buffer, c.atlas.byteOffset, c.atlas.byteLength)
     let bin = ''
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    sessionStorage.setItem('cc:cafeIconAtlas:v3', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
+    localStorage.setItem('cc:cafeIconAtlas:v4', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
   } catch { /* quota or private mode — cache stays page-local */ }
 }
 function iconCacheLoad(): typeof cafeIconCache {
   try {
-    const raw = sessionStorage.getItem('cc:cafeIconAtlas:v3')
+    const raw = localStorage.getItem('cc:cafeIconAtlas:v4')
     if (!raw) return null
     const { sig, slots, b64 } = JSON.parse(raw) as { sig: string; slots: Record<string, number>; b64: string }
     const bin = atob(b64)
@@ -5107,6 +5108,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // only the ≤64 on-shelf worlds ever render, and only once each.)
       const sig = next.map(i => `${nameOfSlot[i.slot]}:${i.wgsl.length}`).join('|')   // name-keyed: immune to roster reordering
       if (sig === lastSig) return
+      // SAME ROSTER, few changed shaders → repaint just those slots in place
+      // (renderOneIcon draws into the live atlas). The full 64-shader re-render
+      // only happens when worlds appear/disappear and slots actually shift.
+      const rDelta = rendererRef.current
+      if (lastSig && rDelta) {
+        const parse = (g: string) => new Map(g.split('|').map(e => { const c = e.lastIndexOf(':'); return [e.slice(0, c), e.slice(c + 1)] as [string, string] }))
+        const a = parse(lastSig), b = parse(sig)
+        const sameRoster = a.size === b.size && [...b.keys()].every(k => a.has(k))
+        if (sameRoster) {
+          const changed = next.filter(i => a.get(nameOfSlot[i.slot]) !== b.get(nameOfSlot[i.slot]))
+          if (changed.length > 0 && changed.length <= 8) {
+            for (const it of changed) rDelta.renderOneIcon(it.slot, it.wgsl, it.color, 0.5)
+            lastSig = sig
+            const cpu = rDelta.getIconAtlasCPU()
+            const w2 = window as unknown as { __cafeIconSlots?: Record<string, number> }
+            if (cpu) { cafeIconCache = { sig, atlas: cpu, slots: { ...(w2.__cafeIconSlots || {}) } }; const c2 = cafeIconCache; setTimeout(() => iconCacheSave(c2), 0) }
+            return
+          }
+        }
+      }
       lastSig = sig
       const r = rendererRef.current
       const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean }
@@ -5152,7 +5173,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // — unless the cache already dressed the shelf above
     if (!cafeIconCache) (window as unknown as { __cafeIconReady?: boolean }).__cafeIconReady = false
     tick()
-    const iv = setInterval(() => { if (!stop) tick() }, 4000)
+    const iv = setInterval(() => { if (!stop && document.visibilityState !== 'hidden') tick() }, 30000)
     // ANIMATE ON HOVER: only the bubble under the cursor re-renders (~30fps);
     // everything else stays a cheap still. On leave, snap it back to its still.
     let hovered: string | null = null
