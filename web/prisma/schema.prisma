@@ -27,6 +27,7 @@ model User {
   spaceVersions SpaceVersion[]
   spaceFlags    SpaceFlag[]
   companions    Companion[]    @relation("CompanionOwners")
+  passkeys      Passkey[]      @relation("UserPasskeys")
 }
 
 model Account {
@@ -72,11 +73,11 @@ enum UserStatus {
 
 model PlayerSpace {
   id          String       @id @default(cuid())
-  slug        String       @unique                  // URL-friendly name, e.g. "galens-world"
-  name        String                                // Display name
+  slug        String       @unique // URL-friendly name, e.g. "galens-world"
+  name        String // Display name
   ownerId     String
   owner       User         @relation("OwnedSpaces", fields: [ownerId], references: [id], onDelete: Cascade)
-  snapshot    Json?                                  // SceneSnapshot as JSONB
+  snapshot    Json? // SceneSnapshot as JSONB
   description String?
   isPublic    Boolean      @default(true)
   createdAt   DateTime     @default(now())
@@ -89,11 +90,11 @@ model PlayerSpace {
   childSpaces   PlayerSpace[] @relation("SpaceChildren")
 
   // World history + governance
-  versions      SpaceVersion[]
-  flags         SpaceFlag[]
-  forkOfId      String?
-  forkOf        PlayerSpace?  @relation("SpaceForks", fields: [forkOfId], references: [id], onDelete: SetNull)
-  forks         PlayerSpace[] @relation("SpaceForks")
+  versions SpaceVersion[]
+  flags    SpaceFlag[]
+  forkOfId String?
+  forkOf   PlayerSpace?   @relation("SpaceForks", fields: [forkOfId], references: [id], onDelete: SetNull)
+  forks    PlayerSpace[]  @relation("SpaceForks")
 
   // A world an AI companion created on its own initiative (attribution; owner is
   // still the accountable human via ownerId). Null for human-created worlds.
@@ -107,14 +108,14 @@ model PlayerSpace {
 
 model SpaceToken {
   id          String      @id @default(cuid())
-  name        String                                 // "Claude Code", "My Terminal", etc.
-  tokenHash   String      @unique                    // SHA-256 of raw token
-  tokenPrefix String                                 // First 12 chars for display
+  name        String // "Claude Code", "My Terminal", etc.
+  tokenHash   String      @unique // SHA-256 of raw token
+  tokenPrefix String // First 12 chars for display
   spaceId     String
   space       PlayerSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   lastUsedAt  DateTime?
-  expiresAt   DateTime?                              // null = never expires
-  revokedAt   DateTime?                              // soft-revoke
+  expiresAt   DateTime? // null = never expires
+  revokedAt   DateTime? // soft-revoke
   createdAt   DateTime    @default(now())
 
   @@index([spaceId])
@@ -127,33 +128,67 @@ model SpaceToken {
 // a daily quota as the runaway leash. Identity is durable: the same key = the
 // same companion across sessions, accumulating a body of work.
 model Companion {
-  id            String        @id @default(cuid())
-  name          String                              // self-reported display identity, e.g. "Claude (Opus 4.8)"
-  handle        String        @unique               // stable identity slug, e.g. "claude-opus-galen"
-  keyHash       String        @unique               // SHA-256 of the raw uc_ck_ personal key
-  keyPrefix     String                              // first 12 chars, for display only
-  provenance    String?                             // model id / runtime — cross-check on the self-reported name
-  ownerId       String                              // the human accountable for this companion
-  owner         User          @relation("CompanionOwners", fields: [ownerId], references: [id], onDelete: Cascade)
-  worldsPerDay  Int           @default(20)          // creation quota — bounds a runaway loop
-  icon          Json?                                // the companion's OWN avatar {fx,hue,size} — same shape players brew
-  createdAt     DateTime      @default(now())
+  id            String         @id @default(cuid())
+  name          String // self-reported display identity, e.g. "Claude (Opus 4.8)"
+  handle        String         @unique // stable identity slug, e.g. "claude-opus-galen"
+  keyHash       String         @unique // SHA-256 of the raw uc_ck_ personal key
+  keyPrefix     String // first 12 chars, for display only
+  provenance    String? // model id / runtime — cross-check on the self-reported name
+  ownerId       String // the human accountable for this companion
+  owner         User           @relation("CompanionOwners", fields: [ownerId], references: [id], onDelete: Cascade)
+  worldsPerDay  Int            @default(20) // creation quota — bounds a runaway loop
+  icon          Json? // the companion's OWN avatar {fx,hue,size} — same shape players brew
+  createdAt     DateTime       @default(now())
   lastActiveAt  DateTime?
   revokedAt     DateTime?
-  createdSpaces PlayerSpace[] @relation("CompanionCreations")
+  createdSpaces PlayerSpace[]  @relation("CompanionCreations")
+  keypairs      AgentKeypair[]
 
   @@index([ownerId])
+}
+
+// Device-bound HUMAN auth: a WebAuthn passkey. The private key never leaves
+// the user's device; we store only the public half and a signature counter.
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation("UserPasskeys", fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique // base64url credential id from the authenticator
+  publicKey    String // base64url COSE public key
+  counter      Int       @default(0) // signature counter (clone detection)
+  transports   String? // comma-joined hints: "internal,hybrid"
+  deviceName   String? // user-facing label ("MacBook Touch ID")
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+// Device-bound AGENT auth: an ed25519 keypair whose private half never travels.
+// The agent signs each request; a leaked transcript leaks nothing usable.
+// Registered by the companion's bearer key, then usable in place of it.
+model AgentKeypair {
+  id          String    @id @default(cuid())
+  companionId String
+  companion   Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  publicKey   String    @unique // base64 raw ed25519 public key (32 bytes)
+  deviceName  String? // "galen-macbook" — where the private key lives
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  @@index([companionId])
 }
 
 model SpaceVersion {
   id        String      @id @default(cuid())
   spaceId   String
   space     PlayerSpace @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  version   Int                                  // monotonic per space
-  snapshot  Json                                 // SceneSnapshot at this point
+  version   Int // monotonic per space
+  snapshot  Json // SceneSnapshot at this point
   authorId  String?
   author    User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  note      String?                              // "added lighthouse", "pre-flag snapshot"
+  note      String? // "added lighthouse", "pre-flag snapshot"
   createdAt DateTime    @default(now())
 
   @@unique([spaceId, version])
@@ -168,9 +203,9 @@ model SpaceFlag {
   raisedBy          User            @relation(fields: [raisedById], references: [id], onDelete: Cascade)
   reason            String
   status            SpaceFlagStatus @default(OPEN)
-  deliberationId    String?         @unique   // tournament module wires in later
-  candidateVersions Int[]           @default([])  // version numbers under dispute
-  resolvedVersion   Int?                          // winning version that was applied
+  deliberationId    String?         @unique // tournament module wires in later
+  candidateVersions Int[]           @default([]) // version numbers under dispute
+  resolvedVersion   Int? // winning version that was applied
   createdAt         DateTime        @default(now())
   resolvedAt        DateTime?
 
@@ -187,10 +222,10 @@ enum SpaceFlagStatus {
 
 model Plot {
   id        String   @id @default(cuid())
-  spaceId   String   @unique              // the world this plot hosts
+  spaceId   String   @unique // the world this plot hosts
   ownerId   String
-  stake     Float    @default(0)          // source-agnostic: points now, $CART later
-  angle     Float    @default(0)          // position on the spiral, derived from stake rank
+  stake     Float    @default(0) // source-agnostic: points now, $CART later
+  angle     Float    @default(0) // position on the spiral, derived from stake rank
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -201,8 +236,8 @@ model StakeEvent {
   id        String   @id @default(cuid())
   plotId    String
   ownerId   String
-  delta     Float                          // + stake, - unstake
-  txRef     String?                        // solana signature once on-chain
+  delta     Float // + stake, - unstake
+  txRef     String? // solana signature once on-chain
   createdAt DateTime @default(now())
 
   @@index([plotId, createdAt])
@@ -213,9 +248,30 @@ model StakeEvent {
 // file (fine in dev, ephemeral on Vercel) — now Neon-backed so this state is
 // real and shared across every player in production.
 model EngineSlot {
-  slot      String   @id
-  data      Json
-  savedAt   DateTime @updatedAt
+  slot    String   @id
+  data    Json
+  savedAt DateTime @updatedAt
 
   @@index([savedAt])
+}
+
+// Self-hosted visit log (created raw by src/lib/visits.ts; declared here so
+// prisma db push never sees it as a stray and drops it)
+model Visit {
+  id   BigInt   @id @default(autoincrement())
+  kind String   @default("page")
+  path String
+  ref  String?
+  ua   String?
+  vid  String?
+  ts   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([ts])
+}
+
+// Presence heartbeat rows written by the websocket server — same protection
+model cc_presence {
+  id    String   @id
+  scene String
+  seen  DateTime @default(now()) @db.Timestamptz(6)
 }

@@ -18,6 +18,37 @@ fn cf_stars(p: vec2f, t: f32) -> vec3f {
   return c;
 }
 
+// bit (c,r) of the SYMMETRIC pixel-art arrow. Columns are centered (c=0 is the
+// middle column), so the shape is mirror-symmetric: bit(c,r) == bit(-c,r). Rows
+// run downward from the tip. It's a triangular head (rows 0-5) over a straight
+// stem (rows 6-12); hw[r] is each row's half-width in pixels.
+fn cf_curbit(c: i32, r: i32) -> f32 {
+  if (r < 0 || r > 12) { return 0.0; }
+  var hw = array<i32, 13>(0, 1, 2, 3, 4, 5, 1, 1, 1, 1, 1, 1, 1);
+  if (abs(c) <= hw[r]) { return 1.0; }
+  return 0.0;
+}
+
+// DEFAULT CURSOR (fx 5) — the un-brewed look: a crisp 8-BIT arrow, rendered
+// nearest-neighbor from a bitmap so it reads as intentional pixel art (fits the
+// retro cafe). SYMMETRIC: points straight up, mirror-symmetric about its
+// vertical axis. White fill, a 1-pixel black outline. The TIP is the top-center
+// pixel at the local origin = the real selection point. No strobe, no wobble.
+// Returns (rgb, coverage); the caller mixes it over the scene. Screen +y is down.
+fn cf_defcursor(local0: vec2f, phase: f32) -> vec4f {
+  let cell = 0.11;                             // size of one art-pixel in local units
+  let c = i32(floor(local0.x / cell + 0.5));   // centered columns (c=0 straddles x=0)
+  let r = i32(floor(local0.y / cell));         // rows down from the tip
+  let solid = cf_curbit(c, r);
+  // outline = an empty cell touching the silhouette (8-neighbourhood)
+  var nb = max(max(cf_curbit(c - 1, r), cf_curbit(c + 1, r)), max(cf_curbit(c, r - 1), cf_curbit(c, r + 1)));
+  nb = max(nb, max(max(cf_curbit(c - 1, r - 1), cf_curbit(c + 1, r - 1)), max(cf_curbit(c - 1, r + 1), cf_curbit(c + 1, r + 1))));
+  let outline = (1.0 - solid) * step(0.5, nb);
+  if (solid > 0.5) { return vec4f(0.97, 0.97, 1.0, 1.0); }         // white body
+  if (outline > 0.5) { return vec4f(0.05, 0.05, 0.08, 1.0); }      // black outline
+  return vec4f(0.0);
+}
+
 // A PLAYER — a bounded, directional glow. Meant to become programmable (an
 // effect id + params + facing, brewed per person); for now a hardcoded Glow with
 // a nose + pupil so its direction reads. local: offset from the player center,
@@ -288,7 +319,13 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   let selfHue = uni(sb + 1);
   let selfSize = max(uni(sb + 2), 0.25);
   let selfTint = 0.5 + 0.5 * cos(6.2831 * (selfHue + vec3f(0.0, 0.33, 0.67)));
-  if (selfFx >= 0) {
+  if (selfFx == 5) {
+    // DEFAULT CURSOR — nothing brewed yet: a small stylized pointer whose TIP
+    // sits on the real pointer position (local origin), mixed OVER the scene.
+    // Brewed looks (presets 0-4, custom glyphs) are untouched.
+    let dc = cf_defcursor((uv - mp) * (10.0 / selfSize), t * 1.6);
+    col = mix(col, dc.rgb, dc.a);
+  } else if (selfFx >= 0) {
     col += cf_player((uv - mp) * (4.5 / selfSize), vec2f(0.0, 1.0), t * 1.6, selfFx, selfTint * 1.3) * 1.1;
     col += selfTint * 0.9 * exp(-dot(uv - mp, uv - mp) * 1400.0) * 0.4;   // a soft core in your hue
   } else {
@@ -331,9 +368,11 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         col += og.rgb * clamp(og.a, 0.0, 1.0) * 1.4;
       }
     } else {
-      // smaller than your own effect (self is /4.5) — other players read as lesser
-      // presence; no center pip, the dance IS the player.
-      col += cf_player((uv - opos) * 6.5, vec2f(0.0, 1.0), t * 1.6 + f32(k) * 1.7, 0, otint * 1.3) * 1.05;
+      // un-brewed player: the SAME default pixel arrow you wear, tinted by their
+      // hue so players still read apart. A touch smaller than your own (12 vs
+      // your 10). The white body takes the tint; the dark outline stays dark.
+      let dc = cf_defcursor((uv - opos) * 12.0, t * 1.6);
+      col = mix(col, dc.rgb * (0.45 + otint), dc.a);
     }
   }
 
@@ -559,8 +598,12 @@ try {
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
           // chant shifts perturb — but a bubble just placed from the shared
-          // universe getting its first real score is not a shift, it's arrival
-          if (!B.justPlaced && Math.abs(ns - B.score) > 0.03) U.wake = Math.max(U.wake, 7)
+          // universe getting its first real score is not a shift, it's arrival.
+          // Threshold 1.0: only REAL events move the field (a champion crowned
+          // ±6, a tier climbed ±1.4, a birth) — the slow decay of heat and cell
+          // age drifts scores by less and must NOT reshuffle the room. (At 0.03
+          // the field woke on almost every poll and no layout ever held.)
+          if (!B.justPlaced && Math.abs(ns - B.score) > 1.0) U.wake = Math.max(U.wake, 7)
           delete B.justPlaced
           B.score = ns
         }
@@ -732,7 +775,8 @@ try {
   // BREWED GLYPH: when the engine has swapped the player's own WGSL into the
   // shader's mod_playerglyph container, fx packs as -1 — the shader draws the
   // glyph in the preset's seat and the preset stands down.
-  u.push(wd.__glyphOn === 1 ? -1 : (ic.fx | 0), typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
+  // no brewed fx at all (icon state not landed yet) = 5, the default cursor
+  u.push(wd.__glyphOn === 1 ? -1 : (typeof ic.fx === 'number' ? ic.fx | 0 : 5), typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
   // the dancing shader effect IS the other player here — suppress the DOM cursor
   // pip that would otherwise draw a dot on top of it
   wd.noPresenceCursors = true

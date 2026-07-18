@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { mayWriteScene } from '../scene-auth'
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene, hydrateScene, hydrateAllScenes } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
@@ -64,6 +66,25 @@ export async function POST(req: NextRequest) {
     // authority is per-scene: only your own branches, or admin
     if (!(await mayWriteScene(req, body.name))) {
       return NextResponse.json({ error: 'Not authorized to write this world' }, { status: 403 })
+    }
+    // guest quota: three builds total (worlds + distinct branches). A new
+    // VERSION of an existing branch is iteration, not a new build — free.
+    {
+      const session = await getServerSession(authOptions)
+      if (session?.user?.isTemp && session.user.email) {
+        const { guestBuildCount, GUEST_BUILDS, distinctBranchBases, handleOf } = await import('@/lib/guest-quota')
+        const { prisma } = await import('@/lib/prisma')
+        const names = listScenes()
+        const base = String(body.name).replace(/ · v\d+$/, '')
+        const isNewBase = !distinctBranchBases(names, handleOf(session.user.email)).has(base)
+        if (isNewBase) {
+          const me = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+          const have = me ? await guestBuildCount(me.id, session.user.email, names) : GUEST_BUILDS
+          if (have >= GUEST_BUILDS) {
+            return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
+          }
+        }
+      }
     }
     if (body.action === 'save' && body.scene) {
       // FORK-ON-OVERWRITE: never clobber an existing world in place. A save onto

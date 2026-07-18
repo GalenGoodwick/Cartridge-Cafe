@@ -408,8 +408,13 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'add_step_hook': {
+      // Same hookId REPLACES — without this, every re-push of a hook appended a
+      // duplicate and all of them ran each frame (one agent stacked 49 physics
+      // hooks before noticing). Omitting hookId still appends a fresh one.
+      const hookId = (cmd.hookId as string) ?? `hook_${Date.now()}`
+      snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
       snap.stepHooks.push({
-        id: (cmd.hookId as string) ?? `hook_${Date.now()}`,
+        id: hookId,
         author: (cmd.author as string) ?? 'claude-code',
         description: (cmd.description as string) ?? '',
         code: cmd.code as string,

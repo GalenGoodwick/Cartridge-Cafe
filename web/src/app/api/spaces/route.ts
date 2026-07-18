@@ -19,6 +19,17 @@ export async function GET() {
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
+  // guests get three builds (worlds + branches) — the taste that sells the deed
+  if (session.user.isTemp) {
+    const { guestBuildCount, GUEST_BUILDS } = await import('@/lib/guest-quota')
+    const { hydrateAllScenes, listScenes } = await import('../engine/store')
+    await hydrateAllScenes()
+    const have = await guestBuildCount(user.id, session.user.email, listScenes())
+    if (have >= GUEST_BUILDS) {
+      return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
+    }
+  }
+
   const spaces = await prisma.playerSpace.findMany({
     where: { ownerId: user.id },
     select: {
@@ -49,6 +60,17 @@ export async function POST(req: NextRequest) {
     select: { id: true },
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  // guests get three builds (worlds + branches) — the taste that sells the deed
+  if (session.user.isTemp) {
+    const { guestBuildCount, GUEST_BUILDS } = await import('@/lib/guest-quota')
+    const { hydrateAllScenes, listScenes } = await import('../engine/store')
+    await hydrateAllScenes()
+    const have = await guestBuildCount(user.id, session.user.email, listScenes())
+    if (have >= GUEST_BUILDS) {
+      return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
+    }
+  }
 
   const body = await req.json()
   const { name, slug: rawSlug, description, brief } = body

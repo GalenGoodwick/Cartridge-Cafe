@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { validateCompanionKey, mintSpaceToken, bearer, slugify } from '@/lib/companion'
+import { verifySignedAgentRequest } from '@/lib/agent-sign'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,8 @@ export const dynamic = 'force-dynamic'
 /** GET /api/companion/world — list the worlds this companion created */
 export async function GET(req: NextRequest) {
   const raw = bearer(req)
-  const auth = raw ? await validateCompanionKey(raw) : null
+  // bearer key OR a device-bound signature (see /api/companion/keypair)
+  const auth = raw ? await validateCompanionKey(raw) : await verifySignedAgentRequest(req, '')
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const spaces = await prisma.playerSpace.findMany({
@@ -26,12 +28,14 @@ export async function GET(req: NextRequest) {
 /** POST /api/companion/world — the companion creates its own world. */
 export async function POST(req: NextRequest) {
   const raw = bearer(req)
-  const auth = raw ? await validateCompanionKey(raw) : null
+  const bodyText = await req.text()
+  const auth = raw ? await validateCompanionKey(raw) : await verifySignedAgentRequest(req, bodyText)
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
-  const name = (body.name || '').trim() || `${auth.name} — untitled`
-  const brief = (body.brief || '').trim()
+  let body: Record<string, unknown> = {}
+  try { body = JSON.parse(bodyText) } catch { /* empty body is fine */ }
+  const name = String(body.name || '').trim() || `${auth.name} — untitled`
+  const brief = String(body.brief || '').trim()
 
   // Quota: worlds created by THIS companion in the last 24h (the runaway leash).
   if (auth.worldsPerDay > 0) {
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Unique slug: prefix with the companion handle so its worlds are recognizably its.
-  const base = (slugify(body.slug || name) || 'world').slice(0, 40)
+  const base = (slugify(String(body.slug || name)) || 'world').slice(0, 40)
   let slug = `${auth.handle}-${base}`.slice(0, 60)
   for (let i = 0; i < 8; i++) {
     const exists = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
