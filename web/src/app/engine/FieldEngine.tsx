@@ -1708,12 +1708,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       try {
         const cur = lastSceneRef.current || playScene
         if (cur !== lastName) { lastName = cur; last = '' }   // rode elsewhere — restart tracking
-        const isStore = cur.includes(' ⑂ ')
+        // EVERY world watches its stat, not just ⑂ branches — plain-named
+        // house worlds (QUANTIC DOJO, ONE DAY…) used to go blind in prod, so
+        // live edits sat invisible until a hard refresh
         let stamp = ''
-        if (isStore) {
+        {
           const r = await fetch(`/api/engine/scene?action=stat&name=${encodeURIComponent(cur)}`, { cache: 'no-store' })
           if (r.ok) stamp = String((await r.json()).timestamp ?? '')
-        } else if (process.env.NODE_ENV !== 'production') {
+        }
+        if (!stamp && process.env.NODE_ENV !== 'production') {
           const r = await fetch(`/cartridges/${encodeURIComponent(cur)}.json?ts=${Date.now()}`, { cache: 'no-store' })
           if (r.ok) { const d = await r.json(); stamp = String((d.scene || d).timestamp ?? '') }
         }
