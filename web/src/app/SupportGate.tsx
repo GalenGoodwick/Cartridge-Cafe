@@ -5,24 +5,44 @@ import { useEffect, useState } from 'react'
 /** cartridge.cafe runs a WebGPU compute stack on a desktop-sized canvas.
  *  Small/touch screens and browsers without WebGPU can't render it, so we
  *  say so plainly instead of showing a broken black square. */
-type Verdict = 'ok' | 'mobile' | 'nogpu' | null
+type Verdict = 'ok' | 'mobile' | 'nogpu' | 'blocked' | null
 
 export default function SupportGate({ children }: { children: React.ReactNode }) {
   const [verdict, setVerdict] = useState<Verdict>(null)
 
   useEffect(() => {
+    let reported = false
+    const report = (verdict: string, reason: string) => {
+      // a dark window nobody tells us about stays dark forever — every gate
+      // rejection lands in the quarantine feed with the why, so "a user says
+      // it's dark" comes with data instead of hearsay
+      if (reported) return
+      reported = true
+      try {
+        void fetch('/api/engine/quarantine', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+          body: JSON.stringify({ phase: 'support-gate', url: window.location?.href, hazards: [{ name: verdict, reason: reason + ' · ' + (navigator.userAgent || '').slice(0, 140) }] }),
+        }).catch(() => {})
+      } catch { /* telemetry never blocks the gate */ }
+    }
     const decide = async () => {
       const smallOrTouch =
         window.innerWidth < 820 ||
         (('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1100)
       if (smallOrTouch) { setVerdict('mobile'); return }
 
-      const gpu = (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu
-      if (!gpu) { setVerdict('nogpu'); return }
+      const gpu = (navigator as unknown as { gpu?: { requestAdapter(opts?: unknown): Promise<unknown> } }).gpu
+      if (!gpu) { setVerdict('nogpu'); report('nogpu', 'navigator.gpu missing — browser has no WebGPU API'); return }
       try {
         const adapter = await gpu.requestAdapter()
-        setVerdict(adapter ? 'ok' : 'nogpu')
-      } catch { setVerdict('nogpu') }
+        if (adapter) { setVerdict('ok'); return }
+        // WebGPU exists but the GPU is unreachable — the "I AM on Chrome" case.
+        // A software fallback adapter distinguishes "driver/acceleration blocked"
+        // from "no adapter of any kind".
+        const fallback = await gpu.requestAdapter({ forceFallbackAdapter: true }).catch(() => null)
+        setVerdict('blocked')
+        report('blocked', fallback ? 'hardware adapter null, software fallback exists — acceleration off or GPU blocklisted' : 'no adapter at all — driver/blocklist/policy')
+      } catch (e) { setVerdict('blocked'); report('blocked', 'requestAdapter threw: ' + String(e).slice(0, 80)) }
     }
     decide()
     // a phone held sideways, or a desktop window dragged tiny, re-checks
@@ -41,6 +61,7 @@ export default function SupportGate({ children }: { children: React.ReactNode })
   if (verdict === 'ok') return <>{children}</>
 
   const mobile = verdict === 'mobile'
+  const blocked = verdict === 'blocked'
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'radial-gradient(120% 90% at 50% 40%, #17100b 0%, #0b0908 70%)',
@@ -65,6 +86,15 @@ export default function SupportGate({ children }: { children: React.ReactNode })
             <>cartridge.cafe renders living worlds on your machine&rsquo;s GPU — it wants a
               real keyboard and a desktop-sized screen. Come find us on a laptop or
               desktop, and the doors are open.</>
+          ) : blocked ? (
+            <>your browser speaks WebGPU, but it can&rsquo;t reach your graphics card.
+              Usually one of these relights it:<br /><br />
+              <b style={{ color: '#ffdba8' }}>1.</b> chrome://settings/system →
+              turn ON <b style={{ color: '#ffdba8' }}>&ldquo;Use graphics acceleration&rdquo;</b> → Relaunch<br />
+              <b style={{ color: '#ffdba8' }}>2.</b> update your graphics driver
+              (NVIDIA / AMD / Intel), then restart<br />
+              <b style={{ color: '#ffdba8' }}>3.</b> check <b style={{ color: '#ffdba8' }}>chrome://gpu</b> —
+              &ldquo;WebGPU&rdquo; should say <i>Hardware accelerated</i></>
           ) : (
             <>cartridge.cafe brews its worlds with WebGPU, and this browser can&rsquo;t
               reach it. Try the latest <b style={{ color: '#ffdba8' }}>Chrome</b> or{' '}
