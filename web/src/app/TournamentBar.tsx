@@ -536,6 +536,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // a world-page arena resolves 'MAIN'/branch names to a loadable scene itself.
   const previewName = (w: string) => branchesOf ? (previewMap.current[w] || w) : w
   const load = (w: string) => { setFocus(w); loadChat(w); onPreview?.(previewName(w)) }
+  // the reckoning never opens onto a dead stage: the FIRST candidate of your
+  // cell loads immediately (in deal order), so entering the vote always means
+  // looking at a votable world. Your own hover/click takes over from there.
+  useEffect(() => {
+    if (!open || !doc || focus) return
+    const ci = myCellIdx(doc)
+    const c = doc.cells[ci >= 0 ? ci : 0]
+    if (c && c.worlds.length > 0) load(c.worlds[0])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, doc])
+
   /** click: load at once. hover: focus + talk now, load after a short dwell. */
   const select = (w: string) => { const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] } load(w) }
   const gaze = (w: string) => {
