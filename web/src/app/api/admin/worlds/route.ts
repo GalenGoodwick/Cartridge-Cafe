@@ -16,13 +16,21 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!(await isAdmin(req.headers.get('authorization')))) return NextResponse.json({ error: 'not the keeper' }, { status: 403 })
-  const body = await req.json().catch(() => null) as { name?: string; private?: boolean } | null
-  if (!body?.name || typeof body.private !== 'boolean') return NextResponse.json({ error: 'name and private required' }, { status: 400 })
+  const body = await req.json().catch(() => null) as { name?: string; base?: string; private?: boolean } | null
+  if ((!body?.name && !body?.base) || typeof body?.private !== 'boolean') return NextResponse.json({ error: 'name-or-base and private required' }, { status: 400 })
   await hydrateAllScenes()
-  const s = loadScene(body.name) as { worldData?: Record<string, unknown>; timestamp?: number } | undefined
-  if (!s) return NextResponse.json({ error: 'no such world' }, { status: 404 })
-  s.worldData = { ...(s.worldData || {}), __private: body.private }
-  s.timestamp = Date.now()
-  saveScene(body.name, s as never)   // memory + disk + Neon mirror
-  return NextResponse.json({ ok: true, name: body.name, private: body.private })
+  // a branch's toggle covers EVERY version of it (names end ' · vN')
+  const strip = (n: string) => n.replace(/ · v\d+$/, '')
+  const targets = body.name ? [body.name] : listScenes().filter(n => strip(n) === body.base || n === body.base)
+  let done = 0
+  for (const nm of targets) {
+    const sc = loadScene(nm) as { worldData?: Record<string, unknown>; timestamp?: number } | undefined
+    if (!sc) continue
+    sc.worldData = { ...(sc.worldData || {}), __private: body.private }
+    sc.timestamp = Date.now()
+    saveScene(nm, sc as never)
+    done++
+  }
+  if (!done) return NextResponse.json({ error: 'no such world' }, { status: 404 })
+  return NextResponse.json({ ok: true, changed: done, private: body.private })
 }
