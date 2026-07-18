@@ -1209,7 +1209,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 the AI logging in delivers the brief, opens the world, and closes this. */}
             <div className={'transition-opacity ' + (connectReady ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
               <div className="mb-1 font-mono text-[9px] tracking-[0.2em] text-crema/50">
-                3 · CONNECT YOUR AI {!connectReady && <span className="text-crema/40">· finish name + brief first</span>}
+                3 · BRING YOUR OWN AI {!connectReady && <span className="text-crema/40">· finish name + brief first</span>}
               </div>
               {connectReady ? (
                 <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[10px] leading-relaxed text-glow/90 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto mb-3">
@@ -1228,7 +1228,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <div className="font-mono text-[9px] tracking-[0.15em] mt-2 text-crema/40">
                 {brewAi && connectReady
                   ? <span className="text-glow animate-pulse">your AI connected — delivering the brief and opening your world…</span>
-                  : 'paste it to your AI — the moment it logs in, your world opens'}
+                  : 'paste it into an AI that can call APIs — Claude Code, Cursor, ChatGPT agent mode. plain chat windows can read it but can\u2019t build. the moment your AI logs in, your world opens'}
               </div>
             </div>
             {brewErr && <div className="font-mono text-[10px] text-red-400 mt-3">{brewErr}</div>}
