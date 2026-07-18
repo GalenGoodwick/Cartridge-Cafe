@@ -126,7 +126,6 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         visible
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
-        emptyHint="⚔ SAVE A POINT TO OPEN THE VERSION ARENA"
       />
 
       {/* a world's OSD — captions/hints, restored from SpaceToolbar */}

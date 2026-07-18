@@ -535,6 +535,52 @@ fn rayBox(origin: vec3f, dir: vec3f, halfSize: vec3f) -> f32 {
   return tmax;
 }
 
+// --- Text: procedural 5x7 bitfont (ASCII 32..90; lowercase folds to upper) ---
+// A tiny packed table (59 glyphs × 40 bits), NOT baked pixels — this is the
+// sanctioned way to put a score / label / menu line on screen in pure WGSL.
+// char5x7(p, code): coverage of the ASCII glyph for p in [0,1]² (y down).
+// printInt(p, value, digits): right-aligned integer across [0,1]², leading zeros blank.
+const CC_FONT = array<vec2u, 59>(
+  vec2u(0x00000000u,0x00u),vec2u(0x005F0000u,0x00u),vec2u(0x07000700u,0x00u),vec2u(0x7F147F14u,0x14u),vec2u(0x2A7F2A24u,0x12u),vec2u(0x64081323u,0x62u),
+  vec2u(0x22554936u,0x50u),vec2u(0x00030500u,0x00u),vec2u(0x41221C00u,0x00u),vec2u(0x1C224100u,0x00u),vec2u(0x083E0814u,0x14u),vec2u(0x083E0808u,0x08u),
+  vec2u(0x00305000u,0x00u),vec2u(0x08080808u,0x08u),vec2u(0x00606000u,0x00u),vec2u(0x04081020u,0x02u),vec2u(0x4549513Eu,0x3Eu),vec2u(0x407F4200u,0x00u),
+  vec2u(0x49516142u,0x46u),vec2u(0x4B454121u,0x31u),vec2u(0x7F121418u,0x10u),vec2u(0x45454527u,0x39u),vec2u(0x49494A3Cu,0x30u),vec2u(0x05097101u,0x03u),
+  vec2u(0x49494936u,0x36u),vec2u(0x29494906u,0x1Eu),vec2u(0x00363600u,0x00u),vec2u(0x00365600u,0x00u),vec2u(0x41221408u,0x00u),vec2u(0x14141414u,0x14u),
+  vec2u(0x14224100u,0x08u),vec2u(0x09510102u,0x06u),vec2u(0x41794932u,0x3Eu),vec2u(0x1111117Eu,0x7Eu),vec2u(0x4949497Fu,0x36u),vec2u(0x4141413Eu,0x22u),
+  vec2u(0x2241417Fu,0x1Cu),vec2u(0x4949497Fu,0x41u),vec2u(0x0909097Fu,0x01u),vec2u(0x4949413Eu,0x7Au),vec2u(0x0808087Fu,0x7Fu),vec2u(0x417F4100u,0x00u),
+  vec2u(0x3F414020u,0x01u),vec2u(0x2214087Fu,0x41u),vec2u(0x4040407Fu,0x40u),vec2u(0x020C027Fu,0x7Fu),vec2u(0x1008047Fu,0x7Fu),vec2u(0x4141413Eu,0x3Eu),
+  vec2u(0x0909097Fu,0x06u),vec2u(0x2151413Eu,0x5Eu),vec2u(0x2919097Fu,0x46u),vec2u(0x49494946u,0x31u),vec2u(0x017F0101u,0x01u),vec2u(0x4040403Fu,0x3Fu),
+  vec2u(0x2040201Fu,0x1Fu),vec2u(0x4038403Fu,0x3Fu),vec2u(0x14081463u,0x63u),vec2u(0x08700807u,0x07u),vec2u(0x45495161u,0x43u)
+);
+
+fn char5x7(p: vec2f, code: i32) -> f32 {
+  var c = code;
+  if (c >= 97 && c <= 122) { c -= 32; }   // lowercase → uppercase
+  if (c < 32 || c > 90) { return 0.0; }
+  if (p.x < 0.0 || p.x >= 1.0 || p.y < 0.0 || p.y >= 1.0) { return 0.0; }
+  let g = CC_FONT[c - 32];
+  let col = i32(p.x * 5.0);
+  let row = i32(p.y * 7.0);
+  var by = g.y & 0x7Fu;
+  if (col < 4) { by = (g.x >> u32(col * 8)) & 0x7Fu; }
+  return f32((by >> u32(row)) & 1u);
+}
+
+fn printInt(p: vec2f, value: f32, digits: i32) -> f32 {
+  if (p.x < 0.0 || p.x >= 1.0 || p.y < 0.0 || p.y >= 1.0) { return 0.0; }
+  let d = clamp(digits, 1, 8);
+  let cell = i32(p.x * f32(d));
+  let place = d - 1 - cell;                // 0 = ones column (rightmost cell)
+  let v = i32(max(value, 0.0));
+  var div = 1;
+  for (var k = 0; k < place; k++) { div = div * 10; }
+  if (place > 0 && v < div) { return 0.0; }   // leading zeros stay blank
+  let dig = (v / div) % 10;
+  let lp = vec2f(fract(p.x * f32(d)), p.y);
+  let gp = (lp - vec2f(0.1)) / 0.8;           // glyph padding inside its cell
+  return char5x7(gp, 48 + dig);
+}
+
 // --- End Utility Library ---
 `
 
@@ -744,6 +790,13 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 63)]; }
+// ─── Entity population ("the flock buffer") ───
+// Step hooks write worldData.gpuPopulation (flat floats, 4 per entity:
+// x, y, angle, aux). pop(i) returns entity i as vec4f; popCount() how many.
+// One buffer, zero extra dispatches — draw hundreds of entities in one shader.
+@group(2) @binding(2) var<uniform> effPopBuf: array<vec4f, 4096>;
+fn pop(i: i32) -> vec4f { return effPopBuf[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(effPopBuf[0].x); }
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -905,6 +958,13 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 63)]; }
+// ─── Entity population ("the flock buffer") ───
+// Step hooks write worldData.gpuPopulation (flat floats, 4 per entity:
+// x, y, angle, aux). pop(i) returns entity i as vec4f; popCount() how many.
+// One buffer, zero extra dispatches — draw hundreds of entities in one shader.
+@group(2) @binding(2) var<uniform> effPopBuf: array<vec4f, 4096>;
+fn pop(i: i32) -> vec4f { return effPopBuf[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(effPopBuf[0].x); }
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -1614,6 +1674,8 @@ struct InteractionGPU {
 // same shader pass as the bubble, so the face can never detach. Empty for
 // every other world (a 1-element fallback keeps the layout satisfied).
 @group(1) @binding(8) var<storage, read> iconBuf: array<u32>;
+// the entity population — UNIFORM for the same 8-storage-cap reason as worldUni
+@group(1) @binding(9) var<uniform> popBuf: array<vec4f, 4096>;
 
 // ─── World uniforms ("the whiteboard") ───
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
@@ -1627,6 +1689,13 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
+
+// ─── Entity population ("the flock buffer") ───
+// Step hooks write worldData.gpuPopulation (flat floats, 4 per entity:
+// x, y, angle, aux). pop(i) returns entity i as vec4f; popCount() how many.
+// One buffer, zero extra dispatches — draw hundreds of entities in one shader.
+fn pop(i: i32) -> vec4f { return popBuf[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(popBuf[0].x); }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
@@ -2158,6 +2227,8 @@ ${moduleCode}
 // same shader pass as the bubble, so the face can never detach. Empty for
 // every other world (a 1-element fallback keeps the layout satisfied).
 @group(1) @binding(8) var<storage, read> iconBuf: array<u32>;
+// the entity population — UNIFORM for the same 8-storage-cap reason as worldUni
+@group(1) @binding(9) var<uniform> popBuf: array<vec4f, 4096>;
 
 // ─── World uniforms ("the whiteboard") ───
 // 64 shared floats written by step hooks via worldData.gpuUniforms.
@@ -2171,6 +2242,13 @@ fn uni(i: i32) -> f32 {
   return v.w;
 }
 fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
+
+// ─── Entity population ("the flock buffer") ───
+// Step hooks write worldData.gpuPopulation (flat floats, 4 per entity:
+// x, y, angle, aux). pop(i) returns entity i as vec4f; popCount() how many.
+// One buffer, zero extra dispatches — draw hundreds of entities in one shader.
+fn pop(i: i32) -> vec4f { return popBuf[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(popBuf[0].x); }
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.

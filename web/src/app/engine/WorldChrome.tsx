@@ -79,7 +79,7 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, subOverride, 
   const sub = subOverride ?? focusSubline(ctx)
   const branchy = kind === 'branch' || kind === 'winner'
   return (
-    <div className={`${inline ? '' : 'absolute left-3 top-16 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
+    <div className={`${inline ? '' : 'absolute left-3 top-3 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
       <div className="text-[11px] tracking-[0.2em] text-white/85">
         {(nameOverride || id.base).toUpperCase()}
         {ownerName && <span className="text-white/45 tracking-normal"> · {ownerId

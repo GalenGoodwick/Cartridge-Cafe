@@ -145,6 +145,29 @@ const scenePreloadCache = new Map<string, unknown>()
 // re-rendering ~64 world shaders behind spinners. Survives client-side navigation.
 let cafeIconCache: { sig: string; atlas: Uint32Array; slots: Record<string, number> } | null = null
 
+// The module cache dies with the page, and leaving a world for MAIN is a full
+// navigation — so the shelf re-rendered every icon on every return. Persist the
+// finished atlas (~1MB) in sessionStorage: one tab session renders each icon once.
+function iconCacheSave(c: NonNullable<typeof cafeIconCache>): void {
+  try {
+    const bytes = new Uint8Array(c.atlas.buffer, c.atlas.byteOffset, c.atlas.byteLength)
+    let bin = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    sessionStorage.setItem('cc:cafeIconAtlas:v3', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
+  } catch { /* quota or private mode — cache stays page-local */ }
+}
+function iconCacheLoad(): typeof cafeIconCache {
+  try {
+    const raw = sessionStorage.getItem('cc:cafeIconAtlas:v3')
+    if (!raw) return null
+    const { sig, slots, b64 } = JSON.parse(raw) as { sig: string; slots: Record<string, number>; b64: string }
+    const bin = atob(b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return { sig, slots, atlas: new Uint32Array(bytes.buffer) }
+  } catch { return null }
+}
+
 // BREWED GLYPH — the player's cursor WGSL, wrapped to fill the hub shader's
 // mod_playerglyph container (a no-op until swapped). Shared by the scene
 // loader (overlay BEFORE the first compile — one compile per hub entry, no
@@ -360,6 +383,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const lastSceneRef = useRef<string>('')
   const aiDirtyRef = useRef(false)
   const aiLastEditRef = useRef(0)
+  const bridgeToastRef = useRef(0)   // rate-limits the "AI editing live" toast
   const eyeCheckRef = useRef(0)
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json())
@@ -400,6 +424,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const animFrameRef = useRef<number>(0)
   const startTimeRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
+  // GPU/frame budget meter — EMA of frame ms, published to worldData.__budget
+  // every 2s so builders (human or AI, via the bridge) SEE cost before it hangs
+  const frameMsEmaRef = useRef<number>(16)
+  const budgetWroteRef = useRef<number>(0)
+  const budgetWarnedRef = useRef<boolean>(false)
   const lastSampleTimeRef = useRef<number>(0)
   const lastPresenceRef = useRef<number>(0)
   const cachedOverlapMasksRef = useRef<Map<string, Uint8Array>>(new Map())
@@ -2405,6 +2434,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const renderer = rendererRef.current
       if (!sim || !renderer) return
 
+      // ── budget meter: cost must be visible BEFORE it becomes a freeze ──
+      frameMsEmaRef.current = frameMsEmaRef.current * 0.95 + Math.min(dt * 1000, 250) * 0.05
+      if (now - budgetWroteRef.current > 2000) {
+        budgetWroteRef.current = now
+        let effectCount = 0
+        for (const f of sim.fields.values()) effectCount += f.effects.length
+        const frameMs = Math.round(frameMsEmaRef.current * 10) / 10
+        sim.worldData['__budget'] = { fields: sim.fields.size, effects: effectCount, frameMs, at: Date.now() }
+        // one sustained warning per session — fields are real GPU cost; a
+        // population belongs in gpuPopulation, not in a field per entity
+        if (!budgetWarnedRef.current && frameMs > 40 && (sim.fields.size > 6 || effectCount > 8)) {
+          budgetWarnedRef.current = true
+          console.warn(`[budget] sustained ${frameMs}ms/frame with ${sim.fields.size} fields / ${effectCount} effects — this is the field-count wall. Draw populations via worldData.gpuPopulation (pop(i) in one visual) instead of one field per entity.`)
+        }
+      }
+
       sandboxRef.current?.tick(sim, dt)
       sim.step(dt)
 
@@ -2589,6 +2634,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // every visual/interaction shader reads it via uni(i) / uni4(i)
       const gpuUni = sim.worldData['gpuUniforms']
       if (Array.isArray(gpuUni)) renderer.updateWorldUniforms(gpuUni as number[])
+
+      // Entity population — hooks write worldData.gpuPopulation (flat floats,
+      // 4 per entity: x, y, angle, aux), shaders read pop(i) / popCount()
+      const gpuPop = sim.worldData['gpuPopulation']
+      if (Array.isArray(gpuPop) || gpuPop instanceof Float32Array) {
+        renderer.updatePopulation(gpuPop as number[])
+      }
 
       const camera = cameraRef.current
       const time = now / 1000 - startTimeRef.current
@@ -4748,9 +4800,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
         const renderer = rendererRef.current
         // Transient input state (keys, mouse) must never persist — a synced
-        // held-down key becomes a stuck ghost key in every restored session
+        // held-down key becomes a stuck ghost key in every restored session.
+        // gpuPopulation is per-frame render output (up to 16K floats) — the hook
+        // rebuilds it every frame, so persisting it only bloats the snapshot.
         const syncWorldData = Object.fromEntries(
-          Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_'))
+          Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation')
         )
         const syncRes = await fetch('/api/engine/state', {
           method: 'POST',
@@ -4778,6 +4832,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         } else if (syncRes.ok) {
           takeoverRef.current = false
           setWorldLocked(false)
+          // A deferred sync means an AI is writing this world over the bridge
+          // RIGHT NOW (the server skipped our sync to protect that write).
+          // A live hand in the world must be VISIBLE to the human in it.
+          const syncData = await syncRes.json().catch(() => null) as { deferred?: string } | null
+          if (syncData?.deferred === 'bridge-write in flight') {
+            aiLastEditRef.current = Date.now()
+            setAiPulse(p => p + 1)
+            if (Date.now() - bridgeToastRef.current > 10000) {
+              bridgeToastRef.current = Date.now()
+              showToast('⚡ an AI is editing this world live', 'success')
+            }
+          }
         }
       } catch { /* best-effort */ }
     }, 2000)
@@ -4873,12 +4939,32 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // COMING BACK TO MAIN: the previous atlas is plain pixels — re-upload it and
     // restore the slot map instantly. No spinners, no re-render; the tick below
     // still refreshes the roster and only re-renders if something truly changed.
-    if (cafeIconCache && rendererRef.current) {
-      rendererRef.current.uploadIconAtlas(cafeIconCache.atlas)
-      lastSig = cafeIconCache.sig
-      const w0 = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconReady?: boolean }
-      w0.__cafeIconSlots = { ...cafeIconCache.slots }
-      w0.__cafeIconReady = true
+    // The atlas survives full navigations via sessionStorage. ORDER IS THE LAW
+    // HERE: a door flips from spinner to face only AFTER the pixels are back on
+    // the GPU — slots/ready before the upload shows empty (black) bubbles.
+    if (!cafeIconCache) cafeIconCache = iconCacheLoad()
+    if (cafeIconCache) {
+      const cached = cafeIconCache
+      const restore = () => {
+        const r = rendererRef.current
+        // r.isReady(): the renderer OBJECT exists well before its async GPU
+        // device does, and uploadIconAtlas silently no-ops without a device —
+        // "successfully" restoring into the void was the black-doors bug
+        if (!r || !r.isReady()) return false
+        r.uploadIconAtlas(cached.atlas)
+        lastSig = cached.sig
+        const w0 = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconReady?: boolean }
+        w0.__cafeIconSlots = { ...cached.slots }
+        w0.__cafeIconReady = true
+        return true
+      }
+      // the renderer may still be booting on re-entry — retry briefly; until it
+      // lands the doors keep their spinners, and if it never lands the normal
+      // tick below renders the shelf from scratch exactly as before
+      if (!restore()) {
+        const rv = window.setInterval(() => { if (restore() || stop) window.clearInterval(rv) }, 120)
+        window.setTimeout(() => window.clearInterval(rv), 8000)
+      }
     }
     const tick = async () => {
       const [sp, sc] = await Promise.all([
@@ -4896,7 +4982,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         .filter(s => !s.blank && s.iconWgsl).map(s => ({ name: (s.name || s.slug).toUpperCase(), hue: s.hue, iconWgsl: s.iconWgsl as string }))
       const scenes = (sc?.icons || []) as Array<{ name: string; hue?: number; iconWgsl: string }>
       const seen = new Set(players.map(p => p.name))
-      const worlds = [...players, ...scenes.filter(s => !seen.has(s.name))].slice(0, 64)
+      // SORT BY NAME: the browse API orders by updatedAt, which reshuffles on
+      // every world save — order-derived slots made the sig churn, forcing a
+      // full shelf re-render on every visit (and mid-session). Names are stable;
+      // now the sig only changes when a world's shader or the roster truly does.
+      const worlds = [...players, ...scenes.filter(s => !seen.has(s.name))]
+        .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 64)
       const nameOfSlot: Record<number, string> = {}
       const next: typeof items = []
       for (const k of Object.keys(byName)) delete byName[k]
@@ -4910,18 +5001,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // only re-render the atlas when the roster or a world's shader changed —
       // icons are cheap stills, not a per-frame GPU cost. (Scales to any count:
       // only the ≤64 on-shelf worlds ever render, and only once each.)
-      const sig = next.map(i => `${i.slot}:${i.wgsl.length}`).join('|')
+      const sig = next.map(i => `${nameOfSlot[i.slot]}:${i.wgsl.length}`).join('|')   // name-keyed: immune to roster reordering
       if (sig === lastSig) return
       lastSig = sig
       const r = rendererRef.current
       const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean }
-      // start this pass with EVERY candidate marked loading → the door draws a
-      // spinner on each un-house bubble. As icons land they flip to the face
-      // one-by-one (progressive), not all at the end. Fresh slots so stale atlas
-      // indices from the previous roster can't mis-map a bubble.
+      // Re-dressing the shelf must not undress it: a door that already wears a
+      // face KEEPS it while the new atlas renders (its old pixels are still in
+      // the buffer at its old index; with name-sorted slots the index is stable
+      // for a surviving world). Only genuinely NEW worlds go through loading.
+      // Resetting slots to {} here while ready stayed true was the bug that
+      // flashed every door to its default emblem on every re-render.
+      const prev = w.__cafeIconSlots || {}
       const slots: Record<string, number> = {}
       const loading: Record<string, boolean> = {}
-      for (const nm of Object.values(nameOfSlot)) loading[nm] = true
+      for (const nm of Object.values(nameOfSlot)) {
+        if (prev[nm] != null) slots[nm] = prev[nm]
+        else loading[nm] = true
+      }
       w.__cafeIconSlots = slots
       w.__cafeIconLoading = loading
       // ONLY worlds whose shader actually rendered (non-black) get an atlas slot;
@@ -4938,9 +5035,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
       for (const nm of Object.keys(loading)) delete loading[nm]
       w.__cafeIconReady = true
-      // leave the finished atlas behind for the next visit to main
+      // leave the finished atlas behind for the next visit to main — in memory
+      // AND in sessionStorage, so it survives the full navigation back from a world
       const atlasCPU = r?.getIconAtlasCPU()
-      if (atlasCPU) cafeIconCache = { sig, atlas: atlasCPU, slots: { ...slots } }
+      if (atlasCPU) {
+        cafeIconCache = { sig, atlas: atlasCPU, slots: { ...slots } }
+        const c = cafeIconCache
+        setTimeout(() => iconCacheSave(c), 0)
+      }
     }
     // until the first pass lands, un-styled bubbles show a spinner, not a default
     // — unless the cache already dressed the shelf above
@@ -5471,11 +5573,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {/* the AI, honestly: unplugged / live / processing */}
             {(() => {
               void aiPulse
-              const busy = agentConnected && Date.now() - aiLastEditRef.current < 2500
+              // busy is connection-independent: bridge writes (an AI editing
+              // over HTTP, no SSE) must light the dot just like agent edits
+              const busy = Date.now() - aiLastEditRef.current < 2500
               return (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
                   <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
-                  {busy ? 'AI PROCESSING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'}
+                  {busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'}
                 </div>
               )
             })()}
@@ -6002,7 +6106,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               else window.location.href = '/'
             }
             return (
-              <div className="absolute left-3 top-16 z-40 flex items-stretch gap-1.5">
+              <div className="absolute left-3 top-3 z-40 flex items-stretch gap-1.5">
                 <button onClick={back} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
                 <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} subOverride={sub} inline />
@@ -6011,7 +6115,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           })()}
 
           {/* Info overlay */}
-          {chromeVisible && !spaceId && (
+          {chromeVisible && !spaceId && !playScene && (
           <div className="absolute top-3 left-3 text-[10px] text-muted font-mono flex items-center gap-2">
             <span className="pointer-events-none">
               {gridSize}x{gridSize} | zoom: {cameraRef.current.zoom.toFixed(1)}x
@@ -6063,7 +6167,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
         </div>
 
         {/* Field list panel — scrollable under the canvas */}
-        {chromeVisible && !spaceId && (
+        {chromeVisible && !spaceId && !playScene && (
         <div className="h-40 flex-shrink-0 border-t border-border bg-background/95 overflow-y-auto">
           <div className="px-3 py-2">
             <div className="flex items-center justify-between mb-1">
@@ -6147,7 +6251,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
       </div>
 
       {/* Designer sidebar */}
-      {chromeVisible && !spaceId && (
+      {chromeVisible && !spaceId && !playScene && (
       <div className="w-96 flex-shrink-0 flex flex-col border-l border-border bg-background overflow-hidden">
         {/* Inspector Panel */}
         <div className="flex-shrink-0 overflow-y-auto" style={{ maxHeight: '50%' }}>

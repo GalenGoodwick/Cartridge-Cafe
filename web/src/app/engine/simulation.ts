@@ -82,6 +82,9 @@ export class FieldSimulation {
   interactionEffects: InteractionEffect[] = []
   /** Shared world data — key-value store accessible from step hooks */
   worldData: Record<string, unknown> = {}
+  /** Seeded PRNG state for sim.rand() — armed when worldData.__seed is a number */
+  private _randSeed: number | null = null
+  private _randState = 0
   /** Lightweight projectiles — rendered via effectData, not as fields */
   projectiles: Projectile[] = []
   /** Per-field pixel presence — populated from GPU readback of each field's rendered output.
@@ -407,12 +410,23 @@ export class FieldSimulation {
       this.stepInteractionRules(dt)
     }
 
-    // Agent-defined step hooks (always run, even when physics paused)
+    // Agent-defined step hooks (always run, even when physics paused).
+    // Determinism opt-in: worldData.__fixedStep (seconds) pins the dt every
+    // hook sees to one exact quantum — one tick per rendered frame, same tick
+    // sequence every run. Pair with worldData.__seed + sim.rand() for replays.
+    const fs = this.worldData['__fixedStep']
+    const hookDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : dt
+    const seed = this.worldData['__seed']
+    if (typeof seed === 'number' && seed !== this._randSeed) {
+      this._randSeed = seed
+      this._randState = seed | 0
+    }
     for (const [hookId, hook] of this.stepHooks) {
       try {
-        hook.fn(this, dt)
+        hook.fn(this, hookDt)
       } catch (e) {
         console.warn(`Step hook ${hookId} failed:`, e)
+        this.reportHookError(hookId, e)
       }
     }
 
@@ -1775,6 +1789,36 @@ export class FieldSimulation {
       }
     }
     for (const id of toRemove) this.timers.delete(id)
+  }
+
+  // ─── Seeded RNG ───
+
+  /** Deterministic random [0,1) when worldData.__seed is a number (mulberry32),
+   *  else Math.random(). Same seed → same sequence → reproducible runs.
+   *  Arrow property: hooks grab it detached (`const rnd = sim.rand`) — a plain
+   *  method would lose `this` and throw inside the hook's own try/catch,
+   *  killing the world silently. */
+  rand = (): number => {
+    if (this._randSeed === null) return Math.random()
+    this._randState = (this._randState + 0x6D2B79F5) | 0
+    let t = Math.imul(this._randState ^ (this._randState >>> 15), 1 | this._randState)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+
+  /** Surface a hook failure where players AND agents can see it: worldData
+   *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay.
+   *  Once per distinct message — a 60fps failure must not spam either surface. */
+  reportHookError(hookId: string, e: unknown): void {
+    const msg = String((e as Error)?.message || e)
+    const prev = this.worldData['last_hook_error'] as { error?: string } | undefined
+    if (prev?.error === msg) return
+    this.worldData['last_hook_error'] = { hookId, error: msg, at: Date.now() }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cc:fault', {
+        detail: { kind: 'hook-error', message: `step hook '${hookId}' failed: ${msg}` },
+      }))
+    }
   }
 
   // ─── Events ───

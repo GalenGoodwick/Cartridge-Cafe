@@ -1353,6 +1353,10 @@ export class FieldRenderer {
   /** Upload the packed RGBA8 icon atlas (one u32 per texel, 64x64 per slot).
    *  Grows the buffer if needed and invalidates the super bind group so the
    *  new buffer is picked up. Cheap and rare — called when thumbnails change. */
+  /** True once the async GPU device init has completed — uploads before this
+   *  are silent no-ops, so restore paths must gate on it and retry. */
+  isReady(): boolean { return !!this.device }
+
   uploadIconAtlas(data: Uint32Array): void {
     if (!this.device) return
     const bytes = Math.max(4, data.byteLength)
@@ -1462,15 +1466,32 @@ export class FieldRenderer {
       const raw = new Uint8Array(readBuf.getMappedRange())
       const base = it.slot * S * S
       let peak = 0
+      let lumSum = 0
       for (let y = 0; y < S; y++) {
         for (let x = 0; x < S; x++) {
           const s = y * bytesPerRow + x * 4
           const r = raw[s], g = raw[s + 1], b = raw[s + 2]
           if (r > peak) peak = r; if (g > peak) peak = g; if (b > peak) peak = b
+          lumSum += Math.max(r, g, b)
           atlas[base + y * S + x] = (r | (g << 8) | (b << 16)) | 0xff000000
         }
       }
       readBuf.unmap()
+      // AUTO-EXPOSURE: a faithfully DARK world (ALEMBIC's near-black vessel)
+      // still deserves a legible door. If the icon's mean brightness is very
+      // low, lift it — hue and relative values keep the world's mood. Mean, not
+      // peak: one white speck (a brew stamp) must not veto the lift.
+      const mean = lumSum / (S * S)
+      if (peak >= 8 && mean > 0 && mean < 18) {
+        const lift = Math.min(4, 34 / mean)
+        for (let i = 0; i < S * S; i++) {
+          const p = atlas[base + i]
+          const r = Math.min(255, Math.round((p & 0xff) * lift))
+          const g = Math.min(255, Math.round(((p >> 8) & 0xff) * lift))
+          const b = Math.min(255, Math.round(((p >> 16) & 0xff) * lift))
+          atlas[base + i] = (r | (g << 8) | (b << 16)) | 0xff000000
+        }
+      }
       // a state/feedback world renders BLACK in isolation (no running sim to
       // feed it). Don't give it a slot — it falls back to the living emblem
       // instead of a black square.

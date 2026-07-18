@@ -708,6 +708,33 @@ output like `gpuUniforms`: rebuild it every frame, never read it back, and it is
 persisted into snapshots. Boids for ~400 entities is fine on the CPU (O(n²) at 400 =
 160K pair checks); past that, use a spatial grid in the hook.
 
+### Deterministic Worlds — fixed step + seeded randomness
+
+Two opt-in worldData keys make a world reproducible (replays, ghosts, fair puzzles):
+
+- `worldData.__fixedStep = 1/60` — every step hook receives exactly this dt, one tick
+  per rendered frame, instead of the wall clock. The tick sequence is identical every run.
+- `worldData.__seed = 12345` — arms `sim.rand()` (mulberry32): same seed, same sequence.
+  Use `sim.rand()` instead of `Math.random()` everywhere in the hook. Changing the seed
+  reseeds; both keys persist in the snapshot, so a world's determinism config saves.
+
+```js
+// deterministic setup — do this once
+wd.__fixedStep = 1/60
+wd.__seed = 42
+// then in the hook: sim.rand(), never Math.random()
+const a = sim.rand() * 6.28318
+```
+
+### The Budget — read your own cost
+
+Every ~2s the host writes `worldData.__budget = { fields, effects, frameMs, at }` —
+the live frame-time EMA and GPU surface of the world, visible to an AI through the
+bridge GET. **Check it after you build.** frameMs creeping past ~25 with fields/effects
+climbing means you are hand-building toward the freeze wall: fields are real GPU cost
+(each effect is a dispatch), populations belong in `gpuPopulation`, not in a field per
+entity. Sustained >40ms with >6 fields logs a budget warning to the console.
+
 ### Cell Shaders — the previous frame is the world's memory
 
 Every visual can read **last frame's finished composite** at any pixel:
@@ -834,6 +861,24 @@ All functions below are automatically available in visual shaders. No imports ne
 | `ring` | `(uv: vec2f, radius: f32, width: f32) -> f32` | Ring shape intensity. |
 | `glow` | `(d: f32, col: vec3f, intensity: f32, radius: f32) -> vec3f` | Color glow from distance. |
 | `diffuseLight` | `(p: vec2f, lightPos: vec2f, falloff: f32) -> f32` | Point light falloff. |
+
+#### Text (procedural 5x7 bitfont)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `char5x7` | `(p: vec2f, code: i32) -> f32` | ASCII glyph coverage for p in [0,1]² (y down). Codes 32–90; lowercase folds to uppercase. |
+| `printInt` | `(p: vec2f, value: f32, digits: i32) -> f32` | Right-aligned non-negative integer across [0,1]², up to 8 digits, leading zeros blank. |
+
+The sanctioned way to put a score, timer, or label on screen — pure WGSL, no
+textures. Compose words glyph-by-glyph with `char5x7`; for HUD numbers feed
+`printInt` a whiteboard value:
+
+```wgsl
+// score in the top-right corner, fed from uni(10)
+let hp = (pix - vec2f(392.0, 12.0)) / vec2f(108.0, 18.0);   // 108x18 px panel
+let ink = printInt(hp, uni(10), 6);
+col = mix(col, vec3f(1.0, 0.9, 0.5), ink * 0.9);
+```
 
 #### Region Helpers (for per-field effects)
 

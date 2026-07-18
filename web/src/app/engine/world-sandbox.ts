@@ -27,6 +27,16 @@ self.CustomEvent = class { constructor(type, opts) { this.type = type; this.deta
 self.window = { dispatchEvent(e) { __events.push({ type: e.type, detail: e.detail }); return true; } };
 
 let __hook = null;
+// seeded PRNG (mulberry32) — armed when worldData.__seed is a number, so a
+// world that opts in gets the same sim.rand() sequence every run (replays)
+let __randSeed = null, __randState = 0;
+function __rand() {
+  if (__randSeed === null) return Math.random();
+  __randState = (__randState + 0x6D2B79F5) | 0;
+  let t = Math.imul(__randState ^ (__randState >>> 15), 1 | __randState);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
@@ -36,6 +46,8 @@ self.onmessage = function (ev) {
   }
   if (msg.type === 'tick' && __hook) {
     __events = [];
+    const ws = msg.worldData && msg.worldData.__seed;
+    if (typeof ws === 'number' && ws !== __randSeed) { __randSeed = ws; __randState = ws | 0; }
     const fields = new Map();
     const before = new Map();   // remember each transform so we patch only what the hook MOVED
     for (const f of msg.fields) {
@@ -45,6 +57,7 @@ self.onmessage = function (ev) {
     const sim = {
       worldData: msg.worldData,
       fields,
+      rand: __rand,
       getFieldByName(n) { for (const f of fields.values()) if (f.name === n) return f; return null; },
       getField(id) { return fields.get(id) || null; },
     };
@@ -75,6 +88,21 @@ export class WorldSandbox {
   private compileError: string | null = null
   private inFlight = false
   private pending: SandboxReply | null = null
+  private reportedError = false
+  private lastSurfaced = ''
+
+  /** Put a hook failure where players AND agents can see it: worldData
+   *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay. */
+  private surface(sim: FieldSimulation, phase: 'compile' | 'runtime', msg: string): void {
+    if (msg === this.lastSurfaced) return
+    this.lastSurfaced = msg
+    ;(sim.worldData as Record<string, unknown>)['last_hook_error'] = { hookId: 'sandbox', phase, error: msg, at: Date.now() }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cc:fault', {
+        detail: { kind: 'hook-error', message: `world hook ${phase} error: ${msg}` },
+      }))
+    }
+  }
 
   /** compile a hook into a fresh sealed worker */
   load(code: string): void {
@@ -110,10 +138,18 @@ export class WorldSandbox {
   tick(sim: FieldSimulation, dt: number): void {
     if (!this.worker || !this.ready) return
 
+    // a compile error means the hook will NEVER run — a world that looks dead
+    // must say why, on the same surfaces a runtime failure uses
+    if (this.compileError && !this.reportedError) {
+      this.reportedError = true
+      this.surface(sim, 'compile', this.compileError)
+    }
+
     // 1 ─ apply the pending reply (from ~1 frame ago)
     if (this.pending) {
       if (this.pending.error) {
         console.warn('[sandbox] hook runtime error:', this.pending.error)
+        this.surface(sim, 'runtime', this.pending.error)
       } else {
         const wd = sim.worldData as Record<string, unknown>
         const incoming = this.pending.worldData || {}
@@ -122,7 +158,7 @@ export class WorldSandbox {
         // (presence, pixel samples, live input) with a stale frame — which
         // reads as warping and jitter. The host owns everything else.
         for (const k of Object.keys(incoming)) {
-          if (k === 'gpuUniforms' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
+          if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
               k === 'instructions' ||
               (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
             wd[k] = incoming[k]
@@ -151,8 +187,12 @@ export class WorldSandbox {
     for (const f of sim.fields.values()) {
       fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties })
     }
+    // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
+    // one exact quantum — one tick per rendered frame, same sequence every run
+    const fs = sim.worldData['__fixedStep']
+    const useDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : dt
     try {
-      this.worker.postMessage({ type: 'tick', worldData: cloneable(sim.worldData), dt, fields })
+      this.worker.postMessage({ type: 'tick', worldData: cloneable(sim.worldData), dt: useDt, fields })
       this.inFlight = true
     } catch (e) {
       // non-cloneable worldData (shouldn't happen — it's plain data)
@@ -172,7 +212,7 @@ export class WorldSandbox {
 // host-managed blobs the hook never reads — cloning them across the worker
 // boundary every frame is slow AND makes the round-trip time VARIABLE, which
 // surfaces as an irregular update rate (warp/jitter). Drop them from the send.
-const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'hud', '__play_sound', '__play_music'])
+const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'gpuPopulation', 'hud', '__play_sound', '__play_music'])
 
 /** minimal, cheap-to-clone payload: the hook's inputs and its own state, never
  *  the host's heavy blobs or the hook's own outputs (which it overwrites). */

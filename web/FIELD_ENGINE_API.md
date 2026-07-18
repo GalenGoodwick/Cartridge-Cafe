@@ -208,6 +208,13 @@ fn opSmoothUnion(d1: f32, d2: f32, k: f32) -> f32
 fn opSmoothSubtract(d1: f32, d2: f32, k: f32) -> f32
 ```
 
+### Text (procedural 5x7 bitfont)
+```wgsl
+fn char5x7(p: vec2f, code: i32) -> f32       // ASCII glyph coverage, p in [0,1]² (y down); a-z folds to A-Z
+fn printInt(p: vec2f, value: f32, digits: i32) -> f32  // right-aligned integer across [0,1]², leading zeros blank
+```
+The sanctioned way to draw scores, labels, and menu text — no textures, no baked pixels.
+
 ### Color & Transform
 ```wgsl
 fn hsv2rgb(c: vec3f) -> vec3f
