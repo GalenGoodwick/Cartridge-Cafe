@@ -426,7 +426,10 @@ try {
     // on a cold start. Race them against a short patience on the first pass —
     // doors (and their tooltips) appear immediately; a quick re-poll enriches.
     const firstFill = U.order.length === 0
-    U.pollT = firstFill ? 2 : 8
+    // a HIDDEN tab polls nothing — background tabs were keeping Neon compute
+    // awake all night. 30s cadence when visible: the shelf changes slowly.
+    if (!firstFill && typeof document !== 'undefined' && document.visibilityState === 'hidden') { U.pollT = 10; return }
+    U.pollT = firstFill ? 2 : 30
     ;(async () => {
       try {
         const now = Date.now()
