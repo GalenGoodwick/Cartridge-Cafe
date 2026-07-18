@@ -660,7 +660,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // and quietly re-opening my-worlds there hijacks the journey.
       const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type
       try {
-        if (navType !== 'back_forward' && sessionStorage.getItem('cafe-mine')) {
+        // MY WORLDS must be a place you GO, not a mode that haunts the tab:
+        // a plain reload lands on the commons. Only the explicit ?mine=1
+        // (the sign-in round-trip) restores the personal view.
+        const wantsMine = new URLSearchParams(window.location.search).has('mine')
+        if (!wantsMine) { try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ } }
+        if (navType !== 'back_forward' && wantsMine) {
           fetch('/api/auth/session').then(r => r.json()).then(sess => {
             if (sess?.user) {
               ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
