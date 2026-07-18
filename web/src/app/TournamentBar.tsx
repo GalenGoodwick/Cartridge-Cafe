@@ -133,15 +133,15 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const stopDwell = useCallback((w: string) => {
     const t = dwell.current[w]; if (t) { clearTimeout(t); delete dwell.current[w] }
   }, [])
-  // WITNESS TIMER: a game must be watched for 10s to count — but the time
+  // WITNESS TIMER: a game must be watched for 3s to count — but the time
   // ACCUMULATES across visits, so you can snap between games and each one banks
-  // whatever it's shown for. At 10s it earns its ✓ and the vote unlocks.
-  const WITNESS_MS = 10_000
+  // whatever it's shown for. At 3s it earns its ✓ and the vote unlocks.
+  const WITNESS_MS = 3_000
   const viewMs = useRef<Record<string, number>>({})
   const focusRef = useRef<string | null>(null)
   const [vtick, setVtick] = useState(0)
   // witness memory: watch-time per world, PERSISTED per arena so leaving and
-  // re-entering never restarts the 10s stare — the countdown resumes where you
+  // re-entering never restarts the 3s stare — the countdown resumes where you
   // left it, and a finished witness stays finished.
   const witnessKey = 'cc-witness:' + slot
   useEffect(() => {
@@ -156,7 +156,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // the world currently under your gaze — it fills the stage and owns the chat
   const [focus, setFocus] = useState<string | null>(null)
   focusRef.current = focus
-  // accumulate the watched game's time (fine tick) and stamp ✓ at 10s
+  // accumulate the watched game's time (fine tick) and stamp ✓ at 3s
   useEffect(() => {
     const id = setInterval(() => {
       const f = focusRef.current
@@ -233,11 +233,19 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     } catch { /* offline is fine */ }
   }, [])
 
-  // stepping into any world minimizes the panel — the pill rides along
+  // stepping into any world (or backing out to another scene) minimizes the
+  // panel — the pill rides along. Crucially this must RELEASE the screen the
+  // reckoning took: a bare setOpen(false) leaves the parent's voting/stageRect
+  // set, so the world/grid stays shrunk into the vote hole. Fire the same parent
+  // callbacks closeReckoning does so back-to-main restores the grid to full size.
   const sceneSeen = useRef(sceneKey)
   useEffect(() => {
-    if (sceneKey !== sceneSeen.current) { sceneSeen.current = sceneKey; setOpen(false) }
-  }, [sceneKey])
+    if (sceneKey === sceneSeen.current) return
+    sceneSeen.current = sceneKey
+    setOpen(false); setMounted(false); setFocus(null)
+    onReckoning?.(false)   // releases voting + previewScene + stageRect in the parent
+    onStageRect?.(null)    // un-shrink the grid immediately
+  }, [sceneKey, onReckoning, onStageRect])
 
   // once the overlay is up, let the panels slide in from the edges (next frame,
   // so the transition animates from the off-screen start position)
@@ -282,9 +290,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           if (!(base in bestVer) || ver >= bestVer[base]) { bestVer[base] = ver; bestName[base] = n }
         }
         const bases = Object.keys(bestName)
-        // MAIN previews the base world itself; each branch previews its newest version
-        previewMap.current = { MAIN: branchesOf, ...bestName }
-        setSelfRoster(bases.length > 0 ? ['MAIN', ...bases] : [])
+        // challengers ONLY — the base world is not a contestant in its own
+        // arena (you are standing in it; it holds the throne, it doesn't run).
+        // Live docs that still carry MAIN in a cell heal via the PRUNE law.
+        previewMap.current = { ...bestName }
+        setSelfRoster(bases)
       } catch { /* offline is fine */ }
     }
     scan()
@@ -489,7 +499,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
-    // a vote LOCKS for ten minutes once cast — no flip-flopping to game the tally.
     const cell0 = doc.cells[cellIdx]
     // votes stay changeable until the cell fills to QUORUM distinct voices; the
     // 5th settles it and locks everyone in. No time-based lock any more.
@@ -742,28 +751,29 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 
         {/* the five candidates — a full-width bar along the bottom, centered in it */}
         <div className={`relative pointer-events-auto bg-[#0d0906]/95 backdrop-blur-sm border-t border-brass/25 px-4 pt-3 pb-4 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : 'translate-y-full'}`}>
-          {/* the how-to, tucked in the grid's top-right corner */}
+          <div className="relative max-w-[1080px] mx-auto">
+          {/* the how-to — a tab at the TOP-RIGHT of the grid itself, clear of the vote tiles */}
           <button onClick={() => setShowInstr(v => !v)} title="how the reckoning works"
-            className={`${pill} absolute -top-3 right-3 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
+            className={`${pill} absolute -top-3 right-0 z-10 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
             ? INSTRUCTIONS
           </button>
           {showInstr && (
-            <div className={`${pill} absolute bottom-full right-3 mb-1 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl`}>
+            <div className={`${pill} absolute bottom-full right-0 mb-2 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl z-20`}>
               <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
               {branchesOf ? (
                 <>this arena asks one thing: should a <span className="text-amber-300">branch</span> replace{' '}
                 <span className="text-amber-300">{branchesOf.toLowerCase()}</span>&apos;s MAIN? load each contender (MAIN and every
                 branch), witness them all, then tap the <span className="text-amber-300">+</span> on the one that should hold the
-                name. a vote locks for ten minutes; a change only lands when a cell reaches a quorum.</>
+                name. your vote stays movable until the cell gathers five voices — the fifth locks everyone in.</>
               ) : (
                 <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
                 witnessed all five, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
-                your vote. a vote locks for ten minutes; every vote nudges its world in the constellation, and a tier only crowns
-                when a cell gathers a quorum, so no single vote decides it.</>
+                your vote. your vote stays movable until the cell gathers five voices (the fifth locks everyone in); every vote
+                nudges its world in the constellation, and a tier only crowns when a cell gathers a quorum, so no single vote decides it.</>
               )}
             </div>
           )}
-          <div className="grid grid-cols-5 gap-3 max-w-[1080px] mx-auto">
+          <div className="grid grid-cols-5 gap-3">
             {cell.worlds.map(w => {
               const isSeen = seen.has(w)
               const voted = myVote === w
@@ -780,14 +790,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
                     <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
                     {/* WITNESS TIMER, top-left: seconds left to watch (accumulates
-                        across visits) → ✓ at 10s. Amber while it's the one on stage. */}
+                        across visits) → ✓ at 3s. Amber while it's the one on stage. */}
                     {seated && (() => {
                       void vtick
                       const ms = Math.min(WITNESS_MS, viewMs.current[w] || 0)
                       if (ms >= WITNESS_MS) return <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[10px] flex items-center justify-center">✓</span>
                       const left = Math.ceil((WITNESS_MS - ms) / 1000)
                       const active = focus === w
-                      return <span title="watch 10s to witness · time accumulates"
+                      return <span title="watch 3s to witness · time accumulates"
                         className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[9px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
                     })()}
                     {/* THE VOTE BOX — top-right. Votes stay changeable until the cell
@@ -820,6 +830,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               )
             })}
           </div>
+          </div>
           <div className={`${pill} text-center mt-2 ${
             !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
           }`}>
@@ -831,7 +842,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                     : `voice on ${myVote.toLowerCase()} · ${voters}/${QUORUM} voted — you can still move it`
                 })()
               : seenAll ? 'all five witnessed — tap the + on your choice to vote'
-              : `watch each game 10s to witness it — ${seenN}/5 · time accumulates`}
+              : `watch each game 3s to witness it — ${seenN}/5 · time accumulates`}
           </div>
           {/* FINALIZE — lock your vote and leave the cell at once, no waiting */}
           {seated && (() => {
