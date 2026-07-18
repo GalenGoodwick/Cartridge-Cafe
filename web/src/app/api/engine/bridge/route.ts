@@ -7,6 +7,7 @@ import { validateSceneToken } from '../scene-token'
 import { loadScene, saveScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
 import { prisma } from '@/lib/prisma'
+import { logVisit } from '@/lib/visits'
 
 export const maxDuration = 30
 
@@ -127,6 +128,7 @@ async function fetchShellIdentity(shellName: string, req: NextRequest): Promise<
  * Optional ?fieldId=xxx for a single field.
  */
 export async function GET(req: NextRequest) {
+  if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:GET', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -263,6 +265,7 @@ export async function GET(req: NextRequest) {
  * Commands: create_field, paint, add_effect, inject_glsl, emit_data, set_position, etc.
  */
 export async function POST(req: NextRequest) {
+  if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:POST', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

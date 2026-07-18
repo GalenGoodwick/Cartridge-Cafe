@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Source_Serif_4, Libre_Franklin, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
-import { Analytics } from '@vercel/analytics/react'
+import Beacon from './Beacon'
 import { Providers } from './providers'
 import SupportGate from './SupportGate'
 
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${sourceSerif.variable} ${libreFranklin.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
       <body className="antialiased">
         <Providers><SupportGate>{children}</SupportGate></Providers>
-        <Analytics />
+        <Beacon />
       </body>
     </html>
   )
