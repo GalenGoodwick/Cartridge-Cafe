@@ -165,12 +165,13 @@ io.on('connection', (socket) => {
       glyph: playerInfo.glyph || null,   // the brewed cursor WGSL, if any
       rx: playerInfo.rx || 0.5,
       ry: playerInfo.ry || 0.5,
+      lastMoveAt: playerInfo.lastMoveAt || Date.now(),
     }
     newRoom.set(socket.id, player)
     socket.join(instance)
 
     // Send full room state to the joining client
-    const players = Array.from(newRoom.values())
+    const players = Array.from(newRoom.values()).map(p => ({ ...p, idleMs: Date.now() - (p.lastMoveAt || Date.now()) }))
     socket.emit('instance-state', { instance, players })
 
     // Notify others in the new room
@@ -194,8 +195,12 @@ io.on('connection', (socket) => {
   socket.on('position', ({ rx, ry, rotation }) => {
     const playerInfo = sockets.get(socket.id)
     if (!playerInfo || !playerInfo.currentInstance) return
+    // activity = actual movement; parked tabs that re-send the same spot
+    // must not look alive (the ghost-cursor bug)
+    const moved = Math.hypot((playerInfo.rx ?? 0.5) - rx, (playerInfo.ry ?? 0.5) - ry) > 0.004
     playerInfo.rx = rx
     playerInfo.ry = ry
+    if (moved || !playerInfo.lastMoveAt) playerInfo.lastMoveAt = Date.now()
     if (rotation !== undefined) playerInfo.rotation = rotation
     const room = rooms.get(playerInfo.currentInstance)
     if (room) {
@@ -203,6 +208,7 @@ io.on('connection', (socket) => {
       if (player) {
         player.rx = rx
         player.ry = ry
+        player.lastMoveAt = playerInfo.lastMoveAt
         if (rotation !== undefined) player.rotation = rotation
       }
     }

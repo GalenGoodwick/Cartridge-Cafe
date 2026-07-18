@@ -791,10 +791,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const onIconChange = () => { if (socket.connected) announce() }
     window.addEventListener('cafe:icon', onIconChange)
     socket.on('connect_error', (e: Error) => console.warn('[cursors] connect_error →', PRESENCE_URL, e.message))
-    socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number; glyph?: string | null }> }) => {
+    socket.on('instance-state', ({ players: list }: { players: Array<{ id: string; rx?: number; ry?: number; glyph?: string | null; idleMs?: number }> }) => {
       const ids = new Set(list.map(p => p.id))
       for (const pid of Array.from(buffers.keys())) if (!ids.has(pid)) buffers.delete(pid)
-      for (const p of list) { pushSample(p.id, p.rx ?? 0.5, p.ry ?? 0.5); noteGlyph(p.id, p.glyph) }
+      for (const p of list) {
+        pushSample(p.id, p.rx ?? 0.5, p.ry ?? 0.5)
+        noteGlyph(p.id, p.glyph)
+        // joining must not resurrect the parked: backdate their activity by the
+        // server-reported idle time so an already-still player never shows
+        if (p.idleMs && p.idleMs > 0) lastAct.set(p.id, { x: p.rx ?? 0.5, y: p.ry ?? 0.5, t: Date.now() - p.idleMs })
+      }
       publish()
     })
     socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number; glyph?: string | null } }) => { pushSample(player.id, player.rx ?? 0.5, player.ry ?? 0.5); noteGlyph(player.id, player.glyph); publish() })
