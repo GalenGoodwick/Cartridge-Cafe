@@ -800,14 +800,22 @@ export async function hydrateScene(name: string): Promise<void> {
 /** Hydrate every DB-mirrored scene newer than this instance's copy. One bulk
  *  query, TTL-throttled — list/library/promote routes call it up front. */
 let hydrateAllAt = 0
+// DELTA hydration: savedAt is indexed, so each instance remembers the newest
+// save it has pulled and asks Neon only for rows newer than that. First call
+// fetches everything once; steady-state calls fetch nothing — this query was
+// hauling EVERY world's full JSONB every 30s and was most of the Neon bill.
+let hydrateWatermark = 0
 export async function hydrateAllScenes(): Promise<void> {
   if (Date.now() - hydrateAllAt < 30_000) return
   hydrateAllAt = Date.now()
   try {
     const { prisma } = await import('@/lib/prisma')
     await ensureSlotTable()
-    const rows = await prisma.engineSlot.findMany({ where: { slot: { startsWith: 'scene:' } } })
+    const rows = await prisma.engineSlot.findMany({
+      where: { slot: { startsWith: 'scene:' }, savedAt: { gt: new Date(hydrateWatermark) } },
+    })
     for (const r of rows) {
+      if (r.savedAt.getTime() > hydrateWatermark) hydrateWatermark = r.savedAt.getTime()
       const db = r.data as unknown as SceneSnapshot
       if (!db || typeof db !== 'object' || !Array.isArray(db.fields)) continue
       const name = r.slot.slice(6)
