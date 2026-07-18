@@ -139,7 +139,7 @@ function isPublicUniverseWrite(body: { slot?: unknown; data?: unknown }): boolea
   if (!d || d.v !== 1 || typeof d.at !== 'number' || !d.bubbles || typeof d.bubbles !== 'object') return false
   const bubbles = d.bubbles as Record<string, { x?: unknown; y?: unknown; born?: unknown }>
   const names = Object.keys(bubbles)
-  if (names.length > 40) return false
+  if (names.length > 80) return false
   for (const n of names) {
     const b = bubbles[n]
     if (n.length > 80 || !b || typeof b.x !== 'number' || typeof b.y !== 'number' ||
