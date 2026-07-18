@@ -736,8 +736,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const INTERP_DELAY = 110
     type Sample = { t: number; rx: number; ry: number }
     const buffers = new Map<string, Sample[]>()
+    // activity = the position actually CHANGING. Old clients broadcast on an
+    // interval even while parked, so sample arrival time proves nothing.
+    const lastAct = new Map<string, { x: number; y: number; t: number }>()
     const pushSample = (pid: string, rx: number, ry: number) => {
       const now = Date.now()
+      const prev = lastAct.get(pid)
+      if (!prev || Math.hypot(rx - prev.x, ry - prev.y) > 0.004) lastAct.set(pid, { x: rx, y: ry, t: now })
       let buf = buffers.get(pid)
       if (!buf) { buf = []; buffers.set(pid, buf) }
       buf.push({ t: now, rx, ry })
@@ -763,7 +768,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       for (const [pid, buf] of buffers) {
         if (pid === id || buf.length === 0) continue
         const last = buf[buf.length - 1]
-        if (Date.now() - last.t > 60000) continue   // parked cursor — let it vanish
+        if (Date.now() - (lastAct.get(pid)?.t ?? 0) > 60000) continue   // parked cursor — let it vanish
         arr.push({ id: pid, x: last.rx * gridSize, y: last.ry * gridSize, hue: hueOf(pid) })
         if (arr.length >= 25) break
       }
@@ -793,7 +798,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       publish()
     })
     socket.on('player-joined', ({ player }: { player: { id: string; rx?: number; ry?: number; glyph?: string | null } }) => { pushSample(player.id, player.rx ?? 0.5, player.ry ?? 0.5); noteGlyph(player.id, player.glyph); publish() })
-    socket.on('player-left', ({ playerId }: { playerId: string }) => { buffers.delete(playerId); publish() })
+    socket.on('player-left', ({ playerId }: { playerId: string }) => { buffers.delete(playerId); lastAct.delete(playerId); publish() })
     socket.on('player-moved', ({ playerId, rx, ry }: { playerId: string; rx: number; ry: number }) => { pushSample(playerId, rx, ry); publish() })
     // per-frame: write the INTERPOLATED positions to worldData.presence for the
     // cafe shader (no React state here — safe at 60fps).
@@ -807,7 +812,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         for (const [pid, buf] of buffers) {
           if (pid === id || buf.length === 0) continue
           // still for 60s = gone; their next real move brings them back
-          if (renderT - buf[buf.length - 1].t > 60000) continue
+          if (renderT - (lastAct.get(pid)?.t ?? 0) > 60000) continue
           const s = sampleAt(buf, renderT)
           // slot = which mod_pg seat holds this player's brewed glyph (-1 = comet)
           const slot = glyphOf.has(pid) ? (glyphSlots.get(pid) ?? -1) : -1
