@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { mayWriteScene } from '../scene-auth'
-import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene } from '../store'
+import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene, hydrateScene, hydrateAllScenes } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const name = searchParams.get('name')
 
   if (action === 'list') {
+    await hydrateAllScenes()   // bridge-built branches live in Neon, not this lambda's disk
     return NextResponse.json({ scenes: listScenes() })
   }
 
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
 
   // lightweight change-detection for open tabs: just the stamp, not the world
   if (action === 'stat' && name) {
+    await hydrateScene(name)
     const scene = loadScene(name)
     if (!scene) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
     return NextResponse.json({ name, timestamp: (scene as { timestamp?: number }).timestamp ?? 0 })
@@ -37,6 +39,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (name) {
+    await hydrateScene(name)
     const scene = loadScene(name)
     if (!scene) {
       return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
@@ -57,6 +60,7 @@ export async function POST(req: NextRequest) {
     if (typeof body.name !== 'string' || !body.name) {
       return NextResponse.json({ error: 'name required' }, { status: 400 })
     }
+    await hydrateAllScenes()   // fork/version probes must see Neon-only branches
     // authority is per-scene: only your own branches, or admin
     if (!(await mayWriteScene(req, body.name))) {
       return NextResponse.json({ error: 'Not authorized to write this world' }, { status: 403 })

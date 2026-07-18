@@ -1653,6 +1653,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     let last = ''
     let lastName = ''
     let stop = false
+    let shiftTick = 0, shiftDoneAt = 0, shiftLastAt = 0
     const poll = async () => {
       try {
         const cur = lastSceneRef.current || playScene
@@ -1676,6 +1677,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
         }
         if (stamp) last = stamp
+        // AI BUILD SHIFT: a bridge burst on a sibling branch publishes an
+        // 'ai-building' beacon on the base world's channel — a tab standing in
+        // the family rides to the branch being built, and this same stat poll
+        // then live-reloads it burst by burst. One shift per beacon stamp and
+        // a 30s cooldown, so a viewer can still walk away on purpose.
+        shiftTick++
+        if (shiftTick % 4 === 0) {
+          const base = cur.split(' ⑂ ')[0]
+          const r2 = await fetch(`/api/engine/save?slot=${encodeURIComponent('ai-building:' + base)}`, { cache: 'no-store' })
+          if (r2.ok) {
+            const sig = ((await r2.json()) as { data?: { scene?: string; at?: number } | null }).data
+            if (sig?.scene && sig.at && sig.scene !== cur && sig.scene.split(' ⑂ ')[0] === base &&
+                Date.now() - sig.at < 15000 && sig.at !== shiftDoneAt && Date.now() - shiftLastAt > 30000) {
+              shiftDoneAt = sig.at; shiftLastAt = Date.now()
+              handleLoadScene(sig.scene)
+            }
+          }
+        }
       } catch { /* offline / mid-save — try again next tick */ }
       if (!stop) setTimeout(poll, 1500)
     }

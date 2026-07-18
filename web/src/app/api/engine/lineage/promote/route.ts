@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGameSlot } from '../../store'
-import { listScenes, loadScene, saveScene } from '../../store'
+import { listScenes, loadScene, saveScene, hydrateAllScenes } from '../../store'
 import { getLineage } from '../../lineage'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic'
  *   · champion 'MAIN' (or none)  → nothing to stage; main is already the maker's
  *   · a branch identity          → its NEWEST version scene is frozen to the podium */
 export async function POST(req: NextRequest) {
+  await hydrateAllScenes()
   let base: string
   try { base = String((await req.json())?.base ?? '').trim() } catch { base = '' }
   if (!base) return NextResponse.json({ error: 'base required' }, { status: 400 })

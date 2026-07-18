@@ -778,6 +778,43 @@ export function saveScene(name: string, scene: SceneSnapshot): void {
   if (prev) snapshotVersion(name, prev)
   store.scenes.set(name, scene)
   schedulePersist()
+  // Durability: disk is per-instance on serverless — a branch built through the
+  // bridge on one lambda EVAPORATED for every other lambda (and the next cold
+  // start). Mirror every scene into the Neon-backed slot store, exactly like
+  // game saves. Fire-and-forget so the sync callers stay sync.
+  void saveGameSlot('scene:' + name, scene)
+}
+
+/** Pull one scene from Neon into this instance's memory if the DB copy is
+ *  newer (or unknown here). Async routes call this BEFORE their sync
+ *  loadScene reads, so bridge edits survive lambda roulette. */
+export async function hydrateScene(name: string): Promise<void> {
+  try {
+    const db = (await loadGameSlot('scene:' + name)) as SceneSnapshot | undefined
+    if (!db || typeof db !== 'object' || !Array.isArray(db.fields)) return
+    const local = store.scenes.get(name)
+    if (!local || (db.timestamp || 0) > (local.timestamp || 0)) store.scenes.set(name, db)
+  } catch { /* DB unreachable — the local (baked) copy still serves */ }
+}
+
+/** Hydrate every DB-mirrored scene newer than this instance's copy. One bulk
+ *  query, TTL-throttled — list/library/promote routes call it up front. */
+let hydrateAllAt = 0
+export async function hydrateAllScenes(): Promise<void> {
+  if (Date.now() - hydrateAllAt < 30_000) return
+  hydrateAllAt = Date.now()
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
+    const rows = await prisma.engineSlot.findMany({ where: { slot: { startsWith: 'scene:' } } })
+    for (const r of rows) {
+      const db = r.data as unknown as SceneSnapshot
+      if (!db || typeof db !== 'object' || !Array.isArray(db.fields)) continue
+      const name = r.slot.slice(6)
+      const local = store.scenes.get(name)
+      if (!local || (db.timestamp || 0) > (local.timestamp || 0)) store.scenes.set(name, db)
+    }
+  } catch { /* best-effort */ }
 }
 
 /** Load a scene snapshot by name */

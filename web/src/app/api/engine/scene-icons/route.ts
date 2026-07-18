@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { loadScene, listScenes } from '../store'
+import { loadScene, listScenes, hydrateAllScenes } from '../store'
 import { composeIcon, dominantHue, IconField } from '@/lib/icon-compose'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +12,7 @@ const STYLED = new Set(['FABRIC', 'ORRERY', 'GARNET', 'ONE DAY', 'SAIL', 'SOLSTI
  *  fields, so PROOF/HANABI/etc. show their real look instead of a default
  *  emblem. Styled scenes (with a curated mini) and branches are skipped. */
 export async function GET() {
+  await hydrateAllScenes()
   const out: { name: string; hue: number | null; iconWgsl: string }[] = []
   for (const name of listScenes()) {
     const up = name.toUpperCase()

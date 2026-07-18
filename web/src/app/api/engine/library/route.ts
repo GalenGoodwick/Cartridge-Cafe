@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { listScenes, loadScene } from '../store'
+import { listScenes, loadScene, hydrateAllScenes } from '../store'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,6 +64,7 @@ function sizesOf(s: Sceneish) {
 }
 
 export async function GET(req: NextRequest) {
+  await hydrateAllScenes()
   const want = req.nextUrl.searchParams.get('world')
 
   // ── one world's source ──

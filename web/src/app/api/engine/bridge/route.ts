@@ -4,7 +4,7 @@ import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionR
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
 import { validateSceneToken } from '../scene-token'
-import { loadScene, saveScene } from '../store'
+import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
 import { prisma } from '@/lib/prisma'
 import { logVisit } from '@/lib/visits'
@@ -160,6 +160,7 @@ export async function GET(req: NextRequest) {
 
   // Branch-scoped: return the scene's own snapshot from the file store
   if (auth.sceneName) {
+    await hydrateScene(auth.sceneName)
     const snapshot = loadScene(auth.sceneName)
     return NextResponse.json({
       scene: auth.sceneName,
@@ -304,6 +305,7 @@ export async function POST(req: NextRequest) {
 
     // #4 atomic batch: snapshot the world BEFORE the batch; if any command throws
     // mid-way, we revert to this so a half-applied batch never persists.
+    if (isSceneScoped) await hydrateScene(auth.sceneName!)   // this lambda may have never seen the branch
     const rollback = isSpaceScoped
       ? await getSpaceSnapshot(auth.spaceId!).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
       : isSceneScoped
@@ -691,6 +693,14 @@ export async function POST(req: NextRequest) {
         error: `batch aborted at command "${batchAbort.cmd}": ${batchAbort.error} — no partial state was kept`,
         results,
       })
+    }
+
+    // Branch-shift beacon: a scene-scoped burst means an AI is BUILDING that
+    // branch right now. Publish it on the base world's channel so any tab
+    // standing in that family shifts its screen to the branch being built.
+    if (isSceneScoped && commands.length > 0 && !batchAbort) {
+      const base = auth.sceneName!.split(' ⑂ ')[0]
+      void saveGameSlot('ai-building:' + base, { scene: auth.sceneName, at: Date.now() })
     }
 
     // AI focus beacon: derive what the agent just touched and publish it so the
