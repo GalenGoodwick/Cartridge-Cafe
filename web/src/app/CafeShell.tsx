@@ -1324,7 +1324,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             )}
             {/* mine-mode's way out is the universal ◂ strip (top-left) */}
             {!mine && (
-              <button onClick={myWorlds} className={hubBtn}>MY WORLDS</button>
+              <button onClick={myWorlds} className={`${hubBtn} opacity-60 hover:opacity-100`}>MY WORLDS</button>
             )}
             <button onClick={async () => {
               // an AI prompt box: its token mint needs a session — auth first,
@@ -1335,11 +1335,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
               }
               setIconOpen(o => !o)
-            }} className={`${hubBtn} ${iconOpen ? 'border-flame/60 text-glow' : ''}`}>
+            }} className={`${hubBtn} opacity-60 hover:opacity-100 ${iconOpen ? 'border-flame/60 text-glow opacity-100' : ''}`}>
               BREW ICON
             </button>
-            <button onClick={brew} className="rounded-lg bg-flame/90 hover:bg-glow px-3 py-1.5 font-mono text-[10px] tracking-[0.15em] text-void transition-colors">
-              BREW YOURS
+            <button onClick={brew}
+              className="rounded-lg bg-flame hover:bg-glow px-5 py-2.5 font-mono text-[11px] tracking-[0.2em] text-void font-bold transition-all shadow-[0_0_28px_rgba(245,176,76,0.45)] hover:shadow-[0_0_40px_rgba(245,176,76,0.65)] hover:scale-[1.03]">
+              ☕ BREW YOUR WORLD
             </button>
           </div>
           )}
