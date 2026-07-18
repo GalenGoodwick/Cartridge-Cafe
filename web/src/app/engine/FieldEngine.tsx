@@ -511,6 +511,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
+  // true while a hub scene draws the player's own cursor glyph — the OS cursor
+  // is hidden then, and the pointer handlers must not flash it back to 'grab'.
+  const hubCursorRef = useRef(false)
   // BREWED GLYPH CURSOR — the flexible half of BREW YOUR ICON. The hub shader
   // (CAFE / SUB-MAIN) draws the cursor icon itself and ships a no-op module
   // slot, `mod_playerglyph`. When the brewed icon carries custom WGSL (an AI
@@ -527,6 +530,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (!sim || !renderer) return
       // the slot only exists in the hub scenes — elsewhere there is nothing to fill
       const inHub = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
+      // HIDE THE OS CURSOR in the hub: the shader draws the player's glyph AT the
+      // pointer, so the browser's own arrow/hand would just double it up. Games
+      // and the editor keep the normal cursor. hubCursorRef stops the pointer
+      // handlers from flashing 'grab' back on after a click.
+      hubCursorRef.current = inHub
+      const cv = canvasRef.current
+      if (cv) cv.style.cursor = inHub ? 'none' : 'grab'
       if (!inHub) { if (sim.worldData.__glyphOn) delete sim.worldData.__glyphOn; return }
       const wgsl = playerGlyphWgsl()
       const code = wgsl ? wrapPlayerGlyph(wgsl) : NOOP
@@ -753,11 +763,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       for (const [pid, buf] of buffers) {
         if (pid === id || buf.length === 0) continue
         const last = buf[buf.length - 1]
+        if (Date.now() - last.t > 60000) continue   // parked cursor — let it vanish
         arr.push({ id: pid, x: last.rx * gridSize, y: last.ry * gridSize, hue: hueOf(pid) })
         if (arr.length >= 25) break
       }
       setPresenceOthers(prev => (prev.length === 0 && arr.length === 0) ? prev : arr)
     }
+    // quiet rooms get no events, so the idle filter needs its own heartbeat
+    const idleSweep = setInterval(publish, 10000)
     console.log('[cursors] connecting to', PRESENCE_URL, 'room', instance, 'as', id)
     const socket: Socket = io(PRESENCE_URL, { transports: ['websocket', 'polling'], reconnection: true })
     const announce = () => {
@@ -793,6 +806,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const others: Array<{ id: string; x: number; y: number; hue: number; slot: number }> = []
         for (const [pid, buf] of buffers) {
           if (pid === id || buf.length === 0) continue
+          // still for 60s = gone; their next real move brings them back
+          if (renderT - buf[buf.length - 1].t > 60000) continue
           const s = sampleAt(buf, renderT)
           // slot = which mod_pg seat holds this player's brewed glyph (-1 = comet)
           const slot = glyphOf.has(pid) ? (glyphSlots.get(pid) ?? -1) : -1
@@ -823,7 +838,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       lastX = x; lastY = y
       socket.emit('position', { rx: x / gridSize, ry: y / gridSize })
     }, 66)
-    return () => { clearInterval(iv); cancelAnimationFrame(raf); window.removeEventListener('cafe:icon', onIconChange); socket.disconnect() }
+    return () => { clearInterval(iv); cancelAnimationFrame(raf); window.removeEventListener('cafe:icon', onIconChange)
+      clearInterval(idleSweep); socket.disconnect() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, playScene])
   const spaceHeld = useRef(false)
@@ -2115,7 +2131,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       draggingFieldId.current = null
       pointerDown.current = false
       const canvas = canvasRef.current
-      if (canvas) canvas.style.cursor = 'grab'
+      if (canvas) canvas.style.cursor = hubCursorRef.current ? 'none' : 'grab'
 
       // Click (not drag) — select this field (highlight in list + inspector)
       if (dist < 5 && sim) {
@@ -2145,7 +2161,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     isOrbiting.current = false
     pointerDown.current = false
     const canvas = canvasRef.current
-    if (canvas) canvas.style.cursor = 'grab'
+    if (canvas) canvas.style.cursor = hubCursorRef.current ? 'none' : 'grab'
   }, [syncFields, updateSelectionMask])
 
   // Wheel zoom
@@ -4850,6 +4866,80 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, isOwner])
+
+  // LIVE ADOPT — the fix for editing a world while someone stands in it.
+  // A bridge write (an AI editing over HTTP) bumps the world's authored revision
+  // server-side. This poll notices the bump and PULLS the new hooks/visuals/
+  // modules, hot-applying them in place — the player's runtime state (worldData,
+  // field transforms, chapter progress) is untouched. No reload, and because the
+  // tab now holds the same authored code the server does, its next sync can't
+  // clobber the edit. Covers the two gaps the live SSE path leaves: hook edits
+  // (SSE refuses them as admin-only) and branch-play (SSE is off for playScene).
+  useEffect(() => {
+    if (!playScene && !spaceId) return
+    let stopped = false
+    let seenRev = -1   // -1 = baseline unset; first poll records it (our own load)
+    const keyFor = (): string | null => {
+      if (spaceId) return 'space:' + spaceId
+      const s = lastSceneRef.current || playScene || ''
+      return s ? 'scene:' + s : null
+    }
+    const pullAndAdopt = async () => {
+      const sim = simulationRef.current, renderer = rendererRef.current
+      if (!sim || !renderer) return
+      // the rev bumps synchronously on the bridge write, but the space snapshot
+      // persists on a ~2s debounce — wait it out so we pull the NEW authored code,
+      // not the pre-edit snapshot (which we'd then latch as "seen" and never retry).
+      await new Promise(res => setTimeout(res, 2300))
+      if (stopped) return
+      let snap: { stepHooks?: Array<{ id: string; author: string; description: string; code: string }>; visualTypes?: Array<{ name: string; wgsl: string }>; modules?: Array<{ name: string; wgsl: string }> } | null = null
+      try {
+        if (spaceId) {
+          const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/snapshot`)
+          if (r.ok) snap = (await r.json()).snapshot
+        } else {
+          const s = lastSceneRef.current || playScene || ''
+          const r = await fetch(`/api/engine/scene?name=${encodeURIComponent(s)}`)
+          if (r.ok) snap = (await r.json()).scene
+        }
+      } catch { return }
+      if (!snap || stopped) return
+      // hot-apply authored sections ONLY. registerVisualType is the exact hot
+      // shader-swap the live CONNECT-AI path uses; installHooks re-runs the hook
+      // against existing worldData (so a chapter mid-play keeps its state, exactly
+      // as when the HELIOS hook was edited under the player).
+      let touchedShaders = false
+      if (Array.isArray(snap.visualTypes)) for (const vt of snap.visualTypes) { if (vt?.name && vt?.wgsl) { renderer.registerVisualType(vt.name, vt.wgsl); touchedShaders = true } }
+      if (Array.isArray(snap.modules)) for (const m of snap.modules) { if (m?.name && m?.wgsl) { renderer.registerModule(m.name, m.wgsl); touchedShaders = true } }
+      // a registered visual/module is inert until the uber-shader is recompiled —
+      // the SAME force-compile the live define_visual path runs after registering.
+      if (touchedShaders) { try { await renderer.compileSuperPipeline() } catch { /* the fault surface reports a bad shader */ } }
+      if (Array.isArray(snap.stepHooks)) {
+        const keep = new Set(snap.stepHooks.map(h => h.id))
+        for (const id of Array.from(sim.stepHooks.keys())) if (!keep.has(id)) sim.removeStepHook(id)
+        installHooks(sim, snap.stepHooks, sim.worldData)
+      }
+      // surface the live edit to the player, same channel a bridge write uses
+      aiLastEditRef.current = Date.now()
+      setAiPulse(p => p + 1)
+    }
+    const poll = async () => {
+      if (stopped) return
+      const key = keyFor()
+      if (!key) return
+      try {
+        const r = await fetch(`/api/engine/world-rev?key=${encodeURIComponent(key)}`)
+        if (!r.ok) return
+        const { rev } = await r.json() as { rev: number }
+        if (seenRev < 0) { seenRev = rev; return }   // baseline = our own load; don't re-adopt it
+        if (rev > seenRev) { seenRev = rev; await pullAndAdopt() }
+      } catch { /* offline / cold start — keep polling */ }
+    }
+    const iv = setInterval(poll, 2500)
+    poll()
+    return () => { stopped = true; clearInterval(iv) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene, spaceId, spaceSlug])
 
   // Auto-save removed — scenes are saved manually via Save button
 

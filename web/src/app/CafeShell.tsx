@@ -37,6 +37,15 @@ const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-
 
 export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: string }) {
   const [scene, setScene] = useState(initialScene)
+
+  // the tab title follows you: into a world, and — the bug — back out again.
+  // In-shell scene swaps never navigate, so the /play/[scene] metadata title
+  // goes stale the moment you leave; keep document.title honest by hand.
+  useEffect(() => {
+    document.title = scene && scene !== 'CAFE'
+      ? `${scene.toLowerCase()} · cartridge.cafe`
+      : 'cartridge.cafe — little worlds, served as single files'
+  }, [scene])
   // the contained ad shown on game-world entry; server decides if the viewer /
   // world is protected (ad-free), the client just throttles how often it shows.
   const [ad, setAd] = useState<{ id: string; title: string; body: string; emoji: string; advertiser: string } | null>(null)
