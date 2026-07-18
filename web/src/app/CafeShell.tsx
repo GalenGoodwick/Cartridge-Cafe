@@ -7,7 +7,6 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
-import { useIsMobile } from '@/lib/useIsMobile'
 
 const BLURBS: Record<string, string> = {
   'FABRIC': 'bend starlight',
@@ -222,14 +221,6 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const votingRef = useRef(false)
   votingRef.current = voting
   const [mainRoster, setMainRoster] = useState<string[]>([])
-  // MOBILE: the hub sim (cafe-cartridge.mjs) reads this global to drop worlds a
-  // phone can't play. Publish it here so React's device detection is the single
-  // source of truth; the sim polls the shelf every couple seconds and re-honors.
-  const isMobile = useIsMobile()
-  useEffect(() => {
-    ;(window as unknown as { __cafeMobile?: boolean; __cafePoke?: number }).__cafeMobile = isMobile
-    ;(window as unknown as { __cafePoke?: number }).__cafePoke = Date.now()   // nudge the sim to re-roster now
-  }, [isMobile])
   const launchMapRef = useRef<Record<string, string>>({})
   const travelTo = (name: string) => {
     window.dispatchEvent(new CustomEvent('cafe:launch', { detail: launchMapRef.current[name] || name }))
@@ -888,7 +879,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           branch shelf · a world: MAIN vs its branches (what promotion enacts).
           While DOCKED, the main arena rides along into worlds (so a voter can
           see the contenders) and every other arena stands down. */}
-      {((scene === 'CAFE' && !mine) || docked) && (
+      {/* the main arena STAYS on the hub — it no longer rides into worlds
+          (docked): inside a world the only vote you see is that world's own
+          branch arena. Traveling mid-deliberation lands you in the world;
+          the main reckoning waits back at the cafe. */}
+      {scene === 'CAFE' && !mine && (
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
@@ -897,13 +892,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}
-      {scene === 'CAFE' && mine && !docked && (
+      {scene === 'CAFE' && mine && (
         <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
           bubbles={portals}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
-      {scene === 'SUB-MAIN' && !docked && (
+      {scene === 'SUB-MAIN' && (
         <TournamentBar key={subMode?.slug ? `arena-sub-${subMode.slug}` : 'arena-submain'} visible={!modalUp}
           slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
           worlds={portals.map(pt => pt.name)}
@@ -911,7 +906,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
       )}
-      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && !docked && (
+      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && (
         <TournamentBar
           key={`arena-world-${scene.split(' ⑂ ')[0]}`}
           visible={!modalUp && !confirmLeave}
