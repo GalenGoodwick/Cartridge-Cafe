@@ -684,6 +684,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       else { setConfirmLeave(true); pause(true) }
     }
     const onPop = () => {
+      // a pop while the reckoning is open is ITS throwaway entry unwinding —
+      // the arena closes itself; re-navigating here would yank the scene and
+      // make browser-back feel nothing like the ✕ (which it must equal)
+      if (votingRef.current) return
       const m = window.location.pathname.match(/^\/play\/(.+)$/)
       go(m ? decodeURIComponent(m[1]) : 'CAFE', false)
     }
@@ -712,7 +716,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       }
     }).catch(() => {})
     // the ONE back button (engine's identity strip) asks us to leave a world
-    const onBack = () => { if (confirmRef.current) stay(); else openConfirm() }
+    const onBack = () => {
+      // one layer at a time: an open reckoning closes first — the ◂ does
+      // exactly what its ✕ does — and only the NEXT ◂ asks about leaving
+      if (votingRef.current) { window.dispatchEvent(new CustomEvent('cafe:close-reckoning')); return }
+      if (confirmRef.current) stay(); else openConfirm()
+    }
     window.addEventListener('cafe:back', onBack)
     window.addEventListener('cafe:launch', onLaunch)
     window.addEventListener('cafe:hover', onHover)

@@ -583,6 +583,15 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     onStageRect?.(null)
     window.setTimeout(() => { setOpen(false); onReckoning?.(false) }, 320)
   }, [onPreview, onStageRect, onReckoning])
+  // the shell's ONE back button steps back one LAYER: while the reckoning is
+  // open, ◂ routes here (same as ✕) instead of leaving the world/hub.
+  useEffect(() => {
+    if (!open) return
+    const onBk = () => closeReckoning()
+    window.addEventListener('cafe:close-reckoning', onBk)
+    return () => window.removeEventListener('cafe:close-reckoning', onBk)
+  }, [open, closeReckoning])
+
   // the reckoning takes the whole screen — so it must be exitable the way people
   // reflexively try to exit fullscreen things: the browser BACK button and ESC.
   // Opening pushes a throwaway history entry; back/ESC pop it (→ we just close),
