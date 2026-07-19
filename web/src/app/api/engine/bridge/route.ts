@@ -79,6 +79,27 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
   return { authorized: false, spaceId: null, ownerId: null }
 }
 
+/** SERVER-SIDE WGSL HAZARD SCAN — the quarantine feedback a HEADLESS builder
+ *  never gets. Browser compile results only reach the bridge when a live tab is
+ *  listening; with none, shaders shipped completely unchecked — which is how a
+ *  GPU-killing visual reached prod ([gpu-lost] WebGPUChild destroyed). Static
+ *  patterns from the freeze-quarantine work: baked const arrays, huge/unbounded
+ *  loops. Returns a human reason to REJECT with, or null when it looks sane. */
+function wgslHazard(wgsl: string): string | null {
+  if (!wgsl) return null
+  if (wgsl.length > 60_000) return `shader is ${wgsl.length}B — too large; keep a visual under 60KB`
+  const arr = [...wgsl.matchAll(/array<[^>]*,\s*(\d+)\s*>/g)].map(m => +m[1])
+  const bigArr = Math.max(0, ...arr)
+  if (bigArr > 1024) return `const array of ${bigArr} elements — baked data arrays freeze the GPU; use math or a texture, never baked pixels`
+  const loops = [...wgsl.matchAll(/for\s*\([^)]*<\s*(\d+)/g)].map(m => +m[1]).sort((a, b) => b - a)
+  if ((loops[0] ?? 0) > 2048) return `loop bound ${loops[0]} — cap per-pixel loops at a few hundred iterations`
+  if (loops.length >= 2 && loops[0] * loops[1] > 262_144) return `nested loops ${loops[0]}×${loops[1]} per pixel — that workload kills the device; restructure`
+  if (/(^|\W)loop\s*\{/.test(wgsl) && !/\bbreak\b/.test(wgsl)) return 'loop{} with no break — unbounded GPU loop'
+  if (/while\s*\(\s*true\s*\)/.test(wgsl) && !/\bbreak\b/.test(wgsl)) return 'while(true) with no break — unbounded GPU loop'
+  return null
+}
+const SHADER_CMDS = new Set(['define_visual', 'define_module', 'inject_wgsl', 'add_effect', 'update_effect', 'add_state_shader'])
+
 /** Mint a fresh uc_st_ world token for a space (raw shown once, SHA-256 stored). */
 async function mintWorldToken(spaceId: string, name: string): Promise<string> {
   const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
@@ -748,6 +769,17 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // HAZARD SCAN — reject GPU-killing WGSL inline so a headless builder hears
+      // about it (its only quarantine feedback; browser compile needs a live tab).
+      if ((isSpaceScoped || isSceneScoped) && SHADER_CMDS.has(cmd.type as string)) {
+        const code = String(cmd.wgsl ?? cmd.glsl ?? cmd.code ?? '')
+        const hazard = wgslHazard(code)
+        if (hazard) {
+          results.push({ type: cmd.type, name: cmd.name, error: `HAZARD — rejected, not applied: ${hazard}. Rewrite this shader and resend.` })
+          continue
+        }
+      }
+
       // RENDER CHECK — brief_done means "the world is done"; refuse it while the
       // world would render fully DARK (fields exist but none carries a registered
       // visualType). Fields render as NOTHING without one — this is the #1 way a
@@ -817,6 +849,13 @@ export async function POST(req: NextRequest) {
           if (compileResult) {
             const cr = compileResult as Record<string, unknown>
             ;(result as Record<string, unknown>).compileResult = cr
+          } else if ((result as Record<string, unknown>).listeners === 0) {
+            // headless truth: nobody compiled this shader. Say so, or the builder
+            // ships WGSL believing silence means success.
+            ;(result as Record<string, unknown>).compileResult = {
+              unverified: true,
+              note: 'no live tab is open, so this shader was NOT compiled — only statically scanned. Keep it simple and standard; it will first compile when a player opens the world.',
+            }
           }
         }
       }
