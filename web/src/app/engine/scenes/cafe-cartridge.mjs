@@ -859,26 +859,28 @@ try {
     let votedR = 40
     if (banded) for (const n of U.order) { const B = U.bubbles[n]; if (B && B.voted) votedR = Math.max(votedR, Math.hypot(B.x - 256, B.y - 256)) }
     const ringR = Math.max(votedR + 90, 170)
-    // the immovable seats: the big category doors NEVER travel — not during boot,
-    // not during a wake, not under any position correction. Reasserted per frame.
+    // Seats (category doors, champion, lone world) are pinned ONCE at roster
+    // time; the pinned flag is now honored by every force so they hold on their
+    // own — no per-frame reassert. This block only ESTABLISHES a pin the roster pass
+    // may have missed (a lone world adopted from a stale shared layout), so a
+    // freshly-joined tab still lands them locked before its first poll.
     const FIXEDSEAT = (!MF && !SUB && !PL) ? { 'SUB-MAINS': [215, 285], 'PLAYER WORLDS': [297, 285] } : null
-    // a shelf with ONE world: it sits enthroned at center, full stop — no gravity,
-    // no rim spawn, no bounding around (the lone pinned world was drifting).
     const lone = (MF || SUB || PL) && U.order.length === 1
     for (let i = 0; i < U.order.length; i++) {
       const B = U.bubbles[U.order[i]]
       if (!B) continue
       const seat = FIXEDSEAT && FIXEDSEAT[U.order[i]]
-      if (seat) { B.x = seat[0]; B.y = seat[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
-      // the CHAMPION reigns at the apex — reasserted per frame like the category
-      // seats. Its pin was set only at roster time, so a join (shared-layout
-      // adoption or a collision shove) sprang it loose until the next poll.
-      else if (B.crown && !MF && !SUB && !PL) { B.x = 256; B.y = 210; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
-      else if (lone) { B.x = 256; B.y = 256; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
+      if (seat && !B.pinned) { B.x = seat[0]; B.y = seat[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
+      else if (lone && !B.pinned) { B.x = 256; B.y = 256; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
       // an ANCHORED bubble came from the saved layout: it holds its exact place
       // as a fixed repulsor, so a newborn (or a late-loading world) settles into
       // the gaps WITHOUT dragging the arrangement everyone already sees.
-      if (!B.anchored) {
+      // PINNED means immovable — full stop. Forces and integration must honor it
+      // the same way the floor correction and crown collider already do. Without
+      // this, a bubble that gets un-anchored (line: voted-status flip) while
+      // staying pinned — exactly what happens the frame a champion is crowned —
+      // would accelerate and drift free until the next poll snapped it back.
+      if (!B.anchored && !B.pinned) {
         const dx = 256 - B.x, dy = 256 - B.y
         const dd = Math.hypot(dx, dy) || 1
         if (banded && !B.voted) {
@@ -932,7 +934,7 @@ try {
         const kd = Math.hypot(kx, ky)
         if (kd < kr && kd > 0.01) { B.x += kx / kd * (kr - kd); B.y += ky / kd * (kr - kd) }
       }
-      if (!B.anchored) {
+      if (!B.anchored && !B.pinned) {
         B.vx *= fr; B.vy *= fr
         B.x += B.vx * dt2; B.y += B.vy * dt2
         const v = Math.abs(B.vx) + Math.abs(B.vy)

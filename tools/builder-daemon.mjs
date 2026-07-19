@@ -77,6 +77,17 @@ async function consoleLine(spaceId, type, summary) {
   } catch { /* the console is a courtesy */ }
 }
 
+// One live build child, killed with the daemon — an orphaned build keeps a valid
+// world token and can interleave with the NEXT attempt on the same world (the
+// one real build race). Dying clean closes it.
+let activeChild = null
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    try { if (activeChild) activeChild.kill('SIGTERM') } catch { /* gone */ }
+    process.exit(0)
+  })
+}
+
 let building = false
 // If a build fails on a usage/credit limit, stop polling for a while. Not
 // polling means the server's 'builder-seen' heartbeat goes stale → the swarm
@@ -169,6 +180,7 @@ async function tick() {
     let hitLimit = false
     const ok = await new Promise((resolve) => {
       const child = spawn(CLAUDE_BIN, args, { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] })
+      activeChild = child
       const rawLog = createWriteStream(join(scratch, 'build.log'), { flags: 'a' })
       const killer = setTimeout(() => { try { child.kill('SIGTERM') } catch { /* gone */ } }, BUILD_TIMEOUT_MS)
       let buf = ''
@@ -207,6 +219,7 @@ async function tick() {
       })
       child.stderr.on('data', (d) => { rawLog.write(d); if (/usage limit|rate limit|quota|429/i.test(String(d))) hitLimit = true })
       child.on('close', (code) => {
+        activeChild = null
         clearTimeout(killer); rawLog.end()
         if (code !== 0) log(`build ${slug} ended with exit ${code}`)
         log(`build ${slug} finished — agent said: ${lastSaid.slice(-300).replace(/\n/g, ' ')}`)

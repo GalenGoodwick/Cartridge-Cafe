@@ -6150,8 +6150,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const sim = simulationRef.current
             const blank = (sim?.fields?.size ?? 0) === 0
             const brief = sim?.worldData?.creation_brief
-            // A real, unfinished build (a pending creation_brief) → the AI spinner.
-            const building = blank && !!brief && !sim?.worldData?.brief_done
+            // A real, unfinished build (a pending creation_brief) → the build UI.
+            // NOT gated on blank: the first field landing used to hide the whole
+            // console/spinner mid-build — leaving + returning showed a black
+            // half-built world with no indicators. brief && !brief_done IS the
+            // build state; only brief_done ends it.
+            const building = !!brief && !sim?.worldData?.brief_done
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —
