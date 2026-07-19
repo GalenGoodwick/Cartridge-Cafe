@@ -1091,6 +1091,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [branchCreateOpen, setBranchCreateOpen] = useState(false)
   const [branchLabel, setBranchLabel] = useState('')
   const [branchBrief, setBranchBrief] = useState('')   // optional: hand the branch to the house AI
+
+  // LINEAGE TRAIL — where this world came from (walks branchedFrom / forkOfId)
+  const [lineageTrail, setLineageTrail] = useState<null | { name: string; by?: string | null; kind: string; slug?: string }[]>(null)
+  const [lineageBusy, setLineageBusy] = useState(false)
+  const loadLineage = useCallback(async () => {
+    setLineageBusy(true)
+    try {
+      const cur = lastSceneRef.current || playScene || ''
+      const q = cur.includes(' ⑂ ') ? `scene=${encodeURIComponent(cur)}`
+              : spaceSlug ? `space=${encodeURIComponent(spaceSlug)}`
+              : cur ? `scene=${encodeURIComponent(cur)}` : ''
+      if (!q) { setLineageTrail([]); return }
+      const r = await fetch(`/api/engine/lineage/trail?${q}`)
+      const d = await r.json().catch(() => ({}))
+      setLineageTrail(Array.isArray(d.trail) ? d.trail : [])
+    } catch { setLineageTrail([]) } finally { setLineageBusy(false) }
+  }, [playScene, spaceSlug])
   const createBranch = useCallback(async (labelRaw: string) => {
     if (!me) { window.location.href = '/auth/signin'; return }
     const src = lastSceneRef.current || playScene || spaceSlug || ''
@@ -5440,6 +5457,39 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
                   </div>
+                </div>
+                {/* LINEAGE — where this world came from. Anyone can see it; credit follows the work. */}
+                <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] tracking-[0.2em] text-white/40">LINEAGE</div>
+                    <button
+                      onClick={loadLineage} disabled={lineageBusy}
+                      title="trace this world back to the original it grew from"
+                      className="px-2 py-0.5 rounded-full border text-[12px] tracking-[0.15em] border-white/25 text-white/70 hover:border-emerald-300/60 hover:text-emerald-200 transition-colors disabled:opacity-50">
+                      {lineageBusy ? '…' : (lineageTrail ? '↻ TRAIL' : '≡ TRAIL')}
+                    </button>
+                  </div>
+                  {lineageTrail && (
+                    lineageTrail.length <= 1 ? (
+                      <div className="text-[12px] text-white/35 leading-relaxed">an original — nothing upstream of it.</div>
+                    ) : (
+                      <div className="space-y-0.5">
+                        {lineageTrail.map((n, i) => {
+                          const here = i === lineageTrail.length - 1
+                          const label = n.kind === 'root' ? n.name : (n.by ? `⑂ ${n.by}` : n.name)
+                          return (
+                            <div key={i} className={`text-[12px] leading-snug ${here ? 'text-amber-200/90' : 'text-white/55'}`}>
+                              <span className="text-white/25">{i === 0 ? '● ' : '↳ '}</span>
+                              {n.slug ? (
+                                <a href={`/space/${n.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{label}</a>
+                              ) : label}
+                              {here && <span className="text-white/35"> · here</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  )}
                 </div>
                 {canEditLaw && (() => {
                   // DIRECT EDIT KEYS — mint the credential that lets an AI edit each tier:
