@@ -1399,10 +1399,14 @@ export class FieldRenderer {
     if (!device || !this.iconBuffer || this._iconBusy) return
     const S = 64, cellBytes = S * S * 4
     if ((slot + 1) * cellBytes > this.iconBufferCapacity) return
-    const pipeline = await this._iconPipeline(wgsl)
-    if (!pipeline) return
+    // claim the shared readback buffer BEFORE any await: two overlapping calls
+    // (delta repaint + hover animation) both passed the busy check during the
+    // pipeline await and double-mapped _iconRead — "Buffer mapping is already
+    // pending". The early returns inside try{} still release via finally.
     this._iconBusy = true
     try {
+      const pipeline = await this._iconPipeline(wgsl)
+      if (!pipeline) return
       if (!this._iconTarget) this._iconTarget = device.createTexture({ size: [S, S], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
       const bytesPerRow = Math.ceil(S * 4 / 256) * 256
       if (!this._iconRead) this._iconRead = device.createBuffer({ size: bytesPerRow * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
