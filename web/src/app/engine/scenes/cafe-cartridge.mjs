@@ -614,7 +614,10 @@ try {
         // a degraded first pass only ADDS — pruning waits for the full poll,
         // so a slow spaces fetch can't blink player worlds out and back
         if (!firstFill) for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
-        U.order = Object.keys(U.bubbles).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 28)
+        // NOTHING renders without the roster's word — a stale shared-doc bubble
+        // (a world hidden since it was saved) must never get even one frame.
+        // On a degraded first pass it just waits in U.bubbles for the full poll.
+        U.order = Object.keys(U.bubbles).filter(n => want[n]).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 28)
         if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
           const emptyText = MF ? 'no worlds on your deed yet - brew yours'
