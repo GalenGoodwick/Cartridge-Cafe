@@ -119,6 +119,8 @@ async function tick() {
       `  · cafe_state  — the current world state (fields, visuals, params).`,
       `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}).`,
       ``,
+      `NEVER search for, wait on, or monitor anything (no ToolSearch, no Monitor, no plan mode) — the three cafe tools are the entire universe; act with them immediately.`,
+      ``,
       `1. cafe_guide (read fully), then cafe_state.`,
       `2. RESUME-AWARE: if cafe_state already has fields, a previous build was interrupted — CONTINUE it, never restart. Otherwise begin fresh.`,
       `3. PLAN FIRST (one call): cafe_send set_world_data {"data":{"build_plan":"<the 3-6 steps you will build>"}}. This records your intent so any re-run follows it.`,
@@ -144,7 +146,13 @@ async function tick() {
     // only auto-approves; DENY rules are what actually block (they win over any
     // machine allow-rule), so explicitly deny every built-in that touches the box.
     // CAFE_UNSAFE falls back to the wide-open mode (local debugging only).
-    const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput'
+    // deny the box AND the harness: streamed builds showed the agent burning its
+    // whole window on ToolSearch (hunting for tools) and Monitor (wait loops)
+    // instead of building — the cafe tools are everything it needs.
+    const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput,' +
+      'ToolSearch,Monitor,Agent,TaskCreate,TaskUpdate,TaskList,TaskGet,TaskOutput,TaskStop,SendMessage,' +
+      'EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,Skill,Workflow,AskUserQuestion,Artifact,' +
+      'ScheduleWakeup,CronCreate,CronDelete,CronList,PushNotification,RemoteTrigger,DesignSync'
     // stream-json: we SEE the build live (tool calls + thinking) instead of a
     // black box until exit — the blindness that made stalled builds undebuggable
     // and the player's console empty. Raw stream tees to scratch/build.log;
