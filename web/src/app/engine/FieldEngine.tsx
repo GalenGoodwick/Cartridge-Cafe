@@ -287,21 +287,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // their original is never gone; the ★ bookmark always returns them to it.
   const [worldLineage, setWorldLineage] = useState<{ original: string; mainHolder: string } | null>(null)
   const [verMax, setVerMax] = useState(1)   // highest existing version of the ridden branch — bounds the ▸ scroller
-  // learn how many versions this branch actually has, so the scroller can't offer
-  // a step to a version that isn't there.
+  const [verList, setVerList] = useState<number[]>([])   // the versions that ACTUALLY exist (deletions leave holes)
+  // learn which versions this branch actually has, so the scroller can never
+  // offer a step to a version that isn't there — v±1 arithmetic loaded ghosts.
   useEffect(() => {
-    if (!riding) { setVerMax(1); return }
+    if (!riding) { setVerMax(1); setVerList([]); return }
     const m = riding.match(/^(.*) · v(\d+)$/)
     const ident = m ? m[1] : riding
     let stop = false
     fetch('/api/engine/scene?action=list').then(r => r.json()).then(({ scenes }) => {
       if (stop) return
-      let mx = 1
+      const vs: number[] = []
       for (const nm of (scenes || []) as string[]) {
         const sm = nm.match(/^(.*) · v(\d+)$/)
-        if (sm && sm[1] === ident) mx = Math.max(mx, +sm[2])
+        if (sm && sm[1] === ident) vs.push(+sm[2])
       }
-      setVerMax(mx)
+      vs.sort((a, b) => a - b)
+      setVerList(vs)
+      setVerMax(vs.length ? vs[vs.length - 1] : 1)
     }).catch(() => {})
     return () => { stop = true }
   }, [riding])
@@ -1081,6 +1084,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  clobber it — the store forks to the next version and we follow that name. */
   const [branchCreateOpen, setBranchCreateOpen] = useState(false)
   const [branchLabel, setBranchLabel] = useState('')
+  const [branchBrief, setBranchBrief] = useState('')   // optional: hand the branch to the house AI
   const createBranch = useCallback(async (labelRaw: string) => {
     if (!me) { window.location.href = '/auth/signin'; return }
     const src = lastSceneRef.current || playScene || spaceSlug || ''
@@ -1102,9 +1106,36 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken])
   const handleBranch = useCallback(() => {
     if (!me) { window.location.href = '/auth/signin'; return }
-    setBranchLabel('')
+    setBranchLabel(''); setBranchBrief('')
     setBranchCreateOpen(v => !v)
   }, [me])
+
+  /** CREATE BRANCH + hand it to the house AI: fork the branch (so it exists and
+   *  the owner can write it), then queue its brief for the swarm. Branches are
+   *  scenes, so this goes through /api/builds/enqueue-scene (uc_sc_), not the
+   *  world creation_brief path. */
+  const branchWithHouseAi = useCallback(async (labelRaw: string, briefRaw: string) => {
+    if (!me) { window.location.href = '/auth/signin'; return }
+    const brief = briefRaw.trim()
+    if (brief.length < 20) { showToast('write a longer brief first (what should it build?)', 'error'); return }
+    const src = lastSceneRef.current || playScene || spaceSlug || ''
+    if (!src) { showToast('load a world first', 'error'); return }
+    const base = src.split(' ⑂ ')[0]
+    const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+    const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
+    const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
+    const savedAs = await saveSceneAs(name)
+    if (!savedAs) { showToast('could not open the branch', 'error'); return }
+    lastSceneRef.current = savedAs
+    const r = await fetch('/api/builds/enqueue-scene', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sceneName: savedAs, brief }),
+    }).then(x => x.json()).catch(() => null)
+    setBranchCreateOpen(false)
+    if (r?.ok) showToast(`house AI queued for your branch — it builds live: ${savedAs}`, 'success')
+    else showToast(r?.error || 'could not queue the house AI', 'error')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, playScene, spaceSlug, saveSceneAs])
 
   /** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
    *  the live-scoped token, open the plug box. The altered world IS main — the
@@ -1388,6 +1419,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   /** ◂/▸ on the BRANCH button: step the ring [main, branch, branch, …] — quick
    *  browsing for everyone, owner or visitor. Looking is free. */
+  // know the family on arrival — the BROWSE arrows only render when there is
+  // actually somewhere to browse to
+  useEffect(() => {
+    if (!playScene && !spaceSlug) return
+    loadBranchHeads()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playScene, spaceSlug, riding])
+
   const stepBranch = useCallback(async (dir: 1 | -1) => {
     const list = await loadBranchHeads()
     if (list.length === 0) { showToast('no branches yet — ⑂ BRANCH to open one', 'info'); return }
@@ -5539,10 +5578,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const ownIt = can(ctx, 'setHead')
               return (<>
                 <VersionScrubber
-                  label={`v${n}`} total={verMax}
-                  canOlder={n > 1} canNewer={n < verMax}
-                  onOlder={() => handleLoadScene(at(n - 1))} onNewer={() => handleLoadScene(at(n + 1))}
-                  items={Array.from({ length: verMax }, (_, i) => { const v = verMax - i; return { key: `v${v}`, label: `v${v}`, active: v === n, onPick: () => handleLoadScene(at(v)) } })}
+                  label={`v${n}`} total={verList.length || 1}
+                  canOlder={verList.some(v => v < n)} canNewer={verList.some(v => v > n)}
+                  onOlder={() => { const t = [...verList].reverse().find(v => v < n); if (t) handleLoadScene(at(t)) }}
+                  onNewer={() => { const t = verList.find(v => v > n); if (t) handleLoadScene(at(t)) }}
+                  items={[...verList].reverse().map(v => ({ key: `v${v}`, label: `v${v}`, active: v === n, onPick: () => handleLoadScene(at(v)) }))}
                 />
                 {ownIt && n < verMax && (
                   <button
@@ -5750,6 +5790,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               >
                 ⑂ CREATE BRANCH
               </button>
+              {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
@@ -5757,29 +5798,48 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <button onClick={() => stepBranch(1)} title="next branch — browse the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
+              )}
               {/* the methodical create panel: 1 · name it · 2 · AI connects with its
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
                 <div className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
-                  <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-1.5">⑂ CREATE BRANCH</div>
-                  <div className="text-[12px] text-white/40 leading-relaxed mb-2">
-                    1 · name your branch (blank = your default) · 2 · it opens with a scoped
-                    AI key — the CONNECT AI box appears with the briefing to copy.
-                  </div>
+                  <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-2">⑂ CREATE BRANCH</div>
+                  {/* GATE 1 — NAME (unlocks the brief) */}
+                  <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input
-                    autoFocus value={branchLabel} onChange={e => setBranchLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') createBranch(branchLabel); if (e.key === 'Escape') setBranchCreateOpen(false) }}
-                    placeholder="branch name (optional)"
+                    autoFocus value={branchLabel} onChange={e => setBranchLabel(e.target.value)} maxLength={40}
+                    onKeyDown={e => { if (e.key === 'Escape') setBranchCreateOpen(false) }}
+                    placeholder="e.g. neon-remix"
                     className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50"
                   />
-                  <div className="flex gap-1.5">
-                    <button onClick={() => createBranch(branchLabel)}
-                      className="flex-1 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[12px] tracking-[0.15em] transition-colors">
-                      OPEN + CONNECT AI
-                    </button>
-                    <button onClick={() => setBranchCreateOpen(false)} aria-label="cancel"
-                      className="px-2 py-1.5 rounded border border-white/15 text-white/50 hover:text-white text-[12px] transition-colors">✕</button>
-                  </div>
+                  {(() => {
+                    const nameOk = branchLabel.trim().length >= 2
+                    const briefLen = branchBrief.trim().length
+                    const briefOk = briefLen >= 100 && briefLen <= 500
+                    return (<>
+                      {/* GATE 2 — BRIEF (locked until name) */}
+                      <div className={'transition-opacity ' + (nameOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
+                        <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/30">· name it first</span>}</div>
+                        <textarea value={branchBrief} onChange={e => setBranchBrief(e.target.value)} maxLength={500} rows={3} disabled={!nameOk}
+                          placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
+                          className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[12px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50 resize-none" />
+                        <div className="text-[12px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · min 100 to unlock</span></div>
+                      </div>
+                      {/* GATE 3 — BUILD (locked until brief) */}
+                      <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
+                        <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
+                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[12px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          OPEN + CONNECT AI
+                        </button>
+                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
+                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[12px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          ☕ HAVE THE HOUSE AI BUILD IT
+                        </button>
+                      </div>
+                    </>)
+                  })()}
+                  <button onClick={() => setBranchCreateOpen(false)} aria-label="cancel"
+                    className="w-full mt-2 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[12px] transition-colors">cancel</button>
                 </div>
               )}
             </div>}

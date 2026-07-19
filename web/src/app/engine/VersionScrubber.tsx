@@ -33,7 +33,7 @@ export default function VersionScrubber({
   return (
     <div className="relative">
       <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
-        <button className={btn} disabled={!canOlder} title="older version" onClick={onOlder}>◂</button>
+        <button className={`${btn} ${canOlder ? '' : 'invisible'}`} disabled={!canOlder} title="older version" onClick={onOlder}>◂</button>
         <button
           onClick={() => setOpen(o => !o)}
           title="all versions — click to jump"
@@ -41,7 +41,7 @@ export default function VersionScrubber({
         >
           {label}{total > 1 ? <span className="text-white/30">/{total}</span> : null}
         </button>
-        <button className={btn} disabled={!canNewer} title="newer version" onClick={onNewer}>▸</button>
+        <button className={`${btn} ${canNewer ? '' : 'invisible'}`} disabled={!canNewer} title="newer version" onClick={onNewer}>▸</button>
       </div>
 
       {open && (
