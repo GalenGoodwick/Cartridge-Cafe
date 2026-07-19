@@ -43,7 +43,20 @@ Only these endpoints. This key IS me — keep it secret; I can revoke it anytime
     setBusy(true)
     try { await fetch('/api/player-token', { method: 'DELETE' }); setFresh(null); load() } finally { setBusy(false) }
   }
-  const copy = (t: string, k: string) => navigator.clipboard?.writeText(t).then(() => { setCopied(k); setTimeout(() => setCopied(''), 1600) })
+  // clipboard API can be absent or reject silently (no COPIED ✓, no error) —
+  // fall back to the textarea trick so COPY always actually copies
+  const copyText = async (t: string): Promise<boolean> => {
+    try { await navigator.clipboard.writeText(t); return true } catch { /* fall through */ }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch { return false }
+  }
+  const copy = (t: string, k: string) => { copyText(t).then(ok => { if (ok) { setCopied(k); setTimeout(() => setCopied(''), 1600) } }) }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono" onClick={onClose}>

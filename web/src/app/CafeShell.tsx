@@ -1344,7 +1344,22 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 </div>
               )}
               <button disabled={!connectReady}
-                onClick={() => navigator.clipboard?.writeText(connectPrompt(brewToken))}
+                onClick={async () => {
+                  // clipboard API silently no-ops when absent/rejected — the
+                  // reported "prompt didn't copy" bug. Fallback + visible verdict.
+                  const t = connectPrompt(brewToken)
+                  let ok = false
+                  try { await navigator.clipboard.writeText(t); ok = true } catch { /* fallback */ }
+                  if (!ok) {
+                    try {
+                      const ta = document.createElement('textarea')
+                      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
+                      document.body.appendChild(ta); ta.select()
+                      ok = document.execCommand('copy'); ta.remove()
+                    } catch { ok = false }
+                  }
+                  window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: ok ? 'prompt copied — paste it to your AI' : 'copy blocked — open preview and copy by hand', kind: ok ? 'tuned' : 'hint' } }))
+                }}
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[12px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 COPY CONNECTION PROMPT
               </button>

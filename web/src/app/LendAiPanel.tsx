@@ -65,9 +65,18 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
     load()
   }
 
-  const copy = (text: string, key: string) => {
-    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 1800) })
+  const copyText = async (t: string): Promise<boolean> => {
+    try { await navigator.clipboard.writeText(t); return true } catch { /* fall through */ }
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch { return false }
   }
+  const copy = (text: string, key: string) => { copyText(text).then(ok => { if (ok) { setCopied(key); setTimeout(() => setCopied(''), 1800) } }) }
 
   // Paste-to-your-AI connection prompt (mirrors the world Connect-AI flow): token
   // embedded, your AI becomes a volunteer builder. No script to install.

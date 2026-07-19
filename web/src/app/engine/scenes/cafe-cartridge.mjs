@@ -870,6 +870,10 @@ try {
       if (!B) continue
       const seat = FIXEDSEAT && FIXEDSEAT[U.order[i]]
       if (seat) { B.x = seat[0]; B.y = seat[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
+      // the CHAMPION reigns at the apex — reasserted per frame like the category
+      // seats. Its pin was set only at roster time, so a join (shared-layout
+      // adoption or a collision shove) sprang it loose until the next poll.
+      else if (B.crown && !MF && !SUB && !PL) { B.x = 256; B.y = 210; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
       else if (lone) { B.x = 256; B.y = 256; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
       // an ANCHORED bubble came from the saved layout: it holds its exact place
       // as a fixed repulsor, so a newborn (or a late-loading world) settles into

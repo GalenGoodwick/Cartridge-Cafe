@@ -13,8 +13,8 @@
 // a time; a build gets 15 minutes; a failed brief is retried once after an
 // hour (builder_at gates it). Logs to ~/Library/Logs/cafe-builder.log.
 
-import { execFile } from 'child_process'
-import { appendFileSync, mkdirSync, writeFileSync } from 'fs'
+import { spawn } from 'child_process'
+import { appendFileSync, mkdirSync, writeFileSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -59,6 +59,22 @@ const api = async (path, opts = {}) => {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN}`, ...(opts.headers || {}) },
   })
   return res.json()
+}
+
+/** Mirror one live line into the world's durable BUILD CONSOLE slot so the
+ *  player watches the AI think + act in real time (read-modify-write; races
+ *  with the bridge's own mirror are last-write-wins and both cap the ring). */
+async function consoleLine(spaceId, type, summary) {
+  if (!spaceId) return
+  try {
+    const slot = 'build:console:' + spaceId
+    const cur = await api(`/api/engine/save?slot=${encodeURIComponent(slot)}`)
+    const prev = cur?.data && typeof cur.data === 'object' ? cur.data : {}
+    let seq = prev.seq ?? 0
+    const entries = Array.isArray(prev.entries) ? prev.entries : []
+    entries.push({ type, name: '', summary: String(summary).slice(0, 110), seq: ++seq, t: Date.now() })
+    await api('/api/engine/save', { method: 'POST', body: JSON.stringify({ slot, data: { seq, entries: entries.slice(-120) } }) })
+  } catch { /* the console is a courtesy */ }
 }
 
 let building = false
@@ -129,27 +145,66 @@ async function tick() {
     // machine allow-rule), so explicitly deny every built-in that touches the box.
     // CAFE_UNSAFE falls back to the wide-open mode (local debugging only).
     const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput'
+    // stream-json: we SEE the build live (tool calls + thinking) instead of a
+    // black box until exit — the blindness that made stalled builds undebuggable
+    // and the player's console empty. Raw stream tees to scratch/build.log;
+    // key events mirror into the world's durable BUILD CONSOLE.
     const args = UNSAFE
       ? ['-p', prompt, '--model', MODEL, '--dangerously-skip-permissions']
       : ['-p', prompt, '--model', MODEL, '--mcp-config', mcpConfig, '--strict-mcp-config',
-         '--allowedTools', 'mcp__cafe-bridge', '--disallowedTools', DENY]
+         '--allowedTools', 'mcp__cafe-bridge', '--disallowedTools', DENY,
+         '--output-format', 'stream-json', '--verbose']
     log(`spawning build ${slug}${UNSAFE ? ' [UNSAFE/wide-open]' : ' [locked: bridge-only]'} in ${scratch}`)
+    const spaceId = claim.job?.spaceId || null
+    void consoleLine(spaceId, 'agent', '🤖 house AI took the job — reading the guide')
 
     let hitLimit = false
     const ok = await new Promise((resolve) => {
-      const child = execFile(CLAUDE_BIN, args, {
-        cwd: scratch,
-        timeout: BUILD_TIMEOUT_MS,
-        maxBuffer: 32 * 1024 * 1024,
-      }, (err, stdout) => {
-        const out = `${err || ''}\n${stdout || ''}`
-        // Claude Code surfaces subscription exhaustion in its output/error.
-        if (/usage limit|rate limit|\bquota\b|out of credit|credit balance|too many requests|\b429\b|limit reached|resets? at/i.test(out)) hitLimit = true
-        if (err) log(`build ${slug} ended with error: ${String(err).slice(0, 200)}`)
-        log(`build ${slug} finished — agent said: ${String(stdout).slice(-300).replace(/\n/g, ' ')}`)
-        resolve(!err)
+      const child = spawn(CLAUDE_BIN, args, { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] })
+      const rawLog = createWriteStream(join(scratch, 'build.log'), { flags: 'a' })
+      const killer = setTimeout(() => { try { child.kill('SIGTERM') } catch { /* gone */ } }, BUILD_TIMEOUT_MS)
+      let buf = ''
+      let lastSaid = ''
+      let lastThinkAt = 0
+      child.stdout.on('data', (d) => {
+        rawLog.write(d)
+        buf += d.toString()
+        let nl
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl); buf = buf.slice(nl + 1)
+          if (!line.trim()) continue
+          try {
+            const ev = JSON.parse(line)
+            if (/usage limit|rate limit|\bquota\b|out of credit|credit balance|too many requests|\b429\b|limit reached|resets? at/i.test(line)) hitLimit = true
+            if (ev.type === 'assistant' && ev.message?.content) {
+              for (const c of ev.message.content) {
+                if (c.type === 'tool_use') {
+                  const tool = String(c.name || '').replace(/^mcp__cafe-bridge__/, '')
+                  const n = tool === 'cafe_send' ? (Array.isArray(c.input?.commands) ? ` (${c.input.commands.length} cmds)` : '') : ''
+                  log(`  [${slug}] tool: ${tool}${n}`)
+                  if (tool !== 'cafe_send') void consoleLine(spaceId, 'agent', `⚙ ${tool}${n}`)   // cafe_send lands via the bridge mirror
+                } else if (c.type === 'text' && c.text?.trim()) {
+                  lastSaid = c.text.trim()
+                  if (Date.now() - lastThinkAt > 12_000) {   // throttle thinking lines
+                    lastThinkAt = Date.now()
+                    void consoleLine(spaceId, 'agent', `💭 ${lastSaid.slice(0, 100).replace(/\n/g, ' ')}`)
+                  }
+                }
+              }
+            } else if (ev.type === 'result') {
+              if (ev.result) lastSaid = String(ev.result)
+            }
+          } catch { /* non-JSON line — keep streaming */ }
+        }
       })
-      child.on('error', (e) => { log(`spawn failed: ${e.message}`); resolve(false) })
+      child.stderr.on('data', (d) => { rawLog.write(d); if (/usage limit|rate limit|quota|429/i.test(String(d))) hitLimit = true })
+      child.on('close', (code) => {
+        clearTimeout(killer); rawLog.end()
+        if (code !== 0) log(`build ${slug} ended with exit ${code}`)
+        log(`build ${slug} finished — agent said: ${lastSaid.slice(-300).replace(/\n/g, ' ')}`)
+        resolve(code === 0)
+      })
+      child.on('error', (e) => { clearTimeout(killer); log(`spawn failed: ${e.message}`); resolve(false) })
     })
 
     // 4) close out the lease — done on success, release (requeue) on failure/timeout

@@ -5918,7 +5918,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 </div>
               )
             })()}
-            <button
+            {/* CONNECT AI exists only where a key can MINT: a space, or a ⑂
+                branch. On main/hubs it could only ever apologize (main is
+                immortal — you branch it or brew your own), so it's gone there. */}
+            {(spaceSlug || lastSceneRef.current?.includes(' ⑂ ')) && <button
               onClick={async () => {
                 // an AI prompt box: its key mint needs a session. Auth FIRST —
                 // signed out used to open the box and hand over a briefing with
@@ -5970,7 +5973,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               {can(ctx, 'alterLive') ? '⚡ ALTER' : '⚡ CONNECT AI'}
-            </button>
+            </button>}
             {(isOwner || !spaceId) && spaceSlug && (
               <button
                 onClick={async () => {

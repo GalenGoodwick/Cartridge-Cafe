@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return NextResponse.json({
     ok: true,
-    job: { id: job.id, spaceSlug: job.spaceSlug, brief: job.brief, attempts: job.attempts },
+    job: { id: job.id, spaceSlug: job.spaceSlug, brief: job.brief, attempts: job.attempts, spaceId: job.spaceId ?? null },
     token, // uc_st_ scoped to THIS world only
     leaseMs: LEASE_MS,
   })
