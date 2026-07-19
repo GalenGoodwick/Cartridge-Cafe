@@ -436,6 +436,10 @@ export function applyCommandToSnapshotObject(
         description: (cmd.description as string) ?? '',
         code: cmd.code as string,
       })
+      // A space token is an UNTRUSTED author (AI / player build). Flag the world
+      // so every visitor runs its JS hooks in the sealed Worker sandbox, never on
+      // the main thread. This is what makes "allow JS hooks" safe on a public site.
+      ;(snap.worldData as Record<string, unknown>).__sandbox = true
       break
     }
 

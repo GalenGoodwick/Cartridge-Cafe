@@ -1141,8 +1141,16 @@ tab delivers multi-second dt spikes that detonate springs — and add a divergen
 resets state if it goes non-finite.
 
 **Game cartridges** (fields + WGSL + JS hook shipped as a scene): see `scenes/README.md` —
-step hooks only run from scenes (the bridge blocks them), entity pools are pre-created and
-recycled, keyboard arrives in `worldData.key_*`.
+entity pools are pre-created and recycled, keyboard arrives in `worldData.key_*`.
+
+**JS step hooks over the bridge are ALLOWED** (`add_step_hook` / `update_step_hook` /
+`remove_step_hook`). They run per tick in a **sealed Web Worker sandbox**, so your hook has
+`sim`, `dt`, `sim.rand()`, `sim.fields`, `sim.worldData` — but NO DOM, cookies, `fetch`,
+`WebSocket`, or timers. Write render outputs the normal way (`worldData.gpuUniforms`,
+`worldData.gpuPopulation`, field transforms, `worldData.__play_sound`, `cafe:*` events) and
+the host applies them one frame later. Register several hooks (each has its own `hookId` and
+runs isolated) or consolidate your whole game loop into one. For heavy per-field math on the
+GPU, `add_gpu_step_hook` (WGSL) is still available and faster.
 
 ---
 

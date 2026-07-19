@@ -424,18 +424,29 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // a world flagged worldData.__sandbox runs its hook in a sealed Web Worker
   // instead of new Function on the main thread — no DOM, no network reach.
   const sandboxRef = useRef<WorldSandbox | null>(null)
+  // mirror of the world's JS hooks so a LIVE add/remove/update during a build
+  // (owner watching over SSE) can re-install the sandbox from the full set.
+  const liveHooksRef = useRef<Map<string, { id: string; author: string; description: string; code: string }>>(new Map())
   const installHooks = useCallback((sim: FieldSimulation, stepHooks: { id: string; author: string; description: string; code: string }[] | undefined, worldData: Record<string, unknown> | undefined) => {
     sandboxRef.current?.dispose()
     sandboxRef.current = null
+    liveHooksRef.current = new Map((stepHooks || []).map(h => [h.id, h]))
+    // __sandbox = untrusted author (AI / player world). Its JS runs ONLY in the
+    // sealed Worker — never new Function on the main thread, which would hand it
+    // the visitor's cookies + same-origin fetch. Canonical/admin worlds omit the
+    // flag and keep the proven main-thread path.
     if (worldData?.__sandbox && stepHooks && stepHooks.length > 0) {
-      // proof scope: single-hook worlds. Multi-hook fan-in comes next.
       const box = new WorldSandbox()
-      box.load(stepHooks[0].code)
+      box.load(stepHooks.map(h => ({ id: h.id, code: h.code })))   // all hooks, isolated
       if (box.active) {
         sandboxRef.current = box
-        return   // the sandbox owns the hook — do NOT compile it on the main thread
+        return   // the sandbox owns the hooks — do NOT compile them on the main thread
       }
-      // worker couldn't spawn (CSP, no Worker) — fall through to the proven path
+      // sandbox REQUIRED but the Worker couldn't spawn (CSP / no Worker support).
+      // Do NOT fall back to the main thread for untrusted code — leave the hooks
+      // un-run so the world stays safe (static) rather than becoming an XSS vector.
+      console.warn('[sandbox] required but Worker unavailable — untrusted hooks skipped')
+      return
     }
     for (const h of stepHooks || []) sim.addStepHook(h.id, h.author, h.description, h.code)
   }, [])
@@ -3778,8 +3789,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             }
 
             case 'update_step_hook': {
-              // JS step hooks blocked from bridge API — use GPU step hooks instead
-              pushTerminal('update_step_hook', cmd.author, 'ERROR: JS step hooks are admin-only. Use add_gpu_step_hook for sandboxed GPU hooks.', undefined, cmdAuthor)
+              // JS hooks are allowed for everyone now — they run ONLY in the sealed
+              // Worker sandbox (no DOM/cookies/network), never on the main thread.
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+              const code = String(cmd.code || '')
+              if (!code) { pushTerminal('update_step_hook', cmd.author, 'ERROR: step hook needs code', undefined, cmdAuthor); break }
+              liveHooksRef.current.set(hookId, { id: hookId, author: String(cmd.author || 'ai'), description: String(cmd.description || ''), code })
+              ;(sim.worldData as Record<string, unknown>).__sandbox = true
+              installHooks(sim, [...liveHooksRef.current.values()], sim.worldData)
+              pushTerminal('update_step_hook', cmd.author, `hook "${hookId}" updated (sandboxed) — ${liveHooksRef.current.size} active`, code, cmdAuthor)
               break
             }
 
@@ -4304,10 +4322,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               break
             }
 
-            case 'add_step_hook':
+            case 'add_step_hook': {
+              // Allowed for everyone — runs ONLY in the sealed Worker sandbox.
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+              const code = String(cmd.code || '')
+              if (!code) { pushTerminal('add_step_hook', cmd.author, 'ERROR: step hook needs code', undefined, cmdAuthor); break }
+              liveHooksRef.current.set(hookId, { id: hookId, author: String(cmd.author || 'ai'), description: String(cmd.description || ''), code })
+              ;(sim.worldData as Record<string, unknown>).__sandbox = true
+              installHooks(sim, [...liveHooksRef.current.values()], sim.worldData)
+              pushTerminal('add_step_hook', cmd.author, `hook "${hookId}" installed (sandboxed) — ${liveHooksRef.current.size} active`, code, cmdAuthor)
+              break
+            }
             case 'remove_step_hook': {
-              // JS step hooks blocked from bridge API — use GPU step hooks instead
-              pushTerminal(cmd.type, cmd.author, 'ERROR: JS step hooks are admin-only. Use add_gpu_step_hook for sandboxed GPU hooks.', undefined, cmdAuthor)
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || ''
+              liveHooksRef.current.delete(hookId)
+              installHooks(sim, [...liveHooksRef.current.values()], sim.worldData)
+              pushTerminal('remove_step_hook', cmd.author, `hook "${hookId}" removed — ${liveHooksRef.current.size} active`, undefined, cmdAuthor)
               break
             }
 
@@ -5142,10 +5172,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // player actually SEES it, then we never fight their toggle again.
   const terminalAutoOpenedRef = useRef(false)
   const buildConsoleRef = useRef<HTMLDivElement>(null)
-  // keep the build console scrolled to the newest line
+  // follow the newest line — but only while the reader is already near the bottom,
+  // so scrolling up to read earlier steps isn't yanked back down every command.
   useEffect(() => {
     const el = buildConsoleRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    if (nearBottom) el.scrollTop = el.scrollHeight
   }, [terminalLog.length])
   useEffect(() => {
     if (terminalLog.length > 0 && !terminalAutoOpenedRef.current) {
@@ -6244,7 +6277,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       <span>⌁ BUILD CONSOLE</span>
                       <span className="text-white/25">{terminalLog.length} steps</span>
                     </div>
-                    <div ref={buildConsoleRef} className="flex-1 overflow-y-auto px-3 py-2">
+                    <div ref={buildConsoleRef} className="flex-1 overflow-y-scroll px-3 py-2 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.3)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-track]:bg-transparent">
                       {terminalLog.length === 0
                         ? <div className="font-mono text-[12px] text-white/30 leading-relaxed">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
                         : <AgentTerminalPanel entries={terminalLog} />}

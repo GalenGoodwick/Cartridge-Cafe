@@ -33,16 +33,45 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'cafe_source',
+    description: 'READ the real engine source code (read-only — you cannot edit it). No arg → lists every readable file. {path:"api/engine/bridge/route.ts"} → that file (the authoritative list of every command + param the bridge accepts). Big files: page with {path, from, to} line numbers. Use this instead of guessing command params.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' } } },
+  },
+  {
     name: 'cafe_send',
-    description: 'POST engine build commands to the bridge. Pass {"commands":[ ... ]} (an array of engine command objects like define_visual / create_field / set_world_data), or a single command object.',
+    description: 'POST engine build commands to the bridge. Pass {"commands":[ ... ]} (an array of engine command OBJECTS like define_visual / create_field / set_world_data), or a single command object. Do NOT JSON-stringify the commands array — pass it as real JSON.',
     inputSchema: { type: 'object', properties: { commands: {} }, additionalProperties: true },
   },
 ]
 
+/** Models sometimes JSON-stringify nested values. Coax a value back to JSON. */
+function coax(v) {
+  if (typeof v !== 'string') return v
+  const t = v.trim()
+  if (t.startsWith('[') || t.startsWith('{')) { try { return JSON.parse(t) } catch { /* leave as string */ } }
+  return v
+}
+
 async function callTool(name, args) {
   const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` }
   if (name === 'cafe_guide') {
+    // The full guide (~74k chars) blows the headless per-tool-result token cap, so
+    // a locked agent never sees it and resorts to probing. Cap to a safe head and
+    // point the rest at cafe_source (which pages the same file).
     const r = await fetch(`${BASE}/api/engine/guide`)
+    const md = await r.text()
+    const CAP = 46_000
+    if (md.length <= CAP) return md
+    return md.slice(0, CAP) +
+      `\n\n---\n[guide truncated at ${CAP} chars — read the rest with ` +
+      `cafe_source({path:"engine/AI_ENGINE_GUIDE.md", from:<line>}), or read the ` +
+      `real engine source directly via cafe_source (start: api/engine/bridge/route.ts).]`
+  }
+  if (name === 'cafe_source') {
+    const a = args || {}
+    const q = a.path ? `?path=${encodeURIComponent(a.path)}` +
+      (a.from != null ? `&from=${a.from}` : '') + (a.to != null ? `&to=${a.to}` : '') : ''
+    const r = await fetch(`${BASE}/api/engine/source${q}`)
     return await r.text()
   }
   if (name === 'cafe_state') {
@@ -50,12 +79,17 @@ async function callTool(name, args) {
     return await r.text()
   }
   if (name === 'cafe_send') {
-    // accept {commands:[...]}, a bare array, or a single command object
-    const a = args || {}
-    const body = Array.isArray(a.commands) ? { commands: a.commands }
+    // accept {commands:[...]}, a bare array, a single command object, OR any of
+    // those where the model JSON-stringified the array/object (a common slip).
+    const a = coax(args) || {}
+    let cmds = coax(a.commands)
+    const body =
+        Array.isArray(cmds) && cmds.length ? { commands: cmds }
       : Array.isArray(a) ? { commands: a }
-      : a.type ? { commands: [a] }
-      : { commands: a.commands ?? [] }
+      : (cmds && typeof cmds === 'object' && cmds.type) ? { commands: [cmds] }
+      : a.type ? { commands: [a] }                       // whole arg is one command
+      : Array.isArray(cmds) ? { commands: cmds }         // empty array → surface bridge's own error
+      : { commands: [] }
     const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(body) })
     return await r.text()
   }

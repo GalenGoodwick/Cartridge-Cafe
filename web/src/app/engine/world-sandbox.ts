@@ -26,7 +26,10 @@ let __events = [];
 self.CustomEvent = class { constructor(type, opts) { this.type = type; this.detail = opts && opts.detail; } };
 self.window = { dispatchEvent(e) { __events.push({ type: e.type, detail: e.detail }); return true; } };
 
-let __hook = null;
+// a world can register SEVERAL step hooks (ball physics, player AI, clock…).
+// Each compiles independently and runs in its own try/catch so one bad hook
+// doesn't kill the others — the real games AI builds need this.
+let __hooks = [];
 // seeded PRNG (mulberry32) — armed when worldData.__seed is a number, so a
 // world that opts in gets the same sim.rand() sequence every run (replays)
 let __randSeed = null, __randState = 0;
@@ -40,11 +43,18 @@ function __rand() {
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
-    try { __hook = new Function('sim', 'dt', msg.code); self.postMessage({ type: 'ready' }); }
-    catch (e) { self.postMessage({ type: 'ready', error: String((e && e.message) || e) }); }
+    // accept {hooks:[{id,code}]} or a single {code} (legacy)
+    const specs = Array.isArray(msg.hooks) ? msg.hooks : [{ id: 'hook', code: msg.code }];
+    __hooks = [];
+    const errs = [];
+    for (const h of specs) {
+      try { __hooks.push({ id: h.id, fn: new Function('sim', 'dt', h.code) }); }
+      catch (e) { errs.push((h.id || '?') + ': ' + String((e && e.message) || e)); }
+    }
+    self.postMessage({ type: 'ready', error: errs.length ? errs.join(' | ') : undefined });
     return;
   }
-  if (msg.type === 'tick' && __hook) {
+  if (msg.type === 'tick' && __hooks.length) {
     __events = [];
     const ws = msg.worldData && msg.worldData.__seed;
     if (typeof ws === 'number' && ws !== __randSeed) { __randSeed = ws; __randState = ws | 0; }
@@ -61,15 +71,19 @@ self.onmessage = function (ev) {
       getFieldByName(n) { for (const f of fields.values()) if (f.name === n) return f; return null; },
       getField(id) { return fields.get(id) || null; },
     };
-    try { __hook(sim, msg.dt); }
-    catch (e) { self.postMessage({ type: 'result', error: String((e && e.message) || e), worldData: msg.worldData, fieldPatches: [], events: [] }); return; }
-    // only fields the hook actually changed — never hand the host a stale
-    // transform for a field it manages itself (that fight reads as jitter)
+    let __runErr = null;
+    for (const h of __hooks) {
+      try { h.fn(sim, msg.dt); }
+      catch (e) { __runErr = (h.id || '?') + ': ' + String((e && e.message) || e); }  // keep running the rest
+    }
+    // only fields a hook actually changed — never hand the host a stale
+    // transform for a field it manages itself (that fight reads as jitter).
+    // Partial success still applies: a thrown hook doesn't void the others' work.
     const fieldPatches = [];
     for (const f of fields.values()) {
       if (JSON.stringify(f.transform) !== before.get(f.id)) fieldPatches.push({ id: f.id, transform: f.transform });
     }
-    self.postMessage({ type: 'result', worldData: sim.worldData, fieldPatches, events: __events });
+    self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events });
   }
 };
 `
@@ -104,9 +118,10 @@ export class WorldSandbox {
     }
   }
 
-  /** compile a hook into a fresh sealed worker */
-  load(code: string): void {
+  /** compile one or more hooks into a fresh sealed worker */
+  load(hooks: string | { id: string; code: string }[]): void {
     this.dispose()
+    const specs = typeof hooks === 'string' ? [{ id: 'hook', code: hooks }] : hooks
     try {
       const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }))
       this.worker = new Worker(url)
@@ -127,7 +142,7 @@ export class WorldSandbox {
       }
     }
     this.worker.onerror = (e) => console.warn('[sandbox] worker error:', e.message)
-    this.worker.postMessage({ type: 'load', code })
+    this.worker.postMessage({ type: 'load', hooks: specs })
   }
 
   get active(): boolean { return !!this.worker }
@@ -147,10 +162,13 @@ export class WorldSandbox {
 
     // 1 ─ apply the pending reply (from ~1 frame ago)
     if (this.pending) {
+      // an error means ONE hook threw — surface it, but still apply the reply:
+      // the other hooks ran fine and their worldData/patches are valid.
       if (this.pending.error) {
         console.warn('[sandbox] hook runtime error:', this.pending.error)
         this.surface(sim, 'runtime', this.pending.error)
-      } else {
+      }
+      {
         const wd = sim.worldData as Record<string, unknown>
         const incoming = this.pending.worldData || {}
         // apply ONLY what a hook produces: render outputs + its own __state.
