@@ -5093,11 +5093,32 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           empties = 0
         } else { empties++ }
       } catch { /* the console poll is best-effort */ }
-      if (empties > 12) return   // ~36s of no new lines → build done/idle, stop polling
+      // while the server says a build job is LIVE, never stop — quiet stretches
+      // are the AI thinking, not the build ending
+      if (empties > 12 && !buildJobActiveRef.current) return
       schedule()
     }
     schedule()
     return () => { stopped = true; clearTimeout(timer) }
+  }, [spaceId, playScene])
+
+  // AI-IS-BUILDING, from the SERVER: a live BuildJob is the authoritative signal.
+  // The worldData gate (creation_brief && !brief_done) can go stale client-side
+  // mid-adopt — this one can't. Drives the build overlay + console persistence.
+  const [buildJobActive, setBuildJobActive] = useState(false)
+  const buildJobActiveRef = useRef(false)
+  useEffect(() => {
+    if (!spaceId || playScene) return
+    let stop = false
+    const poll = async () => {
+      try {
+        const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`).then(r => r.ok ? r.json() : null)
+        if (!stop && d) { setBuildJobActive(!!d.active); buildJobActiveRef.current = !!d.active }
+      } catch { /* offline is fine */ }
+    }
+    poll()
+    const t = setInterval(poll, 6000)
+    return () => { stop = true; clearInterval(t) }
   }, [spaceId, playScene])
 
   // watching a build: the first progress line auto-opens the terminal so the
@@ -6150,12 +6171,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const sim = simulationRef.current
             const blank = (sim?.fields?.size ?? 0) === 0
             const brief = sim?.worldData?.creation_brief
-            // A real, unfinished build (a pending creation_brief) → the build UI.
-            // NOT gated on blank: the first field landing used to hide the whole
-            // console/spinner mid-build — leaving + returning showed a black
-            // half-built world with no indicators. brief && !brief_done IS the
-            // build state; only brief_done ends it.
-            const building = !!brief && !sim?.worldData?.brief_done
+            // A real, unfinished build → the build UI. Two signals, either is
+            // enough: the worldData gate (brief && !brief_done — can go stale
+            // client-side mid-adopt) OR the SERVER's live-BuildJob signal
+            // (buildJobActive — can't lie). Not gated on blank: the first field
+            // landing must never hide the console mid-build.
+            const building = (!!brief && !sim?.worldData?.brief_done) || buildJobActive
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —
