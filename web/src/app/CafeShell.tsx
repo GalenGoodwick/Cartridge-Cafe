@@ -224,7 +224,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
       setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })
     }
   }, [])
-  const [who, setWho] = useState<{ id: string; name: string } | null>(null)
+  const [who, setWho] = useState<{ id: string; name: string; guest?: boolean } | null>(null)
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -827,7 +827,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     // signed out · object = signed in. Signed-out must still resolve to null,
     // or visitors would never get a submode event at all.
     fetch('/api/auth/session').then(r => r.json()).then(s => {
-      const w = s?.user?.id ? { id: s.user.id as string, name: (s.user.name || '') as string } : null
+      const guest = !!s?.user?.isTemp || /@guest\.cartridge\.cafe$/i.test(String(s?.user?.email || ''))
+      const w = s?.user?.id ? { id: s.user.id as string, name: (s.user.name || '') as string, guest } : null
       ;(window as unknown as { __cafeWho?: typeof w }).__cafeWho = w
       if (w) setWho(w)
     }).catch(() => {
@@ -1538,10 +1539,20 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                       </button>
                     ))}
                     <div className="my-1 border-t border-white/10" />
-                    <button onClick={() => signOut({ callbackUrl: '/' })}
-                      className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
-                      sign out
-                    </button>
+                    {who.guest ? (
+                      // a guest has no account to sign out of — offer to KEEP their
+                      // work. The auth page claims their guest-built worlds onto the
+                      // real account they create / sign in to.
+                      <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
+                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
+                        ◆ CREATE ACCOUNT
+                      </button>
+                    ) : (
+                      <button onClick={() => signOut({ callbackUrl: '/' })}
+                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
+                        sign out
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
