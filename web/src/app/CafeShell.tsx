@@ -742,7 +742,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     }
     // the Cafe button means the commons — explicit intent beats stickiness
     if (initialMine) {
-      myWorlds(false)   // the /mine route — enter your shelf; the URL is already set
+      // enter mine-mode SYNCHRONOUSLY — set the flag before the engine's first
+      // poll so it never renders the full commons first (the old flash: "loaded
+      // to main, then my worlds"). myWorlds() then fills in ownerId and the
+      // roster populates in place.
+      ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true }
+      setMine('your')
+      myWorlds(false)   // the /u/<you> shelf — the URL is already set
     } else if (new URLSearchParams(window.location.search).get('commons')) {
       window.history.replaceState({}, '', '/')
       try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
