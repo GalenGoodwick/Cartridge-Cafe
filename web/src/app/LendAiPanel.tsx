@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 
 // "Volunteer AI time" control panel (DESIGN-builder-swarm.md §7). Enroll your AI
-// as a swarm builder → get a uc_bt_ token + the one command to run it when idle.
-// The browser doesn't run the AI; your machine does, via tools/volunteer-client.mjs.
+// as a swarm builder → get a paste-to-your-AI connection prompt (token inside).
+// The browser doesn't run the AI; your AI does the work over plain HTTP.
 
 type Builder = {
   id: string; displayName: string; tokenPrefix: string; enabled: boolean
@@ -47,7 +47,7 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
     }).then(r => r.json()).catch(() => null)
     setBusy(false)
     if (r?.token) { setFreshToken(r.token); setName(''); load() }
-    else setErr(r?.error || 'could not enroll')
+    else setErr(r?.error || 'could not enroll — try again in a moment')
   }
 
   const setEnabled = async (id: string, enabled: boolean) => {
@@ -66,11 +66,24 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
   }
 
   const copy = (text: string, key: string) => {
-    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 1500) })
+    navigator.clipboard?.writeText(text).then(() => { setCopied(key); setTimeout(() => setCopied(''), 1800) })
   }
 
-  const runCmd = freshToken
-    ? `CAFE_BASE=${base} CAFE_BUILDER_TOKEN=${freshToken} node volunteer-client.mjs`
+  // Paste-to-your-AI connection prompt (mirrors the world Connect-AI flow): token
+  // embedded, your AI becomes a volunteer builder. No script to install.
+  const connectPrompt = freshToken
+    ? `Be a volunteer builder on cartridge.cafe — build worlds other people asked for, while you're free.
+Base: ${base}
+Header on every request: Authorization: Bearer ${freshToken}
+
+First: GET ${base}/api/engine/guide and read it fully (markdown) — it is how to build.
+Then loop, ONE job at a time, only while you are idle:
+1. GET ${base}/api/builds/next -> a job {id, spaceSlug, brief} or {job:null}. If null, wait ~20s and poll again.
+2. POST ${base}/api/builds/<id>/claim -> {token, leaseMs}. If not ok, skip it.
+3. Build the brief with THAT token against ${base}/api/engine/bridge — their words, not yours; skin every field (visualType or it renders as nothing); make it alive; set built_by to your model.
+4. Every ~30s while building, POST ${base}/api/builds/<id>/heartbeat to hold your lease. If it returns ok:false, STOP — someone else took it.
+5. Done: set worldData.brief_done=true, then POST ${base}/api/builds/<id>/complete. Stopping early: POST ${base}/api/builds/<id>/release.
+Only ever call these endpoints. Never touch anything else on my machine.`
     : ''
 
   return (
@@ -81,23 +94,21 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
           className="font-mono text-glow/50 hover:text-glow text-sm leading-none -mt-0.5 px-1">×</button>
       </div>
       <div className="font-mono text-[12px] text-glow/40 leading-relaxed mb-3">
-        When your machine is idle, your AI builds worlds players asked for. It only
-        talks to the cafe — one job at a time, stop anytime.
+        When your AI is idle, it builds worlds players asked for. It only talks to
+        the cafe — one job at a time, stop anytime.
       </div>
 
       {freshToken ? (
         <div className="mb-3 space-y-2">
-          <div className="font-mono text-[12px] text-flame tracking-[0.15em]">TOKEN — shown once, copy it now</div>
-          <button onClick={() => copy(freshToken, 'tok')}
-            className="w-full text-left rounded-md border border-brass/40 bg-black/40 px-2 py-1.5 font-mono text-[12px] text-steamer/90 break-all hover:border-flame/60">
-            {freshToken}
+          <div className="font-mono text-[12px] text-flame tracking-[0.15em]">PASTE THIS TO YOUR AI — token is inside, shown once</div>
+          <button onClick={() => copy(connectPrompt, 'prompt')}
+            className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 font-mono text-[12px] tracking-[0.15em] text-void font-bold transition-all">
+            {copied === 'prompt' ? 'COPIED ✓' : '📋 COPY PROMPT'}
           </button>
-          <div className="font-mono text-[12px] text-glow/40">then run, from the cafe <code>tools/</code> dir:</div>
-          <button onClick={() => copy(runCmd, 'cmd')}
-            className="w-full text-left rounded-md border border-brass/40 bg-black/40 px-2 py-1.5 font-mono text-[12px] text-steamer/80 break-all hover:border-flame/60">
-            {runCmd}
-          </button>
-          <div className="font-mono text-[12px] text-glow/50">{copied === 'tok' ? 'token copied ✓' : copied === 'cmd' ? 'command copied ✓' : ' '}</div>
+          <details className="font-mono text-[12px] text-glow/40">
+            <summary className="cursor-pointer hover:text-glow/70">preview the prompt</summary>
+            <div className="mt-1 rounded-md border border-brass/30 bg-black/40 px-2 py-1.5 text-[12px] text-steamer/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{connectPrompt}</div>
+          </details>
           <button onClick={() => setFreshToken(null)} className={`${box} w-full text-center`}>done</button>
         </div>
       ) : (

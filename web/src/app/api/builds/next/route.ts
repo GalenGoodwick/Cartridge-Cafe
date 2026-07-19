@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveHolder, reconcile, sweep } from '@/lib/builds'
+import { saveGameSlot } from '@/app/api/engine/store'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -11,6 +12,10 @@ export const runtime = 'nodejs'
 export async function GET(req: NextRequest) {
   const holder = await resolveHolder(req)
   if (!holder) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+
+  // Liveness heartbeat: a builder polling for work = the swarm is available.
+  // Powers the "have the house AI build it" button in the create flow.
+  await saveGameSlot('builder-seen', { at: Date.now(), by: holder.id }).catch(() => {})
 
   const now = new Date()
   await reconcile(now)

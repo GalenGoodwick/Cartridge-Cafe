@@ -12,6 +12,7 @@
 //   CAFE_BUILDER_TOKEN  (required)  your uc_bt_ builder token
 //   CAFE_BASE           default https://cartridge.cafe
 //   CAFE_IDLE_ONLY      "1" (default) → only build when the machine load is low
+//   CAFE_MODEL          model for builds (default claude-opus-4-8)
 //   CLAUDE_BIN          path to the claude CLI (default ~/.npm-global/bin/claude)
 //
 // SAFETY: the brief comes from a stranger. The hardened form of this client
@@ -21,14 +22,21 @@
 // you don't trust arbitrary briefs on your box, run it in a throwaway VM/user.
 
 import { execFile } from 'child_process'
-import { mkdirSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { homedir, loadavg, cpus, tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const TOKEN = process.env.CAFE_BUILDER_TOKEN
 const IDLE_ONLY = process.env.CAFE_IDLE_ONLY !== '0'
 const CLAUDE_BIN = process.env.CLAUDE_BIN || `${homedir()}/.npm-global/bin/claude`
+const MODEL = process.env.CAFE_MODEL || 'claude-opus-4-8' // override with CAFE_MODEL (e.g. claude-fable-5)
+// Locked to the cafe bridge MCP server — no bash/fs/network, no skip-permissions.
+// A hostile brief can't touch your machine. CAFE_UNSAFE=1 = wide-open (local only).
+const MCP_SERVER = join(dirname(fileURLToPath(import.meta.url)), 'cafe-bridge-mcp.mjs')
+const UNSAFE = process.env.CAFE_UNSAFE === '1'
+const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput'
 const POLL_MS = 20_000
 const BUILD_TIMEOUT_MS = 15 * 60_000
 const SCRATCH_BASE = join(tmpdir(), 'cafe-volunteer')
@@ -56,9 +64,13 @@ function machineIdle() {
 }
 
 let building = false
+// Out of credits → stop polling for a while so the swarm stops counting us.
+const CREDITS_COOLDOWN_MS = 30 * 60_000
+let creditsCooldownUntil = 0
 
 async function tick() {
   if (building || !machineIdle()) return
+  if (Date.now() < creditsCooldownUntil) return   // out of credits — pause
   let claimedId = null
   let heartbeat = null
   try {
@@ -81,23 +93,32 @@ async function tick() {
         .catch(() => {})
     }, period)
 
-    const bridgeUrl = `${BASE}/api/engine/bridge`
     const prompt = [
       `You are a VOLUNTEER builder on cartridge.cafe. A player left a creation brief for their world "${slug}"; they see only the world changing live, not this session.`,
+      `You have EXACTLY three tools and nothing else — no shell, no files, no other network:`,
+      `  · cafe_guide  — the mandatory engine build guide (read it fully first).`,
+      `  · cafe_state  — the current world state.`,
+      `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}).`,
       ``,
-      `1. GET ${BASE}/api/engine/guide and follow it fully (mandatory).`,
-      `2. Connect to the bridge: POST ${bridgeUrl} with header "Authorization: Bearer ${claim.token}".`,
+      `1. cafe_guide, and follow it fully.  2. cafe_state to see the world.`,
       `3. BUILD THE BRIEF below — their words, not your own idea. Make it feel ALIVE and playable; skin every field (visualType or it renders as nothing); ship worldData.instructions; set built_by to your model name.`,
-      `4. When the first pass is genuinely done and verified, set_world_data {"data": {"brief_done": true}}.`,
+      `4. When the first pass is done, cafe_send a set_world_data {"data":{"brief_done":true}}.`,
       ``,
       `THE BRIEF: ${next.job.brief}`,
     ].join('\n')
 
     const scratch = join(SCRATCH_BASE, `${slug}-${Date.now()}`)
     try { mkdirSync(scratch, { recursive: true }) } catch { /* best-effort */ }
+    const mcpConfig = join(scratch, 'mcp.json')
+    writeFileSync(mcpConfig, JSON.stringify({
+      mcpServers: { 'cafe-bridge': { command: process.execPath, args: [MCP_SERVER], env: { CAFE_BASE: BASE, CAFE_BUILD_TOKEN: claim.token } } },
+    }))
+    const args = UNSAFE
+      ? ['-p', prompt, '--model', MODEL, '--dangerously-skip-permissions']
+      : ['-p', prompt, '--model', MODEL, '--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__cafe-bridge', '--disallowedTools', DENY]
 
     const ok = await new Promise((resolve) => {
-      const child = execFile(CLAUDE_BIN, ['-p', prompt, '--dangerously-skip-permissions'], {
+      const child = execFile(CLAUDE_BIN, args, {
         cwd: scratch, timeout: BUILD_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024,
       }, (err, stdout) => {
         if (err) log(`build ${slug} error: ${String(err).slice(0, 160)}`)

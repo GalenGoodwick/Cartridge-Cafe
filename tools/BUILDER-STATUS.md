@@ -34,11 +34,22 @@ typechecks clean (tsc 0 errors, eslint clean). Nothing applied to the DB yet.
   `pending-builds` + `builder_at` soft-claim + 1h-retry (that infinite-retry bug
   is gone; poison briefs now escalate to `needs_review`).
 
-**TO ACTIVATE — one command you run (touches the Neon DB):**
+**TO ACTIVATE — one command you run (writes to the Neon DB):**
 ```
-cd web && npx prisma migrate dev --name builder-swarm   # or: npx prisma db push
+cd web && npx prisma db push        # then restart the dev server
 ```
-Left for you on purpose — I don't run migrations against your database. The old
+Use `db push`, NOT `migrate dev` — this project has no migration history
+(`prisma/migrations/` is empty), so it's a db-push workflow; `migrate dev`
+against the Neon prod DB would try to baseline/shadow and complain. The push is
+purely additive (Builder + BuildJob tables, BuildJobStatus enum, one FK — zero
+changes to existing tables/data). Restart `npm run dev` afterward so the running
+server loads the regenerated client + new tables.
+
+CONFIRMED 2026-07-19: the tables do NOT exist yet — a `SELECT 1 FROM "Builder"`
+probe returned `P1014 (table does not exist)`. That is exactly why the LEND AI
+panel shows "could not enroll": `prisma.builder.create()` throws → 500. Nothing
+in the swarm works until the push runs. Left for you on purpose — I don't write
+to your production DB without an explicit yes. The old
 `GET /api/spaces/pending-builds` route still exists (harmless; superseded).
 
 ## Phase 3+4 — BUILT (local, not migrated/deployed) — 2026-07-18
@@ -62,6 +73,28 @@ tables) — nothing extra to run. After migrating, the button works end to end.
 
 Still open (later): owner-facing build-status UI states (§9 — reassigning /
 needs-review on the world spinner), volunteer reputation/moderation at scale (§10).
+
+## Parity gap — "use house AI" only works for WORLDS (2026-07-19)
+
+The house-AI/swarm build path is keyed to **PlayerSpace.creation_brief** — `reconcile()`
+scans PlayerSpaces only. Other create surfaces don't feed it:
+
+- **Branches** are file-store SCENES (mint `uc_sc_` via `/api/engine/scene/token`,
+  NOT `uc_st_`; see `FieldEngine.tsx:1055-1072`, `createBranch` at 1084). The swarm
+  never sees them → a "use house AI" button on a branch would enqueue nothing.
+  Branch create panel is the "plug box" (`plugOpen`/`plugBrief`/`plugToken`); it has
+  a connect flow but lacks the brew-style name+brief+copy parity.
+- **Brew-icon** is a `set_player_icon` action (`uc_it_` token, `player-icon` route),
+  not a world — the house AI has no icon job type.
+
+To make "use house AI" real on these, the swarm must accept non-world targets.
+Decision pending (asked, user away) — options:
+  1. Branch bring-your-own-AI parity (name+brief+copy on the plug box) — UI only, no swarm change.
+  2. House AI builds branches — enqueue scene briefs; daemon builds via uc_sc_.
+  3. House AI brews icons — new job type: icon description + uc_it_ → set_player_icon.
+  4. Unify: one "build request" (world|branch|icon) the swarm handles; wire all panels to it.
+Recommendation: 1 now (direct fix for the stated complaint), then 4 to end the copy-paste.
+Also still queued: live build console (stream a world's bridge commands under the spinner).
 
 ## BLOCKER #1 — CSRF rejects the token mint (FIXED in phase 1)
 

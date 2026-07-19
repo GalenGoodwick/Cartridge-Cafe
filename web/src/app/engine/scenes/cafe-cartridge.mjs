@@ -612,6 +612,13 @@ try {
           if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
           const champ = T && T.champion === n
           B.crown = !!champ
+          // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
+          // taking live votes belongs to the voted cluster at center; everything
+          // else is a new arrival held in the outer ring. A status flip re-settles
+          // it into the other band (un-anchor so it can cross the buffer).
+          const nowVoted = live > 0 || reach > 1 || champ
+          if (!B.justPlaced && !!B.voted !== nowVoted) { B.anchored = 0; U.wake = Math.max(U.wake, 7) }
+          B.voted = nowVoted
           // a world with a hand-coded style is a house mini. Otherwise: if the
           // engine has rendered this world's OWN visual into an atlas slot, the
           // bubble shows that (the world's real look); else a LIVING EMBLEM in
@@ -642,7 +649,7 @@ try {
         // NOTHING renders without the roster's word — a stale shared-doc bubble
         // (a world hidden since it was saved) must never get even one frame.
         // On a degraded first pass it just waits in U.bubbles for the full poll.
-        U.order = Object.keys(U.bubbles).filter(n => want[n]).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 28)
+        U.order = Object.keys(U.bubbles).filter(n => want[n]).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 200)
         if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
           const emptyText = MF ? 'no worlds on your deed yet - brew yours'
@@ -660,6 +667,14 @@ try {
   if (U.wake > 0) {
     U.wake -= dt2
     const fr = Math.exp(-3.4 * dt2)
+    // NEW-vs-VOTED banding — MAIN ONLY. MY WORLDS / SUB-MAIN have no votes, so
+    // there every world just clusters at center (banded = false). On main the
+    // voted worlds pack the middle; new arrivals are held in an outer ring one
+    // BUFFER (90) beyond the voted cluster's edge, so the two groups read clearly.
+    const banded = !MF && !SUB
+    let votedR = 40
+    if (banded) for (const n of U.order) { const B = U.bubbles[n]; if (B && B.voted) votedR = Math.max(votedR, Math.hypot(B.x - 256, B.y - 256)) }
+    const ringR = Math.max(votedR + 90, 170)
     for (let i = 0; i < U.order.length; i++) {
       const B = U.bubbles[U.order[i]]
       if (!B) continue
@@ -668,8 +683,14 @@ try {
       // the gaps WITHOUT dragging the arrangement everyone already sees.
       if (!B.anchored) {
         const dx = 256 - B.x, dy = 256 - B.y
-        const dd = Math.hypot(dx, dy)
-        if (dd > 2) {
+        const dd = Math.hypot(dx, dy) || 1
+        if (banded && !B.voted) {
+          // a new arrival springs to the outer ring: pushed OUT if it's inside the
+          // buffer, pulled IN if it drifted past — the gap to the voted cluster holds
+          const err = ringR - dd
+          B.vx += (B.x - 256) / dd * err * 0.6 * dt2
+          B.vy += (B.y - 256) / dd * err * 0.6 * dt2
+        } else if (dd > 2) {
           const g = 26 * (0.5 + B.score * 2.2)   // participation breaks past friction
           B.vx += dx / dd * g * dt2
           B.vy += dy / dd * g * dt2
@@ -734,6 +755,20 @@ try {
     U.cam.y -= (mgy - U.dy) / U.cam.z
     U.moved += Math.abs(mgx - U.dx) + Math.abs(mgy - U.dy)
   }
+  // TETHER: the map has an edge. Never let the camera stray past the field into
+  // empty void — the pan limit is the OUTERMOST world's distance from center
+  // plus a margin, so you can always reach the edge worlds but not drag off into
+  // blankness. Adapts to each mode (dense main vs a sparse MY WORLDS) and runs
+  // every frame, so zooms and snaps stay inside it too.
+  let fieldR = 60
+  for (let i = 0; i < U.order.length; i++) {
+    const B = U.bubbles[U.order[i]]
+    if (B) fieldR = Math.max(fieldR, Math.hypot(B.x - 256, B.y - 256))
+  }
+  const maxOff = fieldR + 200
+  const ox = U.cam.x - 256, oy = U.cam.y - 256
+  const od = Math.hypot(ox, oy)
+  if (od > maxOff) { U.cam.x = 256 + ox / od * maxOff; U.cam.y = 256 + oy / od * maxOff }
   U.dx = mgx; U.dy = mgy
   if (!down && U.prevDown) {
     if (hovered >= 0 && U.moved < 8 && typeof window !== 'undefined') {

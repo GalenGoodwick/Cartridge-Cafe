@@ -50,19 +50,29 @@ export async function POST(req: NextRequest) {
   if (count >= 10) return NextResponse.json({ error: 'Maximum 10 builders' }, { status: 400 })
 
   const raw = `uc_bt_${crypto.randomBytes(16).toString('hex')}`
-  const builder = await prisma.builder.create({
-    data: {
-      displayName: displayName.slice(0, 60),
-      tokenHash: crypto.createHash('sha256').update(raw).digest('hex'),
-      tokenPrefix: raw.slice(0, 12) + '...',
-      ownerId: user.id,
-      idleOnly,
-      maxConcurrent,
-    },
-    select: { id: true, displayName: true, tokenPrefix: true },
-  })
-  // token shown once, never stored raw
-  return NextResponse.json({ token: raw, builder }, { status: 201 })
+  try {
+    const builder = await prisma.builder.create({
+      data: {
+        displayName: displayName.slice(0, 60),
+        tokenHash: crypto.createHash('sha256').update(raw).digest('hex'),
+        tokenPrefix: raw.slice(0, 12) + '...',
+        ownerId: user.id,
+        idleOnly,
+        maxConcurrent,
+      },
+      select: { id: true, displayName: true, tokenPrefix: true },
+    })
+    // token shown once, never stored raw
+    return NextResponse.json({ token: raw, builder }, { status: 201 })
+  } catch (e) {
+    // The most likely cause pre-launch: the builder-swarm migration hasn't run,
+    // so the Builder table doesn't exist. Surface that instead of a bare 500.
+    console.error('builder enroll failed:', e)
+    return NextResponse.json(
+      { error: 'enroll failed — is the builder-swarm DB migration applied?' },
+      { status: 500 },
+    )
+  }
 }
 
 /** PATCH — toggle enabled / idle-only / concurrency from the control panel */

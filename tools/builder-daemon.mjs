@@ -14,7 +14,7 @@
 // hour (builder_at gates it). Logs to ~/Library/Logs/cafe-builder.log.
 
 import { execFile } from 'child_process'
-import { appendFileSync, mkdirSync } from 'fs'
+import { appendFileSync, mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
@@ -25,13 +25,21 @@ const POLL_MS = 20_000
 const BUILD_TIMEOUT_MS = 15 * 60_000
 const LOG = `${homedir()}/Library/Logs/cafe-builder.log`
 
-// Each build runs inside the sandbox-exec jail (build-sandbox.sb): a stranger's
-// brief gets your Mac's private files walled off. Set CAFE_SANDBOX=off to run
-// unsandboxed (trusted testers only). CLAUDE_BIN overrides the CLI path.
+// SECURITY MODEL — the build agent is locked to ONE capability: the cafe bridge
+// MCP server (tools/cafe-bridge-mcp.mjs). It launches with `--allowedTools
+// mcp__cafe-bridge` and NO --dangerously-skip-permissions, so bash / filesystem
+// / arbitrary network are all denied. A hostile brief has nothing on the Mac to
+// attack. (This replaces the old sandbox-exec approach, which broke Keychain
+// auth.) Set CAFE_UNSAFE=1 to fall back to the old wide-open skip-permissions
+// mode — ONLY for local debugging with your own briefs, never public.
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SANDBOX_PROFILE = join(HERE, 'build-sandbox.sb')
-const SANDBOX_ON = process.env.CAFE_SANDBOX !== 'off'
+const MCP_SERVER = join(HERE, 'cafe-bridge-mcp.mjs')
+const UNSAFE = process.env.CAFE_UNSAFE === '1'
 const CLAUDE_BIN = process.env.CLAUDE_BIN || `${homedir()}/.npm-global/bin/claude`
+// House AI builds on Opus. On a flat subscription per-token price is moot; the
+// real cap is the usage limit (protected by the credits cooldown below).
+// Override with CAFE_MODEL=claude-fable-5 for a cheaper/faster tier.
+const MODEL = process.env.CAFE_MODEL || 'claude-opus-4-8'
 const SCRATCH_BASE = `${homedir()}/.cafe-builds`
 
 if (!ADMIN) { console.error('ENGINE_AGENT_TOKEN required'); process.exit(1) }
@@ -51,9 +59,15 @@ const api = async (path, opts = {}) => {
 }
 
 let building = false
+// If a build fails on a usage/credit limit, stop polling for a while. Not
+// polling means the server's 'builder-seen' heartbeat goes stale → the swarm
+// reports the house AI UNAVAILABLE (so the "use house AI" button reflects it).
+const CREDITS_COOLDOWN_MS = 30 * 60_000
+let creditsCooldownUntil = 0
 
 async function tick() {
   if (building) return
+  if (Date.now() < creditsCooldownUntil) return   // out of credits — stay silent (unavailable)
   let claimedId = null
   let heartbeat = null
   try {
@@ -79,34 +93,54 @@ async function tick() {
       api(`/api/builds/${jobId}/heartbeat`, { method: 'POST', body: '{}' }).catch(() => {})
     }, period)
 
-    const bridgeUrl = `${BASE}/api/engine/bridge`
     const prompt = [
       `You are the HOUSE AI of cartridge.cafe — the resident builder. A player left a creation brief for their world "${slug}" and is counting on you; they cannot see this conversation, only the world changing live.`,
+      `You have EXACTLY three tools and nothing else — no shell, no files, no other network. Build only through them:`,
+      `  · cafe_guide  — the mandatory engine build guide (read it fully first).`,
+      `  · cafe_state  — the current world state (fields, visuals, params).`,
+      `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}).`,
       ``,
-      `1. GET ${BASE}/api/engine/guide and follow it fully (it is mandatory).`,
-      `2. Connect to the bridge: POST ${bridgeUrl} with header "Authorization: Bearer ${claim.token}".`,
-      `3. GET the bridge for current state, then BUILD THE BRIEF below — their words, not your own idea. Make it feel ALIVE and playable, skin every field (visualType or it renders as nothing), ship worldData.instructions, and set built_by to "cafe house AI".`,
-      `4. When the first pass is genuinely done and verified, set_world_data {"data": {"brief_done": true}}.`,
+      `1. cafe_guide, and follow it fully.`,
+      `2. cafe_state to see the world.`,
+      `3. BUILD THE BRIEF below — their words, not your own idea. Make it feel ALIVE and playable, skin every field (visualType or it renders as nothing), ship worldData.instructions, and set built_by to "cafe house AI".`,
+      `4. When the first pass is genuinely done, cafe_send a set_world_data {"data":{"brief_done":true}}.`,
       ``,
       `THE BRIEF: ${next.job.brief}`,
     ].join('\n')
 
-    // Per-build scratch dir — the sandbox lets the agent write only here (+ ~/.claude, tmp)
+    // Per-build scratch dir + a per-build MCP config carrying the world token
+    // (the model never sees the token — it lives in the MCP server's env).
     const scratch = join(SCRATCH_BASE, `${slug}-${Date.now()}`)
     try { mkdirSync(scratch, { recursive: true }) } catch { /* best-effort */ }
+    const mcpConfig = join(scratch, 'mcp.json')
+    writeFileSync(mcpConfig, JSON.stringify({
+      mcpServers: { 'cafe-bridge': {
+        command: process.execPath, args: [MCP_SERVER],
+        env: { CAFE_BASE: BASE, CAFE_BUILD_TOKEN: claim.token },
+      } },
+    }))
 
-    const claudeArgs = ['-p', prompt, '--dangerously-skip-permissions']
-    const [bin, args] = SANDBOX_ON
-      ? ['sandbox-exec', ['-D', `SCRATCH=${scratch}`, '-f', SANDBOX_PROFILE, CLAUDE_BIN, ...claudeArgs]]
-      : [CLAUDE_BIN, claudeArgs]
-    log(`spawning build ${slug}${SANDBOX_ON ? ' [sandboxed]' : ' [UNSANDBOXED]'} in ${scratch}`)
+    // Locked to the one MCP server: no bash/fs, no skip-permissions. --allowedTools
+    // only auto-approves; DENY rules are what actually block (they win over any
+    // machine allow-rule), so explicitly deny every built-in that touches the box.
+    // CAFE_UNSAFE falls back to the wide-open mode (local debugging only).
+    const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput'
+    const args = UNSAFE
+      ? ['-p', prompt, '--model', MODEL, '--dangerously-skip-permissions']
+      : ['-p', prompt, '--model', MODEL, '--mcp-config', mcpConfig, '--strict-mcp-config',
+         '--allowedTools', 'mcp__cafe-bridge', '--disallowedTools', DENY]
+    log(`spawning build ${slug}${UNSAFE ? ' [UNSAFE/wide-open]' : ' [locked: bridge-only]'} in ${scratch}`)
 
+    let hitLimit = false
     const ok = await new Promise((resolve) => {
-      const child = execFile(bin, args, {
+      const child = execFile(CLAUDE_BIN, args, {
         cwd: scratch,
         timeout: BUILD_TIMEOUT_MS,
         maxBuffer: 32 * 1024 * 1024,
       }, (err, stdout) => {
+        const out = `${err || ''}\n${stdout || ''}`
+        // Claude Code surfaces subscription exhaustion in its output/error.
+        if (/usage limit|rate limit|\bquota\b|out of credit|credit balance|too many requests|\b429\b|limit reached|resets? at/i.test(out)) hitLimit = true
         if (err) log(`build ${slug} ended with error: ${String(err).slice(0, 200)}`)
         log(`build ${slug} finished — agent said: ${String(stdout).slice(-300).replace(/\n/g, ' ')}`)
         resolve(!err)
@@ -116,7 +150,13 @@ async function tick() {
 
     // 4) close out the lease — done on success, release (requeue) on failure/timeout
     clearInterval(heartbeat); heartbeat = null
-    if (ok) {
+    if (hitLimit) {
+      // out of credits — requeue this brief for another builder and go dark so
+      // the swarm reports the house AI unavailable until the cooldown passes
+      creditsCooldownUntil = Date.now() + CREDITS_COOLDOWN_MS
+      await api(`/api/builds/${jobId}/release`, { method: 'POST', body: '{}' }).catch(() => {})
+      log(`usage/credit limit hit — house AI unavailable for ${CREDITS_COOLDOWN_MS / 60000}min; ${slug} requeued`)
+    } else if (ok) {
       await api(`/api/builds/${jobId}/complete`, { method: 'POST', body: '{}' })
       log(`completed ${slug}`)
     } else {

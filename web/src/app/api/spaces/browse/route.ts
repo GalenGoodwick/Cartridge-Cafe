@@ -26,7 +26,7 @@ export async function GET() {
       snapshot: true,
     },
     orderBy: { updatedAt: 'desc' },
-    take: 60,
+    take: 200,
   })
   // a world is BLANK until it holds something; only unblank worlds join the door
   const out = spaces.map(({ snapshot, ...rest }) => {

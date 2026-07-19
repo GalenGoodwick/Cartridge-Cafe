@@ -169,6 +169,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const [brewAi, setBrewAi] = useState(false)
   const [brewNameOk, setBrewNameOk] = useState<boolean | null>(null)   // null = unchecked/too short · true/false = unique?
   const [brewChecking, setBrewChecking] = useState(false)
+  const [houseAiUp, setHouseAiUp] = useState(false)   // a swarm builder is online → offer "have the house AI build it"
   const brewSlugRef = useRef('')
   const brewFinalizedRef = useRef(false)
   const activeTabRef = useRef(true)
@@ -463,7 +464,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   const brew = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
-    setBrewErr(''); setBrewName(''); setBrewBrief('')
+    setBrewErr('')
+    // restore an in-progress draft — a mistaken exit shouldn't lose their words.
+    // Cleared only when the world is made (finalizeBrief) or they wipe it themselves.
+    try {
+      setBrewName(localStorage.getItem('cafe:brew:name') || '')
+      setBrewBrief(localStorage.getItem('cafe:brew:brief') || '')
+    } catch { setBrewName(''); setBrewBrief('') }
     setBrewAi(false); setBrewNameOk(null); setBrewChecking(false)
     brewFinalizedRef.current = false
     // sweep my own abandoned drafts first — unnamed, unbuilt, invisible
@@ -534,21 +541,29 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   const briefLen = brewBrief.trim().length
   const connectReady = nameValid && briefLen >= 100 && briefLen <= 500
   useEffect(() => {
-    if (!brewAi || brewFinalizedRef.current || !connectReady) return
-    brewFinalizedRef.current = true
-    setBrewErr('')
-    ;(async () => {
-      const r = await fetch('/api/spaces/' + brewSlugRef.current, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim() }),
-      }).catch(() => null)
-      const d = await r?.json().catch(() => null)
-      if (!r || !r.ok) { brewFinalizedRef.current = false; setBrewErr(d?.error || 'could not open the world'); return }
-      if (d?.space?.slug) { brewSlugRef.current = d.space.slug; setBrewSlug(d.space.slug) }
-      enterWorld()
-    })()
+    if (brewAi && connectReady) finalizeBrief()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brewAi, connectReady])
+  // is a swarm builder (house AI or a volunteer) online right now? gates the
+  // "have the house AI build it" button so a player with no AI can still ship.
+  useEffect(() => {
+    if (brewStep < 1) { setHouseAiUp(false); return }
+    let alive = true
+    const check = () => fetch('/api/builds/availability').then(r => r.json())
+      .then(d => { if (alive) setHouseAiUp(!!d.available) }).catch(() => {})
+    check()
+    const iv = setInterval(check, 15_000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [brewStep])
+  // draft autosave: keep the name + brief so a mistaken exit (close, reload,
+  // navigate away) restores them on reopen. Cleared on world-made or manual wipe.
+  useEffect(() => {
+    if (brewStep < 1) return
+    try {
+      localStorage.setItem('cafe:brew:name', brewName)
+      localStorage.setItem('cafe:brew:brief', brewBrief)
+    } catch { /* storage blocked/full — non-fatal */ }
+  }, [brewName, brewBrief, brewStep])
   /** all gates passed and the AI has begun — the draft becomes a world.
    *  It joins main automatically (public spaces are shelf bubbles), and if
    *  you founded a sub-main it lands on your shelf there too. */
@@ -567,6 +582,29 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       }).catch(() => {})
     }
     window.location.href = '/space/' + brewSlugRef.current
+  }
+  /** Deliver the brief and open the world — fired either by the player's OWN AI
+   *  logging in (brewAi), or by "have the house AI build it": setting the brief
+   *  enqueues it, and a resident/volunteer builder picks it up and builds live. */
+  const finalizeBrief = async () => {
+    if (brewFinalizedRef.current || !connectReady) return
+    brewFinalizedRef.current = true
+    setBrewErr('')
+    const r = await fetch('/api/spaces/' + brewSlugRef.current, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim() }),
+    }).catch(() => null)
+    const d = await r?.json().catch(() => null)
+    if (!r || !r.ok) { brewFinalizedRef.current = false; setBrewErr(d?.error || 'could not open the world'); return }
+    if (d?.space?.slug) { brewSlugRef.current = d.space.slug; setBrewSlug(d.space.slug) }
+    // the world is made — the draft did its job; drop the saved name + brief
+    try { localStorage.removeItem('cafe:brew:name'); localStorage.removeItem('cafe:brew:brief') } catch { /* non-fatal */ }
+    enterWorld()
+  }
+  /** wipe the saved draft on purpose — name + brief back to blank */
+  const clearDraft = () => {
+    setBrewName(''); setBrewBrief(''); setBrewNameOk(null)
+    try { localStorage.removeItem('cafe:brew:name'); localStorage.removeItem('cafe:brew:brief') } catch { /* non-fatal */ }
   }
   const brewCancel = async () => {
     setBrewStep(0)
@@ -1010,6 +1048,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           )}
           {subMode?.mode === 'group' ? (<>
             {who && !subMode.member && <button onClick={joinSub} className={hubBtn}>JOIN</button>}
+            {/* found your OWN sub-main from inside another one (one per person) */}
+            {who && !subMode.haveOwn && <button onClick={foundSub} className={hubBtn}>⌂ FOUND YOURS</button>}
             {who && subMode.member && (subMode.owner || !subMode.pinsLocked) && (
               <button onClick={openPin} className={hubBtn}>+ PIN A WORLD</button>
             )}
@@ -1182,7 +1222,15 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <span className={briefLen >= 100 && briefLen <= 500 ? 'text-glow' : 'text-crema/40'}>{briefLen >= 100 && briefLen <= 500 ? '✓' : '2'} BRIEF</span>
               <span className={brewAi && connectReady ? 'text-glow' : 'text-crema/40'}>{brewAi && connectReady ? '⚒' : '3'} CONNECT AI</span>
             </div>
-            <div className="cafe-sign text-2xl mb-4">brew your world</div>
+            <div className="flex items-baseline justify-between mb-4">
+              <div className="cafe-sign text-2xl">brew your world</div>
+              {(brewName || brewBrief) && (
+                <button onClick={clearDraft}
+                  className="font-mono text-[12px] tracking-[0.15em] text-crema/40 hover:text-flame transition-colors">
+                  clear draft
+                </button>
+              )}
+            </div>
 
             {/* GATE 1 — NAME (5–20 chars, unique) */}
             <div className="mb-1 font-mono text-[12px] tracking-[0.2em] text-crema/50">1 · NAME IT</div>
@@ -1241,6 +1289,16 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[12px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 COPY CONNECTION PROMPT
               </button>
+              <div className="font-mono text-[12px] tracking-[0.2em] text-crema/40 text-center my-2">— or —</div>
+              <button disabled={!connectReady} onClick={finalizeBrief}
+                className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[12px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
+                ☕ HAVE THE HOUSE AI BUILD IT
+              </button>
+              <div className="font-mono text-[12px] tracking-[0.15em] mt-2 text-crema/40">
+                {houseAiUp
+                  ? <span className="text-glow/70">a resident AI is online — it builds your brief live while you watch.</span>
+                  : 'no AI of your own? leave it to the house — your brief queues and an AI builds it as soon as one is free.'}
+              </div>
               <div className="font-mono text-[12px] tracking-[0.15em] mt-2 text-crema/40">
                 {brewAi && connectReady
                   ? <span className="text-glow animate-pulse">your AI connected — delivering the brief and opening your world…</span>

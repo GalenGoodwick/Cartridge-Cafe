@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveHolder, mintBuildToken, hist, LEASE_MS } from '@/lib/builds'
+import { mintSceneToken } from '@/app/api/engine/scene-token'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,8 +22,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: {
       id,
       status: 'pending',
-      NOT: { attemptedBy: { has: holder.id } },
-      ...(holder.isHouse ? {} : { escalatedHouse: false }),
+      // The house AI is the always-on fallback — it may RE-claim a job it once
+      // dropped (all house instances share the "house" holder id, so excluding
+      // by attemptedBy would lock the house out of that job forever). Volunteers
+      // are still excluded from jobs they dropped + from house-escalated ones.
+      ...(holder.isHouse ? {} : { escalatedHouse: false, NOT: { attemptedBy: { has: holder.id } } }),
     },
     data: {
       status: 'leased',
@@ -43,13 +47,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const job = await prisma.buildJob.findUnique({ where: { id } })
   if (!job) return NextResponse.json({ error: 'not found' }, { status: 404 })
 
-  // Capture the rollback point once (first claim), then mint the world token.
-  const space = await prisma.playerSpace.findUnique({ where: { id: job.spaceId }, select: { snapshot: true } })
-  const token = await mintBuildToken(job.spaceId, holder.displayName)
+  // Mint the target-scoped build token: a branch job gets a stateless scene
+  // token (uc_sc_), a world job gets a uc_st_ + captures a rollback snapshot.
+  let token: string
+  let preSnapshot: unknown = job.preSnapshot ?? undefined
+  if (job.sceneName) {
+    token = mintSceneToken(job.sceneName)
+  } else if (job.spaceId) {
+    const space = await prisma.playerSpace.findUnique({ where: { id: job.spaceId }, select: { snapshot: true } })
+    token = await mintBuildToken(job.spaceId, holder.displayName)
+    preSnapshot = job.preSnapshot ?? space?.snapshot ?? undefined
+  } else {
+    return NextResponse.json({ error: 'job has no target' }, { status: 500 })
+  }
   await prisma.buildJob.update({
     where: { id },
     data: {
-      preSnapshot: job.preSnapshot ?? space?.snapshot ?? undefined,
+      preSnapshot: (preSnapshot ?? undefined) as never,
       history: hist(job.history, { at: now.toISOString(), by: holder.id, event: 'claimed' }),
     },
   })

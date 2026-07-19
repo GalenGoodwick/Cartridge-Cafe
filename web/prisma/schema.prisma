@@ -314,9 +314,11 @@ model Builder {
 
 model BuildJob {
   id            String         @id @default(cuid())
-  spaceId       String
-  space         PlayerSpace    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  spaceSlug     String // denormalized for the queue read
+  // A job targets EITHER a world (spaceId) OR a branch scene (sceneName).
+  spaceId       String?
+  space         PlayerSpace?   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  sceneName     String? // branch scene name (`BASE ⑂ handle · vN`) for a branch job
+  spaceSlug     String // display label — world slug or scene name
   brief         String // the player's words, copied at enqueue
   status        BuildJobStatus @default(pending)
   // leaseHolderId is an opaque holder pointer: a Builder.id or the literal
