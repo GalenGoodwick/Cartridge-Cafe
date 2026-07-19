@@ -48,6 +48,33 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     return () => { window.removeEventListener('cafe:caption', onCaption); if (timer) clearTimeout(timer) }
   }, [])
 
+  // LIVE HEAD-COUNT: report presence while inside this world. The hub (CafeShell)
+  // heartbeats /api/presence, but the /space page never did — so a world's own
+  // bubble always read 0. Key it to the door's bubble id: (name || slug) upper-
+  // cased, exactly how cafe-cartridge.mjs keys a space bubble (disp). Reuses the
+  // same cc-pid so one person is one place, and never counts a version snapshot.
+  useEffect(() => {
+    if (versionView) return
+    let pid = ''
+    try {
+      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
+      localStorage.setItem('cc-pid', pid)
+    } catch { pid = Math.random().toString(36).slice(2, 12) }
+    const key = (name || spaceSlug).toUpperCase()
+    const beat = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      fetch('/api/presence', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene: key, id: pid }),
+      }).catch(() => {})
+    }
+    beat()
+    const iv = setInterval(beat, 10_000)
+    const bye = () => { try { navigator.sendBeacon('/api/presence', JSON.stringify({ id: pid, leave: true })) } catch { /* gone anyway */ } }
+    window.addEventListener('pagehide', bye)
+    return () => { clearInterval(iv); window.removeEventListener('pagehide', bye); bye() }
+  }, [name, spaceSlug, versionView])
+
   const loadVersions = useCallback(async () => {
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`)

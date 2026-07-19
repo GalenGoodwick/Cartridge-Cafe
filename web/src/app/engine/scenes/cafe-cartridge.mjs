@@ -258,6 +258,29 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let comet = smoothstep(0.0, 0.55, sweep) * smoothstep(1.0, 0.55, sweep);
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
         g = vec3f(0.02, 0.02, 0.03) + cA * ring * (0.12 + comet * 1.3);
+      } else if (st == 20) {
+        // SUB-MAINS — a little constellation of gatherings (groups orbiting)
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = vec3f(0.02, 0.03, 0.05);
+        for (var k = 0; k < 5; k++) {
+          let ak = f32(k) * 1.2566 + t * 0.2;
+          let pk = q - vec2f(cos(ak), sin(ak)) * 0.42;
+          let dk = length(pk);
+          g += cA * smoothstep(0.13, 0.09, dk) * 0.8;
+          g += cA * smoothstep(0.04, 0.0, abs(dk - 0.11)) * 0.5;
+        }
+        g += cA * exp(-dot(q, q) * 5.0) * 0.6;
+      } else if (st == 21) {
+        // PLAYER WORLDS — a world ringed by its players
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = cA * exp(-dot(q, q) * 6.0) * 1.4;
+        g += vec3f(0.9) * smoothstep(0.02, 0.0, abs(length(q) - 0.34)) * 0.3;
+        for (var k = 0; k < 8; k++) {
+          let ak = f32(k) * 0.7854 + t * 0.6;
+          let pk = q - vec2f(cos(ak), sin(ak)) * 0.6;
+          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.12 + vec3f(0.0, 0.33, 0.67)));
+          g += hk * smoothstep(0.07, 0.0, length(pk)) * 1.2;
+        }
       } else if (st >= 9) {
         // a real world — its screenshot, folded into the bubble by the shader
         g = cafeIcon(st - 9, q);
@@ -568,8 +591,8 @@ try {
           // WORLDS opens the player-made shelf (those worlds collapse behind it
           // instead of crowding main); the CHAMPION is a core world sized big in
           // place below (marked where the crown is set). Fixed positions = anchored.
-          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, fixed: [256, 150] }
-          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, fixed: [150, 342] }
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 20, hue: 0.58, big: 1, fixed: [150, 205] }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 21, hue: 0.34, big: 1, fixed: [362, 205] }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -631,7 +654,10 @@ try {
           // before any tier resolves.
           let live = 0
           if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
-          const champ = T && T.champion === n
+          // the reigning world — or QUANTIC DOJO as the seeded first champion so
+          // there's always a starting place until a vote crowns someone.
+          const champName = (T && T.champion) || 'QUANTIC DOJO'
+          const champ = n === champName
           B.crown = !!champ
           if (champ) B.big = true   // the reigning world rides BIG in place — the third big bubble
           // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
@@ -651,7 +677,7 @@ try {
           // before the first icon pass lands, an un-styled bubble (style 8) shows
           // a spinner instead of flashing the default emblem
           const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
-          B.iconLoading = B.style >= 8 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black)
+          B.iconLoading = B.style >= 8 && B.style < 20 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black). The big category glyphs (20/21) are drawn by the shader, no atlas.
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -725,8 +751,11 @@ try {
         let sx = B.x - C.x, sy = B.y - C.y
         let sd = Math.hypot(sx, sy)
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
-        if (sd < 76) {   // breathing room: bubbles repel inside 76, not 56
-          const push = (76 - sd) * 9 * dt2
+        // a BIG bubble clears a wider berth so the field makes space around it.
+        // Anchored (pinned) big bubbles push neighbours out but never move themselves.
+        const clr = (B.big || C.big) ? 128 : 76
+        if (sd < clr) {
+          const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
           if (!C.anchored) { C.vx -= sx / sd * push; C.vy -= sy / sd * push }
         }

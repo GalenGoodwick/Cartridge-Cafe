@@ -5721,16 +5721,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {/* (branch rule chips removed — YOUR OWN branch now gets the same
                 ⚙ WORLD TOOLS panel a space gets, persisting to the same
                 world-settings:<branch> slot. One toolbox, every tier.) */}
-            {/* the hub carries ONE door to SUB-MAIN — a navigation world like
-                main whose shelf is the branches. In-shell travel, not a page. */}
-            {isHub && playScene !== 'SUB-MAIN' && (
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'SUB-MAIN' }))}
-                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              >
-                ⑂ SUB-MAIN
-              </button>
-            )}
+            {/* (the SUB-MAIN nav button is gone — the big SUB-MAINS bubble on the
+                main hub is the door now.) */}
             {/* BRANCH versions — the hybrid scrubber: ◂/▸ step · middle opens the list */}
             {!isHub && lastSceneRef.current.includes(' ⑂ ') && (() => {
               const cur = lastSceneRef.current
