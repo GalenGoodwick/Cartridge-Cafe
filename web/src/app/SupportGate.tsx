@@ -10,6 +10,7 @@ type Verdict = 'ok' | 'mobile' | 'nogpu' | 'blocked' | null
 export default function SupportGate({ children }: { children: React.ReactNode }) {
   const [verdict, setVerdict] = useState<Verdict>(null)
   const [why, setWhy] = useState('')
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     let reported = false
@@ -125,6 +126,17 @@ export default function SupportGate({ children }: { children: React.ReactNode })
               then the lights come on.</>
           )}
         </p>
+        {mobile && (
+          <button
+            onClick={() => { try { void navigator.clipboard?.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ } }}
+            style={{
+              marginTop: 20, padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+              border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)',
+              color: '#ffdba8', fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.12em',
+            }}>
+            {copied ? 'LINK COPIED ✓' : '⧉ COPY LINK — OPEN ON YOUR COMPUTER'}
+          </button>
+        )}
         {!mobile && (
           <>
             <div style={{ marginTop: 16, fontSize: 10, color: 'rgba(201,184,150,0.45)', lineHeight: 1.6 }}>

@@ -18,9 +18,15 @@ export async function generateMetadata({ params }: SpacePageProps) {
 
   if (!space) return { title: 'Space Not Found' }
 
+  const owner = space.owner?.name || 'someone'
+  const title = `${space.name} — cartridge.cafe`
+  const description = `${space.description || `A little world by ${owner}`} · Live on cartridge.cafe — best on a desktop browser.`
+
   return {
-    title: `${space.name} — ${space.owner?.name || 'Unknown'}`,
-    description: space.description || `A programmable space by ${space.owner?.name}`,
+    title,
+    description,
+    openGraph: { type: 'website', title, description, siteName: 'cartridge.cafe' },
+    twitter: { card: 'summary_large_image', title, description },
   }
 }
 
