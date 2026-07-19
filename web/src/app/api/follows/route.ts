@@ -20,12 +20,12 @@ export async function GET(req: NextRequest) {
   await ensureCommunityTables()
   const ids = targets.map(t => t.id)
   const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
-    SELECT count(DISTINCT "followerId") AS n FROM "Follow" WHERE "followeeId" = ANY(${ids})`
+    SELECT count(DISTINCT "followerId") AS n FROM "CafeFollow" WHERE "followeeId" = ANY(${ids})`
   const u = await me()
   let following = false
   if (u) {
     const f = await prisma.$queryRaw<Array<{ n: bigint }>>`
-      SELECT count(*) AS n FROM "Follow" WHERE "followerId" = ${u.id} AND "followeeId" = ANY(${ids})`
+      SELECT count(*) AS n FROM "CafeFollow" WHERE "followerId" = ${u.id} AND "followeeId" = ANY(${ids})`
     following = Number(f[0]?.n ?? 0) > 0
   }
   return NextResponse.json({ followers: Number(rows[0]?.n ?? 0), following })
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   await ensureCommunityTables()
   for (const t of targets) {
     if (t.id === u.id) continue
-    await prisma.$executeRaw`INSERT INTO "Follow" ("followerId", "followeeId") VALUES (${u.id}, ${t.id}) ON CONFLICT DO NOTHING`
+    await prisma.$executeRaw`INSERT INTO "CafeFollow" ("followerId", "followeeId") VALUES (${u.id}, ${t.id}) ON CONFLICT DO NOTHING`
     void notifyUser(t.id, 'follow', `${u.name || handleOf(u.email)} now follows your work`, `/u/${handleOf(u.email)}`)
   }
   return NextResponse.json({ ok: true })
@@ -54,7 +54,7 @@ export async function DELETE(req: NextRequest) {
   const targets = await usersByHandle(String(handle || ''))
   await ensureCommunityTables()
   for (const t of targets) {
-    await prisma.$executeRaw`DELETE FROM "Follow" WHERE "followerId" = ${u.id} AND "followeeId" = ${t.id}`
+    await prisma.$executeRaw`DELETE FROM "CafeFollow" WHERE "followerId" = ${u.id} AND "followeeId" = ${t.id}`
   }
   return NextResponse.json({ ok: true })
 }

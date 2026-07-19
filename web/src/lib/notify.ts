@@ -11,11 +11,11 @@ export async function ensureCommunityTables(): Promise<void> {
     "text" TEXT NOT NULL, "link" TEXT, "readAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Notif_user_idx" ON "Notif"("userId", "createdAt")`)
-  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Follow" (
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "CafeFollow" (
     "followerId" TEXT NOT NULL, "followeeId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY ("followerId", "followeeId"))`)
-  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Follow_followee_idx" ON "Follow"("followeeId")`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CafeFollow_followee_idx" ON "CafeFollow"("followeeId")`)
   ready = true
 }
 
