@@ -1093,8 +1093,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [branchLabel, setBranchLabel] = useState('')
   const [branchBrief, setBranchBrief] = useState('')   // optional: hand the branch to the house AI
 
-  // LINEAGE TRAIL — where this world came from (walks branchedFrom / forkOfId)
+  // LINEAGE TRAIL — where this world came from (walks branchedFrom / forkOfId),
+  // plus the remixes that grew FROM it (the downstream side).
   const [lineageTrail, setLineageTrail] = useState<null | { name: string; by?: string | null; kind: string; slug?: string }[]>(null)
+  const [lineageRemixes, setLineageRemixes] = useState<{ name: string; slug: string }[]>([])
   const [lineageBusy, setLineageBusy] = useState(false)
   const loadLineage = useCallback(async () => {
     setLineageBusy(true)
@@ -1103,11 +1105,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const q = cur.includes(' ⑂ ') ? `scene=${encodeURIComponent(cur)}`
               : spaceSlug ? `space=${encodeURIComponent(spaceSlug)}`
               : cur ? `scene=${encodeURIComponent(cur)}` : ''
-      if (!q) { setLineageTrail([]); return }
+      if (!q) { setLineageTrail([]); setLineageRemixes([]); return }
       const r = await fetch(`/api/engine/lineage/trail?${q}`)
       const d = await r.json().catch(() => ({}))
       setLineageTrail(Array.isArray(d.trail) ? d.trail : [])
-    } catch { setLineageTrail([]) } finally { setLineageBusy(false) }
+      setLineageRemixes(Array.isArray(d.remixes) ? d.remixes : [])
+    } catch { setLineageTrail([]); setLineageRemixes([]) } finally { setLineageBusy(false) }
   }, [playScene, spaceSlug])
   const createBranch = useCallback(async (labelRaw: string) => {
     if (!me) { window.location.href = '/auth/signin'; return }
@@ -5491,6 +5494,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       </div>
                     )
                   )}
+                  {lineageTrail && lineageRemixes.length > 0 && (
+                    <div className="pt-1 space-y-0.5">
+                      <div className="text-[12px] text-white/30">{lineageRemixes.length} remix{lineageRemixes.length === 1 ? '' : 'es'} grew from this →</div>
+                      {lineageRemixes.map(rx => (
+                        <div key={rx.slug} className="text-[12px] leading-snug text-white/55">
+                          <span className="text-white/25">↳ </span>
+                          <a href={`/space/${rx.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{rx.name}</a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {canEditLaw && (() => {
                   // DIRECT EDIT KEYS — mint the credential that lets an AI edit each tier:
@@ -5902,7 +5916,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
                 <div className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
-                  <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-2">⑂ CREATE BRANCH</div>
+                  <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
+                  {/* the one thing people ask: branch vs remix. Say it right here. */}
+                  <div className="text-[12px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker. want your own copy instead? use <span className="text-white/60">⑂ REMIX</span>.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
                   <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input

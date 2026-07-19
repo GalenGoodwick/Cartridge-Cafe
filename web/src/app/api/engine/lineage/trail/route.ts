@@ -34,7 +34,18 @@ export async function GET(req: NextRequest) {
       slug = s.forkOf?.slug ?? null
     }
     if (trail.length) trail[0].kind = 'root'
-    return NextResponse.json({ trail })
+    // downstream: the public remixes that grew FROM this world (the reverse side
+    // the original never surfaced — branches show in the arena, remixes didn't)
+    const self = await prisma.playerSpace.findUnique({ where: { slug: space }, select: { id: true } })
+    const remixes = self
+      ? (await prisma.playerSpace.findMany({
+          where: { forkOfId: self.id, isPublic: true },
+          select: { name: true, slug: true },
+          orderBy: { updatedAt: 'desc' },
+          take: 30,
+        }))
+      : []
+    return NextResponse.json({ trail, remixes })
   }
 
   if (scene) {
@@ -57,7 +68,7 @@ export async function GET(req: NextRequest) {
       break
     }
     if (trail.length) trail[0].kind = 'root'
-    return NextResponse.json({ trail })
+    return NextResponse.json({ trail, remixes: [] })
   }
 
   return NextResponse.json({ error: 'scene or space required' }, { status: 400 })

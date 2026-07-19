@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { signOut } from 'next-auth/react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import TournamentBar from '@/app/TournamentBar'
 import MainCommonsChat from '@/app/MainCommonsChat'
@@ -190,6 +191,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // the bell: notifications for the signed-in maker (60s poll, visible tabs only)
   const [bell, setBell] = useState<{ items: Array<{ id: string; text: string; link: string | null; readAt: string | null; createdAt: string }>; unread: number }>({ items: [], unread: 0 })
   const [bellOpen, setBellOpen] = useState(false)
+  const [acctOpen, setAcctOpen] = useState(false)   // the account ▾ menu — holds the secondary actions
   useEffect(() => {
     const pull = () => { if (document.visibilityState !== 'hidden') fetch('/api/notifications').then(r => r.json()).then(d => setBell({ items: d.items || [], unread: d.unread || 0 })).catch(() => {}) }
     pull()
