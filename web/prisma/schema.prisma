@@ -29,6 +29,22 @@ model User {
   companions    Companion[]    @relation("CompanionOwners")
   passkeys      Passkey[]      @relation("UserPasskeys")
   builders      Builder[]      @relation("BuilderOwners")
+  following     Follow[]       @relation("Follower")
+  followers     Follow[]       @relation("Followed")
+}
+
+// A follows B: A gets B's new worlds + edits in their feed. One row per pair.
+model Follow {
+  id         String   @id @default(cuid())
+  follower   User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId String
+  target     User     @relation("Followed", fields: [targetId], references: [id], onDelete: Cascade)
+  targetId   String
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, targetId])
+  @@index([followerId])
+  @@index([targetId])
 }
 
 model Account {

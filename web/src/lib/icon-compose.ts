@@ -29,10 +29,14 @@ export function dominantHue(fields: IconField[]): number | null {
 
 /** Background shader on the biggest field + the other fields baked in as blobs.
  *  A bespoke `icon_wgsl` (from MAKE ICON) wins outright. A state/feedback visual
- *  is returned RAW (the renderer evolves it; blobs would corrupt its state). */
-export function composeIcon(fields: IconField[], visuals: IconVisual[], bespoke?: unknown): string | null {
+ *  is returned RAW (the renderer evolves it; blobs would corrupt its state).
+ *  The world's `modules` ride along: a visual that calls mod_* functions is
+ *  un-iconable without them — bundling them is what lets module-built worlds
+ *  auto-icon at all (the icon pipeline compiles each icon in isolation). */
+export function composeIcon(fields: IconField[], visuals: IconVisual[], bespoke?: unknown, modules?: IconVisual[]): string | null {
   if (typeof bespoke === 'string' && /fn\s+visual_\w+\s*\(/.test(bespoke)) return bespoke
   if (!fields?.length || !visuals?.length) return null
+  const modWgsl = (modules || []).map(m => m?.wgsl || '').filter(Boolean).join('\n')
   let bg: IconField | null = null, bgArea = -1
   for (const f of fields) {
     if (!f.visualTypeName) continue

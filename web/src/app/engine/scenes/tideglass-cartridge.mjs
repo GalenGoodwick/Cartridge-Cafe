@@ -490,24 +490,58 @@ fn mod_tg_stele(p: vec2f, px: vec2f, t: f32) -> vec3f {
   return c;
 }
 
+// aged bronze plate: layered patina over near-black metal, lit from above-left
+fn mod_tg_plate(p: vec2f, key: f32) -> vec3f {
+  var m = vec3f(0.030, 0.026, 0.022);
+  let pat1 = fbm(p * 5.0 + vec2f(7.0), 3);
+  let pat2 = fbm(p * 16.0 + vec2f(2.0), 2);
+  m = mix(m, vec3f(0.085, 0.065, 0.038), smoothstep(0.45, 0.75, pat1) * 0.8);   // bronze bloom
+  m = mix(m, vec3f(0.040, 0.055, 0.045), smoothstep(0.55, 0.85, pat2) * 0.5);   // verdigris fleck
+  m *= 0.65 + 0.6 * pat2 * pat1;
+  m *= 0.55 + key;                                                              // key light
+  return m;
+}
+
 fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let open = uni(8);
-  // cliff face
-  var c = mod_tg_rock(p * 2.2, vec3f(0.085, 0.080, 0.088));
-  c *= 0.55 + 0.45 * exp(-dot(p - vec2f(0.0, -0.1), p - vec2f(0.0, -0.1)) * 0.8);
-  // dusk light falls from the upper left
-  c += vec3f(0.55, 0.28, 0.14) * exp(-(p.x + 0.9) * (p.x + 0.9) * 0.8) * exp(-(p.y + 0.9) * (p.y + 0.9) * 0.9) * 0.5;
-  // ── the carved portal: a stepped square frame enthroning the disc ──
+  // near-black cliff, warm breath only around the monument
+  var c = mod_tg_rock(p * 2.2, vec3f(0.038, 0.034, 0.036));
+  c *= 0.30 + 0.45 * exp(-dot(p - vec2f(0.0, -0.1), p - vec2f(0.0, -0.1)) * 1.1);
+  c += vec3f(0.30, 0.16, 0.07) * exp(-(p.x + 0.9) * (p.x + 0.9) * 1.0) * exp(-(p.y + 0.9) * (p.y + 0.9) * 1.1) * 0.4;
+  // ── the plate frame: aged bronze slab enthroning the disc ──
   let fp = p - vec2f(0.0, 0.02);
   let fr1 = abs(sdRoundedBox(fp, vec2f(0.80, 0.80), 0.10)) - 0.030;
   let fr2 = abs(sdRoundedBox(fp, vec2f(0.90, 0.90), 0.12)) - 0.022;
   let frame = min(fr1, fr2);
   if (frame < 0.0) {
-    var kc = mod_tg_rock(p * 4.5 + vec2f(13.0), vec3f(0.105, 0.095, 0.088));
-    // bevel: light on top-left faces, shadow bottom-right
-    kc *= 0.72 + 0.55 * clamp(0.5 - fp.x * 0.7 - fp.y * 0.9, 0.0, 1.2);
-    kc += vec3f(0.85, 0.48, 0.20) * smoothstep(0.010, 0.0, abs(frame + 0.012)) * clamp(-fp.y - fp.x + 0.4, 0.0, 1.0) * 0.30;
+    let key = clamp(0.5 - fp.x * 0.6 - fp.y * 0.8, 0.0, 1.1);
+    var kc = mod_tg_plate(p * 2.0, key);
+    // engraved thin border line inside each band
+    kc *= 1.0 - 0.35 * smoothstep(0.006, 0.002, abs(frame + 0.015));
+    kc += vec3f(0.75, 0.52, 0.22) * smoothstep(0.008, 0.0, abs(frame + 0.006)) * key * 0.35;
     c = mix(c, kc, smoothstep(0.006, -0.006, frame));
+  }
+  // between the bands: dark plate with faint scattered etchings
+  let between = max(sdRoundedBox(fp, vec2f(0.90, 0.90), 0.12), -sdRoundedBox(fp, vec2f(0.80, 0.80), 0.10));
+  if (between < 0.0 && frame > 0.0) {
+    var bc2 = mod_tg_plate(p * 2.0 + vec2f(4.0), clamp(0.4 - fp.x * 0.5 - fp.y * 0.6, 0.0, 1.0) * 0.7);
+    let ecell = floor((fp + vec2f(2.0)) * 11.0);
+    let eh = hash21(ecell);
+    if (eh > 0.87) {
+      let ep = (fract((fp + vec2f(2.0)) * 11.0) - 0.5) / 0.30;
+      let gi2 = i32(eh * 37.0) % 4;
+      bc2 += vec3f(0.55, 0.42, 0.18) * mod_tg_glyph(gi2, ep) * 0.16;   // ghost etchings
+    }
+    c = mix(c, bc2, smoothstep(0.006, -0.006, between));
+  }
+  // cardinal seals on the ring: crescent above, moorings at the flanks
+  {
+    let sealT = (fp - vec2f(0.0, -0.845)) / 0.040;
+    if (abs(sealT.x) < 1.3 && abs(sealT.y) < 1.3) { c += vec3f(0.80, 0.60, 0.25) * mod_tg_glyph(0, sealT) * 0.45; }
+    let sealL = (fp - vec2f(-0.845, 0.0)) / 0.036;
+    if (abs(sealL.x) < 1.3 && abs(sealL.y) < 1.3) { c += vec3f(0.70, 0.55, 0.24) * mod_tg_glyph(3, sealL) * 0.35; }
+    let sealR = (fp - vec2f(0.845, 0.0)) / 0.036;
+    if (abs(sealR.x) < 1.3 && abs(sealR.y) < 1.3) { c += vec3f(0.70, 0.55, 0.24) * mod_tg_glyph(3, sealR) * 0.35; }
   }
   // lintel frieze: the four glyphs graven small across the top beam
   for (var k = 0; k < 4; k++) {
@@ -548,16 +582,42 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let ird = length(dp) - irisR;
     let rr = length(dp);
     if (ird > 0.0) {
-      // the revealed passage — a warm throat receding into the rock
-      var pc = vec3f(0.008, 0.009, 0.013);
-      let deep = pow(clamp(1.0 - rr / R, 0.0, 1.0), 1.7);
-      pc += vec3f(0.55, 0.30, 0.11) * deep * open;
-      pc *= 0.72 + 0.28 * sin(rr * 34.0 - t * 0.5);              // depth rings
-      pc += vec3f(1.1, 0.62, 0.22) * exp(-dot(dp, dp) * 9.0) * open * 0.8;  // the far light
-      let mote = hash21(floor(dp * 150.0 + vec2f(0.0, t * 2.0)));
-      pc += vec3f(1.1, 0.75, 0.35) * step(0.9935, mote) * open * deep * 0.35;
+      // the revealed passage — near-black rim breathing into an amber heart
+      var pc = vec3f(0.004, 0.004, 0.005);
+      let gc2 = dp - vec2f(0.0, -0.05);
+      let core = exp(-dot(gc2, gc2) * 4.0);
+      let deep = pow(clamp(1.0 - rr / R, 0.0, 1.0), 1.35);
+      pc += vec3f(0.66, 0.40, 0.13) * deep * (0.30 + core * 1.25) * open;
+      // fine gold dust — two grains, slow twinkle
+      let d1 = hash21(floor(dp * 240.0));
+      let d2 = hash21(floor(dp * 110.0 + vec2f(37.0)));
+      pc += vec3f(1.35, 1.0, 0.55) * step(0.992, d1) * (0.25 + 0.75 * abs(sin(t * 1.6 + d1 * 40.0))) * deep * 0.75;
+      pc += vec3f(1.1, 0.75, 0.35) * step(0.986, d2) * (0.2 + 0.8 * abs(sin(t * 1.1 + d2 * 60.0))) * deep * 0.35;
+      // ── the ornament: polished double chevron cradling an orb ──
+      if (open > 0.5) {
+        let mm2 = vec2f(uni(27), uni(28));
+        let hov = smoothstep(90.0, 30.0, length(mm2 - vec2f(256.0, 250.0)));
+        let oq = dp - vec2f(0.0, -0.02);
+        for (var ch = 0; ch < 2; ch++) {
+          let oy = select(0.035, -0.021, ch == 1);
+          let vd = abs(oq.y - oy + abs(oq.x) * 0.72) - 0.020;
+          let band = max(vd, abs(oq.x) - 0.105);
+          if (band < 0.0) {
+            var mc = mix(vec3f(0.42, 0.30, 0.12), vec3f(1.35, 1.10, 0.60), clamp(-(oq.y - oy) * 14.0 + 0.4, 0.0, 1.0));
+            mc += vec3f(1.2, 1.0, 0.6) * smoothstep(0.006, 0.0, abs(band + 0.008)) * 0.5;
+            pc = mix(pc, mc * (0.85 + hov * 0.5), smoothstep(0.004, -0.004, band));
+          }
+        }
+        let orb = length(oq - vec2f(0.0, 0.012)) - 0.030;
+        if (orb < 0.0) {
+          var oc2 = mix(vec3f(0.30, 0.22, 0.10), vec3f(1.5, 1.25, 0.75), clamp(-orb * 26.0, 0.0, 1.0));
+          oc2 += vec3f(1.8, 1.6, 1.1) * exp(-dot(oq - vec2f(-0.010, 0.000), oq - vec2f(-0.010, 0.000)) * 2600.0);
+          pc = mix(pc, oc2 * (0.9 + hov * 0.4), smoothstep(0.003, -0.003, orb));
+        }
+        pc += vec3f(1.0, 0.8, 0.45) * exp(-dot(oq, oq) * 60.0) * (0.25 + hov * 0.45);
+      }
       // shadowed lip where the iris withdrew
-      pc *= smoothstep(0.0, 0.05, ird);
+      pc *= smoothstep(0.0, 0.07, ird);
       c = mix(c, pc, smoothstep(0.01, -0.01, dd));
     } else {
       // deep bronze: brushed rings, patina patches, one key light
