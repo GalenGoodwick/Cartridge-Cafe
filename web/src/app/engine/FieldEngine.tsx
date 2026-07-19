@@ -234,7 +234,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [branchesOpen, setBranchesOpen] = useState(false)
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
-  const [uiDockOpen, setUiDockOpen] = useState(true)   // the world menu greets you open; EDIT tucks it away
+  const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
   const [remixArm, setRemixArm] = useState(false)      // REMIX asks once before spawning a world (no accidental spam)
 
   // ESC closes the topmost open panel and stops there — it must never fall
@@ -5380,14 +5380,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {/* ONE toolbox everywhere — every viewer of a space or branch gets it;
               ownership only unlocks the editing sections inside. */}
-          {can(ctx, 'toolsPanel') && (
-            <button
-              onClick={() => setChromeVisible(v => !v)}
-              className="absolute bottom-3 right-3 z-40 px-2.5 py-1.5 rounded-lg text-xs font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-            >
-              {chromeVisible ? 'hide tools' : '\u2699 tools'}
-            </button>
-          )}
+          {/* WORLD TOOLS toggle now lives inside the EDIT dropdown (below), so the
+              bottom-right corner is free for SHARE and the world greets clean. */}
 
           {/* WORLD TOOLS — one panel, every tier. Viewers see presence + contents;
               the owner (space) or branch-holder additionally gets law + keys + mgmt. */}
@@ -5655,6 +5649,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </button>
             )}
             {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
+            {/* WORLD TOOLS — folded into the EDIT dropdown so it's not a stray
+                corner button. Opens the same panel (name/visibility/keys/mgmt). */}
+            {!isHub && can(ctx, 'toolsPanel') && (
+              <button
+                onClick={() => setChromeVisible(v => !v)}
+                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
+              </button>
+            )}
             {/* (branch rule chips removed — YOUR OWN branch now gets the same
                 ⚙ WORLD TOOLS panel a space gets, persisting to the same
                 world-settings:<branch> slot. One toolbox, every tier.) */}
