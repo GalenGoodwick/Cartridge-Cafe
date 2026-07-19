@@ -748,6 +748,31 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // RENDER CHECK — brief_done means "the world is done"; refuse it while the
+      // world would render fully DARK (fields exist but none carries a registered
+      // visualType). Fields render as NOTHING without one — this is the #1 way a
+      // "finished" build ships black. Partially-skinned worlds pass with a warning
+      // (logic-only invisible helper fields are legitimate).
+      if (isSpaceScoped && cmd.type === 'set_world_data' && (cmd.data as Record<string, unknown> | undefined)?.brief_done) {
+        try {
+          const snap = await getSpaceSnapshot(auth.spaceId!)
+          const fields = (snap?.fields ?? []) as Array<{ name?: string; visualTypeName?: string }>
+          const registered = new Set(((snap?.visualTypes ?? []) as Array<{ name?: string }>).map(v => v.name))
+          const skinned = fields.filter(f => f.visualTypeName && registered.has(f.visualTypeName))
+          const unskinned = fields.filter(f => !f.visualTypeName || !registered.has(f.visualTypeName))
+          if (fields.length > 0 && skinned.length === 0) {
+            results.push({ type: cmd.type, error:
+              `RENDER CHECK FAILED — brief_done refused: every field is INVISIBLE (none has a registered visualType), so the world renders black. ` +
+              `Attach visuals first: create_field {"visualType":"<name you define_visual'd>"} or set_visual {"fieldId":"...","visualType":"<name>"}. ` +
+              `Unskinned fields: ${unskinned.map(f => f.name).filter(Boolean).slice(0, 10).join(', ')}` })
+            continue   // brief_done NOT set; the build isn't done until it renders
+          }
+          if (unskinned.length > 0) {
+            cmd.__renderWarning = `${unskinned.length} field(s) have no visible skin (${unskinned.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}) — fine if intentional (logic-only), else set_visual them`
+          }
+        } catch { /* the check must never block a legitimate finish */ }
+      }
+
       // Space-scoped: apply command to snapshot server-side (works without browser)
       let spaceResult: Record<string, unknown> | null = null
       if (isSpaceScoped) {
@@ -776,6 +801,7 @@ export async function POST(req: NextRequest) {
       if (spaceResult) {
         Object.assign(result, spaceResult)
       }
+      if (cmd.__renderWarning) { result.renderWarning = cmd.__renderWarning; delete cmd.__renderWarning }
       results.push(result)
 
       // Wait for the browser's compile result so the AI gets shader errors

@@ -136,7 +136,8 @@ async function tick() {
       `2. RESUME-AWARE: if cafe_state already has fields, a previous build was interrupted — CONTINUE it, never restart. Otherwise begin fresh.`,
       `3. PLAN FIRST (one call): cafe_send set_world_data {"data":{"build_plan":"<the 3-6 steps you will build>"}}. This records your intent so any re-run follows it.`,
       `4. Then BUILD THE BRIEF below — their words, not your own idea. Work INCREMENTALLY: send small cafe_send batches EARLY and OFTEN so the world fills in live and every step PERSISTS even if you run out of time. Do NOT spend your session only planning — ship real fields within your first few tool calls. Skin every field (visualType or it renders as nothing), make it ALIVE and playable, ship worldData.instructions, set built_by to "cafe house AI".`,
-      `5. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}.`,
+      `5. EVERY field must carry a visualType — create_field {"visualType":"<a name you define_visual'd>"} or set_visual {"fieldId":"...","visualType":"..."} right after. A field without one renders as NOTHING; a world of them is a black screen.`,
+      `6. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}. The bridge runs a RENDER CHECK: brief_done is REFUSED while no field has a registered visualType — fix the skins and finish properly.`,
       ``,
       `THE BRIEF: ${next.job.brief}`,
     ].join('\n')
