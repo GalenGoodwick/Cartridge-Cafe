@@ -14,7 +14,56 @@ exists. This documents what's wired, the one blocking bug, and the sandbox findi
    builds the brief live and sets `brief_done`. One build at a time, 15-min cap,
    retry after 1h.
 
-## BLOCKER #1 — CSRF rejects the token mint (not yet fixed)
+## Phase 1 — BUILT (local, not migrated/deployed) — 2026-07-18
+
+The `BuildJob` swarm backend from `DESIGN-builder-swarm.md §3–4` is written and
+typechecks clean (tsc 0 errors, eslint clean). Nothing applied to the DB yet.
+
+- **Schema** (`web/prisma/schema.prisma`): `Builder`, `BuildJob`, `BuildJobStatus`
+  enum + relations on `User`/`PlayerSpace`. `npx prisma generate` run (client
+  only — no DB touched).
+- **Coordination** (`web/src/lib/builds.ts`): holder auth (admin token → house,
+  `uc_bt_` → Builder), per-world token mint, `reconcile()` (briefs → jobs, deduped
+  on space+brief), `sweep()` (lease-expiry requeue + house/review escalation).
+- **Endpoints** (`web/src/app/api/builds/`): `GET next`, `POST :id/claim`
+  (atomic, 409 on race), `heartbeat`, `release`, `complete`.
+- **CSRF fix** APPLIED in `proxy.ts` (exempt bearer-authed mutations) — this also
+  fixes Blocker #1 below.
+- **House daemon** (`tools/builder-daemon.mjs`) rewired: `next → claim →
+  heartbeat-while-building → complete/release`. Replaces the old
+  `pending-builds` + `builder_at` soft-claim + 1h-retry (that infinite-retry bug
+  is gone; poison briefs now escalate to `needs_review`).
+
+**TO ACTIVATE — one command you run (touches the Neon DB):**
+```
+cd web && npx prisma migrate dev --name builder-swarm   # or: npx prisma db push
+```
+Left for you on purpose — I don't run migrations against your database. The old
+`GET /api/spaces/pending-builds` route still exists (harmless; superseded).
+
+## Phase 3+4 — BUILT (local, not migrated/deployed) — 2026-07-18
+
+The volunteer path from `DESIGN-builder-swarm.md §6–8` (tsc 0, eslint clean):
+
+- **Enroll endpoint** (`web/src/app/api/builds/enroll/route.ts`): session-authed
+  GET (list) / POST (mint `uc_bt_`, shown once) / PATCH (pause/idle-only/concurrency)
+  / DELETE (revoke). Fleet capped at 10 per human.
+- **Thin volunteer client** (`tools/volunteer-client.mjs`): runs on a volunteer's
+  machine with their `uc_bt_`; idle-gated (per-core load < 0.6), claims one job,
+  heartbeats, builds via their own `claude`, complete/release. Header comment
+  documents the hardened bridge-only (MCP + deny-all) form for untrusted briefs.
+- **"Lend your AI" button + panel** (`web/src/app/LendAiPanel.tsx`, wired into
+  `CafeShell.tsx` CAFE dock as `🤝 LEND AI`): enroll → token + one run command +
+  pause/stop + per-builder stats (jobs built / dropped). Session-gated like the
+  other AI panels.
+
+Activation is the SAME single migration as phase 1 (the `Builder`/`BuildJob`
+tables) — nothing extra to run. After migrating, the button works end to end.
+
+Still open (later): owner-facing build-status UI states (§9 — reassigning /
+needs-review on the world spinner), volunteer reputation/moderation at scale (§10).
+
+## BLOCKER #1 — CSRF rejects the token mint (FIXED in phase 1)
 
 The daemon mints via `POST /api/spaces/[slug]/token`, but `src/proxy.ts` (CSRF
 middleware) 403s any mutating `/api/` request with no `Origin` header, and a

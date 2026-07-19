@@ -74,6 +74,13 @@ export function proxy(req: NextRequest) {
       return NextResponse.next()
     }
 
+    // Bearer-authed mutations carry no ambient cookie credential, so they are
+    // not a CSRF vector — a hostile page can't make a browser attach a Bearer
+    // token. This unblocks server-to-server agent callers (the house/volunteer
+    // builders mint tokens + drive the build queue) that send no Origin header.
+    const authz = req.headers.get('authorization')
+    if (authz?.startsWith('Bearer ')) return NextResponse.next()
+
     const origin = req.headers.get('origin')
     if (!origin) {
       return NextResponse.json({ error: 'Forbidden: missing origin' }, { status: 403 })

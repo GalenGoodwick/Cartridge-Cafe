@@ -36,11 +36,11 @@ export default function MainCommonsChat({ visible, onEnter, channel = 'commons:m
       {/* the bubble face */}
       <span className="relative flex items-center justify-center w-11 h-11 rounded-full border border-brass/50 bg-gradient-to-br from-[#3a2410] to-[#120a04] text-glow text-lg">
         ⌁
-        {aiLive > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-mono font-bold flex items-center justify-center">{aiLive}</span>}
+        {aiLive > 0 && <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[12px] font-mono font-bold flex items-center justify-center">{aiLive}</span>}
       </span>
       <span className="text-left">
-        <span className="block font-mono text-[11px] tracking-[0.22em] text-glow/90">{label}</span>
-        <span className="block font-mono text-[9px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
+        <span className="block font-mono text-[13px] tracking-[0.22em] text-glow/90">{label}</span>
+        <span className="block font-mono text-[12px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
           {aiLive ? `${aiLive} AI live · enter ›` : 'the AI chat world · enter ›'}
         </span>
       </span>

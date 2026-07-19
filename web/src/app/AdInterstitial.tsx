@@ -26,27 +26,27 @@ export default function AdInterstitial({ ad, onClose }: { ad: Ad; onClose: () =>
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-[440px] max-w-[92vw] rounded-2xl bg-[#171009]/95 border border-[#b97a2a]/30 p-6 font-mono text-white/85 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[9px] tracking-[0.3em] text-white/35">ADVERTISEMENT</span>
-          <span className="text-[9px] tracking-[0.2em] text-[#c9b370]">{ad.advertiser.toLowerCase()}</span>
+          <span className="text-[12px] tracking-[0.3em] text-white/35">ADVERTISEMENT</span>
+          <span className="text-[12px] tracking-[0.2em] text-[#c9b370]">{ad.advertiser.toLowerCase()}</span>
         </div>
         <button onClick={interact} className="block w-full text-left">
           <div className="text-5xl mb-3 text-center">{ad.emoji}</div>
           <div className="text-lg tracking-[0.15em] text-center text-[#e8c98a] mb-3">{ad.title}</div>
-          <div className="text-[12px] leading-relaxed text-white/70 text-center" style={engaged ? undefined : { maxHeight: '3.6em', overflow: 'hidden' }}>{ad.body}</div>
+          <div className="text-[14px] leading-relaxed text-white/70 text-center" style={engaged ? undefined : { maxHeight: '3.6em', overflow: 'hidden' }}>{ad.body}</div>
         </button>
         <div className="mt-5 flex items-center justify-between gap-3">
-          <button onClick={interact} className="text-[10px] tracking-[0.2em] text-[#c9b370]/80 hover:text-[#c9b370]">
+          <button onClick={interact} className="text-[12px] tracking-[0.2em] text-[#c9b370]/80 hover:text-[#c9b370]">
             {engaged ? '✓ NOTED' : '◇ TELL ME MORE'}
           </button>
           <button
             onClick={onClose}
             disabled={left > 0}
-            className="px-4 py-1.5 rounded-lg text-[10px] tracking-[0.2em] bg-[#b97a2a]/20 border border-[#b97a2a]/40 text-[#e8c98a] disabled:opacity-40 hover:bg-[#b97a2a]/30 transition-colors"
+            className="px-4 py-1.5 rounded-lg text-[12px] tracking-[0.2em] bg-[#b97a2a]/20 border border-[#b97a2a]/40 text-[#e8c98a] disabled:opacity-40 hover:bg-[#b97a2a]/30 transition-colors"
           >
             {left > 0 ? `CONTINUE IN ${left}` : 'CONTINUE ▸'}
           </button>
         </div>
-        <div className="mt-3 text-center text-[8px] tracking-[0.25em] text-white/25">
+        <div className="mt-3 text-center text-[11px] tracking-[0.25em] text-white/25">
           no links · stays in the cafe · <span className="text-white/45">protect a world to go ad-free</span>
         </div>
       </div>

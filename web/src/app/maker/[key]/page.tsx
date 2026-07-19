@@ -52,7 +52,7 @@ export default async function MakerPage({ params }: MakerPageProps) {
   return (
     <main className="min-h-screen bg-[#0d0a08] text-white/80 font-sans px-6 py-10">
       <div className="max-w-2xl mx-auto">
-        <a href="/?commons=1" className="font-mono text-[10px] tracking-[0.2em] text-white/40 hover:text-white transition-colors">⟵ CAFE</a>
+        <a href="/?commons=1" className="font-mono text-[12px] tracking-[0.2em] text-white/40 hover:text-white transition-colors">⟵ CAFE</a>
         <div className="mt-6 mb-8 flex items-center gap-3">
           {maker.image && (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -60,14 +60,14 @@ export default async function MakerPage({ params }: MakerPageProps) {
           )}
           <div>
             <h1 className="font-display italic text-2xl text-[#ffdba8]">{maker.name || 'a maker'}</h1>
-            <div className="font-mono text-[10px] tracking-[0.2em] text-white/40 uppercase">
+            <div className="font-mono text-[12px] tracking-[0.2em] text-white/40 uppercase">
               {spaces.length} {spaces.length === 1 ? 'world' : 'worlds'}{isSelf ? ' · yours, private included' : ''}
             </div>
           </div>
         </div>
 
         {spaces.length === 0 && (
-          <div className="font-mono text-[11px] text-white/40 border border-white/10 rounded-lg px-4 py-6 text-center">
+          <div className="font-mono text-[13px] text-white/40 border border-white/10 rounded-lg px-4 py-6 text-center">
             no worlds yet — the shelf is waiting
           </div>
         )}
@@ -78,17 +78,17 @@ export default async function MakerPage({ params }: MakerPageProps) {
               className="block rounded-lg border border-[#b97a2a]/20 bg-[#171009]/70 px-4 py-3 hover:border-[#b97a2a]/50 hover:bg-[#171009] transition-colors">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-display italic text-[#ffdba8] text-lg truncate">{s.name}</span>
-                <span className="font-mono text-[9px] tracking-[0.15em] text-white/35 shrink-0 uppercase">
+                <span className="font-mono text-[12px] tracking-[0.15em] text-white/35 shrink-0 uppercase">
                   {!s.isPublic && <span className="text-amber-300/70 mr-2">private</span>}
                   {new Date(s.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                 </span>
               </div>
-              <div className="font-mono text-[10px] text-white/40 mt-1 flex items-center gap-3">
+              <div className="font-mono text-[12px] text-white/40 mt-1 flex items-center gap-3">
                 {s.forkOf && <span>⑂ remix of {s.forkOf.name}</span>}
                 <span>{s._count.versions} {s._count.versions === 1 ? 'version' : 'versions'}</span>
                 {s._count.forks > 0 && <span>{s._count.forks} {s._count.forks === 1 ? 'remix' : 'remixes'}</span>}
               </div>
-              {s.description && <div className="text-[12px] text-white/50 mt-1 line-clamp-2">{s.description}</div>}
+              {s.description && <div className="text-[14px] text-white/50 mt-1 line-clamp-2">{s.description}</div>}
             </a>
           ))}
         </div>

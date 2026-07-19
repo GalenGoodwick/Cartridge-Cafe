@@ -634,7 +634,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 
   if (!visible) return null
 
-  const pill = 'font-mono text-[10px] tracking-[0.2em]'
+  const pill = 'font-mono text-[12px] tracking-[0.2em]'
 
   // an arena short of two contenders says so instead of vanishing
   if (!doc) {
@@ -690,7 +690,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   {voters.length > 0 && (
                     <div className="flex -space-x-1.5" title={'voted: ' + voters.join(', ')}>
                       {voters.slice(0, 7).map((v, i) => (
-                        <span key={i} className="rounded-full border border-[#0d0906] flex items-center justify-center text-[8px] font-bold text-black"
+                        <span key={i} className="rounded-full border border-[#0d0906] flex items-center justify-center text-[11px] font-bold text-black"
                           style={{ width: '16px', height: '16px', background: `hsl(${hash(v) % 360},50%,58%)` }}>{v[0]?.toUpperCase()}</span>
                       ))}
                     </div>
@@ -699,7 +699,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                     {doc.cells.map((c, i) => {
                       const cv = new Set(Object.keys(c.votes)).size
                       return (
-                        <span key={i} className={`text-[9px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/35'}`}>
+                        <span key={i} className={`text-[12px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/35'}`}>
                           {cv >= QUORUM ? '●' : `${cv}/${QUORUM}`}
                         </span>
                       )
@@ -711,10 +711,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             {/* who else is in this cell right now */}
             {viewers.length > 0 && (
               <div className="flex items-center gap-1" title={viewers.map(v => v.who).join(', ')}>
-                <span className="text-white/35 text-[10px] font-mono">👁 {viewers.length}</span>
+                <span className="text-white/35 text-[12px] font-mono">👁 {viewers.length}</span>
                 <div className="flex -space-x-1.5">
                   {viewers.slice(0, 7).map((v, i) => (
-                    <span key={i} className="w-4.5 h-4.5 rounded-full border border-[#0d0906] flex items-center justify-center text-[8px] font-bold text-black"
+                    <span key={i} className="w-4.5 h-4.5 rounded-full border border-[#0d0906] flex items-center justify-center text-[11px] font-bold text-black"
                       style={{ width: '18px', height: '18px', background: `hsl(${hash(v.who) % 360},55%,62%)` }}>{v.who[0]?.toUpperCase()}</span>
                   ))}
                 </div>
@@ -814,11 +814,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                     {seated && (() => {
                       void vtick
                       const ms = Math.min(WITNESS_MS, viewMs.current[w] || 0)
-                      if (ms >= WITNESS_MS) return <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[10px] flex items-center justify-center">✓</span>
+                      if (ms >= WITNESS_MS) return <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full bg-emerald-500/90 border border-emerald-300 text-black text-[12px] flex items-center justify-center">✓</span>
                       const left = Math.ceil((WITNESS_MS - ms) / 1000)
                       const active = focus === w
                       return <span title="watch 3s to witness · time accumulates"
-                        className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[9px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
+                        className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[12px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
                     })()}
                     {/* THE VOTE BOX — top-right. Votes stay changeable until the cell
                         gathers QUORUM voices; the 5th locks everyone in. */}
@@ -836,7 +836,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                                           : 'bg-black/60 border-white/15 text-white/25 cursor-not-allowed'
                           }`}>
                           {locked && !voted
-                            ? <span className="text-[11px]">🔒</span>
+                            ? <span className="text-[13px]">🔒</span>
                             : <span className="text-base">{voted ? '✓' : '+'}</span>}
                         </button>
                       )
@@ -892,8 +892,8 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     <>
       {gate && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setGate(false)}>
-          <div className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-y-auto rounded-lg border border-red-500/35 bg-[#0e0b07] p-7 font-mono text-[13px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2.5 text-red-400 text-[12px] tracking-[0.22em] uppercase mb-5">
+          <div className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-y-auto rounded-lg border border-red-500/35 bg-[#0e0b07] p-7 font-mono text-[15px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 text-red-400 text-[14px] tracking-[0.22em] uppercase mb-5">
               <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Do not enter before reading
             </div>
             <p className="text-white/80 mb-4">THE VOTE is not a like button. It is a serious dynamic — and it can cost you your account.</p>
@@ -905,22 +905,22 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               <p><span className="text-amber-200">The work survives you.</span> Any world that won, or that even one person enjoyed, stays — even if its maker is banned.</p>
             </div>
             <div className="flex items-center justify-between gap-3 mt-6">
-              <button onClick={() => setGate(false)} className="text-[11px] tracking-[0.18em] text-white/40 hover:text-white/70 px-2 py-1.5">NOT YET</button>
-              <button onClick={acceptGate} className="text-[11px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER — I ACCEPT</button>
+              <button onClick={() => setGate(false)} className="text-[13px] tracking-[0.18em] text-white/40 hover:text-white/70 px-2 py-1.5">NOT YET</button>
+              <button onClick={acceptGate} className="text-[13px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER — I ACCEPT</button>
             </div>
-            <p className="text-white/30 text-[10px] tracking-[0.15em] mt-3 text-center">Enter only if you accept this.</p>
+            <p className="text-white/30 text-[12px] tracking-[0.15em] mt-3 text-center">Enter only if you accept this.</p>
           </div>
         </div>
       )}
       {/* returning voters: a light enter/exit confirmation — the rules were read once */}
       {confirm && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setConfirm(false)}>
-          <div className="w-[360px] max-w-[92vw] rounded-lg border border-brass/35 bg-[#0e0b07] p-6 font-mono text-[13px] leading-relaxed text-white/85 text-center" onClick={e => e.stopPropagation()}>
-            <div className="text-amber-200/80 tracking-[0.2em] text-[12px] mb-2">⚔ ENTER THE VOTE?</div>
-            <p className="text-white/60 text-[12px] mb-5">Review this cell&rsquo;s games and cast (or move) your voice. Leaving without voting is free.</p>
+          <div className="w-[360px] max-w-[92vw] rounded-lg border border-brass/35 bg-[#0e0b07] p-6 font-mono text-[15px] leading-relaxed text-white/85 text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-amber-200/80 tracking-[0.2em] text-[14px] mb-2">⚔ ENTER THE VOTE?</div>
+            <p className="text-white/60 text-[14px] mb-5">Review this cell&rsquo;s games and cast (or move) your voice. Leaving without voting is free.</p>
             <div className="flex items-center justify-center gap-3">
-              <button onClick={() => setConfirm(false)} className="text-[11px] tracking-[0.18em] px-4 py-2 rounded border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors">EXIT</button>
-              <button onClick={enterVote} className="text-[11px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER</button>
+              <button onClick={() => setConfirm(false)} className="text-[13px] tracking-[0.18em] px-4 py-2 rounded border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors">EXIT</button>
+              <button onClick={enterVote} className="text-[13px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER</button>
             </div>
           </div>
         </div>

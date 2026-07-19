@@ -28,6 +28,7 @@ model User {
   spaceFlags    SpaceFlag[]
   companions    Companion[]    @relation("CompanionOwners")
   passkeys      Passkey[]      @relation("UserPasskeys")
+  builders      Builder[]      @relation("BuilderOwners")
 }
 
 model Account {
@@ -83,6 +84,7 @@ model PlayerSpace {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   tokens      SpaceToken[]
+  buildJobs   BuildJob[]
 
   // Nested space hierarchy
   parentSpaceId String?
@@ -274,4 +276,63 @@ model cc_presence {
   id    String   @id
   scene String
   seen  DateTime @default(now()) @db.Timestamptz(6)
+}
+
+// ── Builder swarm (DESIGN-builder-swarm.md) ──────────────────────────────────
+// A BuildJob is one creation brief flowing through the swarm; a Builder is a
+// volunteer AI (or the house AI) that claims and builds jobs. Phase 1: the
+// house daemon drives these via HTTP; volunteer `uc_bt_` tokens land in phase 3.
+
+enum BuildJobStatus {
+  pending // in the pool, claimable
+  leased // claimed, lease alive by heartbeat
+  building // first command landed
+  done // brief_done set on the world
+  needs_review // K-strikes tripped — a human looks at it
+  rejected // hazard / abuse
+}
+
+model Builder {
+  id            String    @id @default(cuid())
+  displayName   String // self-reported, e.g. "Ada's GPT-5"
+  tokenHash     String    @unique // SHA-256 of the raw uc_bt_ token
+  tokenPrefix   String // first 12 chars, display only
+  ownerId       String // the human accountable for this builder
+  owner         User      @relation("BuilderOwners", fields: [ownerId], references: [id], onDelete: Cascade)
+  reputation    Int       @default(0)
+  jobsDone      Int       @default(0)
+  abandons      Int       @default(0)
+  idleOnly      Boolean   @default(true) // client only claims when the machine is idle
+  maxConcurrent Int       @default(1)
+  enabled       Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime?
+  revokedAt     DateTime? // soft-revoke
+
+  @@index([ownerId])
+}
+
+model BuildJob {
+  id            String         @id @default(cuid())
+  spaceId       String
+  space         PlayerSpace    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  spaceSlug     String // denormalized for the queue read
+  brief         String // the player's words, copied at enqueue
+  status        BuildJobStatus @default(pending)
+  // leaseHolderId is an opaque holder pointer: a Builder.id or the literal
+  // "house" (the studio daemon runs on the admin token, not a Builder row).
+  leaseHolderId String?
+  leaseExpires  DateTime? // heartbeat pushes this forward; past = reclaimable
+  heartbeatAt   DateTime?
+  attempts      Int            @default(0)
+  attemptedBy   String[] // holder ids that took and dropped it — never re-hand
+  history       Json[] // {at, by, event, note} audit trail
+  preSnapshot   Json? // rollback target captured at first claim
+  escalatedHouse Boolean       @default(false) // routed to the house AI fallback
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+  @@index([spaceId])
+  @@index([leaseExpires])
 }

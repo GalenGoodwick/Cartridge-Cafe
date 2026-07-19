@@ -61,10 +61,10 @@ export interface WorldChromeHost {
 }
 
 const chip =
-  'px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-black/60 ' +
+  'px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 ' +
   'backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'
 const chipHot =
-  'px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-amber-400/15 ' +
+  'px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-amber-400/15 ' +
   'backdrop-blur border border-amber-300/40 text-amber-200 hover:bg-amber-400/25 transition-colors'
 
 /** the FOCUS chip — the single "what am I looking at" element (was built twice:
@@ -80,13 +80,13 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, subOverride, 
   const branchy = kind === 'branch' || kind === 'winner'
   return (
     <div className={`${inline ? '' : 'absolute left-3 top-3 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
-      <div className="text-[11px] tracking-[0.2em] text-white/85">
+      <div className="text-[13px] tracking-[0.2em] text-white/85">
         {(nameOverride || id.base).toUpperCase()}
         {ownerName && <span className="text-white/45 tracking-normal"> · {ownerId
           ? <a href={`/maker/${encodeURIComponent(ownerId)}`} title={`${ownerName}'s worlds`} className="pointer-events-auto hover:text-white hover:underline decoration-dotted underline-offset-4 transition-colors">{ownerName}</a>
           : ownerName}</span>}
       </div>
-      <div className={`text-[9px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
+      <div className={`text-[12px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
     </div>
   )
 }
@@ -158,10 +158,10 @@ export default function WorldChrome({ ctx, host }: { ctx: WorldContext; host: Wo
 
           {can(ctx, 'createBranch') && (
             <div className="flex flex-col items-stretch gap-1">
-              <button className="px-2.5 py-1.5 rounded-lg text-[10px] tracking-[0.15em] font-mono bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30" onClick={host.onCreateBranch}>⑂ CREATE BRANCH</button>
+              <button className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30" onClick={host.onCreateBranch}>⑂ CREATE BRANCH</button>
               <div className="flex justify-between rounded-lg bg-black/60 border border-white/10">
                 <button className="px-2 py-1 text-white/45 hover:text-white" onClick={() => host.onBrowseBranch(-1)}>◂</button>
-                <span className="px-1 py-1 text-[9px] text-white/35 tracking-[0.25em]">BROWSE</span>
+                <span className="px-1 py-1 text-[12px] text-white/35 tracking-[0.25em]">BROWSE</span>
                 <button className="px-2 py-1 text-white/45 hover:text-white" onClick={() => host.onBrowseBranch(1)}>▸</button>
               </div>
             </div>

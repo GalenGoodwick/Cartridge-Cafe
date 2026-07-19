@@ -1366,7 +1366,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
               }}
             >
               <div
-                className="absolute -top-5 left-0 text-[9px] font-mono truncate max-w-[120px] px-1 rounded"
+                className="absolute -top-5 left-0 text-[12px] font-mono truncate max-w-[120px] px-1 rounded"
                 style={{ color: fieldColor, backgroundColor: 'rgba(2,6,23,0.8)' }}
               >
                 {field.name}
@@ -1412,7 +1412,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                   style={{ backgroundColor: frame.color }}
                 />
                 <span
-                  className="text-[11px] font-mono uppercase tracking-wider"
+                  className="text-[13px] font-mono uppercase tracking-wider"
                   style={{ color: frame.color }}
                 >
                   {frame.label}
@@ -1424,7 +1424,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                 {previews.length > 0 ? previews.slice(0, 4).map((title, i) => (
                   <div
                     key={i}
-                    className="px-2 py-1.5 rounded text-[9px] font-serif leading-tight truncate"
+                    className="px-2 py-1.5 rounded text-[12px] font-serif leading-tight truncate"
                     style={{
                       backgroundColor: `${frame.color}08`,
                       color: '#94a3b8',
@@ -1434,7 +1434,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     {title}
                   </div>
                 )) : (
-                  <div className="text-[9px] font-mono text-muted-light/30 text-center pt-4">
+                  <div className="text-[12px] font-mono text-muted-light/30 text-center pt-4">
                     No items
                   </div>
                 )}
@@ -1480,7 +1480,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                 width: 160,
               }}
             >
-              <div className="text-center text-[11px] font-mono text-muted-light/50 py-4">
+              <div className="text-center text-[13px] font-mono text-muted-light/50 py-4">
                 No {tabLabel.toLowerCase()} yet
               </div>
             </div>
@@ -1516,14 +1516,14 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
               >
                 <div className="flex-1 px-2.5 py-2 min-w-0">
                   <div
-                    className="text-[10px] font-serif leading-snug line-clamp-3"
+                    className="text-[12px] font-serif leading-snug line-clamp-3"
                     style={{ color: '#cbd5e1' }}
                   >
                     {item.title}
                   </div>
                   {item.phase && (
                     <div
-                      className="mt-1 text-[8px] font-mono uppercase tracking-wide"
+                      className="mt-1 text-[11px] font-mono uppercase tracking-wide"
                       style={{ color: `${tabColor}99` }}
                     >
                       {item.phase}{item.tier ? ` T${item.tier}` : ''}
@@ -1576,8 +1576,8 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
               {hostNavState?.dockedPostId ? (
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[9px] font-mono text-muted-light/50 uppercase tracking-wider mb-0.5">Viewing</div>
-                    <div className="text-[11px] font-serif text-foreground/80 truncate">
+                    <div className="text-[12px] font-mono text-muted-light/50 uppercase tracking-wider mb-0.5">Viewing</div>
+                    <div className="text-[13px] font-serif text-foreground/80 truncate">
                       {hostNavState.dockedPostId}
                     </div>
                   </div>
@@ -1586,7 +1586,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                       e.stopPropagation()
                       onFollowHost?.()
                     }}
-                    className="shrink-0 px-2.5 py-1 rounded-md text-[10px] font-mono transition-all hover:scale-105"
+                    className="shrink-0 px-2.5 py-1 rounded-md text-[12px] font-mono transition-all hover:scale-105"
                     style={{
                       backgroundColor: `${dockedPlayer.color}20`,
                       color: dockedPlayer.color,
@@ -1598,8 +1598,8 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                 </div>
               ) : hostNavState?.activeTab ? (
                 <div>
-                  <div className="text-[9px] font-mono text-muted-light/50 uppercase tracking-wider mb-0.5">Browsing</div>
-                  <div className="text-[11px] font-mono capitalize" style={{ color: dockedPlayer.color }}>
+                  <div className="text-[12px] font-mono text-muted-light/50 uppercase tracking-wider mb-0.5">Browsing</div>
+                  <div className="text-[13px] font-mono capitalize" style={{ color: dockedPlayer.color }}>
                     {hostNavState.activeTab}
                   </div>
                 </div>
@@ -1609,7 +1609,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     className="w-2 h-2 rounded-full animate-pulse"
                     style={{ backgroundColor: dockedPlayer.color }}
                   />
-                  <span className="text-[11px] font-mono text-muted-light/50">
+                  <span className="text-[13px] font-mono text-muted-light/50">
                     {dockedPlayer.name} is here
                   </span>
                 </div>
@@ -1629,7 +1629,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
       )}
 
       {/* Subtle count label — bottom right */}
-      <div className="absolute bottom-3 right-3 text-[10px] font-mono text-muted-light/30 pointer-events-none">
+      <div className="absolute bottom-3 right-3 text-[12px] font-mono text-muted-light/30 pointer-events-none">
         {spatialMode === 'lobby' && `${layoutNodes.length} ${layoutNodes.length === 1 ? 'host' : 'hosts'}`}
         {spatialMode === 'list' && `${(listItems || []).length} ${listTab || 'items'}`}
       </div>
@@ -1645,7 +1645,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                 setEditMode(m => !m)
                 if (editMode) setEditSelectedId(null)
               }}
-              className={`w-full text-[10px] font-mono py-1.5 px-2 rounded border transition-colors mb-2 flex items-center justify-center gap-1.5 ${
+              className={`w-full text-[12px] font-mono py-1.5 px-2 rounded border transition-colors mb-2 flex items-center justify-center gap-1.5 ${
                 editMode
                   ? 'border-warning/60 text-warning bg-warning/10'
                   : 'border-accent/40 text-accent hover:bg-accent/10'
@@ -1669,10 +1669,10 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
               const fieldColor = `rgba(${Math.round(selectedField.color[0]*255)},${Math.round(selectedField.color[1]*255)},${Math.round(selectedField.color[2]*255)},1)`
               return (
                 <div className="mb-2 p-2 rounded border border-border/50 bg-background/50">
-                  <p className="text-[10px] font-mono truncate mb-1.5" style={{ color: fieldColor }}>
+                  <p className="text-[12px] font-mono truncate mb-1.5" style={{ color: fieldColor }}>
                     {selectedField.name}
                   </p>
-                  <label className="flex items-center justify-between text-[9px] font-mono text-muted mb-1">
+                  <label className="flex items-center justify-between text-[12px] font-mono text-muted mb-1">
                     <span>Scale ({selectedMeta.scaleMultiplier.toFixed(1)})</span>
                   </label>
                   <input
@@ -1691,7 +1691,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     }}
                     className="w-full h-1 mb-2 accent-accent"
                   />
-                  <label className="flex items-center justify-between text-[9px] font-mono text-muted mb-1">
+                  <label className="flex items-center justify-between text-[12px] font-mono text-muted mb-1">
                     <span>Depth ({selectedMeta.depth.toFixed(1)})</span>
                   </label>
                   <input
@@ -1715,11 +1715,11 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
             })()}
 
             {/* Active backdrop */}
-            <p className="text-[10px] font-mono text-muted uppercase tracking-wider mb-1.5">Active Backdrop</p>
+            <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1.5">Active Backdrop</p>
             {savedFields && savedFields.length > 0 ? (
               <div className="flex flex-col gap-1 mb-3">
                 {savedFields.map(f => (
-                  <div key={f.id} className="flex items-center justify-between gap-2 text-[11px]">
+                  <div key={f.id} className="flex items-center justify-between gap-2 text-[13px]">
                     <span
                       className="truncate"
                       style={{ color: `rgba(${Math.round(f.color[0]*255)},${Math.round(f.color[1]*255)},${Math.round(f.color[2]*255)},1)` }}
@@ -1738,20 +1738,20 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                 ))}
               </div>
             ) : (
-              <p className="text-[10px] text-muted mb-3">No backdrop fields active.</p>
+              <p className="text-[12px] text-muted mb-3">No backdrop fields active.</p>
             )}
 
             {/* Library */}
             <div className="border-t border-border/50 pt-2 flex flex-col gap-1.5">
               <button
                 onClick={() => { setLibraryOpen(true); setLibrarySearch(''); setLibraryDetailId(null) }}
-                className="w-full text-[10px] font-mono py-1.5 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
+                className="w-full text-[12px] font-mono py-1.5 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
               >
                 Browse Library ({fieldLibrary?.length || 0})
               </button>
               <button
                 onClick={onImportAllFields}
-                className="w-full text-[10px] font-mono py-1 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
+                className="w-full text-[12px] font-mono py-1 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
               >
                 Import all from engine
               </button>
@@ -1782,7 +1782,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
             {/* Header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border/30 shrink-0">
               <h2 className="text-sm font-mono text-foreground/90 whitespace-nowrap">Field Library</h2>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+              <span className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-accent/15 text-accent">
                 {fieldLibrary?.length || 0}
               </span>
               <input
@@ -1838,26 +1838,26 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                             />
                             <span className="text-xs font-mono text-foreground/90 truncate">{f.name}</span>
                             {isActive && (
-                              <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-success/15 text-success shrink-0">Active</span>
+                              <span className="text-[11px] font-mono px-1 py-0.5 rounded bg-success/15 text-success shrink-0">Active</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="text-[9px] font-mono text-muted">
+                            <span className="text-[12px] font-mono text-muted">
                               {f.effects.length} effect{f.effects.length !== 1 ? 's' : ''}
                             </span>
                             {childCount > 0 && (
-                              <span className="text-[9px] font-mono text-muted">
+                              <span className="text-[12px] font-mono text-muted">
                                 {childCount} child{childCount !== 1 ? 'ren' : ''}
                               </span>
                             )}
                             {blendModes.map(b => (
-                              <span key={b} className="text-[8px] font-mono px-1 py-0.5 rounded bg-background/80 text-muted/70">
+                              <span key={b} className="text-[11px] font-mono px-1 py-0.5 rounded bg-background/80 text-muted/70">
                                 {b}
                               </span>
                             ))}
                           </div>
                           {f.effects[0]?.description && (
-                            <p className="text-[10px] text-muted/60 line-clamp-2 leading-snug">
+                            <p className="text-[12px] text-muted/60 line-clamp-2 leading-snug">
                               {f.effects[0].description}
                             </p>
                           )}
@@ -1893,7 +1893,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                       return (
                         <button
                           onClick={() => setLibraryDetailId(parent.id)}
-                          className="flex items-center gap-1.5 text-[10px] font-mono text-muted hover:text-foreground transition-colors"
+                          className="flex items-center gap-1.5 text-[12px] font-mono text-muted hover:text-foreground transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path d="M15 19l-7-7 7-7" />
@@ -1915,13 +1915,13 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     {/* Action buttons */}
                     <div className="flex flex-col gap-1.5">
                       {savedFields?.some(sf => sf.id === libraryDetailField.id) ? (
-                        <div className="text-[10px] font-mono py-1.5 px-2 rounded border border-success/30 text-success/70 text-center">
+                        <div className="text-[12px] font-mono py-1.5 px-2 rounded border border-success/30 text-success/70 text-center">
                           Already Loaded
                         </div>
                       ) : (
                         <button
                           onClick={() => onLoadFromLibrary?.(libraryDetailField.id)}
-                          className="text-[10px] font-mono py-1.5 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
+                          className="text-[12px] font-mono py-1.5 px-2 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors"
                         >
                           Load to Backdrop
                         </button>
@@ -1931,7 +1931,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                           onRemoveFromLibrary?.(libraryDetailField.id)
                           setLibraryDetailId(null)
                         }}
-                        className="text-[10px] font-mono py-1.5 px-2 rounded border border-error/30 text-error/70 hover:bg-error/10 transition-colors"
+                        className="text-[12px] font-mono py-1.5 px-2 rounded border border-error/30 text-error/70 hover:bg-error/10 transition-colors"
                       >
                         Remove from Library
                       </button>
@@ -1939,16 +1939,16 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
 
                     {/* Color RGBA */}
                     <div>
-                      <p className="text-[9px] font-mono text-muted uppercase tracking-wider mb-1">Color</p>
-                      <p className="text-[11px] font-mono text-foreground/70">
+                      <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1">Color</p>
+                      <p className="text-[13px] font-mono text-foreground/70">
                         rgba({libraryDetailField.color.map(c => c.toFixed(2)).join(', ')})
                       </p>
                     </div>
 
                     {/* Transform */}
                     <div>
-                      <p className="text-[9px] font-mono text-muted uppercase tracking-wider mb-1">Transform</p>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono text-foreground/60">
+                      <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1">Transform</p>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px] font-mono text-foreground/60">
                         <span>X: {libraryDetailField.transform.x.toFixed(1)}</span>
                         <span>Y: {libraryDetailField.transform.y.toFixed(1)}</span>
                         <span>Scale: {libraryDetailField.transform.scale.toFixed(2)}</span>
@@ -1959,7 +1959,7 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     {/* Child fields */}
                     {libraryDetailChildren.length > 0 && (
                       <div>
-                        <p className="text-[9px] font-mono text-muted uppercase tracking-wider mb-1.5">
+                        <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1.5">
                           Children ({libraryDetailChildren.length})
                         </p>
                         <div className="flex flex-col gap-1.5">
@@ -1972,8 +1972,8 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                                 className="flex items-center gap-2 text-left rounded border border-border/30 p-2 hover:border-accent/30 transition-colors bg-background/30"
                               >
                                 <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: childColor }} />
-                                <span className="text-[10px] font-mono text-foreground/70 truncate">{child.name}</span>
-                                <span className="text-[8px] font-mono text-muted ml-auto shrink-0">
+                                <span className="text-[12px] font-mono text-foreground/70 truncate">{child.name}</span>
+                                <span className="text-[11px] font-mono text-muted ml-auto shrink-0">
                                   {child.effects.length} fx
                                 </span>
                               </button>
@@ -1986,22 +1986,22 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     {/* Effects */}
                     {libraryDetailField.effects.length > 0 && (
                       <div>
-                        <p className="text-[9px] font-mono text-muted uppercase tracking-wider mb-1.5">
+                        <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1.5">
                           Effects ({libraryDetailField.effects.length})
                         </p>
                         <div className="flex flex-col gap-2">
                           {libraryDetailField.effects.map(effect => (
                             <div key={effect.id} className="rounded border border-border/30 p-2 bg-background/30">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[10px] font-mono text-foreground/70">{effect.author}</span>
-                                <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-accent/10 text-accent/70">
+                                <span className="text-[12px] font-mono text-foreground/70">{effect.author}</span>
+                                <span className="text-[11px] font-mono px-1 py-0.5 rounded bg-accent/10 text-accent/70">
                                   {effect.blend}
                                 </span>
                               </div>
                               {effect.description && (
-                                <p className="text-[10px] text-muted/60 mb-1.5 leading-snug">{effect.description}</p>
+                                <p className="text-[12px] text-muted/60 mb-1.5 leading-snug">{effect.description}</p>
                               )}
-                              <pre className="text-[9px] font-mono text-foreground/40 bg-background/50 rounded p-1.5 overflow-x-auto max-h-24 leading-tight">
+                              <pre className="text-[12px] font-mono text-foreground/40 bg-background/50 rounded p-1.5 overflow-x-auto max-h-24 leading-tight">
                                 {(effect.wgsl || '').slice(0, 300)}{(effect.wgsl || '').length > 300 ? '...' : ''}
                               </pre>
                             </div>
@@ -2013,12 +2013,12 @@ const SpatialCanvas = forwardRef<SpatialCanvasHandle, SpatialCanvasProps>(functi
                     {/* Memory log */}
                     {libraryDetailField.memory.length > 0 && (
                       <div>
-                        <p className="text-[9px] font-mono text-muted uppercase tracking-wider mb-1.5">
+                        <p className="text-[12px] font-mono text-muted uppercase tracking-wider mb-1.5">
                           Memory ({libraryDetailField.memory.length})
                         </p>
                         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                           {[...libraryDetailField.memory].reverse().slice(0, 20).map((entry, i) => (
-                            <div key={i} className="text-[9px] font-mono text-foreground/40 leading-snug">
+                            <div key={i} className="text-[12px] font-mono text-foreground/40 leading-snug">
                               <span className="text-muted/40">{new Date(entry.timestamp).toLocaleTimeString()}</span>{' '}
                               <span className="text-accent/40">[{entry.type}]</span>{' '}
                               {entry.content}

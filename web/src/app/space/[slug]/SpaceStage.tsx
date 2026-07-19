@@ -102,7 +102,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     }
   }, [remix])
 
-  const btn = 'text-[10px] tracking-[0.15em] border rounded px-3 py-1.5 transition-colors'
+  const btn = 'text-[12px] tracking-[0.15em] border rounded px-3 py-1.5 transition-colors'
 
   return (
     <>
@@ -140,15 +140,15 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         </div>
       )}
 
-      {msg && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[10px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
+      {msg && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[12px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
 
       {/* delete confirm — reached by the dock's ✕ delete (cafe:delete-world) */}
       {confirmDel && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60" onClick={() => setConfirmDel(false)}>
-          <div className="max-w-sm w-[90%] rounded-xl border border-red-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="text-red-300/90 tracking-[0.2em] text-[11px] mb-2">✕ DELETE THIS WORLD</div>
-            <p className="text-white/60 text-[11px] mb-3">This removes <span className="text-white/85">{name}</span> for good. There is no undo.</p>
-            {delErr && <p className="text-red-400 text-[11px] mb-2">{delErr}</p>}
+          <div className="max-w-sm w-[90%] rounded-xl border border-red-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[14px] text-white/85" onClick={e => e.stopPropagation()}>
+            <div className="text-red-300/90 tracking-[0.2em] text-[13px] mb-2">✕ DELETE THIS WORLD</div>
+            <p className="text-white/60 text-[13px] mb-3">This removes <span className="text-white/85">{name}</span> for good. There is no undo.</p>
+            {delErr && <p className="text-red-400 text-[13px] mb-2">{delErr}</p>}
             <div className="flex justify-end gap-2">
               <button className={`${btn} border-white/20 text-white/70 hover:bg-white/10`} onClick={() => setConfirmDel(false)}>KEEP IT</button>
               <button className={`${btn} border-red-400/50 bg-red-500/20 text-red-200 hover:bg-red-500/30`} onClick={deleteWorld}>DELETE</button>
@@ -160,11 +160,11 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       {/* call a vote → opens a /chants deliberation. Reached by the dock's ⚖ button. */}
       {flagOpen && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60" onClick={() => setFlagOpen(false)}>
-          <div className="max-w-sm w-[90%] rounded-xl border border-[#b97a2a]/30 bg-black/90 backdrop-blur p-5 font-mono text-[12px] text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="text-amber-300/90 tracking-[0.2em] text-[11px] mb-2">⚖ CALL A VOTE</div>
-            <p className="text-white/55 text-[11px] mb-2">Open a resolution the commons can weigh in on.</p>
+          <div className="max-w-sm w-[90%] rounded-xl border border-[#b97a2a]/30 bg-black/90 backdrop-blur p-5 font-mono text-[14px] text-white/85" onClick={e => e.stopPropagation()}>
+            <div className="text-amber-300/90 tracking-[0.2em] text-[13px] mb-2">⚖ CALL A VOTE</div>
+            <p className="text-white/55 text-[13px] mb-2">Open a resolution the commons can weigh in on.</p>
             <textarea value={flagReason} onChange={e => setFlagReason(e.target.value)} placeholder="What's the conflict?"
-              className="w-full h-20 bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[11px] text-white/85 outline-none focus:border-amber-300/50 mb-3" />
+              className="w-full h-20 bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[13px] text-white/85 outline-none focus:border-amber-300/50 mb-3" />
             <div className="flex justify-end gap-2">
               <button className={`${btn} border-white/20 text-white/70 hover:bg-white/10`} onClick={() => setFlagOpen(false)}>Cancel</button>
               <button className={`${btn} border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25`} disabled={busy} onClick={callVote}>Open resolution</button>
