@@ -5797,7 +5797,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {spaceId && (
               <div className="flex items-center gap-1">
                 <button className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
-                  title="fork this world into a new one you own" onClick={() => window.dispatchEvent(new CustomEvent('cafe:remix-world'))}>⑂ REMIX</button>
+                  title="remix this world into a new one you own" onClick={() => window.dispatchEvent(new CustomEvent('cafe:remix-world'))}>⑂ REMIX</button>
                 <button className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
                   title="open a resolution the commons can weigh in on" onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}>⚖ VOTE</button>
                 <a href="/?commons=1" className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"

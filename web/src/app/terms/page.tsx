@@ -25,7 +25,7 @@ export default function TermsPage() {
         <div className="rounded-xl border border-brass/40 bg-black/30 p-5 mt-6">
           <div className="text-[12px] tracking-[0.2em] text-flame mb-2">THE COMMONS DEAL — in plain words</div>
           <P><b className="text-glow">You own what you make.</b> Your worlds are yours.</P>
-          <P><b className="text-glow">Public worlds can be branched.</b> When you make a world public, you let other members branch and remix it — that&rsquo;s the whole point of the cafe. Every branch keeps its lineage back to you.</P>
+          <P><b className="text-glow">Public worlds can be remixed &amp; branched.</b> Make a world public and other members can <b>remix</b> it (take their own copy to build on) or <b>branch</b> it (enter a challenger in its arena). Both keep their lineage back to you &mdash; and your original always stays yours as <b>main</b>. A branch can win the podium, never your throne.</P>
           <P><b className="text-glow">Private worlds are yours alone.</b> No one else can see, open, or branch a private world. A shared link to a private world simply doesn&rsquo;t open for anyone but you.</P>
           <P className="mb-0"><b className="text-glow">Be decent.</b> No illegal, hateful, or seizure-inducing content. We can remove worlds and close accounts that break the rules.</P>
         </div>
@@ -36,12 +36,14 @@ export default function TermsPage() {
         <H>2 · What you make, and who owns it</H>
         <P>You keep ownership of the worlds and content you create. By using cartridge.cafe you grant us a worldwide, non-exclusive license to <b>host, store, display, and back up</b> your content so the service can run — nothing more. We don&rsquo;t claim ownership and we don&rsquo;t sell your worlds.</P>
 
-        <H>3 · The remix license (public worlds)</H>
-        <P>When you set a world to <b>public</b>, you grant every other member a license to <b>view, play, branch, remix, and build upon</b> that world within cartridge.cafe. Derivative worlds (branches and forks) carry <b>lineage</b> — a link back to what they came from — so credit follows the work. This is what makes the cafe a commons.</P>
-        <P>Public worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage, and remixes stay remixable on the same terms. You can make a world private at any time to stop new remixes, but branches already made remain their creators&rsquo;.</P>
+        <H>3 · Remixing &amp; branching (public worlds)</H>
+        <P>When you set a world to <b>public</b>, every other member gets a license to <b>view and play</b> it, and to make their own versions two ways — both of which carry <b>lineage</b> (a link back to what they came from, so credit follows the work):</P>
+        <P className="mb-1"><b className="text-glow">Remix</b> — take an independent copy to build on. It becomes their world; yours is untouched.</P>
+        <P><b className="text-glow">Branch</b> — enter a challenger in your world&rsquo;s arena. Members can vote, and a winning branch earns a <b>podium</b> shown alongside your world. Your original stays <b>main</b> — the throne is always yours; a branch wins the podium, never your world.</P>
+        <P>Public worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage, and remixes and branches stay remixable on the same terms. You can make a world private at any time to stop new copies, but versions already made remain their creators&rsquo;.</P>
 
         <H>4 · Private worlds</H>
-        <P>A <b>private</b> world is visible only to you. It can&rsquo;t be opened, branched, or forked by anyone else, and its link won&rsquo;t load for anyone but you. Privacy is the off-switch for the commons.</P>
+        <P>A <b>private</b> world is visible only to you. It can&rsquo;t be opened, remixed, or branched by anyone else, and its link won&rsquo;t load for anyone but you. Privacy is the off-switch for the commons.</P>
 
         <H>5 · Rules of the cafe</H>
         <P>Don&rsquo;t upload or build content that is illegal, infringing, hateful, harassing, or that endangers people — including <b>strobing / flashing visuals</b>, which are rejected culture-wide. Don&rsquo;t attack the service, other members, or their worlds. We may remove content and close accounts at our discretion to keep the cafe safe.</P>

@@ -74,7 +74,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
 
         <div className="mt-10">
           <div className="text-[11px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">branches · {branches.size}</div>
-          {branches.size === 0 && <div className="text-[12px] text-[#8a7454]">no branches yet — every world on the shelf can be forked</div>}
+          {branches.size === 0 && <div className="text-[12px] text-[#8a7454]">no branches yet — every world on the shelf can be branched</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[...branches.values()].map(b => (
               <a key={b.name} href={`/play/${encodeURIComponent(b.name)}`}
