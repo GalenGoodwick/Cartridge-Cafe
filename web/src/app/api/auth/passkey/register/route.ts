@@ -25,7 +25,11 @@ export async function GET(req: NextRequest) {
     userID: new TextEncoder().encode(user.id),
     attestationType: 'none',
     excludeCredentials: user.passkeys.map(p => ({ id: p.credentialId })),
-    authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+    // platform = THIS device's Face ID / Touch ID / Windows Hello. Without the
+    // attachment the browser opened its cross-device chooser (QR codes, security
+    // keys) — the button says FACE ID and must summon exactly that. residentKey
+    // required makes it discoverable, so passkey login needs no email typed.
+    authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
   })
   const res = NextResponse.json(options)
   res.cookies.set(CHALLENGE_COOKIE, signChallenge(options.challenge), { httpOnly: true, sameSite: 'lax', maxAge: 300, path: '/' })

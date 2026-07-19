@@ -11,7 +11,7 @@ const ERROR_TEXT: Record<string, string> = {
   AccessDenied: 'the counter turned you away. try again or use another door.',
   Callback: 'something broke on the way back in. try again.',
   Configuration: 'this door is not wired up yet.',
-  CredentialsSignin: 'that name and word did not match the ledger.',
+  CredentialsSignin: 'the ledger refused: wrong word for that name — or a NEW name with a word under 8 characters (a new email + an 8+ character word signs you up right here). if you first came in with google, use that door.',
   Default: 'the door stuck. try again.',
 }
 
@@ -142,7 +142,7 @@ function SignInInner() {
             {/* the ledger door — email + word (CredentialsProvider was always wired; now it has a handle) */}
             <div className="flex items-center gap-3 pt-1">
               <div className="flex-1 h-px bg-brass/20" />
-              <span className="font-mono text-[12px] tracking-[0.3em] text-grounds">OR THE LEDGER</span>
+              <span className="font-mono text-[12px] tracking-[0.3em] text-grounds">OR THE LEDGER — SIGN IN, OR SIGN UP FRESH</span>
               <div className="flex-1 h-px bg-brass/20" />
             </div>
             <form
@@ -162,7 +162,7 @@ function SignInInner() {
               />
               <input
                 type="password" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="password" autoComplete="current-password" required
+                placeholder="password — 8+ characters signs a new account" autoComplete="current-password" required minLength={8}
                 className="w-full rounded-lg bg-void/40 border border-brass/25 focus:border-flame/60 outline-none text-steamer font-mono text-[13px] px-4 py-3 placeholder:text-grounds"
               />
               <button

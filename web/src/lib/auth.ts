@@ -52,7 +52,26 @@ export const authOptions: NextAuthOptions = {
           select: { id: true, email: true, name: true, image: true, passwordHash: true, status: true },
         })
 
-        if (!user || !user.passwordHash) return null
+        // A NEW name signs the ledger: an unknown email + a word CREATES the
+        // account right here (there was no signup door at all — a fresh email
+        // just bounced with "did not match"). 8+ chars keeps the word a word.
+        if (!user) {
+          if (credentials.password.length < 8) return null
+          const passwordHash = await bcrypt.hash(credentials.password, 12)
+          const created = await prisma.user.create({
+            data: {
+              email: credentials.email,
+              name: credentials.email.split('@')[0],
+              passwordHash,
+            },
+            select: { id: true, email: true, name: true, image: true },
+          })
+          return created
+        }
+        // The email exists but came in through another door (OAuth — no
+        // password on file). Refuse: typing a password here must never
+        // claim someone's Google-born account.
+        if (!user.passwordHash) return null
         if (user.status === 'BANNED') return null
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)

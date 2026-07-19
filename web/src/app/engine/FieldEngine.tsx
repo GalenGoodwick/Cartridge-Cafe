@@ -6360,7 +6360,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               this branch, or (owner on a live space) to alter main directly */}
           {plugOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
-            const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — sign in as the owner and reopen CONNECT AI)')
+            const mintFailed = !plugToken && !plugBusy   // no key — a copyable briefing would be dead on arrival
+            const tok = plugToken || (plugBusy ? '…minting…' : '(no key — see below)')
             const cur = lastSceneRef.current || ''
             const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
             // the space token edits LIVE (no eye on the DB path) — the box must say so
@@ -6396,10 +6397,23 @@ ${scope}`
                       ? 'Describe the alteration, then paste this to any AI (Claude, or anything that speaks HTTP). It edits the LIVE world — main changes as it works. When it settles, SAVE VERSION records the result.'
                       : 'Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.'}
                   </p>
-                  <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
-                    placeholder={alter ? 'what should the AI alter in the live world? (optional)' : 'what should the AI build in this branch? (optional)'}
-                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/35 mb-3" />
-                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[13px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
+                  {mintFailed ? (
+                    <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-[13px] leading-relaxed text-amber-100/90">
+                      <div className="text-amber-300/90 tracking-[0.2em] mb-1">⚠ NO KEY MINTED — nothing to paste yet</div>
+                      A connection prompt is useless without a key, so it&rsquo;s hidden. This usually means:
+                      <ul className="list-disc ml-5 mt-1.5 space-y-0.5 text-amber-100/70">
+                        <li>you&rsquo;re not <b>signed in as the world&rsquo;s owner</b> — sign in, then reopen CONNECT AI, or</li>
+                        <li>you opened this from the <b>cafe itself</b> — you can&rsquo;t connect an AI to the cafe; enter a world you own (or brew one) first, or lend your AI via <b>🤝 LEND AI</b>.</li>
+                      </ul>
+                    </div>
+                  ) : (
+                    <>
+                      <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
+                        placeholder={alter ? 'what should the AI alter in the live world? (optional)' : 'what should the AI build in this branch? (optional)'}
+                        className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/35 mb-3" />
+                      <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[13px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
+                    </>
+                  )}
                   <div className="flex gap-2 mt-3 justify-end">
                     {alter && spaceSlug && (
                       <button
@@ -6418,12 +6432,14 @@ ${scope}`
                         ✓ SAVE VERSION
                       </button>
                     )}
-                    <button
-                      className="text-[12px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
-                      onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
-                    >
-                      COPY
-                    </button>
+                    {!mintFailed && (
+                      <button
+                        className="text-[12px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                        onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
+                      >
+                        COPY
+                      </button>
+                    )}
                     <button className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
                   </div>
                 </div>
