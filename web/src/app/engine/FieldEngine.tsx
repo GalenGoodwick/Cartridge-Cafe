@@ -5061,6 +5061,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // watching a build: the first progress line auto-opens the terminal so the
   // player actually SEES it, then we never fight their toggle again.
   const terminalAutoOpenedRef = useRef(false)
+  const buildConsoleRef = useRef<HTMLDivElement>(null)
+  // keep the build console scrolled to the newest line
+  useEffect(() => {
+    const el = buildConsoleRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [terminalLog.length])
   useEffect(() => {
     if (terminalLog.length > 0 && !terminalAutoOpenedRef.current) {
       terminalAutoOpenedRef.current = true
@@ -6098,11 +6104,25 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const loading = !building && worldLoading && !mainShell
             if (!building && !loading) return null
             return (
-              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 pointer-events-none">
+              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[12px] tracking-[0.25em] text-white/50">
                   {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR YOUR AI…') : 'LOADING WORLD…'}
                 </div>
+                {/* the live build console — the AI's coding progress, in a box */}
+                {building && (
+                  <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
+                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[11px] tracking-[0.2em] text-white/40">
+                      <span>⌁ BUILD CONSOLE</span>
+                      <span className="text-white/25">{terminalLog.length} steps</span>
+                    </div>
+                    <div ref={buildConsoleRef} className="flex-1 overflow-y-auto px-3 py-2">
+                      {terminalLog.length === 0
+                        ? <div className="font-mono text-[12px] text-white/30 leading-relaxed">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
+                        : <AgentTerminalPanel entries={terminalLog} />}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })()}
