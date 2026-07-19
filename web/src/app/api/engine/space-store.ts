@@ -532,11 +532,50 @@ export function applyCommandToSnapshotObject(
   return result
 }
 
+/** The EYE on the space path. Scene branches auto-version on every store write,
+ *  but a space token writes straight into the PlayerSpace DB row — an AI could
+ *  reshape a world all afternoon and leave no save point behind. This watcher
+ *  cuts a SpaceVersion at BURST BOUNDARIES: when a write arrives and the row
+ *  has sat settled longer than the gap, the settled state is versioned before
+ *  the new burst lands. Serverless-safe (no timers — the next burst is the
+ *  trigger), deduped byte-identical, fire-and-forget off the write path. */
+const EYE_BURST_GAP_MS = 5 * 60 * 1000
+const eyeChecked: Map<string, number> = (g as unknown as { __spaceEyeChecked?: Map<string, number> }).__spaceEyeChecked ??= new Map()
+
+async function eyeOnSpace(spaceId: string): Promise<void> {
+  const now = Date.now()
+  if (now - (eyeChecked.get(spaceId) || 0) < EYE_BURST_GAP_MS) return   // mid-burst: skip cheaply
+  eyeChecked.set(spaceId, now)
+  const space = await prisma.playerSpace.findUnique({
+    where: { id: spaceId },
+    select: { updatedAt: true, snapshot: true },
+  })
+  if (!space?.snapshot) return
+  if (now - space.updatedAt.getTime() < EYE_BURST_GAP_MS) return        // previous burst hasn't settled yet
+  const sn = space.snapshot as unknown as { fields?: unknown[]; stepHooks?: unknown[]; visualTypes?: unknown[] }
+  if (!(sn.fields?.length || sn.stepHooks?.length || sn.visualTypes?.length)) return   // blank world — nothing to keep
+  const latest = await prisma.spaceVersion.findFirst({
+    where: { spaceId },
+    orderBy: { version: 'desc' },
+    select: { version: true, snapshot: true },
+  })
+  if (latest && JSON.stringify(latest.snapshot) === JSON.stringify(space.snapshot)) return   // already saved
+  await prisma.spaceVersion.create({
+    data: {
+      spaceId,
+      version: (latest?.version || 0) + 1,
+      snapshot: space.snapshot,
+      note: 'the eye — settled burst',
+    },
+  })
+}
+
 /** SPACE path: load the PlayerSpace's DB snapshot → apply → persist. */
 export async function applyCommandToSnapshot(
   spaceId: string,
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
+  eyeOnSpace(spaceId).catch(() => {})   // burst boundary? version the settled world first
   const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
   const result = applyCommandToSnapshotObject(snap, cmd)
   await setSpaceSnapshot(spaceId, snap)

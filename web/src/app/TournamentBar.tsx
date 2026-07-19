@@ -11,8 +11,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *    · SUB-MAIN            tournament:submain      over the branch shelf
  *    · any world page      tournament:world:<name> over MAIN vs its branches
  *
- *  Contestants are dealt into cells of five. One voice per cell. When every
- *  cell has spoken, the tier resolves: winners advance (gravity reads
+ *  Contestants are dealt into balanced cells of ≤5 (7 worlds → 4+3). One voice
+ *  per cell. When every cell has spoken, the tier resolves: winners advance (gravity reads
  *  `reached` where a door listens), losers keep the tier they earned. One
  *  survivor = champion — and in the same breath the next round is dealt.
  *  Always rolling; a crown holds only until the next coronation.
@@ -49,9 +49,14 @@ type TDoc = {
 // every cell has gathered a QUORUM of distinct voices — no clock, and no single
 // vote can crown anything. Low-traffic arenas simply wait; the day-scale decay
 // on the constellation keeps a stale standing from lingering.
-const QUORUM = 5   // distinct voters a cell needs to resolve — AND the point at which
+const QUORUM = 5   // distinct voters a FULL cell needs to resolve — AND the point at which
                    // votes lock. Until the 5th voice lands, every vote stays freely
                    // changeable; the 5th settles the cell. (No time-based lock.)
+/** the BASE FLOOR scales with the cell: a full cell of 5 needs 5 voices, a 4-cell
+ *  needs 4, and 3 is the floor (even a 2-world duel needs 3 voices, so one voice
+ *  can never settle anything and a duel can't deadlock 1–1). Ties at any quorum
+ *  fall to cellWinner's deterministic hash break. */
+const cellQuorum = (c: Cell) => Math.min(QUORUM, Math.max(3, c.worlds.length))
 // The VOTE-rules gate is accept-once. localStorage is the durable store, but some
 // contexts DENY it (private mode, partitioned/sandboxed storage) — there, getItem
 // throws, `accepted` stays false, and the warning pops EVERY time. This module-
@@ -66,14 +71,23 @@ const hash = (s: string) => {
   return h
 }
 
-/** deal contestants into cells of ≤5, deterministically shuffled per round */
+/** deal contestants into cells of ≤5, deterministically shuffled per round, and
+ *  BALANCED evenly across the fewest cells — 7 worlds → 4+3 (not 5+2), 6 → 3+3,
+ *  11 → 4+4+3. Even cells make each deliberation the same weight, and balancing
+ *  can never strand a lone cell of one. */
 function deal(worlds: string[], round: number): Cell[] {
   const order = [...worlds].sort((a, b) => hash(a + ':' + round) - hash(b + ':' + round))
+  const n = order.length
+  if (n === 0) return []
+  const numCells = Math.ceil(n / 5)      // fewest cells that keep every cell ≤5
+  const base = Math.floor(n / numCells)  // even floor size
+  const rem = n % numCells               // this many cells carry one extra (the remainder)
   const cells: Cell[] = []
-  for (let i = 0; i < order.length; i += 5) cells.push({ worlds: order.slice(i, i + 5), votes: {} })
-  // a cell of one can't deliberate — borrow a neighbor
-  if (cells.length > 1 && cells[cells.length - 1].worlds.length === 1) {
-    cells[cells.length - 1].worlds.unshift(cells[cells.length - 2].worlds.pop() as string)
+  let i = 0
+  for (let c = 0; c < numCells; c++) {
+    const size = base + (c < rem ? 1 : 0)
+    cells.push({ worlds: order.slice(i, i + size), votes: {} })
+    i += size
   }
   return cells
 }
@@ -440,7 +454,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     // voices. No timer: a cast vote can be moved and the talk keeps going until
     // enough of the cell has weighed in. This is the guard that makes a single
     // vote unable to crown — a champion needs a quorate final cell.
-    const quorate = d.cells.length > 0 && d.cells.every(c => new Set(Object.keys(c.votes)).size >= QUORUM)
+    const quorate = d.cells.length > 0 && d.cells.every(c => new Set(Object.keys(c.votes)).size >= cellQuorum(c))
     if (quorate) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
       const next: TDoc = { ...d, reachedAt: { ...(d.reachedAt || {}) } }
@@ -513,9 +527,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
     const cell0 = doc.cells[cellIdx]
-    // votes stay changeable until the cell fills to QUORUM distinct voices; the
-    // 5th settles it and locks everyone in. No time-based lock any more.
-    if (cell0 && new Set(Object.keys(cell0.votes)).size >= QUORUM) return
+    // votes stay changeable until the cell fills to its quorum of distinct
+    // voices; the final voice settles it and locks everyone in. No time lock.
+    if (cell0 && new Set(Object.keys(cell0.votes)).size >= cellQuorum(cell0)) return
     const at = Date.now()
     const next = { ...doc, cells: doc.cells.map((c, i) => i === cellIdx
       ? { ...c, votes: { ...c.votes, [who]: world }, voteAt: { ...(c.voteAt || {}), [who]: at } }
@@ -699,7 +713,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
               return (
                 <div className="flex items-center gap-2">
                   <span className={`${pill} text-white/50`}>
-                    TIER {doc.tier}/{tiers} · CELL {seated ? mci + 1 : '—'}/{doc.cells.length} · VOICES {voices}/{QUORUM}
+                    TIER {doc.tier}/{tiers} · CELL {seated ? mci + 1 : '—'}/{doc.cells.length} · VOICES {voices}/{cellQuorum(cell)}
                   </span>
                   {voters.length > 0 && (
                     <div className="flex -space-x-1.5" title={'voted: ' + voters.join(', ')}>
@@ -709,12 +723,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                       ))}
                     </div>
                   )}
-                  <div className="flex items-center gap-1" title="every cell must gather five voices before the tier resolves">
+                  <div className="flex items-center gap-1" title="every cell must gather its quorum of voices before the tier resolves">
                     {doc.cells.map((c, i) => {
                       const cv = new Set(Object.keys(c.votes)).size
+                      const cq = cellQuorum(c)
                       return (
                         <span key={i} className={`text-[12px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/35'}`}>
-                          {cv >= QUORUM ? '●' : `${cv}/${QUORUM}`}
+                          {cv >= cq ? '●' : `${cv}/${cq}`}
                         </span>
                       )
                     })}
@@ -799,11 +814,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                 <>this arena asks one thing: should a <span className="text-amber-300">branch</span> replace{' '}
                 <span className="text-amber-300">{branchesOf.toLowerCase()}</span>&apos;s MAIN? load each contender (MAIN and every
                 branch), witness them all, then tap the <span className="text-amber-300">+</span> on the one that should hold the
-                name. your vote stays movable until the cell gathers five voices — the fifth locks everyone in.</>
+                name. your vote stays movable until the cell gathers its quorum of voices — the final voice locks everyone in.</>
               ) : (
                 <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
-                witnessed all five, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
-                your vote. your vote stays movable until the cell gathers five voices (the fifth locks everyone in); every vote
+                witnessed every world in your cell, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
+                your vote. your vote stays movable until the cell gathers its quorum of voices (the final voice locks everyone in); every vote
                 nudges its world in the constellation, and a tier only crowns when a cell gathers a quorum, so no single vote decides it.</>
               )}
             </div>
@@ -836,15 +851,16 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                         className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border font-mono text-[12px] flex items-center justify-center tabular-nums ${active ? 'bg-amber-500/90 border-amber-200 text-black' : 'bg-black/70 border-white/30 text-white/75'}`}>{left}</span>
                     })()}
                     {/* THE VOTE BOX — top-right. Votes stay changeable until the cell
-                        gathers QUORUM voices; the 5th locks everyone in. */}
+                        gathers its quorum of voices; the final voice locks everyone in. */}
                     {seated && (() => {
-                      const locked = new Set(Object.keys(cell.votes)).size >= QUORUM
+                      const cq = cellQuorum(cell)
+                      const locked = new Set(Object.keys(cell.votes)).size >= cq
                       const armed = canVote && !locked
                       return (
                         <button
                           onClick={e => { e.stopPropagation(); if (armed) vote(mci, w) }}
                           disabled={!armed}
-                          title={locked ? `votes locked · ${QUORUM} have voted, the cell is settled` : voted ? 'your vote — tap another to move it' : armed ? 'cast your vote' : 'witness all five to vote'}
+                          title={locked ? `votes locked · ${cq} have voted, the cell is settled` : voted ? 'your vote — tap another to move it' : armed ? 'cast your vote' : 'witness every world in the cell to vote'}
                           className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border-2 flex items-center justify-center font-mono font-bold transition-all ${
                             voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
                                   : armed ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
@@ -872,12 +888,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             {!seated ? 'sign in to take a seat — loading and reading are free'
               : myVote ? (() => {
                   const voters = new Set(Object.keys(cell.votes)).size
-                  return voters >= QUORUM
-                    ? `voice locked on ${myVote.toLowerCase()} · ${QUORUM} have voted, the cell is settled`
-                    : `voice on ${myVote.toLowerCase()} · ${voters}/${QUORUM} voted — you can still move it`
+                  const cq = cellQuorum(cell)
+                  return voters >= cq
+                    ? `voice locked on ${myVote.toLowerCase()} · ${cq} have voted, the cell is settled`
+                    : `voice on ${myVote.toLowerCase()} · ${voters}/${cq} voted — you can still move it`
                 })()
-              : seenAll ? 'all five witnessed — tap the + on your choice to vote'
-              : `watch each game 3s to witness it — ${seenN}/5 · time accumulates`}
+              : seenAll ? 'every world witnessed — tap the + on your choice to vote'
+              : `watch each game 3s to witness it — ${seenN}/${cell.worlds.length} · time accumulates`}
           </div>
           {/* FINALIZE — lock your vote and leave the cell at once, no waiting */}
           {seated && (() => {
@@ -889,7 +906,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                 <button
                   disabled={!chosen}
                   onClick={() => { try { if (!myVote && chosen) vote(mci, chosen) } finally { leaveReckoning() } }}
-                  title={chosen ? `finalize on ${chosen.toLowerCase()} and leave the cell` : 'witness all five, pick one, then finalize to leave'}
+                  title={chosen ? `finalize on ${chosen.toLowerCase()} and leave the cell` : 'witness every world, pick one, then finalize to leave'}
                   className={`${pill} px-4 py-1.5 rounded-full border-2 font-bold tracking-wide transition-all ${
                     chosen ? 'bg-emerald-500/90 border-emerald-300 text-black hover:scale-105 shadow-[0_0_16px_rgba(16,185,129,0.5)]'
                            : 'bg-black/50 border-white/15 text-white/30 cursor-not-allowed'}`}>

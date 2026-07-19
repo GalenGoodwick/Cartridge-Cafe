@@ -219,7 +219,7 @@ fn mod_tgo_seacol(p: vec3f, n: vec3f, sd: vec3f, md: vec3f, eye: vec3f, dist: ve
   let atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
   col = col + waterCol * (p.y - 0.6) * 0.18 * atten;
   // sun glitter at dusk; at finale-night the vault-lamp takes the water
-  col = col + mod_tgo_suncol(el) * vec3f(2.4, 1.5, 0.8) * mod_tgo_spec(n, sd, eye, 90.0) * smoothstep(-0.08, 0.05, el);
+  col = col + mod_tgo_suncol(el) * vec3f(1.7, 1.05, 0.55) * mod_tgo_spec(n, sd, eye, 150.0) * smoothstep(-0.08, 0.05, el);
   col = col + vec3f(0.55, 1.05, 1.25) * mod_tgo_spec(n, md, eye, 140.0) * night * smoothstep(0.0, 0.15, md.y) * 1.7;
   // crest foam
   let foamN = vnoise(p.xz * 2.2 + vec2f(t * 0.5, -t * 0.35));
@@ -407,13 +407,13 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
   // ── four bell-buoys: real bodies riding the marched sea ──
   for (var k = 0; k < 4; k++) {
     let fk = f32(k);
-    var bwx = -3.1;
-    if (k == 1) { bwx = -1.75; } else if (k == 2) { bwx = -0.45; } else if (k == 3) { bwx = 1.0; }
-    let axk = 1.75 * bwx / 8.0;
+    var bwx = -4.4;
+    if (k == 1) { bwx = -2.45; } else if (k == 2) { bwx = -0.6; } else if (k == 3) { bwx = 1.45; }
+    let axk = 1.75 * bwx / 11.0;
     if (abs(p.x - axk) > 0.34) { continue; }
     // anchor on the actual wave field
-    let bh = mod_tgo_h2(vec2f(bwx, 8.0), st);
-    let base = vec3f(bwx, bh, 8.0);
+    let bh = mod_tgo_h2(vec2f(bwx, 11.0), st);
+    let base = vec3f(bwx, bh, 11.0);
     let dirB = base - ro;
     let bDist = length(dirB);
     let occl = step(0.5, seaHit) * step(seaT, bDist - 0.45);   // a crest stands in front
@@ -643,7 +643,7 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
       let d1 = hash21(floor(dp * 260.0));
       let d2 = hash21(floor(dp * 130.0 + vec2f(37.0)));
       pc += vec3f(1.35, 1.05, 0.58) * step(0.993, d1) * (0.2 + 0.8 * abs(sin(t * 1.4 + d1 * 40.0))) * habitat * open * 0.8;
-      pc += vec3f(1.05, 0.75, 0.35) * step(0.988, d2) * (0.15 + 0.85 * abs(sin(t * 1.0 + d2 * 60.0))) * habitat * open * 0.4;
+      pc += vec3f(1.05, 0.75, 0.35) * step(0.9915, d2) * (0.15 + 0.85 * abs(sin(t * 1.0 + d2 * 60.0))) * habitat * open * 0.25;
       // ── the ornament: chevrons and orb, the door's own enter-button ──
       if (open > 0.5) {
         let mm2 = vec2f(uni(27), uni(28));
@@ -651,11 +651,11 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
         let oq = dp - oc;
         for (var ch = 0; ch < 2; ch++) {
           let oy = select(0.056, -0.034, ch == 1);
-          let vd = abs(oq.y - oy + abs(oq.x) * 0.72) - 0.031;
+          let vd = abs(oq.y - oy - abs(oq.x) * 0.72) - 0.031;
           let band = max(vd, abs(oq.x) - 0.165);
           if (band < 0.0) {
             // top-lit metal: bright upper face, bronze under-face, dark seam
-            let face = clamp(-(oq.y - oy) * 11.0 + 0.35, 0.0, 1.0);
+            let face = clamp(-(oq.y - oy - abs(oq.x) * 0.72) * 11.0 + 0.55, 0.0, 1.0);
             var mc = mix(vec3f(0.34, 0.235, 0.095), vec3f(1.30, 1.06, 0.56), face);
             mc *= 1.0 - 0.5 * smoothstep(0.004, 0.0, abs(band + 0.026));   // dark inner seam
             mc += vec3f(1.3, 1.1, 0.65) * smoothstep(0.005, 0.0, abs(band + 0.006)) * 0.55;

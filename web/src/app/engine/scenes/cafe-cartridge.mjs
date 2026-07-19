@@ -545,7 +545,7 @@ try {
         }
         // one universe, every screen: the shared layout is truth; adopt any
         // arrangement newer than the one we last saw (including our own saves)
-        const shared = (uvr && uvr.data && uvr.data.v === 2 && uvr.data.bubbles) ? uvr.data : null
+        const shared = (uvr && uvr.data && uvr.data.v === 3 && uvr.data.bubbles) ? uvr.data : null
         const adopt = (shared && shared.at > (U.sharedAt || 0)) ? shared : null
         if (adopt) U.sharedAt = adopt.at
         if (mineKey !== U.mineKey) return   // filter flipped mid-flight; stale poll
@@ -820,12 +820,13 @@ try {
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
           if (!C.anchored) { C.vx -= sx / sd * push; C.vy -= sy / sd * push }
         }
-        // HARD floor: two bubbles may NEVER overlap. Direct position correction,
-        // and it moves ANCHORED bubbles too (an adopted layout can lay a bubble
-        // right under a locked big one — that pair must still separate). Only the
-        // PINNED three are immovable; everyone else yields.
-        if (sd < rSum) {
-          const over = rSum - sd, nx = sx / sd, ny = sy / sd
+        // HARD floor: enforce a real GAP (not just no-overlap) as a direct position
+        // correction, so even a SETTLED / adopted layout keeps its breathing room —
+        // the soft velocity push only spaces things while they're moving. Moves
+        // anchored bubbles too; only the PINNED three are immovable.
+        const floor = rSum + 16
+        if (sd < floor) {
+          const over = floor - sd, nx = sx / sd, ny = sy / sd
           if (!B.pinned && !C.pinned) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
           else if (!B.pinned) { B.x += nx * over; B.y += ny * over }
           else if (!C.pinned) { C.x -= nx * over; C.y -= ny * over }
@@ -860,7 +861,7 @@ try {
           if (B) out[n] = { x: Math.round(B.x * 10) / 10, y: Math.round(B.y * 10) / 10, born: B.born }
         }
         fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slot: layoutSlot, data: { v: 2, at, bubbles: out } }) }).catch(() => {})
+          body: JSON.stringify({ slot: layoutSlot, data: { v: 3, at, bubbles: out } }) }).catch(() => {})
       }
     }
   }
