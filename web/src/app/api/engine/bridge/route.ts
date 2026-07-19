@@ -368,6 +368,17 @@ export async function POST(req: NextRequest) {
           results.push({ type: cmd.type, error: 'an icon token (from the brew panel) or a space token is required — the icon belongs to a player' })
           continue
         }
+        // SPACE-token path lands on the space's OWNER — an AI holding a world
+        // key once silently replaced the owner's cursor while testing. That
+        // door now needs a deliberate hand on it. (Icon tokens are exempt:
+        // they exist for exactly one icon change and nothing else.)
+        if (!auth.iconUserId && cmd.confirmOwner !== true) {
+          results.push({ type: cmd.type, error: "this would replace the SPACE OWNER's cursor icon — pass confirmOwner: true if that is truly intended" })
+          continue
+        }
+        // one-step undo: stash whatever the player was wearing
+        const prev = await loadGameSlot('player-icon:' + iconUid)
+        if (prev) await saveGameSlot('player-icon-prev:' + iconUid, prev)
         const o = (cmd.icon ?? cmd) as Record<string, unknown>
         const numv = (v: unknown, lo: number, hi: number, d: number) => {
           const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
@@ -396,6 +407,8 @@ export async function POST(req: NextRequest) {
           }
           icon.wgsl = w
         }
+        icon.setVia = auth.iconUserId ? 'icon-token' : 'space-token'
+        icon.setAt = Date.now()
         await saveGameSlot('player-icon:' + iconUid, icon)
         results.push({ type: cmd.type, ok: true, icon: { ...icon, wgsl: icon.wgsl ? '(custom glyph, ' + String(icon.wgsl).length + 'B)' : undefined } })
         continue
