@@ -5462,8 +5462,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </button>
             )
             return (
-              <div className="absolute bottom-14 right-3 z-40 w-80 max-h-[78vh] overflow-y-auto rounded-xl bg-black/75 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
-                <div className="px-3 py-2 border-b border-white/10 text-[12px] tracking-[0.25em] text-white/50">WORLD TOOLS</div>
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-h-[82vh] overflow-y-auto rounded-xl bg-black/80 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[12px] tracking-[0.25em] text-white/50">
+                  <span>WORLD TOOLS</span>
+                  <button onClick={() => setChromeVisible(false)} aria-label="close" className="text-white/40 hover:text-white text-sm leading-none px-1">×</button>
+                </div>
                 {/* one toolbox: name/visibility/share/tokens live here too */}
                 {isOwner && spaceSlug && spaceId && (
                   <SpaceManagementOverlay
