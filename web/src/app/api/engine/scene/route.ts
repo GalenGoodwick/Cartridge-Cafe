@@ -20,8 +20,12 @@ export async function GET(req: NextRequest) {
   if (action === 'list') {
     await hydrateAllScenes()   // bridge-built branches live in Neon, not this lambda's disk
     let names = listScenes()
-    // private worlds are unlisted for everyone but the keeper
-    if (!(await isAdmin(req.headers.get('authorization')))) {
+    // private worlds are unlisted for EVERY browser tab — the keeper's included,
+    // else the keeper's own signed-in sky keeps re-seeding hidden bubbles into
+    // the shared doc. Only the explicit engine token (tooling) sees everything;
+    // the keeper's shelf reads /api/admin/worlds instead.
+    const bearer = req.headers.get('authorization')?.slice(7)
+    if (!(process.env.ENGINE_AGENT_TOKEN && bearer === process.env.ENGINE_AGENT_TOKEN)) {
       names = names.filter(n => !(loadScene(n) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private)
     }
     return NextResponse.json({ scenes: names })

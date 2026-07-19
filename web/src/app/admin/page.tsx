@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 
 type W = { name: string; private: boolean; timestamp: number; builtBy: string }
-type Branch = { base: string; label: string; versions: number; private: boolean }
-type Root = { name: string; private: boolean; builtBy: string; branches: Branch[] }
+type Branch = { base: string; label: string; versions: number; private: boolean; latest: string }
+type Root = { name: string; private: boolean; builtBy: string; branches: Branch[]; space?: string }
 
 /** The keeper's shelf — one row per WORLD, branches folded beneath their base,
  *  each toggle covering every version of what it names. */
@@ -33,7 +33,15 @@ export default function AdminPage() {
         }
         for (const b of brMap.values()) {
           const root = rootMap.get(b.rootName) ?? (() => { const r = { name: b.rootName, private: false, builtBy: '', branches: [] as Branch[] }; rootMap.set(b.rootName, r); return r })()
-          root.branches.push({ base: b.base, label: b.base.split(' ⑂ ')[1] ?? b.base, versions: b.versions.length, private: b.versions.every(v => v.private) })
+          const latest = b.versions.reduce((m, v) => {
+            const vn = parseInt(v.name.slice(v.name.lastIndexOf(' · v') + 4), 10) || 0
+            return vn > m.vn ? { vn, name: v.name } : m
+          }, { vn: -1, name: b.versions[0].name })
+          root.branches.push({ base: b.base, label: b.base.split(' ⑂ ')[1] ?? b.base, versions: b.versions.length, private: b.versions.every(v => v.private), latest: latest.name })
+        }
+        // player spaces sit on the same shelf — their visibility is the isPublic column
+        for (const s of (d.spaces ?? []) as { slug: string; name: string; private: boolean; owner: string }[]) {
+          rootMap.set('space:' + s.slug, { name: s.name, private: s.private, builtBy: s.owner ? `space · ${s.owner}` : 'space', branches: [], space: s.slug })
         }
         setRoots([...rootMap.values()].sort((a, b) => a.name.localeCompare(b.name)))
       })
@@ -41,8 +49,8 @@ export default function AdminPage() {
   }
   useEffect(load, [])
 
-  const toggle = async (key: { name?: string; base?: string }, priv: boolean) => {
-    setBusy(key.name ?? key.base ?? '')
+  const toggle = async (key: { name?: string; base?: string; space?: string }, priv: boolean) => {
+    setBusy(key.name ?? key.base ?? key.space ?? '')
     await fetch('/api/admin/worlds', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...key, private: priv }),
@@ -52,6 +60,14 @@ export default function AdminPage() {
 
   const Hidden = () => (
     <span style={{ fontSize: 8, letterSpacing: '0.2em', color: '#ffb0b0', border: '1px solid rgba(255,120,120,0.45)', background: 'rgba(120,30,30,0.25)', borderRadius: 5, padding: '2px 6px' }}>HIDDEN</span>
+  )
+
+  const View = ({ scene, small }: { scene: string; small?: boolean }) => (
+    <a href={scene.startsWith('space:') ? `/space/${scene.slice(6)}` : `/play/${encodeURIComponent(scene)}`} target="_blank" rel="noreferrer" style={{
+      fontFamily: 'inherit', fontSize: small ? 9 : 10, letterSpacing: '0.15em', textDecoration: 'none',
+      padding: small ? '4px 10px' : '6px 14px', borderRadius: 8, whiteSpace: 'nowrap',
+      border: '1px solid rgba(245,176,76,0.4)', background: 'rgba(185,122,42,0.12)', color: '#ffdba8',
+    }}>VIEW</a>
   )
 
   const Btn = ({ priv, onClick, small }: { priv: boolean; onClick: () => void; small?: boolean }) => (
@@ -91,7 +107,8 @@ export default function AdminPage() {
                   border: '1px solid rgba(185,122,42,0.3)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
                 }}>{openRoot === r.name ? '▾' : '▸'} {r.branches.length} branch{r.branches.length > 1 ? 'es' : ''}</button>
               )}
-              {busy === r.name ? <span style={{ fontSize: 10 }}>…</span> : <Btn priv={r.private} onClick={() => toggle({ name: r.name }, !r.private)} />}
+              <View scene={r.space ? 'space:' + r.space : r.name} />
+              {busy === (r.space ?? r.name) ? <span style={{ fontSize: 10 }}>…</span> : <Btn priv={r.private} onClick={() => toggle(r.space ? { space: r.space } : { name: r.name }, !r.private)} />}
             </div>
             {openRoot === r.name && r.branches.map(b => (
               <div key={b.base} style={{
@@ -103,6 +120,7 @@ export default function AdminPage() {
                   ⑂ {b.label} <span style={{ color: '#c9b89650', fontSize: 9 }}>· {b.versions} version{b.versions > 1 ? 's' : ''}</span>
                 </div>
                 {b.private && <Hidden />}
+                <View small scene={b.latest} />
                 {busy === b.base ? <span style={{ fontSize: 10 }}>…</span> : <Btn small priv={b.private} onClick={() => toggle({ base: b.base }, !b.private)} />}
               </div>
             ))}
