@@ -113,6 +113,7 @@ interface FieldEngineProps {
   spaceName?: string
   spaceOwnerName?: string | null
   spaceOwnerId?: string | null
+  spaceOwnerHandle?: string | null
   isOwner?: boolean
   /** View a historical save point instead of the live world (read-only demo mode) */
   versionView?: number
@@ -193,7 +194,7 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -6654,7 +6655,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               <div className="absolute left-3 top-3 z-40 flex items-stretch gap-1.5">
                 <button onClick={back} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
-                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} subOverride={sub} inline />
+                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} inline />
                 {branchy && playScene && (
                   <button
                     title="players joining this world see the version you're looking at"

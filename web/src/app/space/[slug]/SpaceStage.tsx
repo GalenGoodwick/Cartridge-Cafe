@@ -160,6 +160,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         spaceSlug={spaceSlug}
         spaceName={name}
         spaceOwnerName={ownerName}
+        spaceOwnerHandle={ownerHandle}
         spaceOwnerId={ownerId}
         isOwner={engineOwner}
         versionView={previewVersion ?? versionView}
