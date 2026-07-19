@@ -49,7 +49,7 @@ export function composeIcon(fields: IconField[], visuals: IconVisual[], bespoke?
   const fnm = v?.wgsl?.match(/fn\s+(visual_\w+)\s*\(/)
   if (!v?.wgsl || !fnm) return null
   const bgFn = fnm[1]
-  if (/\bprevAt\b|\bprevHere\b/.test(v.wgsl)) return v.wgsl   // state visual → raw
+  if (/\bprevAt\b|\bprevHere\b/.test(v.wgsl)) return modWgsl ? `${modWgsl}\n${v.wgsl}` : v.wgsl   // state visual → raw (+ its modules)
   const cx = bg.transform?.x ?? 256, cy = bg.transform?.y ?? 256
   const half = (Math.max(bg.w ?? 512, bg.h ?? 512) / 2) || 256
   const others = fields
@@ -64,5 +64,5 @@ export function composeIcon(fields: IconField[], visuals: IconVisual[], bespoke?
     const [r, g, b] = f.color as number[]
     blobs += `  { let d = length(uv - vec2f(${num(nx)}, ${num(ny)})); let m = smoothstep(${num(rr)}, ${num(rr * 0.5)}, d); c = mix(c, vec3f(${num(r)}, ${num(g)}, ${num(b)}), m); c += vec3f(${num(r)}, ${num(g)}, ${num(b)}) * exp(-d * d * 22.0) * 0.4; }\n`
   }
-  return `${v.wgsl}\nfn visual_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  var c = ${bgFn}(uv, -1.0, color, time, params, behind).rgb;\n${blobs}  return vec4f(c, 1.0);\n}`
+  return `${modWgsl ? modWgsl + '\n' : ''}${v.wgsl}\nfn visual_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  var c = ${bgFn}(uv, -1.0, color, time, params, behind).rgb;\n${blobs}  return vec4f(c, 1.0);\n}`
 }

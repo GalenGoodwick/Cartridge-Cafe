@@ -30,7 +30,7 @@ export async function GET() {
   })
   // a world is BLANK until it holds something; only unblank worlds join the door
   const out = spaces.map(({ snapshot, ...rest }) => {
-    const sn = snapshot as { fields?: IconField[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown; creation_brief?: unknown; brief_done?: unknown } } | null
+    const sn = snapshot as { fields?: IconField[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown; creation_brief?: unknown; brief_done?: unknown } } | null
     const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
     // still being built by an AI: a creation_brief was set but never finished.
     // Such a world is "stuck in AI is working" and must NOT surface on main.
@@ -38,7 +38,7 @@ export async function GET() {
     const hue = sn?.fields?.length ? dominantHue(sn.fields) : null
     // bespoke icon (MAKE ICON) wins; else the world's own composed visual; else
     // (null) the door falls back to the color emblem.
-    const iconWgsl = composeIcon(sn?.fields || [], sn?.visualTypes || [], sn?.worldData?.icon_wgsl)
+    const iconWgsl = composeIcon(sn?.fields || [], sn?.visualTypes || [], sn?.worldData?.icon_wgsl, sn?.modules || [])
     return { ...rest, blank, building, hue, iconWgsl }
   })
   return NextResponse.json({ spaces: out })

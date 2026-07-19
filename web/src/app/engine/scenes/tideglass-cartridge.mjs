@@ -1140,38 +1140,6 @@ try {
 } catch (e) { /* the island keeps its silence */ }
 `
 
-// ── the shelf icon: self-contained (the auto-composer can't carry modules) ──
-const ICON = /* wgsl */`
-fn visual_tideglass_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  let p = uv;
-  var c: vec3f;
-  let hor = 0.15;
-  if (p.y < hor) {
-    let h = clamp((hor - p.y) * 0.8, 0.0, 1.0);
-    c = mix(vec3f(1.0, 0.45, 0.18), vec3f(0.09, 0.12, 0.28), pow(h, 0.7));
-    let sd2 = length((p - vec2f(-0.05, hor - 0.03)) * vec2f(1.0, 1.4));
-    c += vec3f(1.8, 0.9, 0.3) * exp(-sd2 * 7.0);
-    let st = hash21(floor(p * 40.0));
-    c += vec3f(0.9) * step(0.985, st) * clamp((hor - p.y) * 1.5, 0.0, 1.0) * 0.5;
-  } else {
-    let d = (p.y - hor) / (1.0 - hor);
-    c = mix(vec3f(0.30, 0.16, 0.16), vec3f(0.02, 0.04, 0.07), d);
-    let g = hash21(floor(vec2f(p.x * 30.0, (p.y - time * 0.05) * 60.0)));
-    c += vec3f(1.2, 0.6, 0.22) * step(0.955, g) * exp(-(p.x + 0.05) * (p.x + 0.05) * 6.0) * (1.0 - d * 0.6);
-    c *= 1.0 + sin(p.y * 60.0 - time * 1.5) * 0.05;
-  }
-  // the vault star, gold, breathing
-  let q = (p - vec2f(0.38, -0.34)) / 0.26;
-  let star = sdStar(q, 0.85, 4, 2.6);
-  c = mix(c, vec3f(1.25, 1.0, 0.45) * (0.85 + 0.15 * sin(time * 1.5)), smoothstep(0.05, -0.05, star));
-  c += vec3f(1.0, 0.8, 0.35) * exp(-dot(q, q) * 1.6) * 0.30;
-  // the tower keeps its watch
-  let tw = sdBox(p - vec2f(0.72, hor - 0.14), vec2f(0.035, 0.16));
-  c = mix(c, vec3f(0.030, 0.028, 0.038), smoothstep(0.01, -0.01, tw));
-  c += vec3f(0.35, 0.9, 0.9) * exp(-dot(p - vec2f(0.72, hor - 0.33), p - vec2f(0.72, hor - 0.33)) * 220.0) * 0.9;
-  return vec4f(c, 1.0);
-}`
-
 // ─────────────────────────────────────────────────────────────── build ──
 const INSTRUCTIONS = [
   'CLICK — turn dials, work levers, travel (chevrons at the screen edges)',
@@ -1182,7 +1150,9 @@ const INSTRUCTIONS = [
 ].join('\n')
 
 async function main() {
-  await send({ type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS, icon_wgsl: ICON } }, 'world_data')
+  // no bespoke icon_wgsl: the shelf auto-composes from the Tideglass visual +
+  // modules (composeIcon bundles modules as of Jul 19 2026)
+  await send({ type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS } }, 'world_data')
   await send({ type: 'set_world_params', params: { gravity: 0, friction: 0.95, collisionForce: 0, boundaryMode: 'open', gravitationalConstant: 0 } }, 'world_params')
   await send({ type: 'define_module', name: 'tg_lib', wgsl: MODULES }, 'module tg_lib')
   await send({ type: 'define_module', name: 'tg_views', wgsl: VIEWS }, 'module tg_views')

@@ -18,11 +18,11 @@ export async function GET() {
     if ((loadScene(name) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private) { continue }   // unlisted
     const up = name.toUpperCase()
     if (name === 'CAFE' || name === 'SUB-MAIN' || name.includes(' ⑂ ') || STYLED.has(up)) continue
-    type S = { fields?: IconField[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown } }
+    type S = { fields?: IconField[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown } }
     let scene: S | null = null
     try { scene = (loadScene(name) as unknown as S) || null } catch { continue }
     if (!scene) continue
-    const iconWgsl = composeIcon(scene.fields || [], scene.visualTypes || [], scene.worldData?.icon_wgsl)
+    const iconWgsl = composeIcon(scene.fields || [], scene.visualTypes || [], scene.worldData?.icon_wgsl, scene.modules || [])
     if (!iconWgsl) continue
     out.push({ name: up, hue: dominantHue(scene.fields || []), iconWgsl })
   }

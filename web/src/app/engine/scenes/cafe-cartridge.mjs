@@ -175,7 +175,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let headCount = i32(uni(9 + i * 4) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
-    let R = 0.098 * zm * select(1.0, 1.9, big > 0);
+    let R = 0.098 * zm * select(1.0, 1.25, big > 0);
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
     if (d < rr) {
@@ -330,7 +330,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let bigc = sr / 400;
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
-    let R = 0.098 * zm * select(1.0, 1.9, bigc > 0);
+    let R = 0.098 * zm * select(1.0, 1.25, bigc > 0);
     let ringR = R * 1.24 + sin(t * 2.2) * 0.006;
     col += vec3f(1.0, 0.82, 0.32) * smoothstep(0.012, 0.002, abs(d - ringR)) * 1.3;
     col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
@@ -591,8 +591,10 @@ try {
           // WORLDS opens the player-made shelf (those worlds collapse behind it
           // instead of crowding main); the CHAMPION is a core world sized big in
           // place below (marked where the crown is set). Fixed positions = anchored.
-          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 20, hue: 0.58, big: 1, fixed: [150, 205] }
-          want['PLAYER WORLDS'] = { launch: 'players:', style: 21, hue: 0.34, big: 1, fixed: [362, 205] }
+          // a tight triangle at the heart: CHAMPION at the apex (pinned where the
+          // crown is set, below), SUB-MAINS + PLAYER WORLDS along the base.
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 20, hue: 0.58, big: 1, fixed: [214, 300] }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 21, hue: 0.34, big: 1, fixed: [298, 300] }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -659,7 +661,9 @@ try {
           const champName = (T && T.champion) || 'QUANTIC DOJO'
           const champ = n === champName
           B.crown = !!champ
-          if (champ) B.big = true   // the reigning world rides BIG in place — the third big bubble
+          if (champ) {   // the reigning world is the triangle's apex — big, pinned, keeps its own icon
+            B.big = true; B.x = 256; B.y = 214; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
+          }
           // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
           // taking live votes belongs to the voted cluster at center; everything
           // else is a new arrival held in the outer ring. A status flip re-settles
@@ -753,7 +757,7 @@ try {
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
         // a BIG bubble clears a wider berth so the field makes space around it.
         // Anchored (pinned) big bubbles push neighbours out but never move themselves.
-        const clr = (B.big || C.big) ? 128 : 76
+        const clr = 76
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
@@ -806,7 +810,7 @@ try {
     const B = U.bubbles[U.order[i]]
     if (!B) continue
     const d = Math.hypot(cux - B.x, cuy - B.y)
-    const nd = d / (B.big ? 57 : 30)
+    const nd = d / (B.big ? 38 : 30)
     if (nd < best) { best = nd; hovered = i }
   }
   if (down && !U.prevDown) { U.downX = mgx; U.downY = mgy; U.dx = mgx; U.dy = mgy; U.moved = 0; U.drag = hovered < 0 ? 1 : 0 }
@@ -860,7 +864,7 @@ try {
     // through pans and zooms (events are too slow — they ride React state)
     window.__cafeBubbles = U.launched ? [] : U.order.map(n => {
       const B = U.bubbles[n]
-      return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.9 : 1) }
+      return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.25 : 1) }
     }).filter(Boolean)
     // DOM chrome (count chips) can't share the canvas's frame, so it visibly
     // lags the shader during motion. Flag when the camera is moving; the shell
@@ -876,7 +880,7 @@ try {
       window.dispatchEvent(new CustomEvent('cafe:portals', {
         detail: U.order.map(n => {
           const B = U.bubbles[n]
-          return B && { name: n, launch: B.launch, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.9 : 1) }
+          return B && { name: n, launch: B.launch, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.25 : 1) }
         }).filter(Boolean),
       }))
     }

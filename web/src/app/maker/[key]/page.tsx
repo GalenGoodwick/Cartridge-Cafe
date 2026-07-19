@@ -52,7 +52,10 @@ export default async function MakerPage({ params }: MakerPageProps) {
   return (
     <main className="min-h-screen bg-[#0d0a08] text-white/80 font-sans px-6 py-10">
       <div className="max-w-2xl mx-auto">
-        <a href="/?commons=1" className="font-mono text-[12px] tracking-[0.2em] text-white/40 hover:text-white transition-colors">⟵ CAFE</a>
+        <div className="flex items-center justify-between">
+          <a href="/?commons=1" className="font-mono text-[12px] tracking-[0.2em] text-white/40 hover:text-white transition-colors">⟵ CAFE</a>
+          {isSelf && <a href="/feed" className="font-mono text-[12px] tracking-[0.2em] text-[#b97a2a] hover:text-[#ffb35a] transition-colors">YOUR FEED →</a>}
+        </div>
         <div className="mt-6 mb-8 flex items-center gap-3">
           {maker.image && (
             /* eslint-disable-next-line @next/next/no-img-element */
