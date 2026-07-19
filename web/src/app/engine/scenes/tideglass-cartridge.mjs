@@ -195,6 +195,48 @@ fn mod_tgo_h2(uv0: vec2f, st: f32) -> f32 {
   }
   return h + mod_tgo_surge(uv0, st);
 }
+// ═══ the bell-buoys: true marched bodies riding the swell ═══
+// local frame: origin at the waterline, +y up. mats: 0 iron hull · 1 cage ·
+// 2 the bell · 3 lantern head (emissive, glyph-colored)
+fn mod_tgb_sdf(q0: vec3f, lean: f32) -> vec2f {
+  let cl = cos(lean); let sl = sin(lean);
+  let q = vec3f(cl * q0.x - sl * q0.y, sl * q0.x + cl * q0.y, q0.z);
+  // squat cone float with a waterline skirt
+  let ft = clamp((q.y + 0.40) / 0.60, 0.0, 1.0);
+  let fd = vec2f(length(q.xz) - mix(0.34, 0.52, ft) * step(q.y, 0.20) - mix(0.52, 0.10, clamp((q.y - 0.20) / 0.25, 0.0, 1.0)) * step(0.20, q.y), 0.0);
+  var d = max(length(q.xz) - mix(0.34, 0.52, ft), max(q.y - 0.42, -0.40 - q.y));
+  d = min(d, length(vec2f(length(q.xz) - 0.50, q.y - 0.02)) - 0.055);        // skirt torus
+  var m = 0.0;
+  // tripod cage: three struts leaning to a collar
+  let pr = mod_tg_polar3(q);
+  let strut = mod_tg_seg3(pr, vec3f(0.34, 0.30, 0.0), vec3f(0.05, 1.30, 0.0)) - 0.030;
+  if (strut < d) { d = strut; m = 1.0; }
+  let collar = length(vec2f(length(q.xz) - 0.09, q.y - 1.30)) - 0.032;
+  if (collar < d) { d = collar; m = 1.0; }
+  // the bell hangs in the cage
+  let bell = max(length((q - vec3f(0.0, 0.88, 0.0)) * vec3f(1.0, 0.80, 1.0)) - 0.17, 0.62 - q.y);
+  if (bell < d) { d = bell; m = 2.0; }
+  // lantern head above the collar
+  let lant = mod_w3ish_box(q - vec3f(0.0, 1.52, 0.0), vec3f(0.115, 0.145, 0.115)) - 0.02;
+  if (lant < d) { d = lant; m = 3.0; }
+  return vec2f(d, m);
+}
+fn mod_tg_polar3(p: vec3f) -> vec3f {
+  let ang = 2.0943951;
+  let a = atan2(p.z, p.x);
+  let r = length(p.xz);
+  let a2 = (fract(a / ang + 0.5) - 0.5) * ang;
+  return vec3f(cos(a2) * r, p.y, sin(a2) * r);
+}
+fn mod_tg_seg3(p: vec3f, a: vec3f, b: vec3f) -> f32 {
+  let pa = p - a; let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+fn mod_w3ish_box(p: vec3f, b: vec3f) -> f32 {
+  let d = abs(p) - b;
+  return length(max(d, vec3f(0.0))) + min(max(d.x, max(d.y, d.z)), 0.0);
+}
 // ═══ the island observatory: a real building, raymarched (ONE DAY treatment) ═══
 // materials: 0 rock · 1 masonry · 2 iron · 3 glass dome · 4 roof · 5 cottage · 6 chimney · 7 beacon
 fn mod_tgi_sdf(pw: vec3f) -> vec2f {
@@ -666,27 +708,45 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let su = 1.75 / dirB.z;
     let sx = 1.75 * dirB.x / dirB.z;
     let sy = -((1.75 * dirB.y / dirB.z - 0.122) / 0.72);
-    let tilt = sin(t * 0.6 + fk * 1.9) * 0.09;
-    var q = p - vec2f(sx, sy);
-    q.x = q.x + q.y * tilt;                                    // the whole buoy leans with the swell
+    let lean = sin(t * 0.6 + fk * 1.9) * 0.10 + sin(t * 1.1 + fk * 3.1) * 0.03;
     let gcol = mod_tg_gcol(k);
     let flash = uni(19 + k);
-    // hull: half-sunk iron, dusk rim toward the sun
-    let hd = length((q - vec2f(0.0, -0.10 * su)) * vec2f(1.0, 2.2)) - 0.50 * su;
-    if (hd < 0.0 && q.y < 0.06 * su) {
-      var bc = vec3f(0.030, 0.026, 0.028) * (0.8 + 0.4 * fbm(q * 30.0 + vec2f(fk * 7.0), 2));
-      bc += mix(vec3f(0.75, 0.34, 0.12), vec3f(0.10, 0.13, 0.22), night) * smoothstep(0.02 * su, -0.06 * su, hd) * clamp(0.5 - q.x * 6.0, 0.0, 1.0) * 0.5;
-      bc += gcol * exp(-q.y * q.y * 300.0) * flash * 0.3;
-      c = mix(c, bc, smoothstep(0.004, -0.004, hd));
+    // ── march the real buoy: cone float, tripod cage, bell, lantern head ──
+    {
+      var tB = max(bDist - 2.2, 1.0);
+      var hitB = -1.0;
+      var posB = vec3f(0.0);
+      for (var stp = 0; stp < 30; stp++) {
+        let wp = ro + rd * tB;
+        let dm = mod_tgb_sdf(wp - base, lean);
+        if (dm.x < 0.012 * tB) { hitB = dm.y; posB = wp; break; }
+        tB = tB + max(dm.x * 0.85, 0.012);
+        if (tB > bDist + 2.2) { break; }
+      }
+      if (hitB > -0.5 && !(seaHit > 0.5 && seaT < tB - 0.3)) {
+        let e2 = 0.03;
+        let c0 = mod_tgb_sdf(posB - base, lean).x;
+        let nB = normalize(vec3f(
+          mod_tgb_sdf(posB - base + vec3f(e2, 0.0, 0.0), lean).x - c0,
+          mod_tgb_sdf(posB - base + vec3f(0.0, e2, 0.0), lean).x - c0,
+          mod_tgb_sdf(posB - base + vec3f(0.0, 0.0, e2), lean).x - c0));
+        let mB = i32(hitB + 0.5);
+        var alb = vec3f(0.040, 0.034, 0.036);                                    // weathered iron
+        if (mB == 1) { alb = vec3f(0.050, 0.042, 0.038); }                       // cage
+        if (mB == 2) { alb = vec3f(0.16, 0.115, 0.045); }                        // the bronze bell
+        var bc = alb * (0.35 + 0.75 * clamp(dot(nB, sunv), 0.0, 1.0) * (1.0 - night * 0.7));
+        bc += mod_tgo_suncol(sel) * pow(1.0 - clamp(dot(nB, -rd), 0.0, 1.0), 3.0) * (0.45 - night * 0.25);
+        // rust streaks down the float
+        bc *= 1.0 - 0.30 * smoothstep(0.3, 0.7, fbm(vec2f(atan2(posB.z - base.z, posB.x - base.x) * 2.0, (posB.y - base.y) * 4.0), 2)) * step(f32(mB), 0.5);
+        // bell glint when it tolls
+        if (mB == 2) { bc += vec3f(1.2, 0.9, 0.4) * flash * 0.8; }
+        if (mB == 3) { bc = gcol * (0.55 + flash * 2.2); }                       // the lantern head burns
+        c = mix(c, bc, 1.0);
+      }
     }
-    // post
-    let pd2 = max(abs(q.x) - 0.045 * su, max(q.y - (-0.12 * su), -1.55 * su - q.y));
-    if (pd2 < 0.0) {
-      var pc2 = vec3f(0.034, 0.030, 0.030) * (0.85 + 0.3 * fbm(vec2f(q.x * 60.0, q.y * 8.0), 2));
-      pc2 += mix(vec3f(0.7, 0.32, 0.12), vec3f(0.12, 0.15, 0.24), night) * smoothstep(0.0, -0.03 * su, abs(q.x) - 0.02 * su) * 0.35;
-      c = mix(c, pc2, smoothstep(0.003, -0.003, pd2));
-    }
-    // the lantern-glyph, alive when its bell speaks
+    // the lantern-glyph, alive when its bell speaks (billboard over the head)
+    var q = p - vec2f(sx, sy);
+    q.x = q.x + q.y * lean;
     let lp2 = (q - vec2f(0.0, -1.78 * su)) / (0.42 * su);
     if (abs(lp2.x) < 1.4 && abs(lp2.y) < 1.4) {
       let g = mod_tg_glyph(k, lp2);

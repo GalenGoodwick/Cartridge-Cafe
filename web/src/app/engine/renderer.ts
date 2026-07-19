@@ -3215,8 +3215,20 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
         const info = await mod.getCompilationInfo()
         const errs = info.messages.filter(m => m.type === 'error')
         if (errs.length > 0) {
+          const text = errs.map(e => `Line ${e.lineNum}:${e.linePos}: ${e.message}`).join('\n')
+          // "unresolved call target 'mod_*'" is NOT a broken visual — it's a
+          // module still in flight (an SSE burst or a load registering the
+          // visual a frame ahead of its modules). Quarantining it here made
+          // every module-built world come back as a bare rectangle until a
+          // changed-WGSL re-register. Leave it unbroken; the compile that runs
+          // after the burst settles will bind it.
+          const onlyMissingModules = errs.every(e => /unresolved call target '(mod_|w3_)/.test(e.message))
+          if (onlyMissingModules) {
+            console.warn(`[Super] Visual '${v.name}' awaits its modules (not quarantined):\n${text}`)
+            continue
+          }
           v.broken = true
-          v.error = errs.map(e => `Line ${e.lineNum}:${e.linePos}: ${e.message}`).join('\n')
+          v.error = text
           quarantined.push(v.name)
           console.error(`[Super] Visual '${v.name}' failed isolated compile:\n${v.error}`)
         }
@@ -3225,6 +3237,13 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
         v.error = err instanceof Error ? err.message : 'compile threw'
         quarantined.push(v.name)
       }
+    }
+    // if EVERY visual failed the same way the fault is module-level (a shared
+    // module mid-update) — punishing all bystanders blacks out the world
+    if (quarantined.length === visuals.length && visuals.length > 1) {
+      for (const v of visuals) { v.broken = false }
+      console.warn('[Super] All visuals failed isolation — module-level fault, quarantining nobody')
+      return []
     }
     return quarantined
   }

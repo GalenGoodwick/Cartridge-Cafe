@@ -1322,15 +1322,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // visual bloats the uber-shader and slows each recompile).
       renderer.clearRegistries()
 
-      // Restore visual types and modules first (before fields that reference them)
-      if (scene.visualTypes) {
-        for (const vt of scene.visualTypes) {
-          renderer.registerVisualType(vt.name, vt.wgsl)
-        }
-      }
+      // Restore MODULES first, then visuals. Registering a visual kicks off a
+      // recompile; if its modules aren't in the registry yet, the compile fails
+      // and the isolation sweep QUARANTINES the visual for calling module
+      // functions that were still in flight ("unresolved call target mod_*" on
+      // every reload of a module-built world — the bare-rectangle bug).
       if (scene.modules) {
         for (const m of scene.modules) {
           renderer.registerModule(m.name, m.wgsl)
+        }
+      }
+      if (scene.visualTypes) {
+        for (const vt of scene.visualTypes) {
+          renderer.registerVisualType(vt.name, vt.wgsl)
         }
       }
 
@@ -1742,8 +1746,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // registries bloat, and worse, until the recompile lands the OLD pipeline
         // paints the NEW fields with the OLD world's shaders (the transition flash).
         renderer.clearRegistries()
-        if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
+        // modules BEFORE visuals — a visual registered ahead of its modules
+        // fails the compile and gets quarantined (see handleLoadScene)
         if (scene.modules) for (const m of scene.modules) renderer.registerModule(m.name, m.wgsl)
+        if (scene.visualTypes) for (const vt of scene.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
         // BREWED GLYPH: swap the player's cursor code into the hub's container
         // NOW, before the first compile — swapping it after (the cafe:icon
         // watcher's job) forced a second full uber-shader recompile per entry,
@@ -4519,15 +4525,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 // short axis at any resolution (see the fit effect above).
                 cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
 
-                // Restore visual types and modules first
-                if (scene.visualTypes) {
-                  for (const vt of scene.visualTypes) {
-                    renderer.registerVisualType(vt.name, vt.wgsl)
-                  }
-                }
+                // Restore modules FIRST, visuals second (a visual compiled
+                // before its modules land gets falsely quarantined)
                 if (scene.modules) {
                   for (const m of scene.modules) {
                     renderer.registerModule(m.name, m.wgsl)
+                  }
+                }
+                if (scene.visualTypes) {
+                  for (const vt of scene.visualTypes) {
+                    renderer.registerVisualType(vt.name, vt.wgsl)
                   }
                 }
 
@@ -6107,8 +6114,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[12px] tracking-[0.25em] text-white/50">
-                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR YOUR AI…') : 'LOADING WORLD…'}
+                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : 'LOADING WORLD…'}
                 </div>
+                {/* no builder yet: reassure (the world is SAFE, never lost) + a way
+                    out — build it yourself with the player key / CONNECT AI. */}
+                {building && !agentConnected && terminalLog.length === 0 && (
+                  <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[12px] leading-relaxed text-amber-100/80 text-center">
+                    No builder has picked this up yet — <b>your world is saved</b>, and it&rsquo;ll build when one&rsquo;s free.
+                    {(isOwner || !spaceId) && (
+                      <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>, or mint a <b>⚿ player key</b> (ACCOUNT) and hand it to any AI.</>
+                    )}
+                  </div>
+                )}
                 {/* the live build console — the AI's coding progress, in a box */}
                 {building && (
                   <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
