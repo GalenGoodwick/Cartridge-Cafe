@@ -90,9 +90,9 @@ fn mod_tgo_sky(rd: vec3f, sd: vec3f, md: vec3f, t: f32, vault: f32) -> vec3f {
   // the sun: wide bloom, tight halo, HDR core
   let sdot = clamp(dot(rd, sd), 0.0, 1.0);
   let sunUp = smoothstep(-0.14, 0.02, el);
-  c += mod_tgo_suncol(el) * pow(sdot, 5.0) * 0.34 * sunUp;
-  c += mod_tgo_suncol(el) * pow(sdot, 70.0) * 0.60 * sunUp;
-  c += vec3f(5.2, 3.6, 2.0) * smoothstep(0.99972, 0.99990, sdot) * sunUp;
+  c += mod_tgo_suncol(el) * pow(sdot, 6.0) * 0.24 * sunUp;
+  c += mod_tgo_suncol(el) * pow(sdot, 190.0) * 0.85 * sunUp;
+  c += vec3f(6.0, 4.1, 2.2) * smoothstep(0.99988, 0.99997, sdot) * sunUp;
   // the vault-lamp moon of the finale night
   let mdot = clamp(dot(rd, md), 0.0, 1.0);
   let moonUp = night * smoothstep(-0.05, 0.10, md.y);
@@ -175,6 +175,25 @@ fn mod_tgo_map5(p: vec3f, st: f32) -> f32 {
     choppy = mix(choppy, 1.0, 0.2);
   }
   return p.y - h - mod_tgo_surge(p.xz, st);
+}
+// cheap height at a point — the buoys ride the SAME sea (2 octaves + surge)
+fn mod_tgo_h2(uv0: vec2f, st: f32) -> f32 {
+  var uv = uv0;
+  uv.x = uv.x * 0.75;
+  var freq = 0.16;
+  var amp = 0.62;
+  var choppy = 4.0;
+  var h = 0.0;
+  for (var i = 0; i < 2; i++) {
+    var d = mod_tgo_oct((uv + vec2f(st)) * freq, choppy);
+    d = d + mod_tgo_oct((uv - vec2f(st)) * freq, choppy);
+    h = h + d * amp;
+    uv = mat2x2f(1.6, 1.2, -1.2, 1.6) * uv;
+    freq = freq * 1.9;
+    amp = amp * 0.22;
+    choppy = mix(choppy, 1.0, 0.2);
+  }
+  return h + mod_tgo_surge(uv0, st);
 }
 fn mod_tgo_nrm(p: vec3f, eps: f32, st: f32) -> vec3f {
   let hy = mod_tgo_map5(p, st);
@@ -296,6 +315,8 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let maz = 1.917;                    // the vault-lamp rises where the vault breaches
   let mdv = normalize(vec3f(cos(maz) * cos(mel), sin(mel), sin(maz) * cos(mel)));
   var c = mod_tgo_sky(rd, sunv, mdv, t, vault);
+  var seaT = 100000.0;
+  var seaHit = 0.0;
   // ── the ocean: bisection-marched heightfield, analytic normals ──
   if (rd.y < -0.003) {
     var tm = 0.0;
@@ -316,6 +337,8 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
       let n = mod_tgo_nrm(pt, eps, st);
       let seaCol = mod_tgo_seacol(pt, n, sunv, mdv, rd, dist, t, st, vault);
       c = mix(c, seaCol, pow(1.0 - smoothstep(-0.02, 0.0, rd.y), 0.2));
+      seaT = tmid;
+      seaHit = 1.0;
     }
   }
   // ── THE RISEN VAULT (finale): a glass dome breaching the sea ──
@@ -381,37 +404,60 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     c += vec3f(0.9, 0.6, 0.25) * exp(-sx2 * sx2 * 1400.0) * smoothstep(horizon + 0.30, horizon, p.y) * 0.20 * wob * (1.0 - night * 0.5);
     c += vec3f(0.25, 0.6, 0.6) * exp(-sx2 * sx2 * 2000.0) * smoothstep(horizon + 0.45, horizon, p.y) * 0.18 * wob * (0.4 + night);
   }
-  // ── four bell-buoys on the swell ──
+  // ── four bell-buoys: real bodies riding the marched sea ──
   for (var k = 0; k < 4; k++) {
     let fk = f32(k);
-    let bx = -0.68 + fk * 0.30;
-    let bob = sin(t * 0.8 + fk * 1.9) * 0.012;
-    let bp = p - vec2f(bx, 0.40 + bob);
-    let hull = length(bp * vec2f(1.0, 2.4)) - 0.045;
-    let mast = sdBox(bp + vec2f(0.0, 0.055), vec2f(0.006, 0.045));
-    let flash = uni(19 + k);
-    if (min(hull, mast) < 0.0) {
-      var bc = vec3f(0.05, 0.045, 0.05);
-      bc += mix(vec3f(0.8, 0.35, 0.12), vec3f(0.1, 0.12, 0.2), uni(23)) * smoothstep(0.01, -0.02, hull) * 0.4;
-      c = mix(c, bc, smoothstep(0.004, -0.004, min(hull, mast)));
-    }
-    // contact foam — the hull rides the swell, not the screen
-    let ffx = p.x - bx;
-    let ffy = p.y - (0.437 + bob);
-    let foamR = exp(-ffx * ffx * 700.0 - ffy * ffy * 3200.0);
-    let fn2 = 0.45 + 0.55 * vnoise(vec2f(p.x * 38.0, t * 1.3 + fk * 4.0));
-    c += vec3f(0.80, 0.86, 0.88) * foamR * fn2 * (0.45 - uni(23) * 0.12);
-    // the lantern-glyph above the mast
+    var bwx = -3.1;
+    if (k == 1) { bwx = -1.75; } else if (k == 2) { bwx = -0.45; } else if (k == 3) { bwx = 1.0; }
+    let axk = 1.75 * bwx / 8.0;
+    if (abs(p.x - axk) > 0.34) { continue; }
+    // anchor on the actual wave field
+    let bh = mod_tgo_h2(vec2f(bwx, 8.0), st);
+    let base = vec3f(bwx, bh, 8.0);
+    let dirB = base - ro;
+    let bDist = length(dirB);
+    let occl = step(0.5, seaHit) * step(seaT, bDist - 0.45);   // a crest stands in front
+    if (occl > 0.5) { continue; }
+    let su = 1.75 / dirB.z;
+    let sx = 1.75 * dirB.x / dirB.z;
+    let sy = -((1.75 * dirB.y / dirB.z - 0.122) / 0.72);
+    let tilt = sin(t * 0.6 + fk * 1.9) * 0.09;
+    var q = p - vec2f(sx, sy);
+    q.x = q.x + q.y * tilt;                                    // the whole buoy leans with the swell
     let gcol = mod_tg_gcol(k);
-    let gp = (bp - vec2f(0.0, -0.135)) / 0.055;
-    if (abs(gp.x) < 1.4 && abs(gp.y) < 1.4) {
-      let g = mod_tg_glyph(k, gp);
-      c = mix(c, gcol * (0.9 + flash * 2.6), g * 0.95);
+    let flash = uni(19 + k);
+    // hull: half-sunk iron, dusk rim toward the sun
+    let hd = length((q - vec2f(0.0, -0.10 * su)) * vec2f(1.0, 2.2)) - 0.50 * su;
+    if (hd < 0.0 && q.y < 0.06 * su) {
+      var bc = vec3f(0.030, 0.026, 0.028) * (0.8 + 0.4 * fbm(q * 30.0 + vec2f(fk * 7.0), 2));
+      bc += mix(vec3f(0.75, 0.34, 0.12), vec3f(0.10, 0.13, 0.22), night) * smoothstep(0.02 * su, -0.06 * su, hd) * clamp(0.5 - q.x * 6.0, 0.0, 1.0) * 0.5;
+      bc += gcol * exp(-q.y * q.y * 300.0) * flash * 0.3;
+      c = mix(c, bc, smoothstep(0.004, -0.004, hd));
     }
-    // toll halo + reflection streak
-    c += gcol * exp(-dot(bp - vec2f(0.0, -0.135), bp - vec2f(0.0, -0.135)) * 240.0) * flash * 2.2;
-    let sx = p.x - bx;
-    c += gcol * exp(-sx * sx * 900.0) * smoothstep(0.42, 0.75, p.y) * (0.10 + flash * 0.55) * 0.8;
+    // post
+    let pd2 = max(abs(q.x) - 0.045 * su, max(q.y - (-0.12 * su), -1.55 * su - q.y));
+    if (pd2 < 0.0) {
+      var pc2 = vec3f(0.034, 0.030, 0.030) * (0.85 + 0.3 * fbm(vec2f(q.x * 60.0, q.y * 8.0), 2));
+      pc2 += mix(vec3f(0.7, 0.32, 0.12), vec3f(0.12, 0.15, 0.24), night) * smoothstep(0.0, -0.03 * su, abs(q.x) - 0.02 * su) * 0.35;
+      c = mix(c, pc2, smoothstep(0.003, -0.003, pd2));
+    }
+    // the lantern-glyph, alive when its bell speaks
+    let lp2 = (q - vec2f(0.0, -1.78 * su)) / (0.42 * su);
+    if (abs(lp2.x) < 1.4 && abs(lp2.y) < 1.4) {
+      let g = mod_tg_glyph(k, lp2);
+      c = mix(c, gcol * (0.85 + flash * 2.6), g * 0.95);
+    }
+    c += gcol * exp(-dot(q - vec2f(0.0, -1.78 * su), q - vec2f(0.0, -1.78 * su)) * (170.0 / (su * su))) * (0.10 + flash * 1.9) * su * 4.0;
+    // waterline: foam collar where the hull works the sea
+    let fq2 = q - vec2f(0.0, 0.02 * su);
+    let collar = exp(-pow(fq2.y / (0.05 * su), 2.0)) * smoothstep(0.62 * su, 0.30 * su, abs(fq2.x));
+    let fn3 = 0.45 + 0.55 * vnoise(vec2f(p.x * 40.0, t * 1.4 + fk * 4.0));
+    c += vec3f(0.80, 0.84, 0.85) * collar * fn3 * (0.5 - night * 0.15);
+    // its light wobbling down the water
+    if (q.y > 0.05 * su) {
+      let wob4 = 0.6 + 0.4 * sin(p.y * 46.0 + t * 1.6 + fk);
+      c += gcol * exp(-pow(q.x / (0.10 * su), 2.0)) * exp(-q.y * 2.2) * (0.12 + flash * 0.55) * wob4;
+    }
   }
   return c;
 }
@@ -431,18 +477,36 @@ fn mod_tg_stele(p: vec2f, px: vec2f, t: f32) -> vec3f {
     fc *= 1.0 - 0.4 * max(smoothstep(0.38, 0.5, abs(fract(rc2) - 0.5)), smoothstep(0.42, 0.5, abs(fract(cc2) - 0.5)));
     c = fc * (0.5 + 0.6 * exp(-p.x * p.x * 2.0));
   }
-  // two candle sconces flanking the slab
-  for (var s = 0; s < 2; s++) {
-    let sx = select(-0.62, 0.62, s == 1);
-    let sp0 = p - vec2f(sx, -0.05);
-    let flick = 0.80 + 0.20 * sin(t * (7.0 + f32(s) * 1.7) + f32(s) * 9.0);
-    // bracket
-    c = mix(c, vec3f(0.16, 0.11, 0.05), smoothstep(0.008, -0.004, sdBox(sp0 - vec2f(0.0, 0.10), vec2f(0.016, 0.070))));
-    // flame
-    let fd = length(sp0 * vec2f(1.6, 1.0)) - 0.035 + sp0.y * 0.5;
-    if (fd < 0.0) { c = mix(vec3f(1.7, 1.05, 0.35), vec3f(1.9, 1.5, 0.7), clamp(-fd * 14.0, 0.0, 1.0)) * flick; }
-    // its light on the room
-    c += vec3f(1.0, 0.55, 0.18) * exp(-dot(sp0, sp0) * 4.5) * 0.34 * flick;
+  // two sconce lamps flanking the slab: iron, glass, a true flame
+  for (var sN = 0; sN < 2; sN++) {
+    let sxx = select(-0.62, 0.62, sN == 1);
+    let sp0 = p - vec2f(sxx, -0.02);
+    let fs = f32(sN);
+    let flick = 0.82 + 0.13 * sin(t * (6.3 + fs * 1.4) + fs * 9.0) + 0.05 * sin(t * 17.0 + fs * 5.0);
+    // iron: wall arm reaching in, ring cup under the flame
+    let armD = sdSegment(sp0, vec2f(sign(sxx) * 0.17, 0.17), vec2f(0.0, 0.115)) - 0.011;
+    let cupD = max(abs(length(sp0 - vec2f(0.0, 0.105)) - 0.043) - 0.011, sp0.y - 0.108);
+    let iron = min(armD, cupD);
+    if (iron < 0.0) {
+      var ic2 = vec3f(0.052, 0.042, 0.034) * (0.9 + 0.5 * clamp(-sp0.y * 5.0 + 0.3, 0.0, 1.0));
+      ic2 += vec3f(0.9, 0.55, 0.2) * smoothstep(0.006, 0.0, abs(iron + 0.006)) * 0.35 * flick;
+      c = mix(c, ic2, smoothstep(0.004, -0.004, iron));
+    }
+    // the flame: teardrop, white heart, orange skin, breathing
+    let sway = sin(t * 3.1 + fs * 2.2) * 0.006;
+    let fq = vec2f((sp0.x - sway) * (1.0 + clamp(sp0.y + 0.02, 0.0, 0.3) * 3.0), sp0.y + 0.005);
+    let flameD = length(fq * vec2f(2.4, 1.35)) - 0.078;
+    if (flameD < 0.0) {
+      let core2 = clamp(-flameD * 9.0, 0.0, 1.0);
+      var fc2 = mix(vec3f(1.05, 0.38, 0.08), vec3f(1.9, 1.62, 1.05), core2 * core2);
+      fc2 = mix(fc2, vec3f(0.55, 0.30, 0.55), smoothstep(0.05, 0.09, sp0.y) * 0.5);   // blue-violet root
+      c = mix(c, fc2 * flick * 1.35, smoothstep(0.004, -0.006, flameD));
+    }
+    // its light: near halo, wall gradient, pool on the floor
+    c += vec3f(1.0, 0.55, 0.18) * exp(-dot(sp0, sp0) * 5.0) * 0.36 * flick;
+    c += vec3f(0.75, 0.42, 0.14) * exp(-dot(sp0, sp0) * 1.1) * 0.14 * flick;
+    let poolD = (p - vec2f(sxx * 0.85, 0.86)) * vec2f(2.2, 8.0);
+    c += vec3f(0.85, 0.48, 0.16) * exp(-dot(poolD, poolD) * 1.2) * 0.16 * flick;
   }
   // ── the slab: large, enthroned, readable ──
   let sp2 = p - vec2f(0.0, 0.10);
@@ -534,24 +598,6 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
     }
     c = mix(c, bc2, smoothstep(0.006, -0.006, between));
   }
-  // cardinal seals on the ring: crescent above, moorings at the flanks
-  {
-    let sealT = (fp - vec2f(0.0, -0.845)) / 0.040;
-    if (abs(sealT.x) < 1.3 && abs(sealT.y) < 1.3) { c += vec3f(0.80, 0.60, 0.25) * mod_tg_glyph(0, sealT) * 0.45; }
-    let sealL = (fp - vec2f(-0.845, 0.0)) / 0.036;
-    if (abs(sealL.x) < 1.3 && abs(sealL.y) < 1.3) { c += vec3f(0.70, 0.55, 0.24) * mod_tg_glyph(3, sealL) * 0.35; }
-    let sealR = (fp - vec2f(0.845, 0.0)) / 0.036;
-    if (abs(sealR.x) < 1.3 && abs(sealR.y) < 1.3) { c += vec3f(0.70, 0.55, 0.24) * mod_tg_glyph(3, sealR) * 0.35; }
-  }
-  // lintel frieze: the four glyphs graven small across the top beam
-  for (var k = 0; k < 4; k++) {
-    let gp3 = (p - vec2f(-0.27 + f32(k) * 0.18, -0.845)) / 0.045;
-    if (abs(gp3.x) < 1.3 && abs(gp3.y) < 1.3) {
-      let g = mod_tg_glyph(k, gp3);
-      c = mix(c, vec3f(0.045, 0.042, 0.045), g * 0.6);
-      c += mod_tg_gcol(k) * g * 0.22;
-    }
-  }
   // ── the threshold: worn steps and a puddle that remembers the door ──
   if (p.y > 0.86) {
     let sv = p.y - 0.86;
@@ -582,39 +628,51 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let ird = length(dp) - irisR;
     let rr = length(dp);
     if (ird > 0.0) {
-      // the revealed passage — near-black rim breathing into an amber heart
-      var pc = vec3f(0.004, 0.004, 0.005);
-      let gc2 = dp - vec2f(0.0, -0.05);
-      let core = exp(-dot(gc2, gc2) * 4.0);
-      let deep = pow(clamp(1.0 - rr / R, 0.0, 1.0), 1.35);
-      pc += vec3f(0.66, 0.40, 0.13) * deep * (0.30 + core * 1.25) * open;
-      // fine gold dust — two grains, slow twinkle
-      let d1 = hash21(floor(dp * 240.0));
-      let d2 = hash21(floor(dp * 110.0 + vec2f(37.0)));
-      pc += vec3f(1.35, 1.0, 0.55) * step(0.992, d1) * (0.25 + 0.75 * abs(sin(t * 1.6 + d1 * 40.0))) * deep * 0.75;
-      pc += vec3f(1.1, 0.75, 0.35) * step(0.986, d2) * (0.2 + 0.8 * abs(sin(t * 1.1 + d2 * 60.0))) * deep * 0.35;
-      // ── the ornament: polished double chevron cradling an orb ──
+      // ── the revealed passage: measured from the plate (zone read Jul 19) ──
+      // radial law: near-black rim, long amber falloff, small hot heart at the orb
+      let rn = rr / R;
+      let oc = vec2f(0.0, -0.28);                          // the ornament seat (upper-center)
+      var pc = vec3f(0.005, 0.004, 0.004);
+      let fall = exp(-pow(rn / 0.46, 1.7) * 2.2);          // L(r) fit
+      pc += vec3f(0.86, 0.55, 0.20) * fall * open;
+      let heart = exp(-dot(dp - oc, dp - oc) * 26.0);
+      pc += vec3f(1.15, 0.80, 0.38) * heart * open * 0.9;
+      pc *= smoothstep(1.0, 0.82, rn);                     // rim to true black
+      // gold dust: fine grain, mid-radius habitat
+      let habitat = smoothstep(0.06, 0.22, rn) * smoothstep(0.88, 0.5, rn);
+      let d1 = hash21(floor(dp * 260.0));
+      let d2 = hash21(floor(dp * 130.0 + vec2f(37.0)));
+      pc += vec3f(1.35, 1.05, 0.58) * step(0.993, d1) * (0.2 + 0.8 * abs(sin(t * 1.4 + d1 * 40.0))) * habitat * open * 0.8;
+      pc += vec3f(1.05, 0.75, 0.35) * step(0.988, d2) * (0.15 + 0.85 * abs(sin(t * 1.0 + d2 * 60.0))) * habitat * open * 0.4;
+      // ── the ornament: chevrons and orb, the door's own enter-button ──
       if (open > 0.5) {
         let mm2 = vec2f(uni(27), uni(28));
-        let hov = smoothstep(90.0, 30.0, length(mm2 - vec2f(256.0, 250.0)));
-        let oq = dp - vec2f(0.0, -0.02);
+        let hov = smoothstep(95.0, 34.0, length(mm2 - vec2f(256.0, 184.0)));
+        let oq = dp - oc;
         for (var ch = 0; ch < 2; ch++) {
-          let oy = select(0.035, -0.021, ch == 1);
-          let vd = abs(oq.y - oy + abs(oq.x) * 0.72) - 0.020;
-          let band = max(vd, abs(oq.x) - 0.105);
+          let oy = select(0.056, -0.034, ch == 1);
+          let vd = abs(oq.y - oy + abs(oq.x) * 0.72) - 0.031;
+          let band = max(vd, abs(oq.x) - 0.165);
           if (band < 0.0) {
-            var mc = mix(vec3f(0.42, 0.30, 0.12), vec3f(1.35, 1.10, 0.60), clamp(-(oq.y - oy) * 14.0 + 0.4, 0.0, 1.0));
-            mc += vec3f(1.2, 1.0, 0.6) * smoothstep(0.006, 0.0, abs(band + 0.008)) * 0.5;
-            pc = mix(pc, mc * (0.85 + hov * 0.5), smoothstep(0.004, -0.004, band));
+            // top-lit metal: bright upper face, bronze under-face, dark seam
+            let face = clamp(-(oq.y - oy) * 11.0 + 0.35, 0.0, 1.0);
+            var mc = mix(vec3f(0.34, 0.235, 0.095), vec3f(1.30, 1.06, 0.56), face);
+            mc *= 1.0 - 0.5 * smoothstep(0.004, 0.0, abs(band + 0.026));   // dark inner seam
+            mc += vec3f(1.3, 1.1, 0.65) * smoothstep(0.005, 0.0, abs(band + 0.006)) * 0.55;
+            pc = mix(pc, mc * (0.85 + hov * 0.45), smoothstep(0.004, -0.004, band));
           }
         }
-        let orb = length(oq - vec2f(0.0, 0.012)) - 0.030;
+        // the orb: a small sun asleep in the notch
+        let orbC = oq - vec2f(0.0, 0.014);
+        let orb = length(orbC) - 0.047;
         if (orb < 0.0) {
-          var oc2 = mix(vec3f(0.30, 0.22, 0.10), vec3f(1.5, 1.25, 0.75), clamp(-orb * 26.0, 0.0, 1.0));
-          oc2 += vec3f(1.8, 1.6, 1.1) * exp(-dot(oq - vec2f(-0.010, 0.000), oq - vec2f(-0.010, 0.000)) * 2600.0);
-          pc = mix(pc, oc2 * (0.9 + hov * 0.4), smoothstep(0.003, -0.003, orb));
+          let sph = clamp(-orb * 18.0, 0.0, 1.0);
+          var oc2 = mix(vec3f(0.24, 0.165, 0.07), vec3f(1.15, 0.98, 0.62), sph);
+          oc2 *= 0.6 + 0.4 * clamp(-orbC.y * 12.0 + 0.5, 0.0, 1.0);         // shadowed south
+          oc2 += vec3f(2.2, 2.0, 1.5) * exp(-dot(orbC - vec2f(-0.014, -0.014), orbC - vec2f(-0.014, -0.014)) * 3200.0);  // spec
+          pc = mix(pc, oc2 * (0.9 + hov * 0.35), smoothstep(0.003, -0.003, orb));
         }
-        pc += vec3f(1.0, 0.8, 0.45) * exp(-dot(oq, oq) * 60.0) * (0.25 + hov * 0.45);
+        pc += vec3f(1.0, 0.78, 0.42) * exp(-dot(oq, oq) * 44.0) * (0.22 + hov * 0.45);
       }
       // shadowed lip where the iris withdrew
       pc *= smoothstep(0.0, 0.07, ird);
@@ -655,12 +713,14 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
       let mh = smoothstep(60.0, 22.0, length(mm - (dc * 0.5 + 0.5) * 512.0));
       var kc: vec3f;
       if (r > 0.082) {
-        // lathe-turned bronze bezel, lit from above
-        kc = mod_tg_plate(q * 8.0 + vec2f(f32(k) * 5.0), clamp(0.6 - q.y * 4.0, 0.0, 1.0));
-        kc *= 0.9 + 0.35 * sin(r * 300.0);
-        kc += vec3f(0.9, 0.65, 0.28) * smoothstep(0.010, 0.0, abs(r - 0.084)) * 0.30;
-        kc += vec3f(0.8, 0.6, 0.25) * smoothstep(0.008, 0.0, abs(r - 0.114)) * (0.18 + mh * 0.5);
-        kc *= 1.0 + mh * 0.35;
+        // bezel: dark bronze, one worn top-arc highlight (zone read Jul 19)
+        kc = mod_tg_plate(q * 8.0 + vec2f(f32(k) * 5.0), 0.35);
+        let bang = atan2(q.y, q.x);
+        let topArc = exp(-pow((bang + 1.5708) * 1.1, 2.0));
+        kc += vec3f(0.55, 0.42, 0.20) * topArc * smoothstep(0.115, 0.095, r) * 0.7;
+        kc += vec3f(0.9, 0.68, 0.30) * smoothstep(0.009, 0.0, abs(r - 0.0855)) * (0.22 + topArc * 0.3);
+        kc *= 0.8 + 0.25 * fbm(q * 40.0 + vec2f(f32(k) * 9.0), 2);
+        kc *= 1.0 + mh * 0.4;
       } else {
         // the well: near-black, the glyph burning quiet inside
         kc = vec3f(0.012, 0.011, 0.012) + vec3f(0.045, 0.032, 0.018) * clamp(1.0 - r * 10.0, 0.0, 1.0);
@@ -1032,7 +1092,7 @@ try {
     } else if (inView(1)) {
       if (hit(25, 256, 45)) go(0)
       if (hit(487, 256, 45)) go(4)                    // → the tide record
-      if (G.door > 0.9 && hit(256, 250, 70)) go(2)
+      if (G.door > 0.9 && hit(256, 184, 75)) go(2)   // the chevron-orb ornament
       // dials at grid (156,409) (222,409) (288,409) (354,409)
       if (G.door < 0.05) for (let k = 0; k < 4; k++) {
         if (hit(156 + k * 66.5, 409, 30)) {

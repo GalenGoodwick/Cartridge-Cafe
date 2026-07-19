@@ -324,7 +324,8 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     }
   }
 
-  // the crown, over everything — the champion's ring outshines its neighbors
+  // the CROWN, over everything — a small gold crown resting on the champion's
+  // brow (no ring, no halo — just the crown)
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
     let sr = i32(floor(sv));
@@ -332,11 +333,32 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     if (abc < 200) { continue; }        // crown flag lives in the 200 band, under the big band
     let bigc = sr / 400;
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
-    let d = length(uv - ctr);
     let R = 0.098 * zm * select(1.0, 1.25, bigc > 0);
-    let ringR = R * 1.24 + sin(t * 2.2) * 0.006;
-    col += vec3f(1.0, 0.82, 0.32) * smoothstep(0.012, 0.002, abs(d - ringR)) * 1.3;
-    col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
+    // SOLAR CROWN — a small sun-forged crown above the brow: molten gold body,
+    // breathing corona, rays flaring off the teeth
+    let cp = (uv - (ctr + vec2f(0.0, -R * 1.28))) / (R * 0.38);
+    if (abs(cp.x) < 2.2 && cp.y > -2.2 && cp.y < 1.4) {
+      // three teeth: a triangle wave over the band, tips pointing up (soft edges)
+      let teeth = 1.0 - abs(fract(cp.x * 1.5 + 0.5) - 0.5) * 2.0;
+      let topY = -0.12 - teeth * 0.88;
+      let m = smoothstep(1.04, 0.98, abs(cp.x)) * smoothstep(topY - 0.06, topY + 0.05, cp.y) * smoothstep(0.55, 0.45, cp.y);
+      // molten gold: banded shimmer rolling across the metal
+      let molten = 0.75 + 0.25 * sin(cp.x * 7.0 - t * 2.6) * sin(cp.y * 5.0 + t * 1.9);
+      let gold = mix(vec3f(0.85, 0.55, 0.12), vec3f(1.0, 0.9, 0.5), clamp(0.5 - cp.y * 0.6, 0.0, 1.0)) * molten;
+      col = mix(col, gold, m);
+      // corona: the whole crown breathes light like a low sun
+      let bd = length(vec2f(cp.x * 0.62, cp.y + 0.25));
+      col += vec3f(1.0, 0.72, 0.28) * exp(-bd * bd * 2.6) * (0.16 + 0.05 * sin(t * 1.7)) * (1.0 - m);
+      // rays flaring off the three tips
+      for (var k = -1; k <= 1; k++) {
+        let jp = cp - vec2f(f32(k) * 0.667, -1.0);
+        let jd = length(jp);
+        let ja = atan2(jp.y, jp.x);
+        let flare = 0.5 + 0.5 * sin(ja * 6.0 + t * 2.4 + f32(k) * 2.1);
+        col += vec3f(1.0, 0.95, 0.72) * exp(-jd * jd * 30.0) * (0.55 + 0.35 * flare);
+        col += vec3f(1.0, 0.85, 0.45) * exp(-jd * 6.0) * flare * 0.22;
+      }
+    }
   }
 
   // the local player — the "you" roaming the open grid, dancing in place. Its
@@ -596,8 +618,11 @@ try {
           // place below (marked where the crown is set). Fixed positions = anchored.
           // a tight triangle at the heart: CHAMPION at the apex (pinned where the
           // crown is set, below), SUB-MAINS + PLAYER WORLDS along the base.
-          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, cat: 2 }
-          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, cat: 3 }
+          // LOCKED center triangle: champion at the apex (seated where the crown
+          // lands, below), SUB-MAINS + PLAYER WORLDS along the base. The field
+          // clusters around these three; they never drift.
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, cat: 2, fixed: [215, 285] }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, cat: 3, fixed: [297, 285] }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -636,6 +661,10 @@ try {
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
+          if (want[n].fixed) {   // a locked seat — first pin wakes the field so neighbours clear out
+            if (!B.pinned) U.wake = Math.max(U.wake, 5)
+            B.x = want[n].fixed[0]; B.y = want[n].fixed[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
+          }
           if (adopt && adopt.bubbles[n] && !want[n].big) {   // the shared arrangement wins — but the big three always float free by gravity
             const sb2 = adopt.bubbles[n]
             B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1
@@ -662,7 +691,13 @@ try {
           const champName = (T && T.champion) || 'QUANTIC DOJO'
           const champ = n === champName
           B.crown = !!champ
-          if (champ) B.big = true   // the reigning world — biggest bubble, deepest gravity (score below); it floats like the rest
+          if (champ) {   // the reigning world sits LOCKED at the triangle's apex, wearing the crown
+            B.big = true
+            if (!B.pinned) U.wake = Math.max(U.wake, 5)
+            B.x = 256; B.y = 210; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
+          } else if (B.pinned && !B.cat) {   // dethroned — rejoin the floating field
+            B.pinned = 0; B.anchored = 0; B.big = false
+          }
           // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
           // taking live votes belongs to the voted cluster at center; everything
           // else is a new arrival held in the outer ring. A status flip re-settles
@@ -761,21 +796,31 @@ try {
         // ONE collision rule for every bubble — same class, sized by each one's
         // own radius (big ≈ 31u, small ≈ 25u) plus a constant breathing gap.
         const rSum = (B.big ? 31 : 25) + (C.big ? 31 : 25)
-        const clr = rSum + 26
+        const clr = rSum + 36
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
           if (!C.anchored) { C.vx -= sx / sd * push; C.vy -= sy / sd * push }
         }
-        // HARD floor: two bubbles may NEVER overlap, whatever the gravity does —
-        // a direct position correction (the soft push above can be overpowered by
-        // the big three's deep gravity; this cannot).
+        // HARD floor: two bubbles may NEVER overlap. Direct position correction,
+        // and it moves ANCHORED bubbles too (an adopted layout can lay a bubble
+        // right under a locked big one — that pair must still separate). Only the
+        // PINNED three are immovable; everyone else yields.
         if (sd < rSum) {
           const over = rSum - sd, nx = sx / sd, ny = sy / sd
-          if (!B.anchored && !C.anchored) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
-          else if (!B.anchored) { B.x += nx * over; B.y += ny * over }
-          else if (!C.anchored) { C.x -= nx * over; C.y -= ny * over }
+          if (!B.pinned && !C.pinned) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
+          else if (!B.pinned) { B.x += nx * over; B.y += ny * over }
+          else if (!C.pinned) { C.x -= nx * over; C.y -= ny * over }
         }
+      }
+      // the CROWN is a physical object: an invisible collider above the champion's
+      // brow — nothing may drift over it. (Champion sits pinned at 256,210; the
+      // crown rides ~42u above with an ~18u radius.)
+      if (!MF && !SUB && !PL && !B.pinned) {   // main commons only — that's where the champion reigns
+        const kx = B.x - 256, ky = B.y - (210 - 42)
+        const kr = 18 + (B.big ? 31 : 25)
+        const kd = Math.hypot(kx, ky)
+        if (kd < kr && kd > 0.01) { B.x += kx / kd * (kr - kd); B.y += ky / kd * (kr - kd) }
       }
       if (!B.anchored) {
         B.vx *= fr; B.vy *= fr
@@ -854,7 +899,9 @@ try {
         // stepping into a WORLD goes quiet (a late portals dispatch would
         // follow the player in) — but entering a sub-main morphs this same
         // scene, so the doors keep speaking
-        if (String(B.launch).slice(0, 4) !== 'sub:') U.launched = 1
+        // sub: and players: are IN-SCENE morphs — the universe keeps speaking;
+        // only a real departure (loading another world) goes quiet
+        if (String(B.launch).slice(0, 4) !== 'sub:' && B.launch !== 'players:') U.launched = 1
         window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
       }
     }

@@ -1011,9 +1011,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
           emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
       )}
-      {scene === 'SUB-MAIN' && (
-        <TournamentBar key={subMode?.slug ? `arena-sub-${subMode.slug}` : 'arena-submain'} visible={!modalUp}
-          slot={subMode?.slug ? `tournament:sub:${subMode.slug}` : 'tournament:submain'}
+      {/* a sub-main arena runs only INSIDE a sub-main, where its contestants are
+          the WORLDS pinned to that shelf. The SUB-MAINS viewer (no slug) has no
+          arena — sub-mains are gatherings, not contestants; they never vote. */}
+      {scene === 'SUB-MAIN' && subMode?.slug && (
+        <TournamentBar key={`arena-sub-${subMode.slug}`} visible={!modalUp}
+          slot={`tournament:sub:${subMode.slug}`}
           worlds={portals.map(pt => pt.name)}
           bubbles={portals}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
