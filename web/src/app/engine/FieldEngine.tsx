@@ -234,7 +234,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [branchesOpen, setBranchesOpen] = useState(false)
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
-  const [uiDockOpen, setUiDockOpen] = useState(true)   // the world menu greets you open; ★ tucks it away
+  const [uiDockOpen, setUiDockOpen] = useState(true)   // the world menu greets you open; EDIT tucks it away
+  const [remixArm, setRemixArm] = useState(false)      // REMIX asks once before spawning a world (no accidental spam)
 
   // ESC closes the topmost open panel and stops there — it must never fall
   // through a modal into "leave this world" (the shell's ESC handler)
@@ -5591,6 +5592,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             style={{ fontFamily: 'monospace' }}
           />
 
+          {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
+          {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && (
+            <button
+              onClick={() => setWorldChatOpen(true)}
+              className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              title="the world's commons — players, makers, and their AIs"
+            >
+              ⌁ WORLD CHAT
+            </button>
+          )}
+
           {/* Mandatory world instructions + branch + AI status — top right, every world.
               On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
           <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
@@ -5609,7 +5621,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 title={uiDockOpen ? 'hide world controls' : 'world controls — branch, versions, connect AI, vote'}
                 className="px-2.5 py-1.5 rounded-lg text-[13px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
-                {uiDockOpen ? '★ CLOSE' : '★'}
+                {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
               </button>
             )}
             {/* the founder's bookmark: main got snagged by a challenger, but the
@@ -5846,12 +5858,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 reached by these window events. */}
             {spaceId && (
               <div className="flex items-center gap-1">
-                <button className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
-                  title="remix this world into a new one you own" onClick={() => window.dispatchEvent(new CustomEvent('cafe:remix-world'))}>⑂ REMIX</button>
-                <button className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
-                  title="open a resolution the commons can weigh in on" onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}>⚖ VOTE</button>
-                <a href="/?commons=1" className="px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:bg-black/80 transition-colors"
-                  title="back to the cafe">⌂ CAFE</a>
+                {/* REMIX spawns a whole new world — so it asks once. A second
+                    click within a few seconds confirms; otherwise it disarms. */}
+                <button
+                  className={`px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'}`}
+                  title="remix this world into a new one you own"
+                  onClick={() => {
+                    if (remixArm) { setRemixArm(false); window.dispatchEvent(new CustomEvent('cafe:remix-world')) }
+                    else { setRemixArm(true); setTimeout(() => setRemixArm(false), 3500) }
+                  }}>
+                  {remixArm ? '⑂ CONFIRM REMIX' : '⑂ REMIX'}
+                </button>
               </div>
             )}
             {/* CREATE BRANCH sits at the bottom of the dock, right against the VOTE
@@ -5866,11 +5883,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               >
                 ⑂ CREATE BRANCH
               </button>
-              <button
-                onClick={() => setWorldChatOpen(true)}
-                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors">
-                ⌁ WORLD CHAT
-              </button>
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
@@ -5879,6 +5891,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <button onClick={() => stepBranch(1)} title="next branch — browse the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
+              )}
+              {/* VOTE sits at the bottom of the grid — a resolution the commons weighs in on */}
+              {spaceId && (
+                <button onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}
+                  className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                  title="open a resolution the commons can weigh in on">⚖ VOTE</button>
               )}
               {/* the methodical create panel: 1 · name it · 2 · AI connects with its
                   scoped key (the plug box opens itself the moment the branch exists) */}
