@@ -1246,7 +1246,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         scene = (await resp.json()).scene
       } catch { showToast('Failed to load scene', 'error'); return }
     }
-    if (!scene) { showToast(`Scene "${sceneName}" not found`, 'error'); return }
+    if (!scene) {
+      // A deep link to a deleted/renamed scene (orphan) — don't leave the visitor
+      // staring at black. Signal the shell to show a soft "gone" landing. This is
+      // the SAME fetch a valid world succeeds on, so it never fires for a real one.
+      showToast(`Scene "${sceneName}" not found`, 'error')
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cafe:scene-gone', { detail: sceneName }))
+      return
+    }
 
     // Confirmed — now switch. Navigating to a DIFFERENT scene/version invalidates
     // any minted connect token (HMAC-bound to the scene you left); drop it so the
@@ -2544,7 +2551,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.step(dt)
 
       // Process audio triggers from worldData (single event or an array per tick)
-      type PlaySoundCmd = { id?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
+      // Hosted files only load from the cafe's own blob store (or same-origin) —
+      // worlds can't hotlink arbitrary audio off the open web.
+      const audioUrlOk = (u: string): boolean => {
+        try {
+          const h = new URL(u, location.href)
+          return h.protocol === 'https:' && (h.hostname.endsWith('.public.blob.vercel-storage.com') || h.origin === location.origin)
+        } catch { return false }
+      }
+      type PlaySoundCmd = { id?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
       const playSoundRaw = sim.worldData['__play_sound'] as PlaySoundCmd | PlaySoundCmd[] | undefined
       if (playSoundRaw) {
         delete sim.worldData['__play_sound']
@@ -2552,6 +2567,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         for (const playSound of Array.isArray(playSoundRaw) ? playSoundRaw : [playSoundRaw]) {
           if (playSound.id && audio.hasSound(playSound.id)) {
             audio.play(playSound.id, playSound.volume ?? 1.0, playSound.pitch ?? 1.0)
+          } else if (playSound.id && playSound.url && audioUrlOk(playSound.url)) {
+            // first strike lazy-loads (one fetch of latency); replays are instant
+            const { id, url, volume, pitch } = playSound
+            void audio.loadSound(id, url).then(ok => { if (ok) audio.play(id!, volume ?? 1.0, pitch ?? 1.0) })
           } else if (playSound.frequency) {
             audio.beep(playSound.frequency, playSound.duration ?? 0.2, playSound.volume ?? 0.5, playSound.type)
           }
@@ -2566,7 +2585,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const audio = audioRef.current
         if (playMusic.stop) { audio.stopScore(); audio.stopMusic() }
         else if (playMusic.score) audio.playScore(playMusic.score as Parameters<typeof audio.playScore>[0])
-        else if (playMusic.url) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
+        else if (playMusic.url && audioUrlOk(playMusic.url)) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
       }
 
       // Reactive score: the world sweeps its own music live (audio as a second

@@ -451,13 +451,23 @@ wd.gpuUniforms = [/* … */]; wd.gpuUniforms[24] = act   // shader reads uni(24)
 |---------|-----------|-------------|
 | `set_world_data` | `data: Record<string, unknown>, fieldId?` | Merge into global worldData object (set key to null to delete) |
 
-### Audio — SFX + composed music (synthesized, nothing hosted)
+### Audio — SFX + composed music (synthesized) or hosted tracks
 
-Audio is **composed as data**, the same way visuals are shaders: you write it, the
-engine synthesizes it live via Web Audio. No files, no URLs, no hosting. Write these
-from a step hook (`sim.worldData.__play_sound` / `sim.worldData.__play_music`); the
-engine consumes and clears them each frame. Audio needs one user gesture to start
-(browser rule) — it unlocks on the first click.
+Audio is **composed as data** by default, the same way visuals are shaders: you write
+it, the engine synthesizes it live via Web Audio. Write these from a step hook
+(`sim.worldData.__play_sound` / `sim.worldData.__play_music`); the engine consumes
+and clears them each frame. Audio needs one user gesture to start (browser rule) —
+it unlocks on the first click.
+
+**Hosted files** (mp3/wav/m4a) are also supported, but ONLY from the cafe's own
+blob store (`*.public.blob.vercel-storage.com`) or the site itself — other hosts
+are refused. Bring only audio you have the rights to (your own work, AI-generated,
+public domain / CC):
+```js
+sim.worldData.__play_music = { url: 'https://….public.blob.vercel-storage.com/theme.mp3', loop: true, volume: 0.6 }
+sim.worldData.__play_sound = { id: 'splash', url: 'https://….public.blob.vercel-storage.com/splash.mp3' }
+// first strike loads + plays (one fetch of latency); after that, `{ id: 'splash' }` alone replays instantly
+```
 
 **Sound effects** — one-shots, fired the frame you set them:
 ```js
