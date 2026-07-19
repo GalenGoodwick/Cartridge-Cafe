@@ -283,8 +283,10 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
         g = vec3f(0.02, 0.02, 0.03) + cA * ring * (0.12 + comet * 1.3);
       } else if (st >= 9) {
-        // a real world — its screenshot, folded into the bubble by the shader
-        g = cafeIcon(st - 9, q);
+        // a real world — its screenshot, folded into the bubble by the shader.
+        // A BIG (champion) bubble insets its icon so it doesn't fill edge-to-edge
+        // and read as oversized next to the category glyphs.
+        g = cafeIcon(st - 9, q * select(1.0, 1.32, big > 0));
         g *= 0.9 + 0.2 * (1.0 - length(q));   // gentle spherical shading
       } else {
         // a young world — a banded seed-planet in its own hue
@@ -759,7 +761,9 @@ try {
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
         // a BIG bubble clears a wider berth so the field makes space around it.
         // Anchored (pinned) big bubbles push neighbours out but never move themselves.
-        const clr = (B.big || C.big) ? 62 : 76   // small bubbles nestle up to a big one (radii sum ~57, so 62 = just touching, no overlap)
+        // ONE collision rule for every bubble — same class, sized by each one's
+        // own radius (big ≈ 31u, small ≈ 25u) plus a constant breathing gap.
+        const clr = (B.big ? 31 : 25) + (C.big ? 31 : 25) + 26
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }

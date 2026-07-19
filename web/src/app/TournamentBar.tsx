@@ -222,7 +222,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // deliberation is now GLOBAL PER WORLD: one pooled conversation per world,
   // shared across every cell, tier, round and arena. It lives in its own slot
   // ('world-chat:NAME') so a world accrues a real, lasting discussion.
-  type Msg = { who: string; text: string; at: number }
+  type Msg = { who: string; text: string; at: number; from?: string }
   const [chat, setChat] = useState<Record<string, Msg[]>>({})
   // ONE chat per world: main, every branch, and the /space page all share it.
   // Key by the BASE world (strip the ` ⑂ branch · vN` suffix) so a comment made
@@ -230,6 +230,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // vote chat and world chat are the same conversation.
   const chatBase = (w: string) => w.split(' ⑂ ')[0].trim().toUpperCase()
   const chatSlot = (w: string) => 'world-chat:' + chatBase(w)
+  // a message carries the vantage it was spoken from — which branch (or main) the
+  // speaker was viewing — so one shared thread still reads clearly.
+  const viewingLabel = (w: string) => {
+    const i = w.indexOf(' ⑂ ')
+    return i < 0 ? 'main' : '⑂ ' + (w.slice(i + 3).split(' · ')[0] || 'branch')
+  }
   const loadChat = useCallback(async (w: string) => {
     try {
       const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + w.split(' ⑂ ')[0].trim().toUpperCase())).then(r => r.json())
@@ -525,7 +531,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(chatSlot(w))).then(r => r.json())
       cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
     } catch { /* start fresh */ }
-    const next = [...cur, { who, text: t.slice(0, 280), at: Date.now() }].slice(-200)
+    const next = [...cur, { who, text: t.slice(0, 280), at: Date.now(), from: viewingLabel(w) }].slice(-200)
     setChat(prev => ({ ...prev, [chatBase(w)]: next }))
     setDraft('')
     fetch('/api/engine/save', {
@@ -744,14 +750,15 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           {/* GLOBAL PER-WORLD talk — one pool, every cell/tier/round shares it */}
           <div className={`pointer-events-auto w-[300px] max-w-[34vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col transition-transform duration-[320ms] ease-out ${mounted ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className={`${pill} px-3 py-2 border-b border-white/10 text-brass`}>
-              💬 {focus ? focus.toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
+              💬 {focus ? chatBase(focus).toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
               {focus && msgs.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one yet</div>}
               {!focus && <div className={`${pill} text-white/30`}>load a world to hear its talk</div>}
               {msgs.map((m, k) => (
                 <div key={k} className={`${pill} text-white/70 leading-relaxed`}>
-                  <span className="text-brass/80">{m.who}</span> — {m.text}
+                  <span className="text-brass/80">{m.who}</span>
+                  {m.from && <span className="text-white/30"> · {m.from}</span>} — {m.text}
                 </div>
               ))}
             </div>

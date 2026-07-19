@@ -6424,8 +6424,10 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
 
           {/* Space management now lives inside WORLD TOOLS (one toolbox) */}
 
-          {/* Pixel hover tooltip */}
-          {pixelInfo && !playScene && (
+          {/* Pixel hover tooltip — a workshop instrument: only while the tools
+              chrome is open. It was following the cursor through finished game
+              worlds (spaces have no playScene), which read as a stray debug box. */}
+          {pixelInfo && !playScene && chromeVisible && (
             <div
               className="fixed z-50 pointer-events-none bg-black/85 text-white text-[12px] font-mono px-2 py-1 rounded border border-white/20 whitespace-nowrap"
               style={{ left: pixelInfo.screenX + 14, top: pixelInfo.screenY - 10 }}
