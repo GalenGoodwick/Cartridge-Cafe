@@ -400,6 +400,12 @@ try {
   if (!wd.__cu || wd.__cu.v !== 2) wd.__cu = { v: 2, bubbles: {}, order: [], cam: { x: 256, y: 256, z: 1 },
     pollT: 0, wake: 0, mineKey: '', drag: 0, dx: 0, dy: 0, downX: 0, downY: 0, moved: 0, prevDown: false, lastHover: -1, kN: {} }
   const U = wd.__cu
+  if (!U.boot) U.boot = Date.now()
+  // CALM BOOT: for the first seconds, arrivals adopt the shared layout without
+  // waking the field — the load must show the live state, never a guess that
+  // then re-packs. (First poll runs with 700ms patience fallbacks; the 2s
+  // re-poll's fuller data used to jolt every bubble.)
+  const calmBoot = Date.now() - U.boot < 8000
   const dt2 = Math.min(dt, 0.05)
   // ── whose universe? MY WORLDS flips the door into a personal submain ──
   const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
@@ -410,7 +416,21 @@ try {
   const SUB = !!wd.__submain
   const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
   const mineKey = MF ? String(MF.ownerId || MF.who || '') : (SUB ? 'sub:' + subKey : '')
-  if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.wake = 10; U.hintedEmpty = false }
+  // every mode keeps its OWN persisted layout, so a joining player or a reload
+  // adopts it AT REST instead of replaying the rim fly-in: main = the shared
+  // universe, MY WORLDS = per-deed, SUB-MAIN = per-group (or the viewer roster).
+  const layoutSlot = MF ? ('cafe:universe:mine:' + mineKey)
+    : SUB ? ('cafe:universe:' + mineKey)
+    : 'cafe:universe'
+  // a filter/mode flip loads a DIFFERENT saved layout: re-poll now and clear the
+  // adopt-watermark so the new slot is taken at rest. NO forced wake — if that
+  // layout is saved the bubbles land settled; only a genuinely new world (the
+  // newborn branch) wakes the field, so unchanged rosters never re-animate.
+  if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.hintedEmpty = false; U.sharedAt = 0
+    // SNAP: a mode flip re-centers the view on the new roster instantly. Without
+    // this the camera keeps wherever main was panned/zoomed, so MY WORLDS opens
+    // off in a corner and never "arrives".
+    U.cam.x = 256; U.cam.y = 256; U.cam.z = 1; U.drag = 0 }
   // a poke = the shell just changed a shelf; re-poll now instead of waiting
   const poke = (typeof window !== 'undefined' && window.__cafePoke) || 0
   if (poke > (U.pokeAt || 0)) { U.pokeAt = poke; U.pollT = 0 }
@@ -440,7 +460,7 @@ try {
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })), { spaces: [] }),
           patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
-          (MF || SUB) ? Promise.resolve(null) : fetch('/api/engine/save?slot=cafe%3Auniverse').then(r => r.json()).catch(() => null),
+          fetch('/api/engine/save?slot=' + encodeURIComponent(layoutSlot)).then(r => r.json()).catch(() => null),
           (MF || SUB) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
           SUB ? fetch('/api/engine/save?slot=submains%3Aindex').then(r => r.json()).catch(() => null) : Promise.resolve(null),
         ])
@@ -513,6 +533,11 @@ try {
           }
           for (const s of (sp.spaces || [])) {
             if (!s.owner || s.owner.id !== MF.ownerId) continue
+            // an unnamed blank DRAFT (still auto-timestamp-named, nothing built)
+            // is abandoned scaffolding, not a world — keep it off the deed. Naming
+            // a world PATCHes its real name in, so only truly-abandoned drafts
+            // still carry the "YYYY-MM-DD HH:MM" stamp. Named or built worlds show.
+            if (s.blank && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.name || '')) continue
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
@@ -534,7 +559,7 @@ try {
             const sb = shared && shared.bubbles[n]
             if (sb) {
               // this world already has its place in the shared universe
-              U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1,
+              U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1, anchored: 1,
                 born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
             } else {
               // truly newborn — spawn on the RIM at the emptiest bearing so it
@@ -559,14 +584,14 @@ try {
               const rr = maxR + 78
               U.bubbles[n] = { x: 256 + Math.cos(a2) * rr, y: 256 + Math.sin(a2) * rr * 0.74, vx: 0, vy: 0,
                 born: now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
-              U.wake = 10   // a birth perturbs the whole field
+              if (!calmBoot) U.wake = 10   // a birth perturbs the settled field — but never the loading one
             }
           }
           const B = U.bubbles[n]
           B.launch = want[n].launch
           if (adopt && adopt.bubbles[n]) {   // the shared arrangement wins
             const sb2 = adopt.bubbles[n]
-            B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0
+            B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1
             if (sb2.born) B.born = sb2.born
           }
           // participation pressure: cell activity + birth heat
@@ -607,7 +632,7 @@ try {
           // ±6, a tier climbed ±1.4, a birth) — the slow decay of heat and cell
           // age drifts scores by less and must NOT reshuffle the room. (At 0.03
           // the field woke on almost every poll and no layout ever held.)
-          if (!B.justPlaced && Math.abs(ns - B.score) > 1.0) U.wake = Math.max(U.wake, 7)
+          if (!B.justPlaced && !calmBoot && Math.abs(ns - B.score) > 1.0) U.wake = Math.max(U.wake, 7)
           delete B.justPlaced
           B.score = ns
         }
@@ -638,12 +663,17 @@ try {
     for (let i = 0; i < U.order.length; i++) {
       const B = U.bubbles[U.order[i]]
       if (!B) continue
-      const dx = 256 - B.x, dy = 256 - B.y
-      const dd = Math.hypot(dx, dy)
-      if (dd > 2) {
-        const g = 26 * (0.5 + B.score * 2.2)   // participation breaks past friction
-        B.vx += dx / dd * g * dt2
-        B.vy += dy / dd * g * dt2
+      // an ANCHORED bubble came from the saved layout: it holds its exact place
+      // as a fixed repulsor, so a newborn (or a late-loading world) settles into
+      // the gaps WITHOUT dragging the arrangement everyone already sees.
+      if (!B.anchored) {
+        const dx = 256 - B.x, dy = 256 - B.y
+        const dd = Math.hypot(dx, dy)
+        if (dd > 2) {
+          const g = 26 * (0.5 + B.score * 2.2)   // participation breaks past friction
+          B.vx += dx / dd * g * dt2
+          B.vy += dy / dd * g * dt2
+        }
       }
       for (let j = i + 1; j < U.order.length; j++) {
         const C = U.bubbles[U.order[j]]
@@ -653,18 +683,22 @@ try {
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
         if (sd < 76) {   // breathing room: bubbles repel inside 76, not 56
           const push = (76 - sd) * 9 * dt2
-          B.vx += sx / sd * push; B.vy += sy / sd * push
-          C.vx -= sx / sd * push; C.vy -= sy / sd * push
+          if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
+          if (!C.anchored) { C.vx -= sx / sd * push; C.vy -= sy / sd * push }
         }
       }
-      B.vx *= fr; B.vy *= fr
-      B.x += B.vx * dt2; B.y += B.vy * dt2
+      if (!B.anchored) {
+        B.vx *= fr; B.vy *= fr
+        B.x += B.vx * dt2; B.y += B.vy * dt2
+      }
     }
-    if (U.wake <= 0) {   // friction locks them in place
-      for (const n of U.order) { const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0 } }
-      // the settled arrangement becomes everyone's: publish it to the shared
-      // universe slot so every player (and every reload) sees this layout
-      if (!MF && !SUB && U.order.length > 0) {
+    if (U.wake <= 0) {   // friction locks them in place — and the whole field is
+      // now the saved layout, so everything anchors: a later newborn moves alone.
+      for (const n of U.order) { const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0; B.anchored = 1 } }
+      // the settled arrangement becomes everyone's: publish it to THIS mode's
+      // layout slot so every player (and every reload) adopts it at rest. MY
+      // WORLDS and SUB-MAIN each persist too now, so they stop flying in.
+      if (U.order.length > 0) {
         const at = Date.now()
         U.sharedAt = at
         const out = {}
@@ -673,7 +707,7 @@ try {
           if (B) out[n] = { x: Math.round(B.x * 10) / 10, y: Math.round(B.y * 10) / 10, born: B.born }
         }
         fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slot: 'cafe:universe', data: { v: 2, at, bubbles: out } }) }).catch(() => {})
+          body: JSON.stringify({ slot: layoutSlot, data: { v: 2, at, bubbles: out } }) }).catch(() => {})
       }
     }
   }
