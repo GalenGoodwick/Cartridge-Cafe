@@ -172,6 +172,13 @@ function SignInInner() {
                 {busy ? 'CHECKING THE LEDGER…' : 'SIGN THE LEDGER'}
               </button>
             </form>
+            {/* clickwrap: continuing = agreeing, with the commons deal stated plainly */}
+            <div className="pt-2 text-center font-mono text-[12px] leading-relaxed text-crema/40">
+              by continuing you agree to the{' '}
+              <a href="/terms" className="text-brass hover:text-flame underline">terms</a> &amp;{' '}
+              <a href="/privacy" className="text-brass hover:text-flame underline">privacy</a>.
+              <br />worlds you make public can be branched by others · private stays yours.
+            </div>
           </div>
         </div>
         <a href="/" className="brass-tab inline-block px-2 py-1 text-[12px] mt-6 arrive" style={{ animationDelay: '0.2s' }}>
