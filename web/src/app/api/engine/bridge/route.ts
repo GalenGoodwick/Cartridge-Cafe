@@ -87,6 +87,44 @@ async function pushToAgent(command: Record<string, unknown>, req: NextRequest, s
   return res.json()
 }
 
+/** Compact one build command into a durable console line that mirrors the live
+ *  dev terminal. Returns null for conversational / internal-beacon commands so
+ *  the build console shows world work, not chatter. */
+function summarizeConsole(cmd: Record<string, unknown>): { type: string; name: string; summary: string } | null {
+  const type = typeof cmd.type === 'string' ? cmd.type : ''
+  if (!type) return null
+  const SKIP = new Set(['main_say', 'main_read', 'roundtable_say', 'roundtable_read', 'roundtable_nominate', 'save_experience', 'set_player_icon', 'emit_data'])
+  if (SKIP.has(type)) return null
+  const data = cmd.data as Record<string, unknown> | undefined
+  // internal beacons (ai_focus, provenance) ride set_world_data — never log them
+  if (type === 'set_world_data' && data) {
+    const keys = Object.keys(data)
+    if (keys.length && keys.every(k => k.startsWith('_') || k === 'ai_focus')) return null
+  }
+  const name = String((cmd.name ?? cmd.fieldId ?? '') || '')
+  let summary: string
+  switch (type) {
+    case 'generate': summary = cmd.prompt ? `"${String(cmd.prompt).slice(0, 60)}"` : 'generate'; break
+    case 'inject_wgsl':
+    case 'inject_glsl': summary = 'shader injected'; break
+    case 'create_field': summary = 'created'; break
+    case 'paint': summary = 'painted'; break
+    case 'add_effect': summary = '+' + String(cmd.effect ?? 'effect'); break
+    case 'set_position': summary = 'moved'; break
+    case 'define_visual': summary = 'defined visual'; break
+    case 'define_module': summary = 'defined module'; break
+    case 'define_interaction': summary = 'interaction rule'; break
+    case 'remove_interaction': summary = 'removed interaction'; break
+    case 'set_world_data': summary = data ? 'set ' + Object.keys(data).join(', ').slice(0, 40) : 'set world data'; break
+    case 'set_world_params': summary = 'world params'; break
+    case 'delete':
+    case 'remove_field': summary = 'removed'; break
+    case 'reset': summary = 'reset world'; break
+    default: summary = type
+  }
+  return { type, name, summary }
+}
+
 // Save experience directly to Shell DB (bypasses SSE queue)
 async function saveExperience(cmd: Record<string, unknown>, req: NextRequest): Promise<unknown> {
   const baseUrl = req.nextUrl.origin
@@ -744,6 +782,27 @@ export async function POST(req: NextRequest) {
           await applyCommandToSnapshot(auth.spaceId!, beacon)
           await pushToAgent(beacon, req, auth.spaceId)
         } catch { /* the beacon must never break the bridge */ }
+      }
+    }
+
+    // DURABLE BUILD CONSOLE — mirror this batch into a Postgres ring keyed by
+    // spaceId, so the viewer's console fills even on Vercel serverless (where the
+    // in-memory agent SSE queue can't cross lambda instances). The viewer polls
+    // it when its own SSE is silent. Courtesy only — never blocks a build.
+    if (isSpaceScoped && commands.length > 0) {
+      const fresh = commands
+        .map(c => summarizeConsole(c as Record<string, unknown>))
+        .filter((f): f is { type: string; name: string; summary: string } => !!f)
+      if (fresh.length) {
+        try {
+          const slot = 'build:console:' + auth.spaceId
+          const prev = (await loadGameSlot(slot)) as { seq?: number; entries?: unknown[] } | undefined
+          let seq = prev?.seq ?? 0
+          const entries = Array.isArray(prev?.entries) ? prev.entries.slice() : []
+          const at = Date.now()
+          for (const f of fresh) entries.push({ ...f, seq: ++seq, t: at })
+          await saveGameSlot(slot, { seq, entries: entries.slice(-120) })
+        } catch { /* the console is a courtesy, never blocks a build */ }
       }
     }
 

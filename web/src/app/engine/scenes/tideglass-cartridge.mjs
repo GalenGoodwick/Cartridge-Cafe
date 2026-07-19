@@ -74,6 +74,147 @@ fn mod_tg_gcol(idx: i32) -> vec3f {
   if (idx == 2) { return vec3f(0.66, 0.48, 1.00); }   // violet
   return vec3f(1.00, 0.38, 0.48);                     // rose
 }
+// ═══ ONE-DAY-grade 3D sky + ocean for the shore (ported technique) ═══
+fn mod_tgo_suncol(el: f32) -> vec3f {
+  return mix(vec3f(1.30, 0.45, 0.16), vec3f(1.15, 1.05, 0.90), smoothstep(0.02, 0.55, el));
+}
+fn mod_tgo_sky(rd: vec3f, sd: vec3f, md: vec3f, t: f32, vault: f32) -> vec3f {
+  let el = sd.y;
+  let y = max(rd.y, 0.0);
+  let day = smoothstep(-0.10, 0.35, el);
+  let night = smoothstep(0.05, -0.18, el);
+  let zen = mix(vec3f(0.012, 0.018, 0.045), vec3f(0.15, 0.30, 0.58), day);
+  let horDay = mix(vec3f(1.00, 0.42, 0.16), vec3f(0.46, 0.58, 0.72), smoothstep(0.10, 0.55, el));
+  let hor = mix(vec3f(0.030, 0.032, 0.070), horDay, smoothstep(-0.16, 0.06, el));
+  var c = mix(hor, zen, pow(y, 0.6));
+  // the sun: wide bloom, tight halo, HDR core
+  let sdot = clamp(dot(rd, sd), 0.0, 1.0);
+  let sunUp = smoothstep(-0.14, 0.02, el);
+  c += mod_tgo_suncol(el) * pow(sdot, 5.0) * 0.34 * sunUp;
+  c += mod_tgo_suncol(el) * pow(sdot, 70.0) * 0.60 * sunUp;
+  c += vec3f(5.2, 3.6, 2.0) * smoothstep(0.99972, 0.99990, sdot) * sunUp;
+  // the vault-lamp moon of the finale night
+  let mdot = clamp(dot(rd, md), 0.0, 1.0);
+  let moonUp = night * smoothstep(-0.05, 0.10, md.y);
+  c += vec3f(0.45, 0.72, 0.80) * pow(mdot, 90.0) * 0.5 * moonUp;
+  c += vec3f(2.2, 3.0, 3.1) * smoothstep(0.99985, 0.99995, mdot) * moonUp;
+  // stars + a faint galaxy band
+  if (night > 0.02 && rd.y > 0.01) {
+    let sp = rd.xz / (rd.y + 0.55) * 26.0;
+    let cell = floor(sp);
+    let h = hash21(cell);
+    let tw = 0.55 + 0.45 * sin(t * (0.8 + h) + h * 50.0);
+    c += vec3f(0.72, 0.78, 0.95) * step(0.990, h) * smoothstep(0.30, 0.05, length(fract(sp) - 0.5)) * night * tw;
+    let band = pow(max(1.0 - abs(rd.x * 0.8 + rd.y * 0.5 - 0.15), 0.0), 3.5);
+    c += vec3f(0.07, 0.07, 0.12) * band * night * (0.5 + 0.3 * vnoise(sp * 0.5));
+  }
+  // aurora curtains once the vault has risen
+  if (vault > 0.01 && rd.y > 0.04) {
+    let ax = rd.x / (rd.y + 0.35);
+    let wave = sin(ax * 2.2 + t * 0.22) * 0.5 + sin(ax * 5.1 - t * 0.13) * 0.22;
+    let curt = exp(-pow((rd.y - 0.34 - wave * 0.10) * 4.5, 2.0));
+    let flick = 0.65 + 0.35 * vnoise(vec2f(ax * 3.0, t * 0.35));
+    c += vec3f(0.10, 0.85, 0.45) * curt * flick * vault * night * 0.35;
+    c += vec3f(0.35, 0.20, 0.75) * exp(-pow((rd.y - 0.52 - wave * 0.13) * 5.0, 2.0)) * flick * vault * night * 0.16;
+  }
+  // sparse dusk clouds, tinted by the hour
+  if (rd.y > 0.015 && night < 0.9) {
+    let cp = rd.xz / (rd.y + 0.14) * 1.4 + vec2f(t * 0.006, t * 0.002);
+    var cl = fbm(cp * 0.55, 4);
+    cl = smoothstep(0.46, 0.78, cl);
+    let cloudLit = mix(vec3f(0.06, 0.06, 0.10), mix(vec3f(1.15, 0.50, 0.28), vec3f(0.85, 0.85, 0.90), smoothstep(0.12, 0.5, el)), max(day, night * 0.12));
+    c = mix(c, cloudLit, cl * 0.7 * smoothstep(0.015, 0.10, rd.y) * (1.0 - night));
+  }
+  return c;
+}
+fn mod_tgo_ic() -> vec2f { return vec2f(9.5, 26.0); }   // the island's rock in sea space
+fn mod_tgo_oct(uv0: vec2f, choppy: f32) -> f32 {
+  let n = gnoise(uv0);
+  let uv = uv0 + vec2f(n, n);
+  var wv = 1.0 - abs(sin(uv));
+  let swv = abs(cos(uv));
+  wv = mix(wv, swv, wv);
+  return pow(1.0 - pow(wv.x * wv.y, 0.65), choppy);
+}
+fn mod_tgo_surge(pxz: vec2f, st: f32) -> f32 {
+  let dr = length(pxz - mod_tgo_ic());
+  return exp(-max(dr - 4.6, 0.0) * 0.4) * (sin(st * 1.3 - dr * 0.9) * 0.5 + 0.62) * 0.9;
+}
+fn mod_tgo_map3(p: vec3f, st: f32) -> f32 {
+  var freq = 0.16;
+  var amp = 0.62;
+  var choppy = 4.0;
+  var uv = p.xz;
+  uv.x = uv.x * 0.75;
+  var h = 0.0;
+  for (var i = 0; i < 3; i++) {
+    var d = mod_tgo_oct((uv + vec2f(st)) * freq, choppy);
+    d = d + mod_tgo_oct((uv - vec2f(st)) * freq, choppy);
+    h = h + d * amp;
+    uv = mat2x2f(1.6, 1.2, -1.2, 1.6) * uv;
+    freq = freq * 1.9;
+    amp = amp * 0.22;
+    choppy = mix(choppy, 1.0, 0.2);
+  }
+  return p.y - h - mod_tgo_surge(p.xz, st);
+}
+fn mod_tgo_map5(p: vec3f, st: f32) -> f32 {
+  var freq = 0.16;
+  var amp = 0.62;
+  var choppy = 4.0;
+  var uv = p.xz;
+  uv.x = uv.x * 0.75;
+  var h = 0.0;
+  for (var i = 0; i < 5; i++) {
+    var d = mod_tgo_oct((uv + vec2f(st)) * freq, choppy);
+    d = d + mod_tgo_oct((uv - vec2f(st)) * freq, choppy);
+    h = h + d * amp;
+    uv = mat2x2f(1.6, 1.2, -1.2, 1.6) * uv;
+    freq = freq * 1.9;
+    amp = amp * 0.22;
+    choppy = mix(choppy, 1.0, 0.2);
+  }
+  return p.y - h - mod_tgo_surge(p.xz, st);
+}
+fn mod_tgo_nrm(p: vec3f, eps: f32, st: f32) -> vec3f {
+  let hy = mod_tgo_map5(p, st);
+  let hx = mod_tgo_map5(p + vec3f(eps, 0.0, 0.0), st);
+  let hz = mod_tgo_map5(p + vec3f(0.0, 0.0, eps), st);
+  return normalize(vec3f(hx - hy, eps, hz - hy));
+}
+fn mod_tgo_spec(n: vec3f, l: vec3f, e: vec3f, s: f32) -> f32 {
+  let nrm = (s + 8.0) / (3.14159 * 8.0);
+  return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
+}
+fn mod_tgo_seacol(p: vec3f, n: vec3f, sd: vec3f, md: vec3f, eye: vec3f, dist: vec3f, t: f32, st: f32, vault: f32) -> vec3f {
+  let el = sd.y;
+  let day = smoothstep(-0.10, 0.35, el);
+  let night = smoothstep(0.05, -0.18, el);
+  var fres = clamp(1.0 - dot(n, -eye), 0.0, 1.0);
+  fres = pow(fres, 3.0) * 0.5;
+  let reflected = mod_tgo_sky(reflect(eye, n), sd, md, t, vault);
+  let base = mix(vec3f(0.004, 0.008, 0.016), vec3f(0.030, 0.050, 0.085), day);
+  let waterCol = vec3f(0.16, 0.21, 0.20) * (0.25 + 0.75 * day);
+  let refracted = base + pow(dot(n, sd) * 0.4 + 0.6, 80.0) * waterCol * 0.12 * day;
+  var col = mix(refracted, reflected, fres);
+  let atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
+  col = col + waterCol * (p.y - 0.6) * 0.18 * atten;
+  // sun glitter at dusk; at finale-night the vault-lamp takes the water
+  col = col + mod_tgo_suncol(el) * vec3f(2.4, 1.5, 0.8) * mod_tgo_spec(n, sd, eye, 90.0) * smoothstep(-0.08, 0.05, el);
+  col = col + vec3f(0.55, 1.05, 1.25) * mod_tgo_spec(n, md, eye, 140.0) * night * smoothstep(0.0, 0.15, md.y) * 1.7;
+  // crest foam
+  let foamN = vnoise(p.xz * 2.2 + vec2f(t * 0.5, -t * 0.35));
+  let crest = smoothstep(1.00, 1.50, p.y) * smoothstep(0.42, 0.85, foamN);
+  col = mix(col, vec3f(0.90, 0.82, 0.72) * (0.25 + 0.75 * day), crest * atten * 0.4);
+  // surf ring around the island rock
+  let drf = length(p.xz - mod_tgo_ic()) - 5.0;
+  let ph = sin(st * 1.3 - (drf + 5.0) * 0.9) * 0.5 + 0.5;
+  var rockFoam = smoothstep(3.0, 0.2, drf) * (0.35 + 0.65 * ph);
+  rockFoam = rockFoam * (0.45 + 0.55 * vnoise(p.xz * 2.6 + vec2f(st * 0.8, -st * 0.55)));
+  col = mix(col, vec3f(0.90, 0.88, 0.84) * (0.3 + 0.7 * day + 0.25 * night), clamp(rockFoam, 0.0, 1.0) * 0.8);
+  return col;
+}
+
 // ── dusk→night sky, shared by shore + lens ──
 fn mod_tg_sky(p: vec2f, t: f32, night: f32) -> vec3f {
   let h = clamp(-p.y * 0.5 + 0.5, 0.0, 1.0);          // 0 horizon → 1 zenith
@@ -106,7 +247,7 @@ fn mod_tg_sea(p: vec2f, t: f32, night: f32) -> vec3f {
   let cell = floor(vec2f(p.x * 90.0, depth * 160.0 - t * 2.2));
   let gh = hash21(cell);
   let path = exp(-gx * gx * mix(22.0, 26.0, night)) * smoothstep(0.85, 0.25, depth);
-  let glit = step(0.976, gh) * path * (0.3 + 0.7 * sin(t * 3.0 + gh * 50.0));
+  let glit = step(0.976, gh) * path * max(0.3 + 0.7 * sin(t * 3.0 + gh * 50.0), 0.0);
   c += mix(vec3f(1.3, 0.65, 0.25), vec3f(0.45, 0.85, 1.15), night) * glit * 0.7;
   return c;
 }
@@ -142,14 +283,41 @@ const VIEWS = /* wgsl */`
 fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let night = uni(23);
   let vault = uni(26);
-  var c: vec3f;
-  let horizon = 0.17;                 // uv.y of the sea line
-  if (p.y < horizon) { c = mod_tg_sky(vec2f(p.x, (p.y - horizon) * 1.15), t, night); }
-  else { c = mod_tg_sea(p, t, night); }
-  // dusk sun ember / night moon-lamp
-  let sunP = vec2f(mix(0.22, -0.60, night), horizon - mix(0.05, 0.62, night));
-  let sd = length((p - sunP) * vec2f(1.0, 1.35));
-  c += mix(vec3f(1.6, 0.55, 0.15), vec3f(0.5, 0.62, 0.9), night) * exp(-sd * mix(9.0, 14.0, night)) * 1.6;
+  let horizon = 0.17;                 // uv.y of the sea line (matches rd.y = 0)
+  // ── a real camera over a real sea ──
+  let pv = vec2f(p.x, -p.y);
+  let st = 1.0 + t * 0.55;
+  let ro = vec3f(0.0, 3.2 + sin(t * 0.4) * 0.05, 0.0);
+  let rd = normalize(vec3f(pv.x, pv.y * 0.72 + 0.122, 1.75));
+  let sel = mix(0.055, -0.22, night);
+  let saz = 1.446;                    // sun hangs left of the island
+  let sunv = normalize(vec3f(cos(saz) * cos(sel), sin(sel), sin(saz) * cos(sel)));
+  let mel = mix(-0.25, 0.50, night);
+  let maz = 1.917;                    // the vault-lamp rises where the vault breaches
+  let mdv = normalize(vec3f(cos(maz) * cos(mel), sin(mel), sin(maz) * cos(mel)));
+  var c = mod_tgo_sky(rd, sunv, mdv, t, vault);
+  // ── the ocean: bisection-marched heightfield, analytic normals ──
+  if (rd.y < -0.003) {
+    var tm = 0.0;
+    var tx = 1000.0;
+    var hx = mod_tgo_map3(ro + rd * tx, st);
+    if (hx < 0.0) {
+      var hm = mod_tgo_map3(ro, st);
+      var tmid = 0.0;
+      for (var i = 0; i < 8; i++) {
+        tmid = mix(tm, tx, hm / (hm - hx));
+        let pm = ro + rd * tmid;
+        let hmid = mod_tgo_map3(pm, st);
+        if (hmid < 0.0) { tx = tmid; hx = hmid; } else { tm = tmid; hm = hmid; }
+      }
+      let pt = ro + rd * tmid;
+      let dist = pt - ro;
+      let eps = max(dot(dist, dist) * 0.0002, 0.002);
+      let n = mod_tgo_nrm(pt, eps, st);
+      let seaCol = mod_tgo_seacol(pt, n, sunv, mdv, rd, dist, t, st, vault);
+      c = mix(c, seaCol, pow(1.0 - smoothstep(-0.02, 0.0, rd.y), 0.2));
+    }
+  }
   // ── THE RISEN VAULT (finale): a glass dome breaching the sea ──
   if (vault > 0.001) {
     let vy = horizon + 0.02 - vault * 0.16;         // rises out of the water
@@ -163,13 +331,9 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
       vc *= 1.0 - 0.25 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));
       c = mix(c, vc * (0.4 + vault), vault * smoothstep(0.02, -0.04, dome));
     }
-    // its light on the water
+    // near halo where it breaches (the sea itself carries its glitter via the lamp)
     let lx = p.x + 0.15;
-    c += vec3f(0.35, 0.75, 0.95) * exp(-lx * lx * 10.0) * smoothstep(horizon, horizon + 0.5, p.y) * vault * 0.35;
-    // aurora above
-    let au = sin(p.x * 3.0 + t * 0.25) * 0.18 - 0.42;
-    let ad = abs(p.y - au) * 4.0;
-    c += vec3f(0.15, 0.9, 0.55) * exp(-ad * ad) * vault * night * (0.18 + 0.10 * sin(p.x * 7.0 - t * 0.7));
+    c += vec3f(0.30, 0.70, 0.90) * exp(-lx * lx * 22.0) * smoothstep(horizon, horizon + 0.22, p.y) * smoothstep(horizon + 0.45, horizon + 0.1, p.y) * vault * 0.25;
   }
   // ── the island: a coastal skyline silhouette, right side ──
   let ix = clamp((p.x - 0.42) / 0.70, 0.0, 1.0);
@@ -180,8 +344,13 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let towerTop = horizon - 0.30;
   let towerD = sdBox(p - vec2f(towerX, (towerTop + horizon - 0.09) * 0.5), vec2f(0.022, (horizon - 0.09 - towerTop) * 0.5));
   let domeD = length((p - vec2f(towerX, towerTop)) * vec2f(1.0, 1.15)) - 0.038;
-  let onIsland = step(0.44, p.x) * step(skyline, p.y) * step(p.y, horizon + 0.045);
+  let onIsland = step(0.44, p.x) * step(skyline, p.y) * step(p.y, horizon + 0.015);
   let isl = min(min(towerD, domeD), mix(1.0, -0.01, onIsland));
+  // dark wobbling base-reflection where the rock meets the water
+  if (p.x > 0.44 && p.y > horizon + 0.012 && p.y < horizon + 0.14) {
+    let wob2 = 0.6 + 0.4 * sin(p.y * 70.0 + p.x * 8.0 + t * 1.1);
+    c = mix(c, vec3f(0.020, 0.018, 0.026), smoothstep(horizon + 0.14, horizon + 0.02, p.y) * 0.75 * wob2 * smoothstep(0.44, 0.60, p.x));
+  }
   if (isl < 0.0) {
     var ic = mod_tg_rock(p * 3.0, vec3f(0.055, 0.048, 0.055)) * (0.9 - night * 0.35);
     // dusk rim along the skyline + the sunward (left) flank
@@ -252,7 +421,7 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
         let td = sdBox(tickP, vec2f(0.017, 0.013));
         let carve = smoothstep(0.008, -0.004, td);
         sc2 = mix(sc2, vec3f(0.045, 0.05, 0.05), carve * 0.85);
-        sc2 += vec3f(0.20, 0.75, 0.65) * carve * (0.20 + 0.12 * sin(t * 0.9 + f32(k)));
+        sc2 += vec3f(0.20, 0.75, 0.65) * carve * (0.22 + 0.12 * max(sin(t * 0.9 + f32(k)), -0.9));
       }
     }
     // top glyph row: the four tide glyphs, a key
@@ -290,26 +459,40 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
     // opening: an iris — the door's inner disc pulls back and darkens
     let irisR = R * (1.0 - open * 0.94);
     let ird = length(dp) - irisR;
+    let rr = length(dp);
     if (ird > 0.0) {
-      // the revealed passage
-      var pc = vec3f(0.012, 0.014, 0.018);
-      pc += vec3f(1.0, 0.62, 0.25) * exp(-dot(dp, dp) * 3.0) * open * 0.55;   // warm hall light
-      let mote = hash21(floor(dp * 80.0 + vec2f(0.0, t * 3.0)));
-      pc += vec3f(1.2, 0.8, 0.4) * step(0.985, mote) * open * 0.4;
+      // the revealed passage — a warm throat receding into the rock
+      var pc = vec3f(0.008, 0.009, 0.013);
+      let deep = pow(clamp(1.0 - rr / R, 0.0, 1.0), 1.7);
+      pc += vec3f(0.55, 0.30, 0.11) * deep * open;
+      pc *= 0.72 + 0.28 * sin(rr * 34.0 - t * 0.5);              // depth rings
+      pc += vec3f(1.1, 0.62, 0.22) * exp(-dot(dp, dp) * 9.0) * open * 0.8;  // the far light
+      let mote = hash21(floor(dp * 150.0 + vec2f(0.0, t * 2.0)));
+      pc += vec3f(1.1, 0.75, 0.35) * step(0.9935, mote) * open * deep * 0.35;
+      // shadowed lip where the iris withdrew
+      pc *= smoothstep(0.0, 0.05, ird);
       c = mix(c, pc, smoothstep(0.01, -0.01, dd));
     } else {
-      // brass: rings + patina
-      var bc = mix(vec3f(0.38, 0.26, 0.12), vec3f(0.16, 0.22, 0.19), fbm(dp * 7.0 + vec2f(3.0), 3) * 0.8);
-      let rr = length(dp);
-      bc *= 0.85 + 0.28 * sin(rr * 60.0);
-      bc *= 0.8 + 0.4 * smoothstep(0.0, 0.4, rr);
-      // glyph ring engraving
+      // deep bronze: brushed rings, patina patches, one key light
       let ang = atan2(dp.y, dp.x);
-      bc *= 1.0 - 0.18 * step(0.46, abs(fract(ang * 3.8197) - 0.5)) * step(abs(rr - 0.50), 0.035);
-      // spokes
-      bc *= 1.0 - 0.22 * smoothstep(0.02, 0.0, abs(fract(ang * 0.6366 + 0.5) - 0.5) * rr * 3.0) * step(0.18, rr);
-      // rim light from above-left
-      bc += vec3f(1.0, 0.62, 0.3) * smoothstep(0.02, -0.03, abs(dd + 0.03)) * clamp(-dp.y - dp.x + 0.3, 0.0, 1.0) * 0.35;
+      var bc = mix(vec3f(0.225, 0.140, 0.055), vec3f(0.085, 0.110, 0.095),
+                   smoothstep(0.38, 0.78, fbm(dp * 6.0 + vec2f(3.0), 3)));
+      bc *= 0.72 + 0.48 * fbm(vec2f(ang * 6.0, rr * 22.0), 2);   // brushed metal
+      bc *= 1.0 - 0.38 * smoothstep(0.32, 0.5, abs(fract(rr * 9.0) - 0.5)); // ring grooves
+      // engraved glyph ring
+      bc *= 1.0 - 0.30 * step(0.46, abs(fract(ang * 3.8197) - 0.5)) * step(abs(rr - 0.485), 0.030);
+      // eight spokes
+      bc *= 1.0 - 0.26 * smoothstep(0.035, 0.0, abs(fract(ang * 1.2732 + 0.5) - 0.5) * rr) * step(0.17, rr);
+      // key light upper-left, ambient falls off to the rim
+      bc *= 0.42 + 0.85 * clamp(0.55 - dp.x * 0.8 - dp.y * 0.8, 0.0, 1.2);
+      // center medallion: the vault star, waiting
+      if (rr < 0.135) {
+        bc = mix(vec3f(0.15, 0.092, 0.038), vec3f(0.26, 0.165, 0.07), clamp(1.0 - rr * 9.0, 0.0, 1.0));
+        bc += vec3f(0.85, 0.60, 0.28) * mod_tg_glyph(2, dp / 0.095) * 0.40;
+        bc *= 0.85 + 0.3 * clamp(-dp.y * 4.0, 0.0, 1.0);
+      }
+      // rim bevel light
+      bc += vec3f(1.0, 0.62, 0.3) * smoothstep(0.02, -0.03, abs(dd + 0.03)) * clamp(-dp.y - dp.x + 0.3, 0.0, 1.0) * 0.30;
       c = mix(c, bc, smoothstep(0.01, -0.01, dd));
     }
   }
@@ -348,10 +531,10 @@ fn mod_tg_hall(p: vec2f, px: vec2f, t: f32) -> vec3f {
   }
   c *= 0.45 + 0.4 * exp(-dot(p, p) * 0.7);
   // ── oculus shaft ──
-  let shaft = exp(-p.x * p.x * mix(14.0, 5.0, lit));
-  c += vec3f(0.9, 0.75, 0.5) * shaft * smoothstep(1.0, -1.0, p.y) * (0.10 + lit * 0.75);
-  let mcell = hash21(floor(vec2f(p.x * 70.0, p.y * 40.0 - t * 1.6)));
-  c += vec3f(1.1, 0.95, 0.7) * step(0.988, mcell) * shaft * (0.08 + lit * 0.5);
+  let shaft = exp(-p.x * p.x * mix(14.0, 6.0, lit));
+  c += vec3f(0.9, 0.75, 0.5) * shaft * smoothstep(1.0, -1.0, p.y) * (0.09 + lit * 0.42);
+  let mcell = hash21(floor(vec2f(p.x * 160.0, p.y * 95.0 - t * 2.4)));
+  c += vec3f(1.1, 0.95, 0.7) * step(0.9945, mcell) * shaft * (0.05 + lit * 0.28);
   // ── star-glyph mural, high center — ignites when the organ is solved ──
   let mg = (p - vec2f(0.0, -0.72)) / 0.11;
   if (abs(mg.x) < 1.4 && abs(mg.y) < 1.4) {
@@ -389,14 +572,10 @@ fn mod_tg_hall(p: vec2f, px: vec2f, t: f32) -> vec3f {
         gc += vec3f(0.5, 0.45, 0.3) * smoothstep(0.06, 0.0, abs(tickY - 0.5)) * 0.14;
         kc = mix(kc, gc, smoothstep(0.004, -0.004, gw));
       }
-      // lever plate at the base
-      let lp = sdRoundedBox(q - vec2f(0.0, 0.52), vec2f(0.045, 0.035), 0.015);
-      if (lp < 0.0) {
-        kc = vec3f(0.28, 0.20, 0.10) * (0.9 + 0.3 * sin(t * 3.0 + f32(k)));
-        let mm = vec2f(uni(27), uni(28));
-        let hd = length(mm - vec2f((cx * 0.5 + 0.5) * 512.0, ((0.14 + 0.52) * 0.5 + 0.5) * 512.0));
-        kc += vec3f(1.0, 0.85, 0.45) * smoothstep(50.0, 15.0, hd) * 0.6;
-      }
+      // hover: the pipe knows the hand is near
+      let mm = vec2f(uni(27), uni(28));
+      let hd = abs(mm.x - (cx * 0.5 + 0.5) * 512.0);
+      kc += vec3f(0.9, 0.75, 0.4) * smoothstep(0.014, 0.0, abs(bodyD + 0.01)) * smoothstep(45.0, 12.0, hd) * 0.5;
       c = mix(c, kc, smoothstep(0.006, -0.006, bodyD));
       // floor reflection
       let fy = 0.62 + (0.62 - p.y) * 0.85;
@@ -413,8 +592,11 @@ fn mod_tg_hall(p: vec2f, px: vec2f, t: f32) -> vec3f {
 }
 
 fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
-  // open night — the observatory crown
-  var c = mod_tg_sky(vec2f(p.x, p.y - 0.2), t, 1.0);
+  // open night — the observatory crown, under the same physical sky as the shore
+  let lrd = normalize(vec3f(p.x, -p.y * 0.85 + 0.30, 1.45));
+  let lsd = normalize(vec3f(0.06, -0.30, 0.99));            // the sunk sun — deep night
+  let lmd = normalize(vec3f(-0.4, -0.5, 0.8));              // no moon before the finale
+  var c = mod_tgo_sky(lrd, lsd, lmd, t, uni(17));
   // ── four constellations, each tagged with a glyph ──
   // az from vertical: -0.90, -0.35, 0.25, 0.80 · glyphs 1,3,2,0 (answer: az 0.25 = glyph 2)
   for (var k = 0; k < 4; k++) {
@@ -452,11 +634,15 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let along = dot(lq, dirv);
   let across = abs(dot(lq, vec2f(-dirv.y, dirv.x)));
   if (along > 0.0) {
-    let width = 0.015 + along * 0.075;
-    let beam = exp(-pow(across / width, 2.0)) * exp(-along * 0.7);
+    let width = 0.012 + along * 0.055;
+    let beam = exp(-pow(across / width, 2.0)) * exp(-along * 0.55);
     let hold = uni(16);
-    c += mix(vec3f(0.8, 0.75, 0.55), vec3f(0.75, 0.6, 1.2), hold) * beam * (0.45 + hold * 1.5);
+    c += mix(vec3f(1.0, 0.82, 0.45), vec3f(0.8, 0.62, 1.3), hold) * beam * (0.5 + hold * 1.5);
   }
+  // mount pillar (behind the glass)
+  let mp = sdBox(p - vec2f(0.0, 1.06), vec2f(0.045, 0.20));
+  c = mix(c, vec3f(0.045, 0.040, 0.045), smoothstep(0.01, -0.01, mp));
+  c += vec3f(0.5, 0.35, 0.15) * smoothstep(0.012, 0.0, abs(mp)) * 0.4;
   // lens body
   let ld = length(lq) - 0.17;
   if (ld < 0.06) {
@@ -476,9 +662,6 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let sweep = step(pr.y / 6.28318 + 0.5, hold);
     c += vec3f(0.8, 0.7, 1.3) * smoothstep(0.05, 0.0, abs(pr.x - 1.0)) * sweep * 1.4;
   }
-  // mount pillar
-  let mp = sdBox(p - vec2f(0.0, 1.02), vec2f(0.05, 0.18));
-  c = mix(c, vec3f(0.05, 0.045, 0.05), smoothstep(0.01, -0.01, mp));
   return c;
 }
 
@@ -538,6 +721,13 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
   }
   // finale white bloom breath
   c += vec3f(1.0, 0.95, 0.85) * fin * (1.0 - fin) * 1.2;
+  // ── the island's one grade: amber highlights, teal-indigo shadows ──
+  c = max(c, vec3f(0.0));
+  let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  c = mix(vec3f(lum), c, 1.09);                                       // painterly saturation
+  c += vec3f(0.030, 0.016, 0.0) * smoothstep(0.30, 1.30, lum);        // gold in the light
+  c += vec3f(0.0, 0.010, 0.020) * (1.0 - smoothstep(0.0, 0.30, lum)); // sea-glass in the dark
+  c *= 1.0 - 0.16 * dot(uv * 0.72, uv * 0.72);                        // breath of corner shadow
   // gentle grain
   c += (hash21(floor(px * 1.7)) - 0.5) * 0.012;
   return vec4f(max(c, vec3f(0.0)), 1.0);

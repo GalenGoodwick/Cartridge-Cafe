@@ -406,6 +406,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const frameFingerprintRef = useRef('')
   // SSE liveness: last time the agent stream said anything (pings count)
   const lastSSEMsgRef = useRef(Date.now())
+  // last time a real BUILD COMMAND arrived over SSE (pings/beacons don't count) —
+  // when this goes stale but a build is happening, the durable console poll owns
+  // the terminal (prod: the in-memory SSE queue can't cross serverless instances)
+  const lastSSECmdRef = useRef(Date.now())
+  const lastConsoleSeqRef = useRef(0)
   const lastParticleRef = useRef(0)
   const rendererRef = useRef<FieldRenderer | null>(null)
   const pendingAtlasRef = useRef<Uint32Array | null>(null)   // door bubble-face atlas, re-applied on renderer (re)init
@@ -3404,6 +3409,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           const cmd = data.command
           if (!cmd) return
+          lastSSECmdRef.current = Date.now()   // SSE is live-relaying commands → it owns the console
 
           const sim = simulationRef.current
           const renderer = rendererRef.current
@@ -4984,6 +4990,56 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     return () => clearInterval(interval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceId, isOwner])
+
+  // DURABLE BUILD CONSOLE — on prod (Vercel serverless) the in-memory agent SSE
+  // can't relay build commands across lambda instances, so the console stays
+  // empty while an AI builds. When the SSE is silent, poll the durable ring the
+  // bridge writes (build:console:<spaceId>) and merge new lines into the same
+  // terminal. On localhost the SSE delivers commands, so this stays idle (no dupes).
+  useEffect(() => {
+    if (!spaceId || playScene) return
+    let stopped = false
+    let empties = 0
+    let timer: ReturnType<typeof setTimeout>
+    const schedule = () => { timer = setTimeout(tick, 3000) }
+    const tick = async () => {
+      if (stopped) return
+      // SSE is live-relaying (localhost / same instance) → it owns the console
+      if (Date.now() - lastSSECmdRef.current < 8000) { empties = 0; schedule(); return }
+      try {
+        const d = await fetch(`/api/engine/save?slot=${encodeURIComponent('build:console:' + spaceId)}`)
+          .then(r => r.ok ? r.json() : null).catch(() => null)
+        const log = d?.data as { entries?: Array<{ seq: number; t: number; type: string; name: string; summary: string }> } | undefined
+        const fresh = (log?.entries || []).filter(e => e.seq > lastConsoleSeqRef.current)
+        if (fresh.length) {
+          lastConsoleSeqRef.current = fresh[fresh.length - 1].seq
+          setTerminalLog(prev => [...prev, ...fresh.map(e => ({
+            type: e.type,
+            fieldName: e.name || '?',
+            fieldColor: [0.5, 0.5, 0.5, 1] as [number, number, number, number],
+            summary: e.summary,
+            author: '',
+            timestamp: e.t,
+          }))].slice(-100))
+          empties = 0
+        } else { empties++ }
+      } catch { /* the console poll is best-effort */ }
+      if (empties > 12) return   // ~36s of no new lines → build done/idle, stop polling
+      schedule()
+    }
+    schedule()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [spaceId, playScene])
+
+  // watching a build: the first progress line auto-opens the terminal so the
+  // player actually SEES it, then we never fight their toggle again.
+  const terminalAutoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (terminalLog.length > 0 && !terminalAutoOpenedRef.current) {
+      terminalAutoOpenedRef.current = true
+      setTerminalOpen(true)
+    }
+  }, [terminalLog.length])
 
   // LIVE ADOPT — the fix for editing a world while someone stands in it.
   // A bridge write (an AI editing over HTTP) bumps the world's authored revision
