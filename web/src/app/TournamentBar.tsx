@@ -231,10 +231,12 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const chatBase = (w: string) => w.split(' ⑂ ')[0].trim().toUpperCase()
   const chatSlot = (w: string) => 'world-chat:' + chatBase(w)
   // a message carries the vantage it was spoken from — which branch (or main) the
-  // speaker was viewing — so one shared thread still reads clearly.
-  const viewingLabel = (w: string) => {
+  // speaker was viewing, and whether they were IN THE VOTE (seated in a cell) —
+  // so one shared thread still reads clearly.
+  const viewingLabel = (w: string, voting: boolean) => {
     const i = w.indexOf(' ⑂ ')
-    return i < 0 ? 'main' : '⑂ ' + (w.slice(i + 3).split(' · ')[0] || 'branch')
+    const where = i < 0 ? 'main' : '⑂ ' + (w.slice(i + 3).split(' · ')[0] || 'branch')
+    return voting ? '⚔ voting · ' + where : where
   }
   const loadChat = useCallback(async (w: string) => {
     try {
@@ -531,7 +533,8 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(chatSlot(w))).then(r => r.json())
       cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
     } catch { /* start fresh */ }
-    const next = [...cur, { who, text: t.slice(0, 280), at: Date.now(), from: viewingLabel(w) }].slice(-200)
+    const inVote = !!(who && doc && myCellIdx(doc) >= 0)   // seated in a cell = in the reckoning
+    const next = [...cur, { who, text: t.slice(0, 280), at: Date.now(), from: viewingLabel(w, inVote) }].slice(-200)
     setChat(prev => ({ ...prev, [chatBase(w)]: next }))
     setDraft('')
     fetch('/api/engine/save', {
