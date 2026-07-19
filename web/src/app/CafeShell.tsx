@@ -67,6 +67,7 @@ export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: st
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [mute, setMute] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  const [goneScene, setGoneScene] = useState<string | null>(null)   // deep-linked a deleted scene → soft landing
   // BREW YOUR ICON — the local player's dancing avatar. fx = look (0 comet · 1
   // ring · 2 eyes · 3 spark · 4 cup · 5 the un-brewed DEFAULT: a big black
   // cursor with a white pointer — not brewable, only ever the starting state),
@@ -638,6 +639,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   brewStepRef.current = brewStep
 
   const go = (name: string, push = true) => {
+    setGoneScene(null)   // navigating away from a dead-scene landing
     // entering anywhere FROM a hub leaves a crumb — back climbs the trail
     if (!skipCrumbRef.current && portalsRef.current.length > 0 && name !== sceneRef.current) {
       crumbRef.current.push(sceneRef.current)
@@ -815,6 +817,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // a deep link to a deleted scene renders black — the engine can't find it. Catch
+  // that and show a soft "gone" landing instead (never fires for a real world).
+  useEffect(() => {
+    const onGone = (e: Event) => setGoneScene(((e as CustomEvent).detail as string) || 'this world')
+    window.addEventListener('cafe:scene-gone', onGone)
+    return () => window.removeEventListener('cafe:scene-gone', onGone)
   }, [])
 
   // one table per player: the newest tab claims the seat; any other tab is
@@ -1325,6 +1335,22 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
 
       {/* one table per player — this tab lost the seat */}
+      {/* deep-linked a deleted scene → soft landing instead of a black screen */}
+      {goneScene && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-void/90 backdrop-blur-sm">
+          <div className="border border-brass/40 rounded-xl px-8 py-7 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)] max-w-sm">
+            <div className="cafe-sign text-2xl mb-1">this world has left the shelf</div>
+            <div className="font-mono text-[12px] tracking-[0.15em] text-crema/50 mb-5 lowercase">
+              &ldquo;{goneScene.toLowerCase()}&rdquo; isn&rsquo;t here anymore — but the cafe is full of others.
+            </div>
+            <button onClick={() => { setGoneScene(null); go('CAFE') }}
+              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[13px] tracking-[0.15em] text-void transition-colors">
+              ⟵ BACK TO THE CAFE
+            </button>
+          </div>
+        </div>
+      )}
+
       {blocked && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-void/85 backdrop-blur-sm">
           <div className="border border-brass/40 rounded-xl px-8 py-6 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]">
@@ -1416,7 +1442,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                   setBellOpen(o => !o)
                   if (!bellOpen && bell.unread > 0) fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ readAll: true }) }).then(() => setBell(b => ({ ...b, unread: 0 }))).catch(() => {})
                 }} className={`${hubBtn} ${bell.unread > 0 ? 'border-flame/60 text-glow' : 'opacity-60 hover:opacity-100'}`}>
-                  ◔ {bell.unread > 0 ? bell.unread : ''}
+                  🔔{bell.unread > 0 ? ` ${bell.unread}` : ''}
                 </button>
                 {bellOpen && (
                   <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-2 z-[70]">
