@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { handleOf } from '@/lib/notify'
 import SpaceStage from './SpaceStage'
 
 interface SpacePageProps {
@@ -43,7 +44,7 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
       name: true,
       ownerId: true,
       isPublic: true,
-      owner: { select: { id: true, name: true } },
+      owner: { select: { id: true, name: true, email: true } },
     },
   })
 
@@ -72,6 +73,7 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
         name={space.name}
         ownerName={space.owner?.name ?? null}
         ownerId={space.owner?.id ?? null}
+        ownerHandle={space.owner?.email ? handleOf(space.owner.email) : null}
       />
     </>
   )

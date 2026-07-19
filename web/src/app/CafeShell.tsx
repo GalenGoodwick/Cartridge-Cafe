@@ -698,10 +698,20 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         return
       }
       if (name === 'players:') {
-        // PLAYER WORLDS — an in-scene filter (like MY WORLDS), not a departure.
-        // The CAFE hook re-polls to the players-only shelf off this flag.
-        ;(window as unknown as { __cafePlayers?: boolean }).__cafePlayers = true
+        // PLAYER WORLDS — an in-scene filter (like MY WORLDS): the makers directory.
+        ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = true
         setPlayers(true)
+        return
+      }
+      if (name === 'house:') {
+        // THE HOUSE — the unclaimed/guest-made worlds, in-scene sub-filter
+        ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = 'house'
+        setPlayers(true)
+        return
+      }
+      if (name.startsWith('maker:')) {
+        // a maker bubble opens that player's space (their profile shelf)
+        window.location.href = '/u/' + name.slice(6)
         return
       }
       // king-of-the-hill: the door says "ORCHID", but entering it loads whoever
@@ -1064,27 +1074,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* THE universal back — the same ◂ strip the engine draws inside worlds,
-          extended to every shell surface with an "up" to go to. One glyph, one
-          place (top-left, under the sign), one style, everywhere: group →
-          SUB-MAINS, SUB-MAIN hub → CAFE, MY WORLDS → CAFE. Only the CAFE root
-          has no back. Replaces the per-surface ⟵ buttons that used to live in
-          the top-right clusters. */}
-      {!modalUp && !voting && (() => {
-        const up = scene === 'SUB-MAIN'
-          ? (subMode?.mode === 'group'
-              ? { label: 'SUB-MAINS', leave: () => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null } }
-              : { label: 'CAFE', leave: () => go('CAFE') })
-          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: () => commons() }
-          : scene === 'CAFE' && players ? { label: 'CAFE', leave: () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) } } : null)
-        if (!up) return null
-        return (
-          <div className="fixed left-6 top-24 z-50">
-            <button onClick={up.leave} title="back"
-              className="px-2.5 py-1 rounded-lg font-mono text-[13px] text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
-          </div>
-        )
-      })()}
+      {/* the back glyph now rides ATTACHED to the title header (the sign), the
+          same top-left ◂+header strip a world draws — see the sign block below.
+          No detached lone arrow. */}
 
       {/* the group layer's controls — same PLACE + STYLE as the cafe dock's
           (top-right, rounded), so main→sub-main isn't a jarring re-layout. The
@@ -1108,10 +1100,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {who && (subMode.owner || (subMode.admins || []).includes(who.id)) && (
               <button onClick={() => setSubTools(o => !o)} className={hubBtn}>⚙ TOOLS</button>
             )}
-            {subMode.slug && (
-              <button onClick={() => setChatWorld({ channel: 'chat:sub:' + subMode.slug, title: (subMode.name || 'sub-main') + ' · chat', subtitle: 'check in on this sub-main' })}
-                className={hubBtn}>⌁ CHAT</button>
-            )}
+            {/* (the top-right ⌁ CHAT button is gone — the COMMONS button already
+                opens this sub-main's chat) */}
           </>) : (
             !subMode?.haveOwn && (
               <button onClick={foundSub} className={hubBtn}>⌂ FOUND YOURS</button>
@@ -1430,33 +1420,41 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
 
-      {/* the sign — the permanent chrome for BOTH hubs (cafe main + sub-main),
-          so the title sits top-left in the same place on each. */}
+      {/* top-left chrome. Root CAFE is the brand: cursive title + slogan, no
+          back (it's the top of the tree). Sub-mains & player pages drop the
+          title/slogan and wear the SAME ◂+name-pill strip a world draws — the
+          identical arrow box (stretches to the pill via items-stretch). */}
       {(scene === 'CAFE' || scene === 'SUB-MAIN') && !voting && (
         <>
-          <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
-            <div className="cafe-sign text-2xl">
-              cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
+          {scene === 'CAFE' && !mine && !players && (
+            <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
+              <div className="cafe-sign text-2xl">
+                cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
+              </div>
+              <div className="font-mono text-[12px] tracking-[0.18em] text-glow/50 mt-1">
+                Instant natural language to game world framework.
+              </div>
             </div>
-            <div className="font-mono text-[12px] tracking-[0.18em] text-glow/50 mt-1">
-              Instant natural language to game world framework.
-            </div>
-            {mine && (
-              <div className="font-mono text-[12px] tracking-[0.3em] text-brass uppercase mt-2">
-                {mine}&apos;s worlds
+          )}
+          {(scene === 'SUB-MAIN' || (scene === 'CAFE' && (mine || players))) && (() => {
+            const strip = scene === 'SUB-MAIN'
+              ? (subMode?.mode === 'group'
+                  ? { name: subMode.name || 'SUB-MAIN', sub: '⑂ sub-main', leave: () => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null } }
+                  : { name: 'SUB-MAINS', sub: 'group shelves', leave: () => go('CAFE') })
+              : mine
+                ? { name: `${mine}'s worlds`, sub: 'my worlds', leave: () => commons() }
+                : { name: 'player worlds', sub: 'the commons', leave: () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) } }
+            return (
+              <div className="fixed top-3 left-3 z-50 flex items-stretch gap-1.5">
+                <button onClick={strip.leave} title="back"
+                  className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
+                <div className="pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
+                  <div className="text-[13px] tracking-[0.2em] text-white/85">{strip.name.toUpperCase()}</div>
+                  <div className="text-[12px] tracking-[0.15em] mt-0.5 text-white/45">{strip.sub}</div>
+                </div>
               </div>
-            )}
-            {players && (
-              <div className="font-mono text-[12px] tracking-[0.3em] text-brass uppercase mt-2">
-                player worlds
-              </div>
-            )}
-            {scene === 'SUB-MAIN' && subMode?.mode === 'group' && subMode.name && (
-              <div className="font-mono text-[12px] tracking-[0.3em] text-brass uppercase mt-2">
-                ⑂ {subMode.name}
-              </div>
-            )}
-          </div>
+            )
+          })()}
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
             {/* signed-out gets the door said out loud — every AI prompt box

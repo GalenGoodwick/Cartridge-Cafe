@@ -12,7 +12,7 @@ import FollowButton from './FollowButton'
  *  delete / remix / call-a-vote flows. The dock's buttons dispatch window events
  *  (cafe:delete-world / cafe:remix-world / cafe:call-vote); this wrapper owns the
  *  modals + fetches. SpaceToolbar is gone — /space and /play render one chrome. */
-export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName, ownerId }: {
+export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
   spaceId: string
   spaceSlug: string
   engineOwner: boolean
@@ -21,6 +21,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   name: string
   ownerName: string | null
   ownerId?: string | null
+  ownerHandle?: string | null
 }) {
   const router = useRouter()
   const [dockBottom, setDockBottom] = useState(0)
@@ -136,7 +137,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   return (
     <>
       <ShareWorld slug={spaceSlug} name={name} />
-      <div className="fixed bottom-4 right-[112px] z-[60]"><FollowButton targetId={ownerId} isOwner={isOwner} /></div>
+      <div className="fixed bottom-4 right-[112px] z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}

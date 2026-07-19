@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureCommunityTables } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Your feed' }
@@ -18,8 +19,11 @@ async function loadFeed(): Promise<{ signedIn: boolean; items: Item[] }> {
   try {
     const me = await prisma.user.findUnique({ where: { email }, select: { id: true } })
     if (!me) return { signedIn: true, items: [] }
-    const follows = await prisma.follow.findMany({ where: { followerId: me.id }, select: { targetId: true } })
-    const targetIds = follows.map(f => f.targetId)
+    // the cafe's ONE follow store: CafeFollow (raw SQL, shared with the profile)
+    await ensureCommunityTables()
+    const follows = await prisma.$queryRaw<Array<{ followeeId: string }>>`
+      SELECT "followeeId" FROM "CafeFollow" WHERE "followerId" = ${me.id}`
+    const targetIds = follows.map(f => f.followeeId)
     if (targetIds.length === 0) return { signedIn: true, items: [] }
     const spaces = await prisma.playerSpace.findMany({
       where: { ownerId: { in: targetIds }, isPublic: true },

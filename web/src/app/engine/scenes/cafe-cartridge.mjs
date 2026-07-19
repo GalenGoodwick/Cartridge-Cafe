@@ -217,6 +217,25 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
           let od = length(q - op);
           g += hk * exp(-od * od * 300.0) * 1.6;
         }
+      } else if (bigBand == 4) {
+        // THE HOUSE — a warm little cottage with a lit window (unclaimed worlds)
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = vec3f(0.02, 0.02, 0.03);
+        // body: a square below, roof: a triangle above
+        let body = step(abs(q.x), 0.42) * step(-0.05, q.y) * step(q.y, 0.5);
+        let roof = step(abs(q.x) + (q.y + 0.05) * 0.95, 0.5) * step(q.y, -0.05) * step(-0.6, q.y);
+        let house = clamp(body + roof, 0.0, 1.0);
+        g = mix(g, vec3f(0.55, 0.3, 0.14) * (0.8 + 0.3 * cA), house);
+        // the lit window — a warm hearth glow
+        let win = step(abs(q.x - 0.0), 0.13) * step(0.08, q.y) * step(q.y, 0.34);
+        g += vec3f(1.0, 0.78, 0.35) * win * (0.9 + 0.2 * sin(t * 1.8));
+        g += vec3f(1.0, 0.7, 0.3) * exp(-dot(q - vec2f(0.0, 0.2), q - vec2f(0.0, 0.2)) * 8.0) * 0.25;
+      } else if (st >= 30 && st <= 34) {
+        // a MAKER bubble wearing the player's BREWED avatar (preset fx 0-4)
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = cA * 0.10 + vec3f(0.02);
+        g += cf_player(q * 2.4, vec2f(0.0, 1.0), t * 1.4, st - 30, cA * 1.5) * 1.6;
+        g += cA * exp(-dot(q, q) * 3.5) * 0.35;   // a soft aura in their hue
       } else if (st == 0) {
         // FABRIC — a lens wandering through stars
         var pp = q * 2.0;
@@ -319,6 +338,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       if (bigBand == 1) { rim = vec3f(1.5, 1.0, 0.3); rimBase = 0.45; }
       else if (bigBand == 2) { rim = vec3f(0.45, 0.75, 1.55); rimBase = 0.45; }
       else if (bigBand == 3) { rim = vec3f(0.4, 1.45, 0.65); rimBase = 0.45; }
+      else if (bigBand == 4) { rim = vec3f(1.4, 0.75, 0.35); rimBase = 0.45; }
       col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
     } else {
       // halo when hovered
@@ -482,19 +502,22 @@ try {
   const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
   // PLAYER WORLDS — a big front-door bubble opens a filter of just the player-made
   // worlds (the same scene, spaces only). window.__cafePlayers carries the flag.
-  const PL = (typeof window !== 'undefined' && window.__cafePlayers) ? 1 : 0
+  // PLAYER WORLDS filter: 0 off · 1 makers directory · 'house' the house shelf
+  const PLv = (typeof window !== 'undefined' && window.__cafePlayers) || 0
+  const PL = PLv ? 1 : 0
+  const HOUSE = PLv === 'house'
   // SUB-MAIN: the group layer. Every user can found ONE named sub-main —
   // a /group formation, not a world. The viewer shows only sub-mains (yours
   // at the heart); entering one morphs this same universe into the group's
   // shelf. window.__cafeSub carries the slug while inside a group.
   const SUB = !!wd.__submain
   const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
-  const mineKey = MF ? String(MF.ownerId || MF.who || '') : PL ? 'players' : (SUB ? 'sub:' + subKey : '')
+  const mineKey = MF ? String(MF.ownerId || MF.who || '') : PL ? (HOUSE ? 'house' : 'players') : (SUB ? 'sub:' + subKey : '')
   // every mode keeps its OWN persisted layout, so a joining player or a reload
   // adopts it AT REST instead of replaying the rim fly-in: main = the shared
   // universe, MY WORLDS = per-deed, SUB-MAIN = per-group (or the viewer roster).
   const layoutSlot = MF ? ('cafe:universe:mine:' + mineKey)
-    : PL ? 'cafe:universe:players'
+    : PL ? ('cafe:universe:' + (HOUSE ? 'house' : 'players'))
     : SUB ? ('cafe:universe:' + mineKey)
     : 'cafe:universe'
   // a filter/mode flip loads a DIFFERENT saved layout: re-poll now and clear the
@@ -616,14 +639,39 @@ try {
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
-        } else if (PL) {
-          // PLAYER WORLDS mode — only the player-made worlds, on their own shelf
+        } else if (HOUSE) {
+          // THE HOUSE — everything unassigned to a real maker: the canonical
+          // house/AI-made worlds, plus guest-made / unclaimed player spaces.
+          const attributed = (sp && sp.sceneMakers) || {}
+          for (const n of (sc.scenes || [])) {
+            if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('␂')) continue
+            if (n.includes(' ⑂ ')) continue   // branches belong to their author, not the house
+            if (attributed[n]) continue        // a canonical world assigned to a maker leaves the house
+            want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+          }
           for (const s of (sp.spaces || [])) {
-            if (s.blank || s.building) continue
-            if (s.isPublic === false) continue
+            if (s.blank || s.building || s.isPublic === false) continue
+            const o = s.owner
+            if (o && o.handle && !o.isGuest) continue   // a claimed world belongs to its maker, not the house
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
+        } else if (PL) {
+          // PLAYER WORLDS — a MAKERS directory: one bubble per player who has
+          // built worlds (opens their space/shelf), plus a HOUSE bubble gathering
+          // unclaimed/guest-made worlds.
+          // the makers directory comes straight from the browse makers list —
+          // one per player, carrying their BREWED ICON (fx preset + hue avatar).
+          const makerList = (sp && sp.makers) || []
+          for (const m of makerList) {
+            const disp = (m.name || m.handle).toUpperCase()
+            // fx 0-4 = a brewed preset avatar (rendered as the bubble face);
+            // otherwise a living emblem in the player's own hue.
+            const style = (typeof m.fx === 'number' && m.fx >= 0 && m.fx <= 4) ? (30 + m.fx) : 8
+            want[disp] = { launch: 'maker:' + m.handle, style, hue: m.hue != null ? m.hue : hueOf(m.handle) }
+          }
+          // THE HOUSE always stands — it holds the canonical AI-made worlds too
+          want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
         } else {
           for (const n of (sc.scenes || [])) {
             if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
@@ -733,7 +781,7 @@ try {
           // before the first icon pass lands, an un-styled bubble (style 8) shows
           // a spinner instead of flashing the default emblem
           const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
-          B.iconLoading = !B.cat && B.style >= 8 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black). The category glyphs draw from the shader, no atlas.
+          B.iconLoading = !B.cat && B.style >= 8 && B.style < 30 && !ready   // atlas not uploaded yet: unstyled bubbles wait. Category glyphs (cat) and maker avatars (30-34) draw from the shader — no atlas.
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -759,7 +807,8 @@ try {
         if ((MF || SUB || PL) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
           const emptyText = MF ? 'no worlds on your deed yet - brew yours'
-            : PL ? 'no player worlds yet — be the first to brew one'
+            : HOUSE ? 'the house is empty — no unclaimed worlds right now'
+            : PL ? 'no makers yet — sign up and brew the first world'
             : (subKey ? 'an empty shelf — members can pin worlds here' : 'no sub-mains yet — found yours')
           window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: emptyText, kind: 'hint' } }))
         }
@@ -774,11 +823,12 @@ try {
   if (U.wake > 0) {
     U.wake -= dt2
     const fr = Math.exp(-3.4 * dt2)
+    let maxV = 0   // track the fastest bubble this frame — the field isn't "settled" until everyone has nearly stopped
     // NEW-vs-VOTED banding — MAIN ONLY. MY WORLDS / SUB-MAIN have no votes, so
     // there every world just clusters at center (banded = false). On main the
     // voted worlds pack the middle; new arrivals are held in an outer ring one
     // BUFFER (90) beyond the voted cluster's edge, so the two groups read clearly.
-    const banded = !MF && !SUB
+    const banded = !MF && !SUB && !PL   // only MAIN bands (voted center vs new ring); every other view just clusters + settles
     let votedR = 40
     if (banded) for (const n of U.order) { const B = U.bubbles[n]; if (B && B.voted) votedR = Math.max(votedR, Math.hypot(B.x - 256, B.y - 256)) }
     const ringR = Math.max(votedR + 90, 170)
@@ -845,9 +895,16 @@ try {
       if (!B.anchored) {
         B.vx *= fr; B.vy *= fr
         B.x += B.vx * dt2; B.y += B.vy * dt2
+        const v = Math.abs(B.vx) + Math.abs(B.vy)
+        if (v > maxV) maxV = v
       }
     }
-    if (U.wake <= 0) {   // friction locks them in place — and the whole field is
+    // don't lock mid-flight: if anything is still moving, keep the sim awake so
+    // the field reaches rest (a big crowd like THE HOUSE needs time to pack in).
+    // Cap the reprieve so a pathological jitter can't run forever.
+    if (maxV > 3 && U.wake <= 0 && (U.settleGuard = (U.settleGuard || 0) + dt2) < 12) U.wake = 0.2
+    if (U.wake <= 0) {
+      U.settleGuard = 0   // friction locks them in place — and the whole field is
       // now the saved layout, so everything anchors: a later newborn moves alone.
       for (const n of U.order) { const B = U.bubbles[n]; if (B) { B.vx = 0; B.vy = 0; B.anchored = 1 } }
       // the settled arrangement becomes everyone's: publish it to THIS mode's
@@ -924,7 +981,10 @@ try {
         // scene, so the doors keep speaking
         // sub: and players: are IN-SCENE morphs — the universe keeps speaking;
         // only a real departure (loading another world) goes quiet
-        if (String(B.launch).slice(0, 4) !== 'sub:' && B.launch !== 'players:') U.launched = 1
+        // sub: · players: · house: are IN-SCENE morphs — the universe keeps
+        // speaking; only a real departure (loading a world/profile) goes quiet
+        const lm = String(B.launch)
+        if (lm.slice(0, 4) !== 'sub:' && lm !== 'players:' && lm !== 'house:') U.launched = 1
         window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
       }
     }

@@ -2,38 +2,40 @@
 
 import { useState, useEffect } from 'react'
 
-/** Follow a world's creator — you get their new worlds + edits in your feed.
- *  Hidden for your own worlds and while its own state is loading. Degrades
- *  quietly if the Follow table isn't migrated yet (the API returns defaults). */
-export default function FollowButton({ targetId, isOwner }: { targetId?: string | null; isOwner: boolean }) {
-  const [state, setState] = useState<{ following: boolean; followers: number; signedIn: boolean } | null>(null)
+/** Follow a world's creator — uses the cafe's ONE follow system (/api/follows,
+ *  handle-based, the same CafeFollow data + notifications as the maker profile).
+ *  Hidden on your own worlds and while its state is loading. */
+export default function FollowButton({ handle, isOwner }: { handle?: string | null; isOwner: boolean }) {
+  const [state, setState] = useState<{ following: boolean; followers: number } | null>(null)
+  const [signedIn, setSignedIn] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    if (!targetId || isOwner) return
+    if (!handle || isOwner) return
     let alive = true
-    fetch(`/api/follow?targetId=${encodeURIComponent(targetId)}`)
-      .then(r => r.json()).then(d => { if (alive) setState(d) }).catch(() => {})
+    fetch('/api/auth/session').then(r => r.json()).then(s => { if (alive) setSignedIn(!!s?.user) }).catch(() => {})
+    fetch('/api/follows?handle=' + encodeURIComponent(handle)).then(r => r.json())
+      .then(d => { if (alive) setState({ following: !!d.following, followers: d.followers || 0 }) }).catch(() => {})
     return () => { alive = false }
-  }, [targetId, isOwner])
+  }, [handle, isOwner])
 
-  if (!targetId || isOwner || !state) return null
+  if (!handle || isOwner || !state) return null
 
   const toggle = async () => {
     if (busy) return
-    if (!state.signedIn) { window.location.href = '/auth/signin'; return }
+    if (!signedIn) { window.location.href = '/auth/signin'; return }
     const next = !state.following
     setBusy(true)
-    setState(s => s ? { ...s, following: next, followers: Math.max(0, s.followers + (next ? 1 : -1)) } : s)
+    setState(s => s ? { following: next, followers: Math.max(0, s.followers + (next ? 1 : -1)) } : s)
     try {
-      const r = await fetch('/api/follow', {
+      const r = await fetch('/api/follows', {
         method: next ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId }),
+        body: JSON.stringify({ handle }),
       })
       if (!r.ok) throw new Error('failed')
     } catch {
-      setState(s => s ? { ...s, following: !next, followers: Math.max(0, s.followers + (next ? -1 : 1)) } : s)
+      setState(s => s ? { following: !next, followers: Math.max(0, s.followers + (next ? -1 : 1)) } : s)
     } finally { setBusy(false) }
   }
 
