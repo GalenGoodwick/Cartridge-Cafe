@@ -130,6 +130,7 @@ interface FieldEngineProps {
    *  the shell can seat the in-world VOTE button directly under it — beneath the
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
   onDockRect?: (bottom: number) => void
+  onBuilding?: (building: boolean) => void
 }
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
@@ -191,7 +192,7 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -645,6 +646,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // derives from THIS, hot-swapping to an old version flips can(ctx,'editLaw') &c.
   // to read-only automatically — no separate gating to thread.
   const [spaceVer, setSpaceVer] = useState<number | undefined>(versionView)
+  // a LIVE versionView prop (the space page's vote-preview) hot-swaps the world:
+  // candidates in THE RECKONING load as you focus them, LIVE returns you home
+  const verPropRef = useRef(versionView)
+  useEffect(() => {
+    if (verPropRef.current === versionView) return
+    verPropRef.current = versionView
+    if (spaceSlug) hotLoadSpaceVersionRef.current?.(versionView)
+  }, [versionView, spaceSlug])
+  const hotLoadSpaceVersionRef = useRef<((v: number | undefined) => Promise<void>) | null>(null)
 
   // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
   // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
@@ -1417,6 +1427,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
     } catch { /* leave where we are */ }
   }, [spaceSlug, handleLoadScene])
+  hotLoadSpaceVersionRef.current = hotLoadSpaceVersion
 
   // AUTO-LOAD — the eye's counterpart in the tab. Every bridge write bumps the
   // world's __bridge_rev; a tab's own 2s sync round-trips that number unchanged,
@@ -1640,6 +1651,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the cartridge without a page refresh — the ideal loop for iterating worlds.
   const [reloadTick, setReloadTick] = useState(0)
   const [worldLoading, setWorldLoading] = useState(false)   // true while an existing world's fields are being fetched/restored
+  // report the blank-and-building state upward (aiPulse ticks ~1/s) so the space
+  // chrome can hide affordances (SHARE) that make no sense on a world that isn't real yet
+  const lastBuildingRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!onBuilding) return
+    const sim = simulationRef.current
+    const blank = (sim?.fields?.size ?? 0) === 0
+    const b = blank && !!sim?.worldData?.creation_brief && !sim?.worldData?.brief_done
+    if (lastBuildingRef.current !== b) { lastBuildingRef.current = b; onBuilding(b) }
+  }, [aiPulse, onBuilding])
   useEffect(() => {
     if (!playScene || playLoadedRef.current === playScene) return
     const prevScene = playLoadedRef.current
@@ -6122,7 +6143,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[12px] leading-relaxed text-amber-100/80 text-center">
                     No builder has picked this up yet — <b>your world is saved</b>, and it&rsquo;ll build when one&rsquo;s free.
                     {(isOwner || !spaceId) && (
-                      <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>, or mint a <b>⚿ player key</b> (ACCOUNT) and hand it to any AI.</>
+                      <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>.</>
                     )}
                   </div>
                 )}
@@ -6139,6 +6160,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         : <AgentTerminalPanel entries={terminalLog} />}
                     </div>
                   </div>
+                )}
+                {/* a stuck or unwanted build can be cancelled here — deletes the
+                    world so it can't sit blank-and-building forever. Owner only. */}
+                {building && (isOwner || !spaceId) && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
+                    className="pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[12px] tracking-[0.15em] border border-red-400/40 text-red-300/80 hover:text-red-200 hover:bg-red-500/10 transition-colors">
+                    ✕ CANCEL BUILD
+                  </button>
                 )}
               </div>
             )

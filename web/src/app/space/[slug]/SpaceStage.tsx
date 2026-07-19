@@ -26,7 +26,22 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
 }) {
   const router = useRouter()
   const [dockBottom, setDockBottom] = useState(0)
+  const [building, setBuilding] = useState(false)   // world is still blank-and-building → hide SHARE
   const [versions, setVersions] = useState<{ version: number }[]>([])
+  // THE RECKONING on a space page: same contract main's shell has — the arena
+  // reports its stage rect, the engine fits the grid into it, and hovering a
+  // candidate hot-loads that save point. Without this wiring the vote overlay
+  // sat ON TOP of the world (grid unfitted) and candidates never loaded.
+  const [voting, setVoting] = useState(false)
+  const [stageRect, setStageRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
+  const [previewVersion, setPreviewVersion] = useState<number | null>(null)
+  const [vp, setVp] = useState({ w: 1200, h: 800 })
+  useEffect(() => {
+    const onR = () => setVp({ w: window.innerWidth, h: window.innerHeight })
+    onR()
+    window.addEventListener('resize', onR)
+    return () => window.removeEventListener('resize', onR)
+  }, [])
   const [confirmDel, setConfirmDel] = useState(false)
   const [delErr, setDelErr] = useState('')
   const [flagOpen, setFlagOpen] = useState(false)
@@ -137,7 +152,9 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
 
   return (
     <>
-      <ShareWorld slug={spaceSlug} name={name} />
+      {/* nothing to share on a world that isn't real yet — hide SHARE while it's
+          still blank-and-building */}
+      {!building && <ShareWorld slug={spaceSlug} name={name} />}
       <div className="fixed bottom-4 right-[112px] z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
       <AccountTools />
       <FieldEngine
@@ -147,8 +164,12 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         spaceOwnerName={ownerName}
         spaceOwnerId={ownerId}
         isOwner={engineOwner}
-        versionView={versionView}
+        versionView={previewVersion ?? versionView}
         onDockRect={setDockBottom}
+        onBuilding={setBuilding}
+        viewport={voting && stageRect
+          ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left }
+          : null}
       />
 
       {/* the version arena: LIVE vs this world's save points — every page votes.
@@ -160,6 +181,13 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         visible
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
+        onReckoning={(on) => { setVoting(on); if (!on) { setPreviewVersion(null); setStageRect(null) } }}
+        onPreview={(w) => {
+          if (!w || w === 'LIVE') { setPreviewVersion(null); return }
+          const n = parseInt(String(w).replace(/^v/, ''), 10)
+          setPreviewVersion(Number.isFinite(n) ? n : null)
+        }}
+        onStageRect={setStageRect}
       />
 
       {/* a world's OSD — captions/hints, restored from SpaceToolbar */}
