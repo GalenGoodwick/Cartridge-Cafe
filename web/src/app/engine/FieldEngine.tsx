@@ -154,12 +154,12 @@ function iconCacheSave(c: NonNullable<typeof cafeIconCache>): void {
     const bytes = new Uint8Array(c.atlas.buffer, c.atlas.byteOffset, c.atlas.byteLength)
     let bin = ''
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    localStorage.setItem('cc:cafeIconAtlas:v4', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
+    localStorage.setItem('cc:cafeIconAtlas:v5', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
   } catch { /* quota or private mode — cache stays page-local */ }
 }
 function iconCacheLoad(): typeof cafeIconCache {
   try {
-    const raw = localStorage.getItem('cc:cafeIconAtlas:v4')
+    const raw = localStorage.getItem('cc:cafeIconAtlas:v5')
     if (!raw) return null
     const { sig, slots, b64 } = JSON.parse(raw) as { sig: string; slots: Record<string, number>; b64: string }
     const bin = atob(b64)
