@@ -168,12 +168,14 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
     let stRaw = i32(floor(sv));
-    let st = stRaw % 200;
+    let big = stRaw / 400;              // +400 band = a BIG category bubble (sub-mains / player worlds / champion)
+    let ab = stRaw % 400;
+    let st = ab % 200;
     let hue = fract(sv);
     let headCount = i32(uni(9 + i * 4) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
-    let R = 0.098 * zm;
+    let R = 0.098 * zm * select(1.0, 1.9, big > 0);
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
     if (d < rr) {
@@ -299,10 +301,13 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // the crown, over everything — the champion's ring outshines its neighbors
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
-    if (i32(floor(sv)) < 200) { continue; }
+    let sr = i32(floor(sv));
+    let abc = sr % 400;
+    if (abc < 200) { continue; }        // crown flag lives in the 200 band, under the big band
+    let bigc = sr / 400;
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
-    let R = 0.098 * zm;
+    let R = 0.098 * zm * select(1.0, 1.9, bigc > 0);
     let ringR = R * 1.24 + sin(t * 2.2) * 0.006;
     col += vec3f(1.0, 0.82, 0.32) * smoothstep(0.012, 0.002, abs(d - ringR)) * 1.3;
     col += vec3f(1.0, 0.7, 0.25) * exp(-max(d - R, 0.0) * 22.0) * 0.4;
@@ -409,17 +414,21 @@ try {
   const dt2 = Math.min(dt, 0.05)
   // ── whose universe? MY WORLDS flips the door into a personal submain ──
   const MF = (typeof window !== 'undefined' && window.__cafeMine && window.__cafeMine.on) ? window.__cafeMine : null
+  // PLAYER WORLDS — a big front-door bubble opens a filter of just the player-made
+  // worlds (the same scene, spaces only). window.__cafePlayers carries the flag.
+  const PL = (typeof window !== 'undefined' && window.__cafePlayers) ? 1 : 0
   // SUB-MAIN: the group layer. Every user can found ONE named sub-main —
   // a /group formation, not a world. The viewer shows only sub-mains (yours
   // at the heart); entering one morphs this same universe into the group's
   // shelf. window.__cafeSub carries the slug while inside a group.
   const SUB = !!wd.__submain
   const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
-  const mineKey = MF ? String(MF.ownerId || MF.who || '') : (SUB ? 'sub:' + subKey : '')
+  const mineKey = MF ? String(MF.ownerId || MF.who || '') : PL ? 'players' : (SUB ? 'sub:' + subKey : '')
   // every mode keeps its OWN persisted layout, so a joining player or a reload
   // adopts it AT REST instead of replaying the rim fly-in: main = the shared
   // universe, MY WORLDS = per-deed, SUB-MAIN = per-group (or the viewer roster).
   const layoutSlot = MF ? ('cafe:universe:mine:' + mineKey)
+    : PL ? 'cafe:universe:players'
     : SUB ? ('cafe:universe:' + mineKey)
     : 'cafe:universe'
   // a filter/mode flip loads a DIFFERENT saved layout: re-poll now and clear the
@@ -461,7 +470,7 @@ try {
           patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })), { spaces: [] }),
           patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
           fetch('/api/engine/save?slot=' + encodeURIComponent(layoutSlot)).then(r => r.json()).catch(() => null),
-          (MF || SUB) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
+          (MF || SUB || PL) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
           SUB ? fetch('/api/engine/save?slot=submains%3Aindex').then(r => r.json()).catch(() => null) : Promise.resolve(null),
         ])
         const cellAt = {}

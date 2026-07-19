@@ -129,20 +129,25 @@ export async function GET(req: NextRequest) {
 }
 
 /** POST /api/engine/save  Body: { slot: string, data: unknown } */
-/** The cafe's shared bubble universe: one layout, live for all players —
- *  anonymous browsers publish it too, so this single slot is writable
- *  without a session, but only when the payload is exactly the expected
- *  shape (a small map of named positions). */
+/** The cafe's shared bubble universe: one layout per mode, live for all players
+ *  — anonymous browsers publish it too, so these slots are writable without a
+ *  session, but ONLY when the payload is exactly the expected shape (a small map
+ *  of named positions). Covers main (`cafe:universe`) AND the per-mode variants
+ *  the door scene actually writes: MY WORLDS (`cafe:universe:mine:<uid>`) and
+ *  SUB-MAIN (`cafe:universe:<key>`) — so those stop flying in on every visit.
+ *  Positions self-heal on the next settle, so a stray write can't do harm. */
 function isPublicUniverseWrite(body: { slot?: unknown; data?: unknown }): boolean {
-  if (body.slot !== 'cafe:universe') return false
+  const slot = body.slot
+  if (typeof slot !== 'string' || !(slot === 'cafe:universe' || slot.startsWith('cafe:universe:'))) return false
   const d = body.data as { v?: unknown; at?: unknown; bubbles?: unknown } | null
-  if (!d || d.v !== 1 || typeof d.at !== 'number' || !d.bubbles || typeof d.bubbles !== 'object') return false
+  // the scene writes v2 now (was v1); accept both so old and new clients persist
+  if (!d || (d.v !== 1 && d.v !== 2) || typeof d.at !== 'number' || !d.bubbles || typeof d.bubbles !== 'object') return false
   const bubbles = d.bubbles as Record<string, { x?: unknown; y?: unknown; born?: unknown }>
   const names = Object.keys(bubbles)
-  if (names.length > 80) return false
+  if (names.length > 120) return false
   for (const n of names) {
     const b = bubbles[n]
-    if (n.length > 80 || !b || typeof b.x !== 'number' || typeof b.y !== 'number' ||
+    if (n.length > 120 || !b || typeof b.x !== 'number' || typeof b.y !== 'number' ||
         !isFinite(b.x) || !isFinite(b.y) || (b.born !== undefined && typeof b.born !== 'number')) return false
   }
   return true

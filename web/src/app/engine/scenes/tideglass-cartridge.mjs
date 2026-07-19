@@ -325,10 +325,13 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let dome = length(vp * vec2f(1.0, 1.6)) - 1.0;
     if (dome < 0.0 && p.y < vy + 0.16) {
       let nrm = clamp(-dome * 2.0, 0.0, 1.0);
-      var vc = mix(vec3f(0.10, 0.20, 0.26), vec3f(0.55, 0.95, 1.05), pow(nrm, 2.0));
-      vc += vec3f(0.9, 0.8, 0.5) * mod_tg_glyph(2, vp * 2.4) * (0.6 + 0.4 * sin(t * 1.7));
+      // deep glass core, luminous fresnel rim — a lamp under a shell
+      var vc = mix(vec3f(0.045, 0.10, 0.14), vec3f(0.16, 0.34, 0.42), nrm);
+      vc += vec3f(0.55, 0.95, 1.05) * pow(1.0 - nrm, 2.5) * 1.3;               // rim light
+      vc += vec3f(0.30, 0.75, 0.85) * exp(-dot(vp, vp) * 1.6) * (0.5 + 0.3 * sin(t * 0.9)); // inner lamp
+      vc += vec3f(1.15, 1.0, 0.62) * mod_tg_glyph(2, vp * 2.4) * (0.8 + 0.5 * sin(t * 1.7));
       // latitude ribs
-      vc *= 1.0 - 0.25 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));
+      vc *= 1.0 - 0.22 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));
       c = mix(c, vc * (0.4 + vault), vault * smoothstep(0.02, -0.04, dome));
     }
     // near halo where it breaches (the sea itself carries its glitter via the lamp)
@@ -392,6 +395,12 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
       bc += mix(vec3f(0.8, 0.35, 0.12), vec3f(0.1, 0.12, 0.2), uni(23)) * smoothstep(0.01, -0.02, hull) * 0.4;
       c = mix(c, bc, smoothstep(0.004, -0.004, min(hull, mast)));
     }
+    // contact foam — the hull rides the swell, not the screen
+    let ffx = p.x - bx;
+    let ffy = p.y - (0.437 + bob);
+    let foamR = exp(-ffx * ffx * 700.0 - ffy * ffy * 3200.0);
+    let fn2 = 0.45 + 0.55 * vnoise(vec2f(p.x * 38.0, t * 1.3 + fk * 4.0));
+    c += vec3f(0.80, 0.86, 0.88) * foamR * fn2 * (0.45 - uni(23) * 0.12);
     // the lantern-glyph above the mast
     let gcol = mod_tg_gcol(k);
     let gp = (bp - vec2f(0.0, -0.135)) / 0.055;
@@ -404,36 +413,80 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let sx = p.x - bx;
     c += gcol * exp(-sx * sx * 900.0) * smoothstep(0.42, 0.75, p.y) * (0.10 + flash * 0.55) * 0.8;
   }
-  // ── the stele, foreground left: five carved tick-columns (organ answer) ──
-  let sp2 = p - vec2f(-0.66, 0.72);
-  let steleD = sdRoundedBox(sp2, vec2f(0.165, 0.30), 0.03);
+  return c;
+}
+
+// ═══ THE TIDE RECORD — the stele's own chamber, right of the gate disc ═══
+fn mod_tg_stele(p: vec2f, px: vec2f, t: f32) -> vec3f {
+  // carved alcove: warm candle-lit stone, the record slab enthroned center
+  var c = mod_tg_rock(p * 1.9 + vec2f(31.0), vec3f(0.062, 0.055, 0.060));
+  // vaulted niche shading — dark corners, breathing warm core
+  c *= 0.30 + 0.62 * exp(-dot(p * vec2f(0.9, 0.75), p * vec2f(0.9, 0.75)) * 0.9);
+  // floor line + flags
+  if (p.y > 0.66) {
+    let fv = p.y - 0.66;
+    let rc2 = log(1.0 + fv * 5.0) * 7.0;
+    let cc2 = p.x * (2.4 / (0.30 + fv)) + hash11(floor(rc2)) * 2.0;
+    var fc = vec3f(0.075, 0.066, 0.062) * (0.75 + 0.4 * hash21(vec2f(floor(cc2), floor(rc2))));
+    fc *= 1.0 - 0.4 * max(smoothstep(0.38, 0.5, abs(fract(rc2) - 0.5)), smoothstep(0.42, 0.5, abs(fract(cc2) - 0.5)));
+    c = fc * (0.5 + 0.6 * exp(-p.x * p.x * 2.0));
+  }
+  // two candle sconces flanking the slab
+  for (var s = 0; s < 2; s++) {
+    let sx = select(-0.62, 0.62, s == 1);
+    let sp0 = p - vec2f(sx, -0.05);
+    let flick = 0.80 + 0.20 * sin(t * (7.0 + f32(s) * 1.7) + f32(s) * 9.0);
+    // bracket
+    c = mix(c, vec3f(0.16, 0.11, 0.05), smoothstep(0.008, -0.004, sdBox(sp0 - vec2f(0.0, 0.10), vec2f(0.016, 0.070))));
+    // flame
+    let fd = length(sp0 * vec2f(1.6, 1.0)) - 0.035 + sp0.y * 0.5;
+    if (fd < 0.0) { c = mix(vec3f(1.7, 1.05, 0.35), vec3f(1.9, 1.5, 0.7), clamp(-fd * 14.0, 0.0, 1.0)) * flick; }
+    // its light on the room
+    c += vec3f(1.0, 0.55, 0.18) * exp(-dot(sp0, sp0) * 4.5) * 0.34 * flick;
+  }
+  // ── the slab: large, enthroned, readable ──
+  let sp2 = p - vec2f(0.0, 0.10);
+  let steleD = sdRoundedBox(sp2, vec2f(0.34, 0.58), 0.05);
+  // plinth beneath
+  c = mix(c, vec3f(0.085, 0.075, 0.068) * (0.7 + 0.3 * fbm(p * 8.0, 2)), smoothstep(0.01, -0.01, sdBox(p - vec2f(0.0, 0.78), vec2f(0.42, 0.10))));
   if (steleD < 0.0) {
-    var sc2 = mod_tg_rock(p * 4.0 + vec2f(9.0), vec3f(0.115, 0.105, 0.10));
-    sc2 *= 0.85 + 0.3 * smoothstep(0.0, -0.1, steleD);
+    var sc2 = mod_tg_rock(p * 2.6 + vec2f(9.0), vec3f(0.135, 0.122, 0.112));
+    sc2 *= 0.80 + 0.35 * smoothstep(0.0, -0.2, steleD);
+    // beveled edge catches candlelight
+    sc2 += vec3f(0.95, 0.60, 0.25) * smoothstep(0.030, 0.0, abs(steleD + 0.020)) * 0.35;
     // carve: columns k=0..4, ticks = answer[k]+1  (answer 3,1,4,2,0)
     for (var k = 0; k < 5; k++) {
-      var ticks = 1; // level 0 -> 1 tick
+      var ticks = 1;
       if (k == 0) { ticks = 4; } else if (k == 1) { ticks = 2; } else if (k == 2) { ticks = 5; } else if (k == 3) { ticks = 3; }
-      let cx = -0.112 + f32(k) * 0.056;
+      let cx = -0.232 + f32(k) * 0.116;
+      // faint column channel
+      sc2 *= 1.0 - 0.10 * smoothstep(0.040, 0.020, abs(sp2.x - cx)) * step(-0.30, sp2.y) * step(sp2.y, 0.50);
       for (var j = 0; j < 5; j++) {
         if (j >= ticks) { continue; }
-        let tickP = sp2 - vec2f(cx, 0.20 - f32(j) * 0.085);
-        let td = sdBox(tickP, vec2f(0.017, 0.013));
-        let carve = smoothstep(0.008, -0.004, td);
-        sc2 = mix(sc2, vec3f(0.045, 0.05, 0.05), carve * 0.85);
-        sc2 += vec3f(0.20, 0.75, 0.65) * carve * (0.22 + 0.12 * max(sin(t * 0.9 + f32(k)), -0.9));
+        let tickP = sp2 - vec2f(cx, 0.42 - f32(j) * 0.165);
+        let td = sdBox(tickP, vec2f(0.036, 0.026));
+        let carve = smoothstep(0.014, -0.006, td);
+        let inner = smoothstep(0.0, -0.014, td);
+        sc2 = mix(sc2, vec3f(0.040, 0.046, 0.048), carve * 0.9);
+        sc2 += vec3f(0.22, 0.80, 0.68) * inner * (0.30 + 0.12 * max(sin(t * 0.9 + f32(k)), -0.9));
       }
     }
-    // top glyph row: the four tide glyphs, a key
+    // header: the four tide glyphs, the key to the count
     for (var k = 0; k < 4; k++) {
-      let gp2 = (sp2 - vec2f(-0.084 + f32(k) * 0.056, -0.235)) / 0.026;
+      let gp2 = (sp2 - vec2f(-0.174 + f32(k) * 0.116, -0.470)) / 0.050;
       if (abs(gp2.x) < 1.3 && abs(gp2.y) < 1.3) {
-        sc2 = mix(sc2, mod_tg_gcol(k) * 0.5, mod_tg_glyph(k, gp2) * 0.55);
+        let g = mod_tg_glyph(k, gp2);
+        sc2 = mix(sc2, vec3f(0.045, 0.05, 0.05), g * 0.7);
+        sc2 += mod_tg_gcol(k) * g * 0.55;
       }
     }
-    sc2 += vec3f(0.9, 0.5, 0.2) * smoothstep(0.02, -0.01, abs(steleD + 0.012)) * (1.0 - uni(23)) * 0.25;
-    c = mix(c, sc2, smoothstep(0.005, -0.005, steleD));
+    // a graven wave-line beneath the header
+    sc2 *= 1.0 - 0.25 * smoothstep(0.012, 0.004, abs(sp2.y + 0.40 - sin(sp2.x * 9.0) * 0.012));
+    c = mix(c, sc2, smoothstep(0.006, -0.006, steleD));
   }
+  // drifting dust in the candlelight
+  let dcell = hash21(floor(vec2f(p.x * 130.0, p.y * 80.0 - t * 1.1)));
+  c += vec3f(1.0, 0.8, 0.5) * step(0.9955, dcell) * exp(-dot(p, p) * 1.4) * 0.25;
   return c;
 }
 
@@ -669,6 +722,7 @@ fn mod_tg_scene(view: i32, p: vec2f, px: vec2f, t: f32) -> vec3f {
   if (view == 1) { return mod_tg_gate(p, px, t); }
   if (view == 2) { return mod_tg_hall(p, px, t); }
   if (view == 3) { return mod_tg_lens(p, px, t); }
+  if (view == 4) { return mod_tg_stele(p, px, t); }
   return mod_tg_shore(p, px, t);
 }
 `
