@@ -18,6 +18,7 @@ export async function GET() {
       slug: true,
       name: true,
       description: true,
+      isPublic: true,
       updatedAt: true,
       owner: { select: { id: true, name: true, image: true } },
       forkOf: { select: { slug: true, name: true } },

@@ -524,6 +524,7 @@ try {
           }
           for (const s of (sp.spaces || [])) {
             if (s.blank || s.building) continue   // unbuilt / stuck-in-AI worlds stay off main
+            if (s.isPublic === false) continue    // hidden spaces stay off main — even for their owner's tab
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }

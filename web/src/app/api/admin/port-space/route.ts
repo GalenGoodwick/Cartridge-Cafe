@@ -22,21 +22,23 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null) as { user?: Record<string, unknown>; space?: Record<string, unknown> } | null
   if (!body?.space?.slug || !body?.space?.ownerId) return NextResponse.json({ error: 'space with slug and ownerId required' }, { status: 400 })
   const sp = body.space
-  // the owner must exist for the FK; bring them across if they don't
+  try {
+  // the owner must exist for the FK. Emails are unique per DB while ids differ
+  // across DBs — so match by email first and REMAP ownership onto the local id.
+  let ownerId = String(sp.ownerId)
   if (body.user?.id) {
     const u = body.user
-    await prisma.user.upsert({
-      where: { id: String(u.id) },
+    const email = (u.email as string) || `${String(u.id)}@ported.local`
+    const local = await prisma.user.upsert({
+      where: { email },
       update: {},
-      create: {
-        id: String(u.id), name: (u.name as string) ?? null, email: (u.email as string) ?? null,
-        image: (u.image as string) ?? null,
-      },
+      create: { id: String(u.id), name: (u.name as string) ?? null, email, image: (u.image as string) ?? null },
     })
+    ownerId = local.id
   }
   const data = {
     name: String(sp.name ?? sp.slug),
-    ownerId: String(sp.ownerId),
+    ownerId,
     snapshot: (sp.snapshot ?? undefined) as never,
     description: (sp.description as string) ?? null,
     isPublic: sp.isPublic !== false,
@@ -49,4 +51,7 @@ export async function POST(req: NextRequest) {
     create: { ...data, id: String(sp.id ?? '') || undefined, slug: String(sp.slug) },
   })
   return NextResponse.json({ ok: true, slug: out.slug, isPublic: out.isPublic })
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error)?.message || String(e) }, { status: 500 })
+  }
 }
