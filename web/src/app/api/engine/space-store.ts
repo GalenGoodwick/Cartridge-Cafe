@@ -82,13 +82,19 @@ export async function setSpaceSnapshot(spaceId: string, snapshot: SceneSnapshot)
   // Update cache immediately
   cache.set(spaceId, { snapshot, lastLoaded: Date.now() })
 
-  // Debounced persist to DB (2s)
+  // Persist NOW, awaited — a setTimeout debounce dies with the frozen lambda,
+  // so a lone bridge command (one set_world_data, then silence) could return
+  // ok:true and never reach the DB. Bursts still coalesce: while a write is
+  // in flight, later snapshots just mark dirty and the tail write ships the
+  // final state once — at most two DB writes per burst, none lost.
   const existing = persistTimers.get(spaceId)
-  if (existing) clearTimeout(existing)
-
-  persistTimers.set(spaceId, setTimeout(async () => {
-    persistTimers.delete(spaceId)
-    try {
+  if (existing) clearTimeout(existing)   // clear any legacy timer (hot reload)
+  const g2 = globalThis as unknown as { __spacePersistBusy?: Map<string, SceneSnapshot | true> }
+  const busy = g2.__spacePersistBusy ??= new Map()
+  if (busy.has(spaceId)) { busy.set(spaceId, snapshot); return }   // in flight — the tail write takes it
+  busy.set(spaceId, true)
+  try {
+    for (;;) {
       await prisma.playerSpace.update({
         where: { id: spaceId },
         data: {
@@ -96,10 +102,16 @@ export async function setSpaceSnapshot(spaceId: string, snapshot: SceneSnapshot)
           updatedAt: new Date(),
         },
       })
-    } catch (err) {
-      console.error(`Failed to persist space ${spaceId}:`, err)
+      const queued = busy.get(spaceId)
+      if (queued === true || queued === undefined) break
+      snapshot = queued            // a newer state arrived mid-write — ship it too
+      busy.set(spaceId, true)
     }
-  }, 2000))
+  } catch (err) {
+    console.error(`Failed to persist space ${spaceId}:`, err)
+  } finally {
+    busy.delete(spaceId)
+  }
 }
 
 // --- World-family resolution (for the multi-AI Roundtable) ---
@@ -398,6 +410,11 @@ export function applyCommandToSnapshotObject(
     case 'set_world_data': {
       if (cmd.data) {
         snap.worldData = { ...snap.worldData, ...(cmd.data as Record<string, unknown>) }
+        // documented contract: a null value DELETES the key (the live-sim path
+        // honors this; the DB path was persisting literal nulls instead)
+        for (const [k, v] of Object.entries(cmd.data as Record<string, unknown>)) {
+          if (v === null) delete (snap.worldData as Record<string, unknown>)[k]
+        }
       }
       break
     }

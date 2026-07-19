@@ -51,8 +51,11 @@ const log = (m) => {
 }
 
 const api = async (path, opts = {}) => {
+  // hard timeout: a dead keepalive socket once hung the whole tick loop
+  // forever (daemon alive, log silent from 10:15, no builds served)
   const res = await fetch(BASE + path, {
     ...opts,
+    signal: AbortSignal.timeout(15_000),
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN}`, ...(opts.headers || {}) },
   })
   return res.json()

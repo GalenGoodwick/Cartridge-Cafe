@@ -237,6 +237,29 @@ fn mod_tgi_sdf(pw: vec3f) -> vec2f {
   if (dCh < d) { d = dCh; m = 6.0; }
   return vec2f(d, m);
 }
+// soft shadow: march from a surface point toward the sun through the island
+fn mod_tgi_shadow(ro2: vec3f, ld: vec3f) -> f32 {
+  var t2 = 0.30;
+  var sh = 1.0;
+  for (var i = 0; i < 10; i++) {
+    let d = mod_tgi_sdf(ro2 + ld * t2).x;
+    sh = min(sh, 7.0 * d / t2);
+    t2 = t2 + clamp(d, 0.18, 1.4);
+    if (sh < 0.02 || t2 > 15.0) { break; }
+  }
+  return clamp(sh, 0.0, 1.0);
+}
+// bounded march for reflections: (t, material) or (-1,-1)
+fn mod_tgi_march(ro2: vec3f, rd2: vec3f, tmax: f32) -> vec2f {
+  var t2 = 0.4;
+  for (var i = 0; i < 22; i++) {
+    let dm = mod_tgi_sdf(ro2 + rd2 * t2);
+    if (dm.x < 0.06) { return vec2f(t2, dm.y); }
+    t2 = t2 + max(dm.x * 0.9, 0.05);
+    if (t2 > tmax) { break; }
+  }
+  return vec2f(-1.0, -1.0);
+}
 fn mod_tgi_nrm(pw: vec3f) -> vec3f {
   let e = 0.025;
   let c = mod_tgi_sdf(pw).x;
@@ -265,7 +288,34 @@ fn mod_tgo_seacol(p: vec3f, n: vec3f, sd: vec3f, md: vec3f, eye: vec3f, dist: ve
   let base = mix(vec3f(0.004, 0.008, 0.016), vec3f(0.030, 0.050, 0.085), day);
   let waterCol = vec3f(0.16, 0.21, 0.20) * (0.25 + 0.75 * day);
   let refracted = base + pow(dot(n, sd) * 0.4 + 0.6, 80.0) * waterCol * 0.12 * day;
-  var col = mix(refracted, reflected, fres);
+  var refl2 = reflected;
+  // ── the island stands in the mirror: march the reflected ray. The dome and
+  //    beacon burn in the waves at night; the dark mass breaks the sky by day.
+  let rdir = reflect(eye, n);
+  if (p.x > 0.5 && p.z < 15.0 && rdir.z > 0.04) {
+    let hit = mod_tgi_march(p + vec3f(0.0, 0.03, 0.0), rdir, 17.0);
+    if (hit.x > 0.0) {
+      let hp2 = p + rdir * hit.x;
+      let mi2 = i32(hit.y + 0.5);
+      var rc = vec3f(0.016, 0.014, 0.018);
+      if (mi2 == 3) { rc = vec3f(0.08, 0.42, 0.46) * (0.6 + night * 1.4); }
+      else if (mi2 == 7) { rc = vec3f(0.30, 0.90, 0.95) * (1.3 + night * 2.0); }
+      else {
+        rc = rc * (0.8 + 0.4 * fbm(hp2.xy * 2.0, 2));
+        rc += mod_tgo_suncol(el) * clamp(hp2.y * 0.25, 0.0, 0.8) * (1.0 - night) * 0.35;   // dusk-lit faces
+        // the tower's lit windows smear in the swell
+        let wy = smoothstep(0.25, 0.10, abs(hp2.y - 2.95)) + smoothstep(0.22, 0.09, abs(hp2.y - 3.95));
+        rc += vec3f(1.3, 0.85, 0.35) * wy * smoothstep(0.9, 0.2, abs(hp2.x - 7.1)) * (0.35 + night * 0.5);
+      }
+      refl2 = mix(refl2, rc, 0.85);
+    }
+  }
+  var col = mix(refracted, refl2, fres);
+  // the island's long dusk shadow lies across the water
+  if (p.x > 0.8 && p.z < 20.0 && sd.y > 0.01) {
+    let sh2 = mod_tgi_shadow(vec3f(p.x, 0.25, p.z), sd);
+    col *= 0.50 + 0.50 * sh2;
+  }
   let atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
   col = col + waterCol * (p.y - 0.6) * 0.18 * atten;
   // sun glitter at dusk; at finale-night the vault-lamp takes the water
@@ -478,7 +528,8 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
         alb = vec3f(0.03);
         emis = vec3f(0.30, 0.90, 0.95) * (1.2 + night * 1.8) * (0.85 + 0.15 * sin(t * 2.1));
       }
-      var ic = alb * (skyA * mix(vec3f(0.55, 0.45, 0.55), vec3f(0.25, 0.30, 0.50), night) * 2.0 + suncol * sunD * (1.15 - night * 0.75));
+      let selfSh = mod_tgi_shadow(hitP + n * 0.12, sunv);
+      var ic = alb * (skyA * mix(vec3f(0.55, 0.45, 0.55), vec3f(0.25, 0.30, 0.50), night) * 2.0 + suncol * sunD * selfSh * (1.15 - night * 0.75));
       // dusk rim from the sunward edge
       let rim = pow(1.0 - clamp(dot(n, -rd), 0.0, 1.0), 3.0) * clamp(dot(n, sunv) + 0.4, 0.0, 1.0);
       ic += suncol * rim * (0.5 - night * 0.3);
@@ -498,6 +549,20 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
       let fogF = clamp((tI - 11.0) / 24.0, 0.0, 1.0);
       ic = mix(ic, mod_tgo_sky(rd, sunv, mdv, t, vault) * 0.9, fogF * 0.35);
       c = ic;
+    }
+  }
+  // ── a low mist bank drifts before the island, breathing with the hour ──
+  if (rd.z > 0.05) {
+    let mistT = 11.2 / rd.z;
+    let mp = ro + rd * mistT;
+    let seaBlocks = seaHit > 0.5 && seaT < mistT;
+    if (!seaBlocks && mp.y > -0.3 && mp.y < 3.4 && mp.x > -6.0 && mp.x < 12.0) {
+      var md = fbm(vec2f(mp.x * 0.30 - t * 0.035, mp.y * 0.75 + t * 0.008), 3);
+      md = md * (0.75 + 0.25 * vnoise(vec2f(mp.x * 1.3 + t * 0.05, mp.y * 2.0)));
+      let band = smoothstep(3.2, 0.5, mp.y) * smoothstep(0.40, 0.72, md);
+      let mistCol = mix(vec3f(0.80, 0.50, 0.34), vec3f(0.16, 0.24, 0.34), night)
+                  + mod_tgo_suncol(sel) * exp(-abs(mp.x - 4.0) * 0.25) * (1.0 - night) * 0.22;
+      c = mix(c, mistCol, band * 0.34);
     }
   }
   // beacon halo + its wobbling light on the water (screen-space, projected)
