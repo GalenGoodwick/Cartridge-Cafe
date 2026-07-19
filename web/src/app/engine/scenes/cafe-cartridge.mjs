@@ -697,6 +697,13 @@ try {
             if (n.includes(' \u2442 ')) continue
             want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
           }
+          // player-made worlds surface directly on main too, right alongside the
+          // canonical worlds and the three big front-door bubbles.
+          for (const s of (sp.spaces || [])) {
+            if (s.blank || s.building || s.isPublic === false) continue
+            const disp = (s.name || s.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+          }
           // THREE big front-door bubbles. SUB-MAINS opens the group layer; PLAYER
           // WORLDS opens the player-made shelf (those worlds collapse behind it
           // instead of crowding main); the CHAMPION is a core world sized big in
