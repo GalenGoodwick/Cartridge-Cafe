@@ -1005,12 +1005,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}
-      {scene === 'CAFE' && mine && (
-        <TournamentBar key={`arena-mine-${mine}`} visible={!modalUp} slot={`tournament:mine:${mine}`} worlds={portals.map(pt => pt.name)}
-          bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
-          emptyHint="⚔ BREW A SECOND WORLD TO OPEN YOUR ARENA" />
-      )}
+      {/* MY WORLDS (a player's own space) has NO arena — your personal shelf is
+          not a contest. Voting lives on main (champions) and inside a world (its
+          branches); a player space never enters the tournament. */}
       {/* a sub-main arena runs only INSIDE a sub-main, where its contestants are
           the WORLDS pinned to that shelf. The SUB-MAINS viewer (no slug) has no
           arena — sub-mains are gatherings, not contestants; they never vote. */}

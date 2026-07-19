@@ -183,27 +183,39 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
       if (bigBand == 2) {
-        // SUB-MAINS — a little constellation of gatherings (groups orbiting)
+        // SUB-MAINS — five gatherings around one hearth, threads of light between
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
-        g = vec3f(0.02, 0.03, 0.05);
+        g = vec3f(0.015, 0.02, 0.045);
+        g += cA * exp(-dot(q, q) * 9.0) * 0.9;
         for (var k = 0; k < 5; k++) {
-          let ak = f32(k) * 1.2566 + t * 0.2;
-          let pk = q - vec2f(cos(ak), sin(ak)) * 0.42;
-          let dk = length(pk);
-          g += cA * smoothstep(0.13, 0.09, dk) * 0.8;
-          g += cA * smoothstep(0.04, 0.0, abs(dk - 0.11)) * 0.5;
+          let ak = f32(k) * 1.2566 + t * 0.15;
+          let dirk = vec2f(cos(ak), sin(ak));
+          let tt = clamp(dot(q, dirk), 0.0, 0.52);
+          let sd2 = length(q - dirk * tt);
+          g += cA * exp(-sd2 * sd2 * 900.0) * 0.3;
+          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.2 + 0.05 + vec3f(0.0, 0.33, 0.67)));
+          let nd = length(q - dirk * 0.52);
+          g += hk * exp(-nd * nd * 260.0) * 1.5;
+          g += hk * exp(-nd * nd * 55.0) * 0.25;
         }
-        g += cA * exp(-dot(q, q) * 5.0) * 0.6;
       } else if (bigBand == 3) {
-        // PLAYER WORLDS — a world ringed by its players
+        // PLAYER WORLDS — a hand-made planet, its makers orbiting on a tilted ring
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
-        g = cA * exp(-dot(q, q) * 6.0) * 1.4;
-        g += vec3f(0.9) * smoothstep(0.02, 0.0, abs(length(q) - 0.34)) * 0.3;
-        for (var k = 0; k < 8; k++) {
-          let ak = f32(k) * 0.7854 + t * 0.6;
-          let pk = q - vec2f(cos(ak), sin(ak)) * 0.6;
-          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.12 + vec3f(0.0, 0.33, 0.67)));
-          g += hk * smoothstep(0.07, 0.0, length(pk)) * 1.2;
+        let pd = length(q);
+        let surf = fbm3(q * 4.0 + vec2f(t * 0.05, 0.0));
+        let bands = 0.6 + 0.4 * sin(q.y * 9.0 + surf * 3.0);
+        var pc = cA * (0.35 + 0.6 * bands * (0.45 + surf * 0.6));
+        pc *= smoothstep(0.47, 0.43, pd);
+        pc *= 0.8 + 0.4 * clamp(1.0 - length(q - vec2f(-0.2, -0.2)), 0.0, 1.0);
+        g = pc;
+        let rq = vec2f(q.x, q.y * 2.6 + q.x * 0.4);
+        g += cA * smoothstep(0.05, 0.0, abs(length(rq) - 0.74)) * 0.4;
+        for (var k = 0; k < 3; k++) {
+          let ak = t * 0.6 + f32(k) * 2.094;
+          let op = vec2f(cos(ak) * 0.74, sin(ak) * 0.285 - cos(ak) * 0.11);
+          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.3 + 0.55 + vec3f(0.0, 0.33, 0.67)));
+          let od = length(q - op);
+          g += hk * exp(-od * od * 300.0) * 1.6;
         }
       } else if (st == 0) {
         // FABRIC — a lens wandering through stars
@@ -298,10 +310,16 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         g *= 0.85 + 0.3 * (1.0 - length(q));
       }
       // (the head-count number is gone — presence is the dancing players now)
-      // glass edge + hover bloom
+      // glass edge + hover bloom — the top three wear their OWN rim colors:
+      // champion solar gold, SUB-MAINS sky blue, PLAYER WORLDS spring green
       let edge = smoothstep(1.0, 0.86, length(q));
       col = mix(col, g, edge);
-      col += vec3f(1.2, 0.85, 0.4) * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (0.25 + hov * 1.3);
+      var rim = vec3f(1.2, 0.85, 0.4);
+      var rimBase = 0.25;
+      if (bigBand == 1) { rim = vec3f(1.5, 1.0, 0.3); rimBase = 0.45; }
+      else if (bigBand == 2) { rim = vec3f(0.45, 0.75, 1.55); rimBase = 0.45; }
+      else if (bigBand == 3) { rim = vec3f(0.4, 1.45, 0.65); rimBase = 0.45; }
+      col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
     } else {
       // halo when hovered
       col += vec3f(1.0, 0.7, 0.3) * exp(-pow((d - rr) * 22.0, 2.0)) * hov * 0.8;
