@@ -1414,6 +1414,33 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     } catch { /* leave where we are */ }
   }, [spaceSlug, handleLoadScene])
 
+  // AUTO-LOAD — the eye's counterpart in the tab. Every bridge write bumps the
+  // world's __bridge_rev; a tab's own 2s sync round-trips that number unchanged,
+  // so server-ahead means exactly one thing: an AI wrote something this tab
+  // never ingested (SSE dropped, mid-burst quarantine, laptop slept). Instead
+  // of silently syncing its stale world back OVER the fresh build — the old
+  // failure — the tab reloads itself. Nobody should ever have to hard-refresh
+  // to see what their AI built.
+  useEffect(() => {
+    if (!spaceSlug) return
+    const iv = setInterval(async () => {
+      if (document.hidden) return
+      if (spaceVer !== undefined) return           // pinned to a save point — stay put
+      try {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot?rev=1`)
+        if (!r.ok) return
+        const { rev } = await r.json() as { rev?: number }
+        const local = Number(simulationRef.current?.worldData?.['__bridge_rev']) || 0
+        // settle guard: don't reload mid-burst while SSE is actively delivering
+        if (typeof rev === 'number' && rev > local && Date.now() - aiLastEditRef.current > 4000) {
+          showToast('⚡ your AI updated this world — reloading', 'success')
+          hotLoadSpaceVersion(undefined)
+        }
+      } catch { /* next heartbeat */ }
+    }, 10000)
+    return () => clearInterval(iv)
+  }, [spaceSlug, spaceVer, hotLoadSpaceVersion, showToast])
+
   // Delete a saved scene
   const handleDeleteScene = useCallback(async (sceneName: string) => {
     try {

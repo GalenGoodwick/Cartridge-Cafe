@@ -12,6 +12,7 @@ export async function GET(
 ) {
   const { slug } = await params
   const versionParam = req.nextUrl.searchParams.get('version')
+  const revOnly = req.nextUrl.searchParams.get('rev') === '1'
 
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
@@ -37,6 +38,13 @@ export async function GET(
     if (user?.id !== space.ownerId) {
       return NextResponse.json({ error: 'Space not found' }, { status: 404 })
     }
+  }
+
+  // ?rev=1 — the auto-load heartbeat: just the bridge revision, no body.
+  // Tabs poll this to learn an AI wrote the world under them.
+  if (revOnly) {
+    const wd = (space.snapshot as { worldData?: { __bridge_rev?: unknown } } | null)?.worldData
+    return NextResponse.json({ rev: Number(wd?.__bridge_rev) || 0 })
   }
 
   // ?version=N — serve a historical save point instead of the live world (demo view)

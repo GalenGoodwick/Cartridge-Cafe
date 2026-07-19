@@ -450,11 +450,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         return healed   // the 6s beat carries the law onward
       }
     }
-    // the tier resolves ONLY once EVERY cell has gathered QUORUM distinct
-    // voices. No timer: a cast vote can be moved and the talk keeps going until
-    // enough of the cell has weighed in. This is the guard that makes a single
-    // vote unable to crown — a champion needs a quorate final cell.
-    const quorate = d.cells.length > 0 && d.cells.every(c => new Set(Object.keys(c.votes)).size >= cellQuorum(c))
+    // the tier resolves ONLY once EVERY cell is ready. A cell is ready when it
+    // has gathered its quorum of distinct voices — no timer, votes stay movable
+    // until then; this is the guard that makes a single vote unable to crown. A
+    // cell pruned down to ≤1 world is an uncontested BYE (its cellmates were
+    // deleted): it's ready with no deliberation, so a lone survivor can never
+    // stall the tier waiting for votes it will never need.
+    const cellReady = (c: Cell) => c.worlds.length <= 1 || new Set(Object.keys(c.votes)).size >= cellQuorum(c)
+    const quorate = d.cells.length > 0 && d.cells.every(cellReady)
     if (quorate) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
       const next: TDoc = { ...d, reachedAt: { ...(d.reachedAt || {}) } }

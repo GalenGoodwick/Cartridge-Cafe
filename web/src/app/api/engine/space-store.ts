@@ -578,6 +578,13 @@ export async function applyCommandToSnapshot(
   eyeOnSpace(spaceId).catch(() => {})   // burst boundary? version the settled world first
   const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
   const result = applyCommandToSnapshotObject(snap, cmd)
+  // Bridge revision: a monotonic counter every bridge write bumps. A tab's own
+  // 2s sync round-trips it unchanged, so `server rev > tab rev` means exactly
+  // one thing: an AI wrote something this tab never ingested. The tab's
+  // auto-load watcher polls it (snapshot?rev=1) and hot-reloads the world —
+  // no more stale tab silently syncing an old world back over a fresh build.
+  const wd = (snap.worldData ??= {}) as Record<string, unknown>
+  wd.__bridge_rev = (Number(wd.__bridge_rev) || 0) + 1
   await setSpaceSnapshot(spaceId, snap)
   return result
 }

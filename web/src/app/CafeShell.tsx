@@ -1081,9 +1081,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         return (
           <div className="fixed left-6 top-24 z-50">
             <button onClick={up.leave} title="back"
-              className="px-2.5 py-1 rounded-lg font-mono text-[13px] text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">
-              ◂ <span className="text-[12px] tracking-[0.2em] text-white/45">{up.label}</span>
-            </button>
+              className="px-2.5 py-1 rounded-lg font-mono text-[13px] text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
           </div>
         )
       })()}

@@ -814,7 +814,8 @@ try {
         // ONE collision rule for every bubble — same class, sized by each one's
         // own radius (big ≈ 31u, small ≈ 25u) plus a constant breathing gap.
         const rSum = (B.big ? 31 : 25) + (C.big ? 31 : 25)
-        const clr = rSum + 36
+        // a big bubble keeps EXTRA distance from the field so its click zone is clear
+        const clr = rSum + ((B.big || C.big) ? 58 : 36)
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
@@ -824,7 +825,7 @@ try {
         // correction, so even a SETTLED / adopted layout keeps its breathing room —
         // the soft velocity push only spaces things while they're moving. Moves
         // anchored bubbles too; only the PINNED three are immovable.
-        const floor = rSum + 16
+        const floor = rSum + ((B.big || C.big) ? 40 : 16)
         if (sd < floor) {
           const over = floor - sd, nx = sx / sd, ny = sy / sd
           if (!B.pinned && !C.pinned) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
@@ -882,13 +883,16 @@ try {
   // hover whenever two hit-circles overlapped, so the tooltip named/linked the
   // wrong world. Picking the closest makes the name + click-target match the icon
   // the cursor is actually on.
-  let hovered = -1, best = 1.0   // pick the bubble the cursor is most INSIDE (d/radius < 1); big bubbles catch wider
+  // BIG bubbles win outright when the cursor is inside their disc — they're the
+  // navigation anchors and a tightly-packed neighbour must never steal their click.
+  let hovered = -1, best = 1.0
   for (let i = 0; i < U.order.length; i++) {
     const B = U.bubbles[U.order[i]]
     if (!B) continue
     const d = Math.hypot(cux - B.x, cuy - B.y)
+    if (B.big && d < 34) { hovered = i; best = -1; break }   // inside a big disc: claim it, stop looking
     const nd = d / (B.big ? 38 : 30)
-    if (nd < best) { best = nd; hovered = i }
+    if (best >= 0 && nd < best) { best = nd; hovered = i }
   }
   if (down && !U.prevDown) { U.downX = mgx; U.downY = mgy; U.dx = mgx; U.dy = mgy; U.moved = 0; U.drag = hovered < 0 ? 1 : 0 }
   if (down && U.drag) {
