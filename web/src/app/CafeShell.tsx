@@ -666,7 +666,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     setModalUp(false)   // a panel left open in the old world must not latch shut the new one
     setChatWorld(null)  // the commons never follows you: returning to main lands on the SHELF, always
     setPortals([])
-    portalsBlockRef.current = Date.now() + 600
+    // the block swallows a world's own stale portal events while LEAVING the hub.
+    // When ARRIVING back on a hub (CAFE / SUB-MAIN), we want its doors — and thus
+    // their hover tooltips — back immediately, so barely block at all. (A long
+    // block here made tooltips dead for ~2s after backing out of a world, since
+    // the hub only re-announces portals every 2s.)
+    const arrivingHub = name === 'CAFE' || name === 'SUB-MAIN'
+    portalsBlockRef.current = Date.now() + (arrivingHub ? 80 : 600)
     if (name !== 'SUB-MAIN') {   // leaving the group layer resets it to the viewer
       ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = null
       setSubMode(null)
