@@ -744,10 +744,17 @@ try {
   // cursor in universe coords
   const cux = U.cam.x + (mgx - 256) / U.cam.z
   const cuy = U.cam.y + (mgy - 256) / U.cam.z
-  let hovered = -1
+  // NEAREST door within reach wins. The old test ("< 30" with a self-cancelling
+  // zoom term) let a FARTHER door — whichever came last in draw order — claim the
+  // hover whenever two hit-circles overlapped, so the tooltip named/linked the
+  // wrong world. Picking the closest makes the name + click-target match the icon
+  // the cursor is actually on.
+  let hovered = -1, bestD = 30
   for (let i = 0; i < U.order.length; i++) {
     const B = U.bubbles[U.order[i]]
-    if (B && Math.hypot(cux - B.x, cuy - B.y) < 30 / Math.max(U.cam.z, 0.001) * U.cam.z ? Math.hypot(cux - B.x, cuy - B.y) < 30 : false) hovered = i
+    if (!B) continue
+    const d = Math.hypot(cux - B.x, cuy - B.y)
+    if (d < bestD) { bestD = d; hovered = i }
   }
   if (down && !U.prevDown) { U.downX = mgx; U.downY = mgy; U.dx = mgx; U.dy = mgy; U.moved = 0; U.drag = hovered < 0 ? 1 : 0 }
   if (down && U.drag) {
