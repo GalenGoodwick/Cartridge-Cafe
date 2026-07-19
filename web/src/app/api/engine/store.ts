@@ -839,6 +839,9 @@ export function listScenes(): string[] {
 export function deleteScene(name: string): boolean {
   const existed = store.scenes.delete(name)
   if (existed) schedulePersist()
+  // the Neon mirror must die too — otherwise hydrateAllScenes resurrects the
+  // deleted scene on the next pull (ghost versions the arrows then step into)
+  void deleteGameSlot('scene:' + name).catch(() => {})
   return existed
 }
 
