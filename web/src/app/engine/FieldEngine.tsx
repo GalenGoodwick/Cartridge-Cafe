@@ -293,6 +293,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // original. When the tournament snags main from the founder, we reassure them —
   // their original is never gone; the ★ bookmark always returns them to it.
   const [worldLineage, setWorldLineage] = useState<{ original: string; mainHolder: string } | null>(null)
+  const [winnerTakesMain, setWinnerTakesMain] = useState(false)   // owner opt-in: a popular challenger can take main
   const [verMax, setVerMax] = useState(1)   // highest existing version of the ridden branch — bounds the ▸ scroller
   const [verList, setVerList] = useState<number[]>([])   // the versions that ACTUALLY exist (deletions leave holes)
   // learn which versions this branch actually has, so the scroller can never
@@ -392,6 +393,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     return () => { stop = true; clearInterval(iv) }
   }, [branchesOpen, riding, loadCellDoc, saveCellDoc])
   const lastSceneRef = useRef<string>('')
+  // the lineage base of the world in view — what set-main / promote / main-rule key by
+  const lineageBase = (spaceId ? (spaceName || spaceSlug || '') : (lastSceneRef.current || playScene || '')).split(' ⑂ ')[0].trim()
   const aiDirtyRef = useRef(false)
   const aiLastEditRef = useRef(0)
   const bridgeToastRef = useRef(0)   // rate-limits the "AI editing live" toast
@@ -1460,7 +1463,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (!r.ok) return
         const { rev } = await r.json() as { rev?: number }
         const local = Number(simulationRef.current?.worldData?.['__bridge_rev']) || 0
-        // settle guard: don't reload mid-burst while SSE is actively delivering
+        // during a BUILD, every command bumps the rev — adopting each one is a
+        // reload loop. The build console shows progress; we adopt the world ONCE
+        // when the build ends. settle guard also holds during an active SSE burst.
+        if (buildJobActiveRef.current) return
         if (typeof rev === 'number' && rev > local && Date.now() - aiLastEditRef.current > 4000) {
           showToast('⚡ your AI updated this world — reloading', 'success')
           hotLoadSpaceVersion(undefined)
@@ -1590,6 +1596,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const t = setInterval(load, 20000)
     return () => { stop = true; clearInterval(t) }
   }, [playScene, spaceSlug, riding, isHub])
+
+  // the owner's overturn rule for this world (winner-takes-main opt-in)
+  useEffect(() => {
+    if (!lineageBase || isHub) { setWinnerTakesMain(false); return }
+    let stop = false
+    fetch(`/api/engine/lineage/main-rule?base=${encodeURIComponent(lineageBase)}`)
+      .then(r => r.json())
+      .then(d => { if (!stop) setWinnerTakesMain(!!d?.winnerTakesMain) })
+      .catch(() => {})
+    return () => { stop = true }
+  }, [lineageBase, isHub, chromeVisible])
 
   // Reassure the FOUNDER when their world's main gets snagged. The founder is the
   // owner of the immortal original (its handle). If that's you and a challenger now
@@ -5229,6 +5246,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (!r.ok) return
         const { rev } = await r.json() as { rev: number }
         if (seenRev < 0) { seenRev = rev; return }   // baseline = our own load; don't re-adopt it
+        // hold adopts during a build — every command bumps the rev, so adopting
+        // each one loops the scene. We adopt once when the build ends (below).
+        if (buildJobActiveRef.current) { seenRev = rev; return }
         if (rev > seenRev) { seenRev = rev; await pullAndAdopt() }
       } catch { /* offline / cold start — keep polling */ }
     }
@@ -5632,9 +5652,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     })}
                   </div>
                   )}
+                  {/* OPT-IN OVERTURN — by default a challenger winning the vote only
+                      earns a podium; your main stays yours. Flip this and the
+                      popular winner takes main automatically. Owner-gated server-side. */}
+                  {canEditLaw && lineageBase && (
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span>winner takes main</span>
+                    {toggleBtn(winnerTakesMain, async () => {
+                      const next = !winnerTakesMain
+                      setWinnerTakesMain(next)
+                      const r = await fetch('/api/engine/lineage/main-rule', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ base: lineageBase, winnerTakesMain: next }),
+                      }).catch(() => null)
+                      if (!r || !r.ok) setWinnerTakesMain(!next)   // revert on failure
+                    })}
+                  </div>
+                  )}
                   <div className="text-[12px] text-white/35 leading-relaxed">
                     {canEditLaw
-                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start."
+                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start. winner-takes-main hands the throne to a challenger that wins the vote — off by default, so your main stays yours (a win is only a podium)."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
                   </div>
                 </div>

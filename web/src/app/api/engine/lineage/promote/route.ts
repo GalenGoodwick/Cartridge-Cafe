@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGameSlot } from '../../store'
 import { listScenes, loadScene, saveScene, hydrateAllScenes } from '../../store'
-import { getLineage } from '../../lineage'
+import { getLineage, setMainHolder } from '../../lineage'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,5 +68,16 @@ export async function POST(req: NextRequest) {
     winner = copyName
   }
 
-  return NextResponse.json({ ok: true, base: lin.base, champion, winner, staged: !reuse, original: lin.original })
+  // OPT-IN OVERTURN — by default a win is only a podium; main stays with the
+  // maker. But a maker may set { winnerTakesMain } (owner-gated, via the
+  // main-rule endpoint) to hand the throne to the popular winner: the frozen
+  // podium copy becomes the lineage's mainHolder.
+  let tookMain = false
+  const rule = (await loadGameSlot('main-rule:' + base.toUpperCase())) as { winnerTakesMain?: boolean } | undefined
+  if (rule?.winnerTakesMain && winner !== lin.mainHolder) {
+    await setMainHolder(base, winner)
+    tookMain = true
+  }
+
+  return NextResponse.json({ ok: true, base: lin.base, champion, winner, staged: !reuse, original: lin.original, tookMain })
 }
