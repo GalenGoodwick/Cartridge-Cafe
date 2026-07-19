@@ -84,6 +84,11 @@ No world token yet? Brew a world on main first — its AI key works here too.`
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slot: channel, data: { msgs: next } }),
     }).catch(() => {})
+    if (channel.startsWith('chat:world:') || channel.startsWith('chat:space:')) {
+      // the world's maker hears about it (server resolves who that is)
+      void fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
+    }
   }
 
   const pill = 'font-mono text-[12px] tracking-[0.2em]'

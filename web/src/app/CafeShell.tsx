@@ -186,6 +186,20 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const [subMode, setSubMode] = useState<{ mode: string; slug: string | null; name: string | null; haveOwn: boolean; member: boolean; owner?: boolean; pinsLocked?: boolean; members?: Record<string, string>; ownerId?: string | null; admins?: string[]; bans?: Record<string, { until: number; name?: string; by?: string }>; shelf?: string[] } | null>(null)
   const [subTools, setSubTools] = useState(false)          // founder's moderation panel
   const [chatWorld, setChatWorld] = useState<{ channel: string; title: string; subtitle?: string } | null>(null)   // the structural chat world you've entered
+  // the bell: notifications for the signed-in maker (60s poll, visible tabs only)
+  const [bell, setBell] = useState<{ items: Array<{ id: string; text: string; link: string | null; readAt: string | null; createdAt: string }>; unread: number }>({ items: [], unread: 0 })
+  const [bellOpen, setBellOpen] = useState(false)
+  useEffect(() => {
+    const pull = () => { if (document.visibilityState !== 'hidden') fetch('/api/notifications').then(r => r.json()).then(d => setBell({ items: d.items || [], unread: d.unread || 0 })).catch(() => {}) }
+    pull()
+    const iv = setInterval(pull, 60000)
+    return () => clearInterval(iv)
+  }, [])
+  // /?icon=1 — the profile page's door into the icon brewer
+  useEffect(() => {
+    try { if (new URLSearchParams(window.location.search).get('icon') === '1') setIconOpen(true) } catch { /* fine */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // LANDING ON MAIN ALWAYS SHOWS MAIN. Whatever path brought you back (ESC,
   // back button, crumbs, a door), an open commons never greets you — the shelf
   // does. Opening the commons doesn't change `scene`, so this only fires on
@@ -1395,6 +1409,26 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {!who && (
               <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
                 className={`${hubBtn} border-flame/50 text-glow`}>SIGN IN</button>
+            )}
+            {who && (
+              <div className="relative">
+                <button onClick={() => {
+                  setBellOpen(o => !o)
+                  if (!bellOpen && bell.unread > 0) fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ readAll: true }) }).then(() => setBell(b => ({ ...b, unread: 0 }))).catch(() => {})
+                }} className={`${hubBtn} ${bell.unread > 0 ? 'border-flame/60 text-glow' : 'opacity-60 hover:opacity-100'}`}>
+                  ◔ {bell.unread > 0 ? bell.unread : ''}
+                </button>
+                {bellOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-2 z-[70]">
+                    {bell.items.length === 0 && <div className="px-3 py-4 font-mono text-[10px] text-crema/40 text-center">nothing yet — when someone comments on, follows, or branches your work, it lands here</div>}
+                    {bell.items.map(n => (
+                      <a key={n.id} href={n.link || '#'} className={`block px-3 py-2 rounded-lg font-mono text-[11px] leading-relaxed hover:bg-black/40 ${n.readAt ? 'text-crema/45' : 'text-glow'}`}>
+                        {n.text}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
             {/* mine-mode's way out is the universal ◂ strip (top-left) */}
             {!mine && (

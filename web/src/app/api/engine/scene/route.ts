@@ -131,6 +131,15 @@ export async function POST(req: NextRequest) {
         }
       }
       saveScene(target, body.scene)
+      // a NEW branch line is community news — the base's keeper hears about it
+      if (target !== body.name && / ⑂ .+ · v1$/.test(target)) {
+        void (async () => {
+          const { adminUsers, notifyUser } = await import('@/lib/notify')
+          const base = target.split(' ⑂ ')[0]
+          const author = target.match(/ ⑂ (.+?)(?: · .+)? · v1$/)?.[1] || 'someone'
+          for (const a of await adminUsers()) void notifyUser(a.id, 'branch', `${author} branched ${base}`, '/play/' + encodeURIComponent(target))
+        })().catch(() => {})
+      }
       // first branch off a world stamps its lineage — the BASE is the immortal
       // original (king-of-the-hill promotion hangs off this record).
       const bi = target.indexOf(' ⑂ ')

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
@@ -258,6 +259,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen || alterWarnOpen }))
   }, [plugOpen, instrOpen, branchesOpen, alterWarnOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
+  // every world gets a chat — one commons per family (voting discussion included)
+  const [worldChatOpen, setWorldChatOpen] = useState(false)
   // ── VERSIONS browser (save-points): a space's own version history on main ──
   const [versionsOpen, setVersionsOpen] = useState(false)
   const [versionList, setVersionList] = useState<Array<{ version: number; note: string | null; createdAt: string; author?: { name: string | null } | null }>>([])
@@ -5790,6 +5793,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               >
                 ⑂ CREATE BRANCH
               </button>
+              <button
+                onClick={() => setWorldChatOpen(true)}
+                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors">
+                ⌁ WORLD CHAT
+              </button>
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
@@ -6337,6 +6345,12 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
             )
           })()}
 
+          {worldChatOpen && (() => {
+            const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+            const channel = spaceId && spaceSlug ? 'chat:space:' + spaceSlug : 'chat:world:' + base
+            const title = (spaceId ? (spaceName || spaceSlug || 'this world') : base) + ' · chat'
+            return <ChatWorld channel={channel} title={title} subtitle="the world's commons — players, makers, and their AIs" onExit={() => setWorldChatOpen(false)} />
+          })()}
           {/* Info overlay */}
           {chromeVisible && !spaceId && !playScene && (
           <div className="absolute top-3 left-3 text-[12px] text-muted font-mono flex items-center gap-2">
