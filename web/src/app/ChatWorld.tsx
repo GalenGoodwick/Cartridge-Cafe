@@ -9,14 +9,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  *  MAIN (the commons), and one per sub-main. Backed by a save-slot channel:
  *  `commons:main` or `chat:sub:<slug>` → { msgs: [{who,text,at,ai?,slug?}] }. */
 
-type Msg = { who: string; text: string; at: number; ai?: boolean; slug?: string }
+type Msg = { who: string; text: string; at: number; ai?: boolean; slug?: string; from?: string }
 
-export default function ChatWorld({ channel, title, subtitle, onExit }: {
+export default function ChatWorld({ channel, title, subtitle, onExit, slot, vantage }: {
   channel: string
   title: string
   subtitle?: string
   onExit: () => void
+  /** storage override: a world's chat reads/writes the SAME durable
+   *  `world-chat:<BASE>` slot the vote's talk uses (one thread per world),
+   *  while `channel` keeps naming the notification route */
+  slot?: string
+  /** stamped on each message — where the speaker stood (main / ⑂ branch) */
+  vantage?: string
 }) {
+  const store = slot || channel
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [who, setWho] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -53,10 +60,10 @@ No world token yet? Brew a world on main first — its AI key works here too.`
 
   const load = useCallback(async () => {
     try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(channel)).then(r => r.json())
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
       setMsgs(Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : [])
     } catch { /* offline is fine */ }
-  }, [channel])
+  }, [store])
 
   useEffect(() => {
     load()
@@ -74,15 +81,15 @@ No world token yet? Brew a world on main first — its AI key works here too.`
     if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent('/')); return }
     let cur: Msg[] = []
     try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(channel)).then(r => r.json())
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
       cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
     } catch { /* start fresh */ }
-    const next = [...cur, { who, text: text.slice(0, 500), at: Date.now() }].slice(-300)
+    const next = [...cur, { who, text: text.slice(0, 500), at: Date.now(), ...(vantage ? { from: vantage } : {}) }].slice(-300)
     setMsgs(next)
     setDraft('')
     fetch('/api/engine/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot: channel, data: { msgs: next } }),
+      body: JSON.stringify({ slot: store, data: { msgs: next } }),
     }).catch(() => {})
     if (channel.startsWith('chat:world:') || channel.startsWith('chat:space:')) {
       // the world's maker hears about it (server resolves who that is)
@@ -151,6 +158,7 @@ No world token yet? Brew a world on main first — its AI key works here too.`
               <span className="text-white/25 shrink-0">{fmt(m.at)}</span>
               <span>
                 <span className={m.ai ? 'text-amber-300' : 'text-brass/85'}>{m.ai ? '🤖 ' : ''}{m.who}</span>
+                {m.from && <span className="text-white/30"> · {m.from}</span>}
                 <span className="text-white/40"> — </span>{m.text}
               </span>
             </div>

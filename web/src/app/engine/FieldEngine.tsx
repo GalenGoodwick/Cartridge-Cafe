@@ -6510,10 +6510,18 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           })()}
 
           {worldChatOpen && (() => {
-            const base = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0]
+            const cur = lastSceneRef.current || playScene || ''
+            const base = cur.split(' ⑂ ')[0]
             const channel = spaceId && spaceSlug ? 'chat:space:' + spaceSlug : 'chat:world:' + base
             const title = (spaceId ? (spaceName || spaceSlug || 'this world') : base) + ' · chat'
-            return <ChatWorld channel={channel} title={title} subtitle="the world's commons — players, makers, and their AIs" onExit={() => setWorldChatOpen(false)} />
+            // ONE thread per world: store in the SAME world-chat:<BASE> slot the
+            // vote's talk uses — keyed by the door name (a space's display name,
+            // a cartridge's base scene name), uppercased, branch suffix stripped.
+            const key = ((spaceId ? (spaceName || spaceSlug) : base) || '').split(' ⑂ ')[0].trim().toUpperCase()
+            // vantage: where this speaker stands — riding a branch, or main
+            const bi = cur.indexOf(' ⑂ ')
+            const vantage = bi < 0 ? 'main' : '⑂ ' + (cur.slice(bi + 3).split(' · ')[0] || 'branch')
+            return <ChatWorld channel={channel} slot={key ? 'world-chat:' + key : undefined} vantage={vantage} title={title} subtitle="the world's commons — players, makers, and their AIs" onExit={() => setWorldChatOpen(false)} />
           })()}
           {/* Info overlay */}
           {chromeVisible && !spaceId && !playScene && (

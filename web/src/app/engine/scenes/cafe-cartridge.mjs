@@ -596,8 +596,8 @@ try {
           // place below (marked where the crown is set). Fixed positions = anchored.
           // a tight triangle at the heart: CHAMPION at the apex (pinned where the
           // crown is set, below), SUB-MAINS + PLAYER WORLDS along the base.
-          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, cat: 2, fixed: [214, 300] }
-          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, cat: 3, fixed: [298, 300] }
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, cat: 2 }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, cat: 3 }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -636,10 +636,7 @@ try {
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
-          if (want[n].fixed) {   // a pinned big category bubble — hold its exact seat
-            B.x = want[n].fixed[0]; B.y = want[n].fixed[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
-          }
-          if (adopt && adopt.bubbles[n] && !want[n].fixed) {   // the shared arrangement wins
+          if (adopt && adopt.bubbles[n] && !want[n].big) {   // the shared arrangement wins — but the big three always float free by gravity
             const sb2 = adopt.bubbles[n]
             B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1
             if (sb2.born) B.born = sb2.born
@@ -665,14 +662,12 @@ try {
           const champName = (T && T.champion) || 'QUANTIC DOJO'
           const champ = n === champName
           B.crown = !!champ
-          if (champ) {   // the reigning world is the triangle's apex — big, pinned, keeps its own icon
-            B.big = true; B.x = 256; B.y = 214; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
-          }
+          if (champ) B.big = true   // the reigning world — biggest bubble, deepest gravity (score below); it floats like the rest
           // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
           // taking live votes belongs to the voted cluster at center; everything
           // else is a new arrival held in the outer ring. A status flip re-settles
           // it into the other band (un-anchor so it can cross the buffer).
-          const nowVoted = live > 0 || reach > 1 || champ
+          const nowVoted = live > 0 || reach > 1 || champ || !!B.cat   // the big category bubbles belong to the central cluster too
           if (!B.justPlaced && !!B.voted !== nowVoted) { B.anchored = 0; U.wake = Math.max(U.wake, 7) }
           B.voted = nowVoted
           // a world with a hand-coded style is a house mini. Otherwise: if the
@@ -697,7 +692,9 @@ try {
           // the field woke on almost every poll and no layout ever held.)
           if (!B.justPlaced && !calmBoot && Math.abs(ns - B.score) > 1.0) U.wake = Math.max(U.wake, 7)
           delete B.justPlaced
-          B.score = B.pinned ? 40 : ns   // pinned big bubbles keep a reserved score so they're never pruned
+          // the big three own the deepest gravity — champion #1, then the two
+          // category bubbles — so they sink to the very heart and cluster there.
+          B.score = champ ? 40 : (B.cat ? 26 : ns)
         }
         // a degraded first pass only ADDS — pruning waits for the full poll,
         // so a slow spaces fetch can't blink player worlds out and back
@@ -763,11 +760,21 @@ try {
         // Anchored (pinned) big bubbles push neighbours out but never move themselves.
         // ONE collision rule for every bubble — same class, sized by each one's
         // own radius (big ≈ 31u, small ≈ 25u) plus a constant breathing gap.
-        const clr = (B.big ? 31 : 25) + (C.big ? 31 : 25) + 26
+        const rSum = (B.big ? 31 : 25) + (C.big ? 31 : 25)
+        const clr = rSum + 26
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
           if (!C.anchored) { C.vx -= sx / sd * push; C.vy -= sy / sd * push }
+        }
+        // HARD floor: two bubbles may NEVER overlap, whatever the gravity does —
+        // a direct position correction (the soft push above can be overpowered by
+        // the big three's deep gravity; this cannot).
+        if (sd < rSum) {
+          const over = rSum - sd, nx = sx / sd, ny = sy / sd
+          if (!B.anchored && !C.anchored) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
+          else if (!B.anchored) { B.x += nx * over; B.y += ny * over }
+          else if (!C.anchored) { C.x -= nx * over; C.y -= ny * over }
         }
       }
       if (!B.anchored) {
