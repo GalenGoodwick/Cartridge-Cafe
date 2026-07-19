@@ -22,7 +22,7 @@ import { fileURLToPath } from 'url'
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const ADMIN = process.env.ENGINE_AGENT_TOKEN
 const POLL_MS = 20_000
-const BUILD_TIMEOUT_MS = 15 * 60_000
+const BUILD_TIMEOUT_MS = 25 * 60_000   // ambitious briefs need room; incremental saves mean a timeout still leaves real progress
 const LOG = `${homedir()}/Library/Logs/cafe-builder.log`
 
 // SECURITY MODEL — the build agent is locked to ONE capability: the cafe bridge
@@ -103,10 +103,11 @@ async function tick() {
       `  · cafe_state  — the current world state (fields, visuals, params).`,
       `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}).`,
       ``,
-      `1. cafe_guide, and follow it fully.`,
-      `2. cafe_state to see the world.`,
-      `3. BUILD THE BRIEF below — their words, not your own idea. Make it feel ALIVE and playable, skin every field (visualType or it renders as nothing), ship worldData.instructions, and set built_by to "cafe house AI".`,
-      `4. When the first pass is genuinely done, cafe_send a set_world_data {"data":{"brief_done":true}}.`,
+      `1. cafe_guide (read fully), then cafe_state.`,
+      `2. RESUME-AWARE: if cafe_state already has fields, a previous build was interrupted — CONTINUE it, never restart. Otherwise begin fresh.`,
+      `3. PLAN FIRST (one call): cafe_send set_world_data {"data":{"build_plan":"<the 3-6 steps you will build>"}}. This records your intent so any re-run follows it.`,
+      `4. Then BUILD THE BRIEF below — their words, not your own idea. Work INCREMENTALLY: send small cafe_send batches EARLY and OFTEN so the world fills in live and every step PERSISTS even if you run out of time. Do NOT spend your session only planning — ship real fields within your first few tool calls. Skin every field (visualType or it renders as nothing), make it ALIVE and playable, ship worldData.instructions, set built_by to "cafe house AI".`,
+      `5. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}.`,
       ``,
       `THE BRIEF: ${next.job.brief}`,
     ].join('\n')
