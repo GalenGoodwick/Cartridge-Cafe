@@ -629,6 +629,13 @@ try {
           for (const base of Object.keys(best)) {
             want[base] = { launch: best[base].scene, style: best[base].style }
           }
+          // canonical worlds ASSIGNED to me (scene-makers) belong on my deed too
+          const mineAttr = (sp && sp.sceneMakers) || {}
+          for (const n of Object.keys(mineAttr)) {
+            if (mineAttr[n] && mineAttr[n].handle === MF.handle && !want[n]) {
+              want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+            }
+          }
           for (const s of (sp.spaces || [])) {
             if (!s.owner || s.owner.id !== MF.ownerId) continue
             // an unnamed blank DRAFT (still auto-timestamp-named, nothing built)
@@ -695,7 +702,7 @@ try {
             const sb = shared && shared.bubbles[n]
             if (sb) {
               // this world already has its place in the shared universe
-              U.bubbles[n] = { x: sb.x, y: sb.y, vx: 0, vy: 0, justPlaced: 1, anchored: 1,
+              U.bubbles[n] = { x: (want[n].fixed ? want[n].fixed[0] : sb.x), y: (want[n].fixed ? want[n].fixed[1] : sb.y), vx: 0, vy: 0, justPlaced: 1, anchored: 1, pinned: want[n].fixed ? 1 : 0,
                 born: sb.born || now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
             } else {
               // truly newborn — spawn on the RIM at the emptiest bearing so it
@@ -832,9 +839,18 @@ try {
     let votedR = 40
     if (banded) for (const n of U.order) { const B = U.bubbles[n]; if (B && B.voted) votedR = Math.max(votedR, Math.hypot(B.x - 256, B.y - 256)) }
     const ringR = Math.max(votedR + 90, 170)
+    // the immovable seats: the big category doors NEVER travel — not during boot,
+    // not during a wake, not under any position correction. Reasserted per frame.
+    const FIXEDSEAT = (!MF && !SUB && !PL) ? { 'SUB-MAINS': [215, 285], 'PLAYER WORLDS': [297, 285] } : null
+    // a shelf with ONE world: it sits enthroned at center, full stop — no gravity,
+    // no rim spawn, no bounding around (the lone pinned world was drifting).
+    const lone = (MF || SUB || PL) && U.order.length === 1
     for (let i = 0; i < U.order.length; i++) {
       const B = U.bubbles[U.order[i]]
       if (!B) continue
+      const seat = FIXEDSEAT && FIXEDSEAT[U.order[i]]
+      if (seat) { B.x = seat[0]; B.y = seat[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
+      else if (lone) { B.x = 256; B.y = 256; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1 }
       // an ANCHORED bubble came from the saved layout: it holds its exact place
       // as a fixed repulsor, so a newborn (or a late-loading world) settles into
       // the gaps WITHOUT dragging the arrangement everyone already sees.
