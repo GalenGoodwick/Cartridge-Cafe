@@ -36,7 +36,7 @@ const ADS_ENABLED = false
 // two hubs read as the same layer (surface:'hub'), not two different UIs.
 const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[12px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
 
-export default function CafeShell({ initialScene = 'CAFE' }: { initialScene?: string }) {
+export default function CafeShell({ initialScene = 'CAFE', initialMine = false }: { initialScene?: string; initialMine?: boolean }) {
   const [scene, setScene] = useState(initialScene)
 
   // the tab title follows you: into a world, and — the bug — back out again.
@@ -258,17 +258,25 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
 
   /** MY WORLDS: the same universe, filtered to your own deeds — a personal submain.
    *  Sticky for the session: entering a world and coming back lands you here again. */
-  const myWorlds = async () => {
+  const myWorlds = async (push = true) => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-    if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?mine=1'); return }
-    ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
+    if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/mine'); return }
+    const handle = String(sess.user.email || '').split('@')[0].replace(/[^a-z0-9_-]/gi, '') || null
+    ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '', handle }
     setMine(sess.user.name || 'your')
     try { sessionStorage.setItem('cafe-mine', '1') } catch { /* private mode */ }
+    // MY WORLDS lives at your own handle — /u/<you>, bookmarkable and reload-safe
+    if (push && typeof window !== 'undefined' && handle && window.location.pathname !== '/u/' + handle) {
+      window.history.pushState({ mine: true }, '', '/u/' + handle)
+    }
   }
-  const commons = () => {
+  const commons = (push = true) => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
     setMine(null)
     try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
+    if (push && typeof window !== 'undefined' && /^\/(mine$|u\/)/.test(window.location.pathname)) {
+      window.history.pushState({}, '', '/')
+    }
   }
 
   /** ── the group layer's pen: read-modify-write the sub-mains index.
@@ -661,7 +669,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       setSubMode(null)
     }
     if (push && typeof window !== 'undefined') {
-      window.history.pushState({ scene: name }, '', name === 'CAFE' ? '/' : `/play/${encodeURIComponent(name)}`)
+      // returning to the shelf while filtered to your own worlds keeps the /u/<you> URL
+      const m = (window as unknown as { __cafeMine?: { on?: boolean; handle?: string } }).__cafeMine
+      const url = name === 'CAFE' ? (m?.on && m.handle ? '/u/' + m.handle : '/') : `/play/${encodeURIComponent(name)}`
+      window.history.pushState({ scene: name }, '', url)
     }
     if (name !== 'CAFE') {
       setHint(true)
@@ -702,13 +713,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       brew()
     }
     // the Cafe button means the commons — explicit intent beats stickiness
-    if (new URLSearchParams(window.location.search).get('commons')) {
+    if (initialMine) {
+      myWorlds(false)   // the /mine route — enter your shelf; the URL is already set
+    } else if (new URLSearchParams(window.location.search).get('commons')) {
       window.history.replaceState({}, '', '/')
       try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
-    // returning from auth headed for your own submain
+    // legacy ?mine=1 (old sign-in round-trips) → upgrade to the /mine URL
     } else if (new URLSearchParams(window.location.search).get('mine')) {
-      window.history.replaceState({}, '', '/')
-      myWorlds()
+      myWorlds()   // upgrades the URL to /u/<you>
     } else {
       // still in your submain from earlier this session? re-enter it quietly —
       // no redirects here: a stale flag without a session just clears itself.
@@ -758,8 +770,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // the arena closes itself; re-navigating here would yank the scene and
       // make browser-back feel nothing like the ✕ (which it must equal)
       if (votingRef.current) return
-      const m = window.location.pathname.match(/^\/play\/(.+)$/)
-      go(m ? decodeURIComponent(m[1]) : 'CAFE', false)
+      const path = window.location.pathname
+      const m = path.match(/^\/play\/(.+)$/)
+      if (m) { go(decodeURIComponent(m[1]), false); return }
+      // /u/<you> ↔ / — the personal shelf is a filter on the CAFE scene, not a scene
+      if (sceneRef.current !== 'CAFE') go('CAFE', false)
+      if (path === '/mine' || /^\/u\//.test(path)) myWorlds(false); else commons(false)
     }
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
     const onPortals = (e: Event) => {
@@ -1049,7 +1065,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           ? (subMode?.mode === 'group'
               ? { label: 'SUB-MAINS', leave: () => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null } }
               : { label: 'CAFE', leave: () => go('CAFE') })
-          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: commons } : null)
+          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: () => commons() } : null)
         if (!up) return null
         return (
           <div className="fixed left-6 top-24 z-50">
@@ -1458,7 +1474,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             )}
             {/* mine-mode's way out is the universal ◂ strip (top-left) */}
             {!mine && (
-              <button onClick={myWorlds} className={`${hubBtn} opacity-60 hover:opacity-100`}>MY WORLDS</button>
+              <button onClick={() => myWorlds()} className={`${hubBtn} opacity-60 hover:opacity-100`}>MY WORLDS</button>
             )}
             {/* lend your idle AI to the swarm — needs a session to mint a uc_bt_ */}
             <button onClick={async () => {

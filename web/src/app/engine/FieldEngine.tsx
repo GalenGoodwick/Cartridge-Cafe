@@ -1013,13 +1013,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Returns the name the scene was ACTUALLY saved under (the store forks on
   // overwrite, so a save onto an existing branch lands as its next version), or
   // null on failure. Callers use it to follow the real branch, not a guessed one.
-  const saveSceneAs = useCallback(async (sceneName: string): Promise<string | null> => {
+  const saveSceneAs = useCallback(async (sceneName: string, extraWorldData?: Record<string, unknown>): Promise<string | null> => {
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim) return null
     const fields = sim.generateSnapshots()
     const stepHooks = sim.getStepHookSnapshots()
-    const worldData = { ...sim.worldData }
+    // extraWorldData wins over the inherited sim.worldData — so a branch's
+    // `branchedFrom` is stamped to ITS immediate parent, not the grandparent it
+    // inherited (walk the chain for full genealogy; the name still flattens to root).
+    const worldData = { ...sim.worldData, ...(extraWorldData || {}) }
     // ONLY the visuals THIS world uses. The renderer registry is GLOBAL — every
     // visual from every world visited this session — so grabbing it whole scoops
     // foreign visuals (fluid_base, garnet, …) into a branch snapshot (the ORCHID
@@ -1096,7 +1099,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
     const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
     const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-    const savedAs = await saveSceneAs(name)
+    // stamp the IMMEDIATE parent (src), not the flattened root — full genealogy
+    const savedAs = await saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
     if (savedAs) {
       lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
       setPlugToken(null)                  // fresh branch → fresh scoped key
@@ -1127,7 +1131,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
     const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
     const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-    const savedAs = await saveSceneAs(name)
+    const savedAs = await saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
     if (!savedAs) { showToast('could not open the branch', 'error'); return }
     lastSceneRef.current = savedAs
     const r = await fetch('/api/builds/enqueue-scene', {

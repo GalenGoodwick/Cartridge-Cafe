@@ -1,15 +1,28 @@
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { usersByHandle, handleOf } from '@/lib/notify'
 import { hydrateAllScenes, listScenes } from '../../api/engine/store'
 import ProfileActions from './ProfileActions'
+import CafeShell from '@/app/CafeShell'
 
 export const dynamic = 'force-dynamic'
 
-/** /u/<handle> — a maker's page: their worlds, their branches, their following.
- *  The handle is the same one stamped into every branch name (⑂ handle · vN),
- *  so every artifact on the shelf already links here in spirit. */
+/** /u/<handle> — a maker's page. TWO faces by who's looking:
+ *  · the OWNER (signed in, viewing their own handle) gets the interactive cafe
+ *    shelf filtered to their own worlds — "MY WORLDS" as a real, shareable URL.
+ *  · everyone else gets the public profile: worlds, branches, follow.
+ *  The handle is the same one stamped into every branch name (⑂ handle · vN). */
 export default async function ProfilePage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params
+
+  const session = await getServerSession(authOptions)
+  const viewerHandle = session?.user?.email ? handleOf(session.user.email) : null
+  if (viewerHandle && viewerHandle === handle) {
+    // your own page IS your shelf — the same shell, filtered to your deeds
+    return <CafeShell initialMine />
+  }
+
   const users = await usersByHandle(handle)
   const display = users[0]?.name || handle
 

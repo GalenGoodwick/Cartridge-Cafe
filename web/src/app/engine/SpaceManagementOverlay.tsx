@@ -220,6 +220,12 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                   {space?.isPublic ? 'public' : 'private'}
                 </button>
               </div>
+              {/* the commons deal, said right where the switch is thrown */}
+              <div className="mt-1.5 text-[12px] leading-snug text-muted/70">
+                {space?.isPublic
+                  ? 'on the shelf — anyone can play & branch it; credit follows you through lineage'
+                  : 'yours alone — no one else can open, play, or branch it'}
+              </div>
             </div>
 
             {/* Share */}
