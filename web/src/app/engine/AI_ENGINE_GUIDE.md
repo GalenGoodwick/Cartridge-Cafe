@@ -1419,3 +1419,26 @@ shader set as ONE bridge batch (a `commands` array). Visuals compiled while
 their modules are mid-flight are no longer quarantined for it — the sweep
 recognizes `unresolved call target 'mod_*'` as modules-in-flight — but an
 ordered atomic batch avoids the failed intermediate compiles entirely.
+
+## ANIM3 — articulated animation on top of WORLD3
+
+`src/app/engine/scenes/anim3-lib.wgsl` — the movement layer between skel-lib's
+creature rigs and world3's raymarched space. All functions are STATELESS (pure
+functions of time + parameters): the shader poses bodies per-pixel while a step
+hook drives the inputs through the whiteboard or the population buffer.
+
+- `mod_a3_ik2(root, target, l1, l2, pole)` — two-bone IK (knees, elbows); the
+  pole is a POINT the joint bends toward. Unreachable targets clamp gracefully.
+- `mod_a3_bone(p, a, b, r0, r1)` / `mod_a3_joint` — tapered limb capsule + hinge ball.
+- `mod_a3_gait(phase, duty)` — the planted-foot law: phase advances in stride
+  cycles (hook: `ph += speed / strideLen * dt`); stance travels backward at body
+  speed (zero world velocity — feet PLANT), swing arcs forward on a sine lift.
+- `mod_a3_sway(t, freq, sharp)` — eased oscillator for tails/breath/secondary.
+- `mod_a3_mix` / `mod_a3_arc(a, peak, b, t)` — pose blending and lifted reaches.
+- `mod_a3_aim(local, origin, fw)` — aim frames (head look-at, torso facing).
+- `mod_a3_legs(p, hips, phase, stride, legLen, r)` — a complete IK biped
+  undercarriage in one call; copy its body as the pattern for arms/quadrupeds.
+
+Crowds: publish `gpuPopulation` entries `[x, y, heading, phase]` from the hook
+and loop `pop(i)` in the visual — each walker builds in its local frame with
+`mod_a3_gait(phase)` driving the legs. 4095 animated bodies, one dispatch.

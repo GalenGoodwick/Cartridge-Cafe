@@ -8,6 +8,7 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import LendAiPanel from '@/app/LendAiPanel'
+import ConnectAiPanel from '@/app/ConnectAiPanel'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -76,6 +77,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false }
   // window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
   const [lendOpen, setLendOpen] = useState(false)   // "Lend your AI" volunteer panel
+  const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — your personal player key
   const [icon, setIcon] = useState<{ fx: number; hue: number; size: number; wgsl?: string }>({ fx: 5, hue: 0.55, size: 1 })
   useEffect(() => {
     try {
@@ -1519,6 +1521,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                           if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
                           setIconOpen(true)
                         } },
+                      { label: '⚿ CONNECT AI', onClick: async () => {
+                          setAcctOpen(false)
+                          if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
+                          setConnectOpen(true)
+                        } },
                       { label: '🤝 LEND AI', onClick: async () => {
                           setAcctOpen(false)
                           if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
@@ -1545,6 +1552,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             </button>
           </div>
           )}
+
+          {/* CONNECT AI — mint your personal player key (chat commons + build your worlds) */}
+          {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
 
           {/* LEND YOUR AI — enroll as a swarm builder, get the token + run command */}
           {scene === 'CAFE' && lendOpen && <LendAiPanel onClose={() => setLendOpen(false)} />}

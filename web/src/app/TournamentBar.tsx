@@ -249,7 +249,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // so one shared thread still reads clearly.
   const viewingLabel = (w: string, voting: boolean) => {
     const i = w.indexOf(' ⑂ ')
-    const where = i < 0 ? 'main' : '⑂ ' + (w.slice(i + 3).split(' · ')[0] || 'branch')
+    // space-page arenas: candidates are save points ('v3') or LIVE — the vantage
+    // is the version itself, not 'main' (every version read as main before)
+    const where = /^(v\d+|LIVE)$/i.test(w) ? w.toLowerCase()
+      : i < 0 ? 'main' : '⑂ ' + (w.slice(i + 3).split(' · ')[0] || 'branch')
     return voting ? '⚔ voting · ' + where : where
   }
   const loadChat = useCallback(async (w: string) => {
@@ -789,7 +792,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
                   <div className="flex gap-1.5">
                     <input value={draft} onChange={e => setDraft(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') postChat(focus, draft) }}
-                      placeholder={`speak on ${focus.toLowerCase()}…`} maxLength={280}
+                      placeholder="speak…" maxLength={280}
                       className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-2 py-1.5 text-white/80 outline-none focus:border-amber-400/40`} />
                     <button onClick={() => postChat(focus, draft)}
                       className={`${pill} px-2.5 py-1.5 rounded border border-white/15 text-white/60 hover:text-white`}>SAY</button>

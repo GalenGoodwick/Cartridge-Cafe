@@ -43,6 +43,14 @@ function SignInInner() {
 
   return (
     <div className="cafe-room text-steamer flex items-center justify-center px-6">
+      {/* the way out, always in reach — the only back link used to hide below
+          the fold at the card's foot */}
+      <button
+        onClick={() => { if (history.length > 1) history.back(); else window.location.href = '/' }}
+        className="fixed top-5 left-5 z-50 brass-tab px-3 py-1.5 text-[12px] font-mono tracking-[0.2em]"
+      >
+        ← BACK
+      </button>
       <div className="relative z-10 w-full max-w-sm">
         {/* the plaque */}
         <div className="cart cafe-steam arrive">

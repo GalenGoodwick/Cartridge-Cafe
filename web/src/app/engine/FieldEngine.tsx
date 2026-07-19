@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
@@ -1422,6 +1423,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`)
       if (!r.ok) return
       const data = await r.json()          // { snapshot: {...} }
+      // Viewing a SAVE POINT presents the world FRESH, not mid-game: a version
+      // snapshot carries the live worldData — chapters, triggers, whatever the
+      // hook persisted — so vote previews resumed someone's half-finished run.
+      // Engine state (__chapters/__trig) always resets; a world lists its own
+      // game-state keys in worldData.__resets (e.g. TIDEGLASS resets '__tg').
+      if (v !== undefined) {
+        const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
+        if (wd) {
+          const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
+          for (const k of ['__chapters', '__trig', ...extra]) delete wd[k]
+        }
+      }
       await handleLoadScene(`space:${spaceSlug}`, data)
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
@@ -5912,10 +5925,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 // '(minting failed)' where the key belongs. Live re-check so a
                 // slow session fetch doesn't bounce a signed-in player.
                 if (!me) {
-                  const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+                  let sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
                   if (!sess?.user) {
-                    window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)
-                    return
+                    // no account yet? fine — players hold GUEST standing (3
+                    // builds) before any auth wall. Mint a guest seat and
+                    // continue right here; only a failed mint (rate limit /
+                    // spent quota) walks them to the counter.
+                    const g = await fetch('/api/auth/guest', { method: 'POST' }).then(r => r.json()).catch(() => null)
+                    if (g?.ok) {
+                      await signIn('guest', { redirect: false })
+                      sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+                    }
+                    if (!sess?.user) {
+                      window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)
+                      return
+                    }
                   }
                   setMe(sess.user.email || sess.user.name || null)
                 }
