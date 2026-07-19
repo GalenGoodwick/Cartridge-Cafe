@@ -497,6 +497,40 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
   c *= 0.55 + 0.45 * exp(-dot(p - vec2f(0.0, -0.1), p - vec2f(0.0, -0.1)) * 0.8);
   // dusk light falls from the upper left
   c += vec3f(0.55, 0.28, 0.14) * exp(-(p.x + 0.9) * (p.x + 0.9) * 0.8) * exp(-(p.y + 0.9) * (p.y + 0.9) * 0.9) * 0.5;
+  // ── the carved portal: a stepped square frame enthroning the disc ──
+  let fp = p - vec2f(0.0, 0.02);
+  let fr1 = abs(sdRoundedBox(fp, vec2f(0.80, 0.80), 0.10)) - 0.030;
+  let fr2 = abs(sdRoundedBox(fp, vec2f(0.90, 0.90), 0.12)) - 0.022;
+  let frame = min(fr1, fr2);
+  if (frame < 0.0) {
+    var kc = mod_tg_rock(p * 4.5 + vec2f(13.0), vec3f(0.105, 0.095, 0.088));
+    // bevel: light on top-left faces, shadow bottom-right
+    kc *= 0.72 + 0.55 * clamp(0.5 - fp.x * 0.7 - fp.y * 0.9, 0.0, 1.2);
+    kc += vec3f(0.85, 0.48, 0.20) * smoothstep(0.010, 0.0, abs(frame + 0.012)) * clamp(-fp.y - fp.x + 0.4, 0.0, 1.0) * 0.30;
+    c = mix(c, kc, smoothstep(0.006, -0.006, frame));
+  }
+  // lintel frieze: the four glyphs graven small across the top beam
+  for (var k = 0; k < 4; k++) {
+    let gp3 = (p - vec2f(-0.27 + f32(k) * 0.18, -0.845)) / 0.045;
+    if (abs(gp3.x) < 1.3 && abs(gp3.y) < 1.3) {
+      let g = mod_tg_glyph(k, gp3);
+      c = mix(c, vec3f(0.045, 0.042, 0.045), g * 0.6);
+      c += mod_tg_gcol(k) * g * 0.22;
+    }
+  }
+  // ── the threshold: worn steps and a puddle that remembers the door ──
+  if (p.y > 0.86) {
+    let sv = p.y - 0.86;
+    var gc2 = vec3f(0.070, 0.062, 0.058) * (0.75 + 0.4 * fbm(vec2f(p.x * 7.0, p.y * 18.0), 2));
+    gc2 *= 1.0 - 0.35 * smoothstep(0.35, 0.5, abs(fract(sv * 22.0) - 0.5));   // step treads
+    // puddle mirrors the door's warmth
+    let pd = length((p - vec2f(0.18, 0.965)) * vec2f(2.6, 9.0)) - 0.55;
+    if (pd < 0.0) {
+      let wob3 = 1.0 + sin(p.x * 60.0 + t * 2.0) * 0.15;
+      gc2 = mix(gc2, vec3f(0.05, 0.055, 0.075) + vec3f(0.55, 0.30, 0.10) * (0.25 + open * 0.9) * wob3, smoothstep(0.0, -0.15, pd));
+    }
+    c = mix(c, gc2 * (0.5 + 0.5 * exp(-p.x * p.x * 1.5)), smoothstep(0.0, 0.05, sv));
+  }
   // drips
   let dcol = floor(px.x / 24.0);
   let dh = hash11(dcol);
@@ -579,8 +613,43 @@ fn mod_tg_hall(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let solved = uni(14);
   // stone interior, floor below y=0.62
   var c = mod_tg_rock(p * 2.0 + vec2f(20.0), vec3f(0.075, 0.070, 0.080));
+  // back-wall arcade: shadowed arches between the pipes
+  for (var a = 0; a < 4; a++) {
+    let ax = -0.375 + f32(a) * 0.25;
+    let aq = p - vec2f(ax, 0.10);
+    var ad2 = 1.0;
+    if (aq.y > -0.22) { ad2 = max(abs(aq.x) - 0.072, aq.y - 0.40); }
+    else { ad2 = length(vec2f(aq.x, (aq.y + 0.22) * 1.1)) - 0.072; }
+    if (ad2 < 0.0) {
+      var av = vec3f(0.030, 0.028, 0.034) * (0.8 + 0.4 * fbm(aq * 9.0, 2));
+      av += vec3f(0.25, 0.16, 0.08) * exp(-aq.y * aq.y * 3.0) * lit * 0.4;   // borrowed light
+      c = mix(c, av, smoothstep(0.008, -0.008, ad2) * 0.85);
+    }
+    // arch surround highlight
+    c += vec3f(0.30, 0.22, 0.13) * smoothstep(0.014, 0.0, abs(ad2 - 0.012)) * 0.35;
+  }
+  // vaulted ceiling ribs converging on the oculus
+  if (p.y < -0.45) {
+    let rib = abs(fract(atan2(p.x, -p.y - 0.30) * 2.546) - 0.5);
+    c *= 1.0 - 0.30 * smoothstep(0.10, 0.02, rib) * smoothstep(-0.45, -0.75, p.y);
+    c += vec3f(0.55, 0.42, 0.25) * smoothstep(0.05, 0.0, rib) * smoothstep(-0.5, -0.9, p.y) * (0.10 + lit * 0.35);
+  }
+  // oculus aperture ring
+  let oring = abs(length((p - vec2f(0.0, -0.98)) * vec2f(1.0, 2.2)) - 0.34) - 0.035;
+  c = mix(c, vec3f(0.14, 0.11, 0.06) * (0.8 + lit * 1.6), smoothstep(0.010, -0.010, oring));
+  // wall sconces between pipes: small ember lamps
+  for (var s = 0; s < 4; s++) {
+    let scx = -0.375 + f32(s) * 0.25;
+    let sq = p - vec2f(scx, -0.10);
+    let flick2 = 0.8 + 0.2 * sin(t * (6.0 + f32(s)) + f32(s) * 7.0);
+    let lamp = length(sq * vec2f(1.3, 1.0)) - 0.020;
+    if (lamp < 0.0) { c = vec3f(1.5, 0.85, 0.30) * flick2; }
+    c += vec3f(0.9, 0.50, 0.16) * exp(-dot(sq, sq) * 30.0) * 0.22 * flick2;
+  }
   if (p.y > 0.62) {
     c = mod_tg_rock(vec2f(p.x * 2.0, p.y * 6.0), vec3f(0.09, 0.082, 0.078)) * (1.1 - (p.y - 0.62) * 0.8);
+    // wet sheen strip where the pipes drip
+    c *= 1.0 + 0.25 * smoothstep(0.68, 0.63, p.y) * (0.5 + 0.5 * sin(p.x * 40.0 + t));
   }
   c *= 0.45 + 0.4 * exp(-dot(p, p) * 0.7);
   // ── oculus shaft ──
@@ -676,8 +745,34 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
       c += mod_tg_gcol(gi) * mod_tg_glyph(gi, gp) * (0.30 + uni(29) * select(0.0, 0.55, gi == 2));
     }
   }
-  // ── horizon silhouette ──
-  c = mix(c, vec3f(0.012, 0.012, 0.02), smoothstep(0.60, 0.66, p.y));
+  // ── the observatory crown: parapet arc, flanking pylons ──
+  // curved parapet — a dark arc the platform stands behind
+  let par = p.y - (0.64 + 0.06 * p.x * p.x);
+  if (par > 0.0) {
+    var pc2 = vec3f(0.028, 0.026, 0.034) * (0.8 + 0.4 * fbm(p * 7.0 + vec2f(40.0), 2));
+    // crenel notches along the rim
+    pc2 *= 1.0 - 0.30 * step(abs(fract(p.x * 6.0) - 0.5), 0.10) * smoothstep(0.05, 0.0, par);
+    // rim catch-light from the beam
+    pc2 += vec3f(0.45, 0.40, 0.55) * smoothstep(0.020, 0.0, par) * (0.25 + uni(16) * 0.5);
+    c = mix(c, pc2, smoothstep(0.0, 0.015, par));
+  }
+  // two glyph-lamp pylons at the platform's edge
+  for (var s = 0; s < 2; s++) {
+    let sx = select(-0.80, 0.80, s == 1);
+    let pq = p - vec2f(sx, 0.72);
+    let pyl = sdBox(pq, vec2f(0.045, 0.26));
+    if (pyl < 0.0) {
+      var yc = vec3f(0.055, 0.048, 0.055) * (0.8 + 0.4 * fbm(pq * 11.0, 2));
+      yc += vec3f(0.5, 0.42, 0.28) * smoothstep(0.012, 0.0, abs(pq.x + 0.035)) * 0.4;
+      c = mix(c, yc, smoothstep(0.006, -0.006, pyl));
+    }
+    // lamp head: the star-glyph burns atop each pylon
+    let lg = (pq - vec2f(0.0, -0.315)) / 0.042;
+    if (abs(lg.x) < 1.3 && abs(lg.y) < 1.3) {
+      c += mod_tg_gcol(2) * mod_tg_glyph(2, lg) * (0.7 + 0.3 * sin(t * 1.3 + f32(s) * 3.0));
+    }
+    c += mod_tg_gcol(2) * exp(-dot(pq - vec2f(0.0, -0.315), pq - vec2f(0.0, -0.315)) * 160.0) * 0.35;
+  }
   // ── the great lens, bottom center ──
   let lc = vec2f(0.0, 0.84);
   let lq = p - lc;
@@ -707,6 +802,18 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
     }
     kc += vec3f(1.0, 0.9, 0.6) * smoothstep(0.012, 0.0, abs(ld + 0.035)) * 0.5;
     c = mix(c, kc, smoothstep(0.008, -0.008, ld - 0.055));
+  }
+  // brass yoke: two arms cradle the glass, turning with the aim
+  for (var ya = 0; ya < 2; ya++) {
+    let side = select(-1.0, 1.0, ya == 1);
+    let yang = ang + side * 1.35;
+    let ydir = vec2f(sin(yang), -cos(yang));
+    let yd = sdSegment(lq, ydir * 0.16, ydir * 0.26) - 0.020;
+    if (yd < 0.0) {
+      var yc2 = vec3f(0.24, 0.165, 0.075) * (0.8 + 0.5 * clamp(-lq.y * 3.0, 0.0, 1.0));
+      yc2 += vec3f(0.9, 0.7, 0.35) * smoothstep(0.008, 0.0, abs(yd + 0.010)) * 0.4;
+      c = mix(c, yc2, smoothstep(0.005, -0.005, yd));
+    }
   }
   // hold-progress ring
   let hold = uni(16);
@@ -750,10 +857,16 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
   if (view == 1) {
     let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);
     c = mix(c, a.rgb + c, a.a * 0.9);
+    let r2 = mod_tg_chev(px, vec2f(487.0, 256.0), 0, smoothstep(55.0, 20.0, length(mm - vec2f(487.0, 256.0))), t);
+    c = mix(c, r2.rgb + c, r2.a * 0.9);               // → the tide record
     if (uni(8) > 0.9) {                               // enter the open door
       let b = mod_tg_chev(px, vec2f(256.0, 250.0), 2, smoothstep(70.0, 25.0, length(mm - vec2f(256.0, 250.0))), t);
       c = mix(c, b.rgb + c, b.a * 0.9);
     }
+  }
+  if (view == 4) {                                    // the record room → back to the gate
+    let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);
+    c = mix(c, a.rgb + c, a.a * 0.9);
   }
   if (view == 2) {
     let a = mod_tg_chev(px, vec2f(25.0, 470.0), 3, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 470.0))), t);
@@ -849,6 +962,7 @@ try {
       if (G.fin >= 0.5 && hit(487, 256, 45)) go(1)     // free travel after the end
     } else if (inView(1)) {
       if (hit(25, 256, 45)) go(0)
+      if (hit(487, 256, 45)) go(4)                    // → the tide record
       if (G.door > 0.9 && hit(256, 250, 70)) go(2)
       // dials at grid (156,409) (222,409) (288,409) (354,409)
       if (G.door < 0.05) for (let k = 0; k < 4; k++) {
@@ -884,6 +998,8 @@ try {
       }
     } else if (inView(3)) {
       if (hit(60, 470, 45)) go(2)
+    } else if (inView(4)) {
+      if (hit(25, 256, 45)) go(1)
     }
   }
 
@@ -964,6 +1080,38 @@ try {
 } catch (e) { /* the island keeps its silence */ }
 `
 
+// ── the shelf icon: self-contained (the auto-composer can't carry modules) ──
+const ICON = /* wgsl */`
+fn visual_tideglass_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
+  let p = uv;
+  var c: vec3f;
+  let hor = 0.15;
+  if (p.y < hor) {
+    let h = clamp((hor - p.y) * 0.8, 0.0, 1.0);
+    c = mix(vec3f(1.0, 0.45, 0.18), vec3f(0.09, 0.12, 0.28), pow(h, 0.7));
+    let sd2 = length((p - vec2f(-0.05, hor - 0.03)) * vec2f(1.0, 1.4));
+    c += vec3f(1.8, 0.9, 0.3) * exp(-sd2 * 7.0);
+    let st = hash21(floor(p * 40.0));
+    c += vec3f(0.9) * step(0.985, st) * clamp((hor - p.y) * 1.5, 0.0, 1.0) * 0.5;
+  } else {
+    let d = (p.y - hor) / (1.0 - hor);
+    c = mix(vec3f(0.30, 0.16, 0.16), vec3f(0.02, 0.04, 0.07), d);
+    let g = hash21(floor(vec2f(p.x * 30.0, (p.y - time * 0.05) * 60.0)));
+    c += vec3f(1.2, 0.6, 0.22) * step(0.955, g) * exp(-(p.x + 0.05) * (p.x + 0.05) * 6.0) * (1.0 - d * 0.6);
+    c *= 1.0 + sin(p.y * 60.0 - time * 1.5) * 0.05;
+  }
+  // the vault star, gold, breathing
+  let q = (p - vec2f(0.38, -0.34)) / 0.26;
+  let star = sdStar(q, 0.85, 4, 2.6);
+  c = mix(c, vec3f(1.25, 1.0, 0.45) * (0.85 + 0.15 * sin(time * 1.5)), smoothstep(0.05, -0.05, star));
+  c += vec3f(1.0, 0.8, 0.35) * exp(-dot(q, q) * 1.6) * 0.30;
+  // the tower keeps its watch
+  let tw = sdBox(p - vec2f(0.72, hor - 0.14), vec2f(0.035, 0.16));
+  c = mix(c, vec3f(0.030, 0.028, 0.038), smoothstep(0.01, -0.01, tw));
+  c += vec3f(0.35, 0.9, 0.9) * exp(-dot(p - vec2f(0.72, hor - 0.33), p - vec2f(0.72, hor - 0.33)) * 220.0) * 0.9;
+  return vec4f(c, 1.0);
+}`
+
 // ─────────────────────────────────────────────────────────────── build ──
 const INSTRUCTIONS = [
   'CLICK — turn dials, work levers, travel (chevrons at the screen edges)',
@@ -974,7 +1122,7 @@ const INSTRUCTIONS = [
 ].join('\n')
 
 async function main() {
-  await send({ type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS } }, 'world_data')
+  await send({ type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS, icon_wgsl: ICON } }, 'world_data')
   await send({ type: 'set_world_params', params: { gravity: 0, friction: 0.95, collisionForce: 0, boundaryMode: 'open', gravitationalConstant: 0 } }, 'world_params')
   await send({ type: 'define_module', name: 'tg_lib', wgsl: MODULES }, 'module tg_lib')
   await send({ type: 'define_module', name: 'tg_views', wgsl: VIEWS }, 'module tg_views')

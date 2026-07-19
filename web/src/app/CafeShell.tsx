@@ -180,6 +180,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [vp, setVp] = useState({ w: 0, h: 0 })
   const [mine, setMine] = useState<string | null>(null)   // display name while in your submain
+  const [players, setPlayers] = useState(false)           // in the PLAYER WORLDS filter (big-bubble view)
   const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const captionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -696,6 +697,13 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = name.slice(4)
         return
       }
+      if (name === 'players:') {
+        // PLAYER WORLDS — an in-scene filter (like MY WORLDS), not a departure.
+        // The CAFE hook re-polls to the players-only shelf off this flag.
+        ;(window as unknown as { __cafePlayers?: boolean }).__cafePlayers = true
+        setPlayers(true)
+        return
+      }
       // king-of-the-hill: the door says "ORCHID", but entering it loads whoever
       // currently holds MAIN — the branch that won its arena — not the frozen
       // original. A branch or hub launches as itself; the ★ ORIGINAL bookmark
@@ -1067,7 +1075,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           ? (subMode?.mode === 'group'
               ? { label: 'SUB-MAINS', leave: () => { (window as unknown as { __cafeSub?: string | null }).__cafeSub = null } }
               : { label: 'CAFE', leave: () => go('CAFE') })
-          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: () => commons() } : null)
+          : (scene === 'CAFE' && mine ? { label: 'CAFE', leave: () => commons() }
+          : scene === 'CAFE' && players ? { label: 'CAFE', leave: () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) } } : null)
         if (!up) return null
         return (
           <div className="fixed left-6 top-24 z-50">
@@ -1437,6 +1446,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {mine && (
               <div className="font-mono text-[12px] tracking-[0.3em] text-brass uppercase mt-2">
                 {mine}&apos;s worlds
+              </div>
+            )}
+            {players && (
+              <div className="font-mono text-[12px] tracking-[0.3em] text-brass uppercase mt-2">
+                player worlds
               </div>
             )}
             {scene === 'SUB-MAIN' && subMode?.mode === 'group' && subMode.name && (

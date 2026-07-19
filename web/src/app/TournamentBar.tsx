@@ -892,23 +892,22 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     <>
       {gate && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setGate(false)}>
-          <div className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-y-auto rounded-lg border border-red-500/35 bg-[#0e0b07] p-7 font-mono text-[15px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2.5 text-red-400 text-[14px] tracking-[0.22em] uppercase mb-5">
-              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" /> Do not enter before reading
+          <div className="w-[540px] max-w-[92vw] max-h-[86vh] overflow-y-auto rounded-lg border border-brass/35 bg-[#0e0b07] p-7 font-mono text-[15px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 text-amber-200/80 text-[14px] tracking-[0.22em] uppercase mb-5">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> How the vote works
             </div>
-            <p className="text-white/80 mb-4">THE VOTE is not a like button. It is a serious dynamic — and it can cost you your account.</p>
+            <p className="text-white/80 mb-4">The vote isn&rsquo;t a like button — it&rsquo;s how the cafe decides what everyone sees first. A quick read:</p>
             <div className="space-y-3 text-[12.5px] text-white/70">
-              <p><span className="text-amber-200">A cell is 60 minutes.</span> It holds several worlds. Play <em>any</em> of them and the cell is <em>yours</em> — you must give real time to <em>all</em> of them. Skip games and your score is wrecked.</p>
+              <p><span className="text-amber-200">A cell is 60 minutes.</span> It holds several worlds. The idea is simple: give each game in your cell a real look before you vote — that&rsquo;s what keeps the vote fair.</p>
               <p><span className="text-amber-200">Two scores.</span> XP — up to 60, one point per minute actually played. VOTE — up to 100, your interest. Play buys standing; the vote sorts what everyone sees first.</p>
               <p><span className="text-amber-200">Your freedom.</span> Never touch a world and you leave freely for a new cell. Lock in a vote anytime to move on. Review as many cells as you like. Abandon without voting and your play time still counts.</p>
-              <p><span className="text-amber-200">The violation.</span> Leaving a cell you have <em>played</em> without giving time to each game. First offense: a warning strike (30 days to clear). A second <em>live</em> strike — <span className="text-red-400">your account is deleted.</span></p>
-              <p><span className="text-amber-200">The work survives you.</span> Any world that won, or that even one person enjoyed, stays — even if its maker is banned.</p>
+              <p><span className="text-amber-200">The work survives you.</span> Any world that won, or that even one person enjoyed, stays — even if its maker moves on.</p>
             </div>
             <div className="flex items-center justify-between gap-3 mt-6">
               <button onClick={() => setGate(false)} className="text-[13px] tracking-[0.18em] text-white/40 hover:text-white/70 px-2 py-1.5">NOT YET</button>
-              <button onClick={acceptGate} className="text-[13px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER — I ACCEPT</button>
+              <button onClick={acceptGate} className="text-[13px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER THE VOTE</button>
             </div>
-            <p className="text-white/30 text-[12px] tracking-[0.15em] mt-3 text-center">Enter only if you accept this.</p>
+            <p className="text-white/30 text-[12px] tracking-[0.15em] mt-3 text-center">Play fair — give every game in your cell a real look.</p>
           </div>
         </div>
       )}

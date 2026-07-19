@@ -6,10 +6,10 @@ import { loadGameSlot, saveGameSlot } from '../store'
 export const dynamic = 'force-dynamic'
 
 // Server-authoritative play time — the substrate for XP and the Vote's factory
-// order. It gates a violation and, ultimately, account deletion, so it can NEVER
-// live in client storage the player can edit. The client sends a heartbeat while
-// genuinely playing; the server accrues a FIXED amount per beat and rate-limits
-// how often a beat counts, so a spammed heartbeat can't inflate time.
+// order. It buys standing in the vote, so it can NEVER live in client storage the
+// player can edit. The client sends a heartbeat while genuinely playing; the
+// server accrues a FIXED amount per beat and rate-limits how often a beat counts,
+// so a spammed heartbeat can't inflate time.
 type PT = { total: number; worlds: Record<string, number>; last: number; xp?: number }
 
 const BEAT_MS = 10_000        // client heartbeats ~every 10s

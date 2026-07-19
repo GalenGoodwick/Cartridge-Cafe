@@ -550,18 +550,26 @@ try {
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
           }
+        } else if (PL) {
+          // PLAYER WORLDS mode — only the player-made worlds, on their own shelf
+          for (const s of (sp.spaces || [])) {
+            if (s.blank || s.building) continue
+            if (s.isPublic === false) continue
+            const disp = (s.name || s.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+          }
         } else {
           for (const n of (sc.scenes || [])) {
             if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
             if (n.includes(' \u2442 ')) continue
             want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
           }
-          for (const s of (sp.spaces || [])) {
-            if (s.blank || s.building) continue   // unbuilt / stuck-in-AI worlds stay off main
-            if (s.isPublic === false) continue    // hidden spaces stay off main — even for their owner's tab
-            const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
-          }
+          // THREE big front-door bubbles. SUB-MAINS opens the group layer; PLAYER
+          // WORLDS opens the player-made shelf (those worlds collapse behind it
+          // instead of crowding main); the CHAMPION is a core world sized big in
+          // place below (marked where the crown is set). Fixed positions = anchored.
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, fixed: [256, 150] }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, fixed: [150, 342] }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -598,7 +606,11 @@ try {
           }
           const B = U.bubbles[n]
           B.launch = want[n].launch
-          if (adopt && adopt.bubbles[n]) {   // the shared arrangement wins
+          B.big = !!want[n].big
+          if (want[n].fixed) {   // a pinned big category bubble — hold its exact seat
+            B.x = want[n].fixed[0]; B.y = want[n].fixed[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
+          }
+          if (adopt && adopt.bubbles[n] && !want[n].fixed) {   // the shared arrangement wins
             const sb2 = adopt.bubbles[n]
             B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1
             if (sb2.born) B.born = sb2.born
@@ -621,6 +633,7 @@ try {
           if (T && T.cells) for (const c of T.cells) { const v = c.votes || {}; for (const k in v) if (v[k] === n) live++ }
           const champ = T && T.champion === n
           B.crown = !!champ
+          if (champ) B.big = true   // the reigning world rides BIG in place — the third big bubble
           // NEW vs VOTED: a world that has climbed a tier, holds the crown, or is
           // taking live votes belongs to the voted cluster at center; everything
           // else is a new arrival held in the outer ring. A status flip re-settles
@@ -650,7 +663,7 @@ try {
           // the field woke on almost every poll and no layout ever held.)
           if (!B.justPlaced && !calmBoot && Math.abs(ns - B.score) > 1.0) U.wake = Math.max(U.wake, 7)
           delete B.justPlaced
-          B.score = ns
+          B.score = B.pinned ? 40 : ns   // pinned big bubbles keep a reserved score so they're never pruned
         }
         // a degraded first pass only ADDS — pruning waits for the full poll,
         // so a slow spaces fetch can't blink player worlds out and back
@@ -659,13 +672,14 @@ try {
         // (a world hidden since it was saved) must never get even one frame.
         // On a degraded first pass it just waits in U.bubbles for the full poll.
         U.order = Object.keys(U.bubbles).filter(n => want[n]).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 200)
-        if ((MF || SUB) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
+        if ((MF || SUB || PL) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
           const emptyText = MF ? 'no worlds on your deed yet - brew yours'
+            : PL ? 'no player worlds yet — be the first to brew one'
             : (subKey ? 'an empty shelf — members can pin worlds here' : 'no sub-mains yet — found yours')
           window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: emptyText, kind: 'hint' } }))
         }
-        if (!MF && !SUB) U.hintedEmpty = false
+        if (!MF && !SUB && !PL) U.hintedEmpty = false
       } catch (e2) { /* shelf unreachable — the universe holds its shape */ }
     })()
   }
@@ -758,12 +772,13 @@ try {
   // hover whenever two hit-circles overlapped, so the tooltip named/linked the
   // wrong world. Picking the closest makes the name + click-target match the icon
   // the cursor is actually on.
-  let hovered = -1, bestD = 30
+  let hovered = -1, best = 1.0   // pick the bubble the cursor is most INSIDE (d/radius < 1); big bubbles catch wider
   for (let i = 0; i < U.order.length; i++) {
     const B = U.bubbles[U.order[i]]
     if (!B) continue
     const d = Math.hypot(cux - B.x, cuy - B.y)
-    if (d < bestD) { bestD = d; hovered = i }
+    const nd = d / (B.big ? 57 : 30)
+    if (nd < best) { best = nd; hovered = i }
   }
   if (down && !U.prevDown) { U.downX = mgx; U.downY = mgy; U.dx = mgx; U.dy = mgy; U.moved = 0; U.drag = hovered < 0 ? 1 : 0 }
   if (down && U.drag) {
@@ -816,7 +831,7 @@ try {
     // through pans and zooms (events are too slow — they ride React state)
     window.__cafeBubbles = U.launched ? [] : U.order.map(n => {
       const B = U.bubbles[n]
-      return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
+      return B && { name: n, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.9 : 1) }
     }).filter(Boolean)
     // DOM chrome (count chips) can't share the canvas's frame, so it visibly
     // lags the shader during motion. Flag when the camera is moving; the shell
@@ -832,7 +847,7 @@ try {
       window.dispatchEvent(new CustomEvent('cafe:portals', {
         detail: U.order.map(n => {
           const B = U.bubbles[n]
-          return B && { name: n, launch: B.launch, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z }
+          return B && { name: n, launch: B.launch, x: (B.x - U.cam.x) * U.cam.z / 256, y: (B.y - U.cam.y) * U.cam.z / 256, r: 0.098 * U.cam.z * (B.big ? 1.9 : 1) }
         }).filter(Boolean),
       }))
     }
@@ -859,7 +874,7 @@ try {
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
     const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
-    u.push(B.x, B.y, (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
+    u.push(B.x, B.y, (B.big ? 400 : 0) + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
