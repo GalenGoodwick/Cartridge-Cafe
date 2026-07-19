@@ -1356,3 +1356,66 @@ send({
 - Server persists state to `.engine-store.json` (survives server restarts)
 - Field memory (messages, events) is capped at 100 entries per field
 - The engine runs at the browser's requestAnimationFrame rate
+
+---
+
+## WORLD3 — the shared 3D kit (raymarching infrastructure)
+
+The canonical 3D toolkit lives at `src/app/engine/scenes/world3-lib.wgsl`. It is
+everything the raymarched worlds (ONE DAY, TIDEGLASS, MARIONETTES 3D) used to
+hand-roll, extracted once: camera, 3D SDF primitives, domain operators, a
+sphere-tracing marcher, tetrahedral normals, soft shadows, ambient occlusion,
+fresnel, a standard sun/sky/bounce light rig, and aerial-perspective fog.
+
+Ship it into a world as a module (scenes must carry every module they use):
+
+```json
+{ "type": "define_module", "name": "world3", "wgsl": "<contents of world3-lib.wgsl>" }
+```
+
+**The one contract:** your scene defines the world's shape in its OWN module:
+
+```wgsl
+fn w3_map(p: vec3f) -> vec2f   // (signed distance, material id)
+```
+
+WGSL resolves module-scope functions in any order, so the kit's marchers call
+`w3_map` freely. A world that ships `world3` without defining `w3_map` will not
+compile — the contract is load-bearing.
+
+**Camera convention (whiteboard rows 60–61):** `uni4(60) = ro.xyz, fov` and
+`uni4(61) = target.xyz, 0`. A step hook that writes these gives any world3
+scene a movable eye — orbit, walk-through, cinematics — with no shader edits.
+
+**Canonical visual skeleton:**
+
+```wgsl
+fn visual_myworld(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
+  let ro = uni4(60).xyz;
+  let rd = mod_w3_ray(uv, ro, uni4(61).xyz, max(uni4(60).w, 0.6));
+  var col = skyFor(rd);                                  // your sky
+  let hit = mod_w3_march(ro, rd, 0.1, 60.0, 96);
+  if (hit.x > 0.0) {
+    let pos = ro + rd * hit.x;
+    let n  = mod_w3_nrm(pos, 0.02);
+    let sh = mod_w3_shadow(pos + n * 0.05, SUN_DIR, 30.0, 8.0);
+    let ao = mod_w3_ao(pos, n);
+    col = mod_w3_light(albedoFor(i32(hit.y)), n, rd, SUN_DIR, SUN_COL, SKY_COL, sh, ao);
+    col = mod_w3_fog(col, skyFor(rd), hit.x, 0.0006);
+  }
+  return vec4f(col, 1.0);                                // linear HDR — never tonemap
+}
+```
+
+Primitives: `mod_w3_sphere/box/rbox/capsule/cyl/cone/torus/octa/plane` ·
+ops: `mod_w3_rotX/rotY/rotZ/repeat/polar` · combine with the global
+`opSmoothUnion/opSubtract/…`. Budget guidance: ~96 march steps fullscreen is
+the ONE DAY class; bound secondary rays (shadows 24 steps, reflections ~22)
+and gate them by region. Check `worldData.__budget.frameMs` after building.
+
+**Load-order law (engine-enforced since Jul 19 2026, but respect it anyway):**
+register modules BEFORE the visuals that call them, and send a world's full
+shader set as ONE bridge batch (a `commands` array). Visuals compiled while
+their modules are mid-flight are no longer quarantined for it — the sweep
+recognizes `unresolved call target 'mod_*'` as modules-in-flight — but an
+ordered atomic batch avoids the failed intermediate compiles entirely.

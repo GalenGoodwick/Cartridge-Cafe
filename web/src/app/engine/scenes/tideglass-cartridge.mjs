@@ -217,7 +217,7 @@ fn mod_tgb_sdf(q0: vec3f, lean: f32) -> vec2f {
   let bell = max(length((q - vec3f(0.0, 0.88, 0.0)) * vec3f(1.0, 0.80, 1.0)) - 0.17, 0.62 - q.y);
   if (bell < d) { d = bell; m = 2.0; }
   // lantern head above the collar
-  let lant = mod_w3ish_box(q - vec3f(0.0, 1.52, 0.0), vec3f(0.115, 0.145, 0.115)) - 0.02;
+  let lant = mod_w3ish_box(q - vec3f(0.0, 1.46, 0.0), vec3f(0.062, 0.080, 0.062)) - 0.015;
   if (lant < d) { d = lant; m = 3.0; }
   return vec2f(d, m);
 }
@@ -711,46 +711,44 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let lean = sin(t * 0.6 + fk * 1.9) * 0.10 + sin(t * 1.1 + fk * 3.1) * 0.03;
     let gcol = mod_tg_gcol(k);
     let flash = uni(19 + k);
-    // ── march the real buoy: cone float, tripod cage, bell, lantern head ──
+    // ── the buoy as it was: slim keeper of its lamp — hull, post, and light ──
     {
-      var tB = max(bDist - 2.2, 1.0);
-      var hitB = -1.0;
-      var posB = vec3f(0.0);
-      for (var stp = 0; stp < 30; stp++) {
-        let wp = ro + rd * tB;
-        let dm = mod_tgb_sdf(wp - base, lean);
-        if (dm.x < 0.012 * tB) { hitB = dm.y; posB = wp; break; }
-        tB = tB + max(dm.x * 0.85, 0.012);
-        if (tB > bDist + 2.2) { break; }
+      var q0 = p - vec2f(sx, sy);
+      q0.x = q0.x + q0.y * lean;
+      // hull: half-sunk iron, a touch of dusk rim, seated in the swell
+      let hd = length((q0 - vec2f(0.0, -0.10 * su)) * vec2f(1.0, 2.2)) - 0.50 * su;
+      if (hd < 0.0 && q0.y < 0.06 * su) {
+        var bc = vec3f(0.034, 0.030, 0.032) * (0.85 + 0.4 * fbm(q0 * 30.0 + vec2f(fk * 7.0), 2));
+        bc += mix(vec3f(0.75, 0.34, 0.12), vec3f(0.10, 0.13, 0.22), night) * smoothstep(0.02 * su, -0.06 * su, hd) * clamp(0.5 - q0.x * 6.0, 0.0, 1.0) * 0.5;
+        bc += gcol * exp(-q0.y * q0.y * 300.0) * flash * 0.3;
+        // wet sheen at the waterline
+        bc += vec3f(0.4, 0.45, 0.5) * exp(-pow((q0.y - 0.02 * su) / (0.03 * su), 2.0)) * 0.25;
+        c = mix(c, bc, smoothstep(0.004, -0.004, hd));
       }
-      if (hitB > -0.5 && !(seaHit > 0.5 && seaT < tB - 0.3)) {
-        let e2 = 0.03;
-        let c0 = mod_tgb_sdf(posB - base, lean).x;
-        let nB = normalize(vec3f(
-          mod_tgb_sdf(posB - base + vec3f(e2, 0.0, 0.0), lean).x - c0,
-          mod_tgb_sdf(posB - base + vec3f(0.0, e2, 0.0), lean).x - c0,
-          mod_tgb_sdf(posB - base + vec3f(0.0, 0.0, e2), lean).x - c0));
-        let mB = i32(hitB + 0.5);
-        var alb = vec3f(0.040, 0.034, 0.036);                                    // weathered iron
-        if (mB == 1) { alb = vec3f(0.050, 0.042, 0.038); }                       // cage
-        if (mB == 2) { alb = vec3f(0.16, 0.115, 0.045); }                        // the bronze bell
-        var bc = alb * (0.35 + 0.75 * clamp(dot(nB, sunv), 0.0, 1.0) * (1.0 - night * 0.7));
-        bc += mod_tgo_suncol(sel) * pow(1.0 - clamp(dot(nB, -rd), 0.0, 1.0), 3.0) * (0.45 - night * 0.25);
-        // rust streaks down the float
-        bc *= 1.0 - 0.30 * smoothstep(0.3, 0.7, fbm(vec2f(atan2(posB.z - base.z, posB.x - base.x) * 2.0, (posB.y - base.y) * 4.0), 2)) * step(f32(mB), 0.5);
-        // bell glint when it tolls
-        if (mB == 2) { bc += vec3f(1.2, 0.9, 0.4) * flash * 0.8; }
-        if (mB == 3) { bc = gcol * (0.55 + flash * 2.2); }                       // the lantern head burns
-        c = mix(c, bc, 1.0);
+      // post: slender, warm-rimmed toward the sun
+      let pd2 = max(abs(q0.x) - 0.045 * su, max(q0.y - (-0.12 * su), -1.62 * su - q0.y));
+      if (pd2 < 0.0) {
+        var pc2 = vec3f(0.036, 0.032, 0.032) * (0.9 + 0.3 * fbm(vec2f(q0.x * 60.0, q0.y * 8.0), 2));
+        pc2 += mix(vec3f(0.7, 0.32, 0.12), vec3f(0.12, 0.15, 0.24), night) * smoothstep(0.0, -0.03 * su, abs(q0.x) - 0.02 * su) * 0.35;
+        // cross-brace collar where the lamp mounts
+        pc2 += vec3f(0.30, 0.24, 0.14) * smoothstep(0.016 * su, 0.006 * su, abs(q0.y + 1.52 * su)) * 0.8;
+        c = mix(c, pc2, smoothstep(0.003, -0.003, pd2));
       }
+      // waterline seat shadow
+      let fq2 = q0 - vec2f(0.0, 0.035 * su);
+      c *= 1.0 - exp(-pow(fq2.y / (0.030 * su), 2.0)) * smoothstep(0.55 * su, 0.20 * su, abs(fq2.x)) * 0.30;
     }
     // the lantern-glyph, alive when its bell speaks (billboard over the head)
     var q = p - vec2f(sx, sy);
     q.x = q.x + q.y * lean;
-    let lp2 = (q - vec2f(0.0, -1.78 * su)) / (0.42 * su);
-    if (abs(lp2.x) < 1.4 && abs(lp2.y) < 1.4) {
+    let lp2 = (q - vec2f(0.0, -1.80 * su)) / (0.44 * su);
+    if (abs(lp2.x) < 1.6 && abs(lp2.y) < 1.6) {
+      // a dark lamp-glass backing makes the glyph legible against bright sky
+      let back = smoothstep(1.35, 0.95, length(lp2));
+      c = mix(c, vec3f(0.015, 0.014, 0.018), back * 0.72);
       let g = mod_tg_glyph(k, lp2);
-      c = mix(c, gcol * (0.85 + flash * 2.6), g * 0.95);
+      c = mix(c, gcol * (1.15 + flash * 2.6), g);
+      c += gcol * g * 0.4;                                 // let bloom catch it
     }
     c += gcol * exp(-dot(q - vec2f(0.0, -1.78 * su), q - vec2f(0.0, -1.78 * su)) * (170.0 / (su * su))) * (0.10 + flash * 1.9) * su * 4.0;
     // waterline seat: the hull settles INTO the sea (foam now lives in the sea shader)

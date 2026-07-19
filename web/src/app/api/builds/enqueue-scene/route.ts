@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { mayWriteScene } from '@/app/api/engine/scene-auth'
+import { ensureBuilderTables } from '@/lib/builder-tables'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not authorized for this branch' }, { status: 403 })
   }
 
+  await ensureBuilderTables()   // BuildJob self-creates on prod (no migration)
   const live = await prisma.buildJob.findFirst({
     where: { sceneName, status: { in: ['pending', 'leased', 'building', 'needs_review'] } },
     select: { id: true },

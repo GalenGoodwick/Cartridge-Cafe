@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import type { NextRequest } from 'next/server'
+import { ensureBuilderTables } from '@/lib/builder-tables'
 
 // ── Builder swarm coordination (DESIGN-builder-swarm.md) ────────────────────
 // Shared helpers for the BuildJob queue: who's asking (holder auth), enqueue
@@ -16,6 +17,7 @@ export type Holder = { id: string; isHouse: boolean; displayName: string }
 /** Resolve the caller from its Bearer token: the admin engine token is the
  *  house AI; a `uc_bt_` token is a volunteer Builder. Null = not a builder. */
 export async function resolveHolder(req: NextRequest): Promise<Holder | null> {
+  await ensureBuilderTables()   // self-create Builder/BuildJob on prod (no migration)
   const auth = req.headers.get('authorization')
   if (!auth?.startsWith('Bearer ')) return null
   const token = auth.slice(7)
@@ -58,6 +60,7 @@ export function hist(prev: unknown, e: HistEntry): HistEntry[] {
 /** Enqueue a pending BuildJob for every world with an unfinished creation
  *  brief that has no live job. Idempotent — safe to call on every poll. */
 export async function reconcile(now: Date): Promise<number> {
+  await ensureBuilderTables()
   const spaces = await prisma.playerSpace.findMany({
     select: { id: true, slug: true, name: true, snapshot: true },
     orderBy: { updatedAt: 'desc' },
@@ -92,6 +95,7 @@ export async function reconcile(now: Date): Promise<number> {
 /** Requeue jobs whose lease expired (crashed/abandoned builder), applying the
  *  escalation ladder: pool → house AI (N) → needs_review (K). */
 export async function sweep(now: Date): Promise<number> {
+  await ensureBuilderTables()
   const dead = await prisma.buildJob.findMany({
     where: { status: { in: ['leased', 'building'] }, leaseExpires: { lt: now } },
   })
