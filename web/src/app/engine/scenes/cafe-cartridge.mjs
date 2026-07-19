@@ -556,7 +556,7 @@ try {
           : pr
         const [sc, sp, sl, uvr, tvr, smr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
-          patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: [] })), { spaces: [] }),
+          patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: null })), { spaces: null }),
           patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
           fetch('/api/engine/save?slot=' + encodeURIComponent(layoutSlot)).then(r => r.json()).catch(() => null),
           (MF || SUB || PL) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
@@ -595,14 +595,21 @@ try {
               want[n] = { launch: e.launch, style: STYLE_OF[n] ?? 8 }
             }
           }
-          // tell the shell where we stand — it draws FOUND / JOIN / PIN
-          if (typeof window !== 'undefined') {
+          // tell the shell where we stand — it draws FOUND / JOIN / PIN.
+          // ONLY on a real answer: a failed subs-index fetch (smr null) or a
+          // not-yet-resolved identity briefly reads as "not a member, founded
+          // nothing" — the shell's buttons were flashing to those wrong states
+          // and back on every degraded poll. Silence keeps the last true state.
+          const smrReal = !!(smr && smr.data)
+          const whoReady = typeof window === 'undefined' || window.__cafeWho !== undefined
+          if (typeof window !== 'undefined' && smrReal && whoReady) {
             const G3 = subKey ? idx[subKey] : null
-            window.dispatchEvent(new CustomEvent('cafe:submode', { detail: {
+            const detail = {
               mode: subKey ? 'group' : 'viewer',
               slug: subKey || null,
               name: G3 ? G3.name : null,
               haveOwn: !!(who && Object.keys(idx).some(s3 => idx[s3] && idx[s3].ownerId === who.id)),
+              ownSlug: (who && Object.keys(idx).find(s3 => idx[s3] && idx[s3].ownerId === who.id)) || null,
               member: !!(who && G3 && G3.members && G3.members[who.id]),
               owner: !!(who && G3 && G3.ownerId === who.id),
               pinsLocked: !!(G3 && G3.pinsLocked),
@@ -611,7 +618,12 @@ try {
               admins: G3 ? (G3.admins || []) : [],
               bans: G3 ? (G3.bans || {}) : {},
               shelf: G3 ? Object.keys(G3.shelf || {}) : [],
-            } }))
+            }
+            const sig2 = JSON.stringify(detail)
+            if (sig2 !== U.lastSubmodeSig) {
+              U.lastSubmodeSig = sig2
+              window.dispatchEvent(new CustomEvent('cafe:submode', { detail }))
+            }
           }
         } else if (MF) {
           // personal submain: only worlds on this player's deed —
@@ -806,7 +818,8 @@ try {
         }
         // a degraded first pass only ADDS — pruning waits for the full poll,
         // so a slow spaces fetch can't blink player worlds out and back
-        if (!firstFill) for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
+        const fullAnswer = Array.isArray(sc && sc.scenes) && Array.isArray(sp && sp.spaces)
+        if (!firstFill && fullAnswer) for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
         // NOTHING renders without the roster's word — a stale shared-doc bubble
         // (a world hidden since it was saved) must never get even one frame.
         // On a degraded first pass it just waits in U.bubbles for the full poll.

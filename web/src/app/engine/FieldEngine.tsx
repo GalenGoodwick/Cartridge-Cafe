@@ -5068,6 +5068,33 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [terminalLog.length])
 
+  // WORLD CHAT liveness — poll the world's shared chat so the ⌁ door shows if
+  // folks are talking: people (recent humans) go green, AIs amber. Same durable
+  // world-chat:<BASE> slot the door opens and the vote's talk writes.
+  const [chatLive, setChatLive] = useState({ people: 0, ai: 0 })
+  useEffect(() => {
+    if (!(spaceId || (playScene && playScene !== 'CAFE' && playScene !== 'SUB-MAIN'))) return
+    let stop = false
+    const key = ((spaceId ? (spaceName || spaceSlug) : (lastSceneRef.current || playScene || '')) || '')
+      .split(' ⑂ ')[0].trim().toUpperCase()
+    if (!key) return
+    const poll = async () => {
+      try {
+        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + key)).then(r => r.json())
+        const msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Array<{ at: number; ai?: boolean; who?: string }> : []
+        const now = Date.now()
+        if (!stop) setChatLive({
+          people: new Set(msgs.filter(m => !m.ai && now - m.at < 300_000).map(m => m.who)).size,
+          ai: new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)).size,
+        })
+      } catch { /* offline is fine */ }
+    }
+    poll()
+    const t = setInterval(poll, 12000)
+    return () => { stop = true; clearInterval(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId, spaceName, spaceSlug, playScene])
+
   // LIVE ADOPT — the fix for editing a world while someone stands in it.
   // A bridge write (an AI editing over HTTP) bumps the world's authored revision
   // server-side. This poll notices the bump and PULLS the new hooks/visuals/
@@ -5690,10 +5717,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && (
             <button
               onClick={() => setWorldChatOpen(true)}
-              className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              title="the world's commons — players, makers, and their AIs"
+              className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
+              title={chatLive.people > 0 ? `${chatLive.people} chatting here now — the world's commons` : "the world's commons — players, makers, and their AIs"}
             >
               ⌁ WORLD CHAT
+              {(chatLive.people + chatLive.ai) > 0 && (
+                <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[11px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
+                  {chatLive.people + chatLive.ai}
+                </span>
+              )}
             </button>
           )}
 

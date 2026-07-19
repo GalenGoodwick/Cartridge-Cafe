@@ -814,13 +814,17 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     // the group layer needs to know who's standing in it (found / join / pin)
+    // __cafeWho semantics: undefined = session not yet resolved (the hub hook
+    // stays silent rather than emit wrong membership flags) · null = resolved,
+    // signed out · object = signed in. Signed-out must still resolve to null,
+    // or visitors would never get a submode event at all.
     fetch('/api/auth/session').then(r => r.json()).then(s => {
-      if (s?.user?.id) {
-        const w = { id: s.user.id as string, name: (s.user.name || '') as string }
-        ;(window as unknown as { __cafeWho?: typeof w }).__cafeWho = w
-        setWho(w)
-      }
-    }).catch(() => {})
+      const w = s?.user?.id ? { id: s.user.id as string, name: (s.user.name || '') as string } : null
+      ;(window as unknown as { __cafeWho?: typeof w }).__cafeWho = w
+      if (w) setWho(w)
+    }).catch(() => {
+      ;(window as unknown as { __cafeWho?: null }).__cafeWho = null
+    })
     // the ONE back button (engine's identity strip) asks us to leave a world
     const onBack = () => {
       // one layer at a time: an open reckoning closes first — the ◂ does
@@ -1103,7 +1107,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             {/* (the top-right ⌁ CHAT button is gone — the COMMONS button already
                 opens this sub-main's chat) */}
           </>) : (
-            !subMode?.haveOwn && (
+            // the browser always offers a home: FOUND YOURS before you have one,
+            // a jump straight INTO yours after (the button used to vanish once
+            // you'd founded — the layer looked like it had no door at all)
+            subMode?.haveOwn ? (
+              (subMode as unknown as { ownSlug?: string | null }).ownSlug ? (
+                <button onClick={() => window.dispatchEvent(new CustomEvent('cafe:launch', { detail: 'sub:' + (subMode as unknown as { ownSlug?: string }).ownSlug }))} className={hubBtn}>⌂ YOUR SUB-MAIN</button>
+              ) : null
+            ) : (
               <button onClick={foundSub} className={hubBtn}>⌂ FOUND YOURS</button>
             )
           )}
