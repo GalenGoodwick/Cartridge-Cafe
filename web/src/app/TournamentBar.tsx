@@ -224,12 +224,17 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // ('world-chat:NAME') so a world accrues a real, lasting discussion.
   type Msg = { who: string; text: string; at: number }
   const [chat, setChat] = useState<Record<string, Msg[]>>({})
-  const chatSlot = (w: string) => 'world-chat:' + w.toUpperCase()
+  // ONE chat per world: main, every branch, and the /space page all share it.
+  // Key by the BASE world (strip the ` ⑂ branch · vN` suffix) so a comment made
+  // while focused on a branch lands in the same thread as the world's own chat —
+  // vote chat and world chat are the same conversation.
+  const chatBase = (w: string) => w.split(' ⑂ ')[0].trim().toUpperCase()
+  const chatSlot = (w: string) => 'world-chat:' + chatBase(w)
   const loadChat = useCallback(async (w: string) => {
     try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + w.toUpperCase())).then(r => r.json())
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + w.split(' ⑂ ')[0].trim().toUpperCase())).then(r => r.json())
       const msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
-      setChat(prev => ({ ...prev, [w]: msgs }))
+      setChat(prev => ({ ...prev, [w.split(' ⑂ ')[0].trim().toUpperCase()]: msgs }))
     } catch { /* offline is fine */ }
   }, [])
 
@@ -521,7 +526,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
     } catch { /* start fresh */ }
     const next = [...cur, { who, text: t.slice(0, 280), at: Date.now() }].slice(-200)
-    setChat(prev => ({ ...prev, [w]: next }))
+    setChat(prev => ({ ...prev, [chatBase(w)]: next }))
     setDraft('')
     fetch('/api/engine/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -666,7 +671,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     const tally: Record<string, number> = {}
     for (const v of Object.values(cell.votes)) tally[v] = (tally[v] || 0) + 1
     const seenN = cell.worlds.filter(x => seen.has(x)).length
-    const msgs = focus ? (chat[focus] || []) : []
+    const msgs = focus ? (chat[chatBase(focus)] || []) : []
     return (
       <div className="fixed inset-0 z-[62] flex flex-col pointer-events-none">
         {/* the header — the reckoning, and the world you're looking at, named here */}

@@ -630,8 +630,8 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
       bc *= 1.0 - 0.30 * step(0.46, abs(fract(ang * 3.8197) - 0.5)) * step(abs(rr - 0.485), 0.030);
       // eight spokes
       bc *= 1.0 - 0.26 * smoothstep(0.035, 0.0, abs(fract(ang * 1.2732 + 0.5) - 0.5) * rr) * step(0.17, rr);
-      // key light upper-left, ambient falls off to the rim
-      bc *= 0.42 + 0.85 * clamp(0.55 - dp.x * 0.8 - dp.y * 0.8, 0.0, 1.2);
+      // key light upper-left, ambient falls off to near-black at the rim
+      bc *= 0.30 + 0.80 * clamp(0.55 - dp.x * 0.8 - dp.y * 0.8, 0.0, 1.2);
       // center medallion: the vault star, waiting
       if (rr < 0.135) {
         bc = mix(vec3f(0.15, 0.092, 0.038), vec3f(0.26, 0.165, 0.07), clamp(1.0 - rr * 9.0, 0.0, 1.0));
@@ -650,17 +650,29 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let dc = vec2f(-0.39 + f32(k) * 0.26, 0.60);
     let q = p - dc;
     let r = length(q);
-    if (r < 0.115) {
-      var kc = mix(vec3f(0.30, 0.21, 0.10), vec3f(0.13, 0.17, 0.15), fbm(q * 30.0, 2) * 0.7);
-      kc *= 0.8 + 0.5 * sin(r * 120.0);
-      let gi = i32(uni(4 + k) + 0.5);
-      let gp = q / 0.062;
-      kc = mix(kc, mod_tg_gcol(gi) * (0.9 + uni(18) * 1.4), mod_tg_glyph(gi, gp) * 0.95);
-      // hover ring
+    if (r < 0.118) {
       let mm = vec2f(uni(27), uni(28));
       let mh = smoothstep(60.0, 22.0, length(mm - (dc * 0.5 + 0.5) * 512.0));
-      kc += vec3f(1.1, 0.95, 0.6) * smoothstep(0.012, 0.0, abs(r - 0.100)) * (0.25 + mh * 0.8 + uni(18) * 0.6);
-      c = mix(c, kc, smoothstep(0.006, -0.006, r - 0.112));
+      var kc: vec3f;
+      if (r > 0.082) {
+        // lathe-turned bronze bezel, lit from above
+        kc = mod_tg_plate(q * 8.0 + vec2f(f32(k) * 5.0), clamp(0.6 - q.y * 4.0, 0.0, 1.0));
+        kc *= 0.9 + 0.35 * sin(r * 300.0);
+        kc += vec3f(0.9, 0.65, 0.28) * smoothstep(0.010, 0.0, abs(r - 0.084)) * 0.30;
+        kc += vec3f(0.8, 0.6, 0.25) * smoothstep(0.008, 0.0, abs(r - 0.114)) * (0.18 + mh * 0.5);
+        kc *= 1.0 + mh * 0.35;
+      } else {
+        // the well: near-black, the glyph burning quiet inside
+        kc = vec3f(0.012, 0.011, 0.012) + vec3f(0.045, 0.032, 0.018) * clamp(1.0 - r * 10.0, 0.0, 1.0);
+        let gi = i32(uni(4 + k) + 0.5);
+        let gp = q / 0.055;
+        let g = mod_tg_glyph(gi, gp);
+        let gcol = mod_tg_gcol(gi);
+        kc = mix(kc, gcol * (1.05 + mh * 0.4), g * 0.95);
+        kc += gcol * exp(-r * r * 260.0) * (0.13 + mh * 0.12);
+        kc *= 0.55 + 0.45 * smoothstep(0.082, 0.055, r);   // inner shadow at the lip
+      }
+      c = mix(c, kc, smoothstep(0.005, -0.005, r - 0.116));
     }
   }
   // solved: gold seam light around everything
@@ -919,10 +931,7 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
     c = mix(c, a.rgb + c, a.a * 0.9);
     let r2 = mod_tg_chev(px, vec2f(487.0, 256.0), 0, smoothstep(55.0, 20.0, length(mm - vec2f(487.0, 256.0))), t);
     c = mix(c, r2.rgb + c, r2.a * 0.9);               // → the tide record
-    if (uni(8) > 0.9) {                               // enter the open door
-      let b = mod_tg_chev(px, vec2f(256.0, 250.0), 2, smoothstep(70.0, 25.0, length(mm - vec2f(256.0, 250.0))), t);
-      c = mix(c, b.rgb + c, b.a * 0.9);
-    }
+    // (the door's own chevron-and-orb ornament is the enter button — no UI arrow)
   }
   if (view == 4) {                                    // the record room → back to the gate
     let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);

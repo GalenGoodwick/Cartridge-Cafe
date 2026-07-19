@@ -168,7 +168,8 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
     let stRaw = i32(floor(sv));
-    let big = stRaw / 400;              // +400 band = a BIG category bubble (sub-mains / player worlds / champion)
+    let bigBand = stRaw / 400;          // 0 normal · 1 champion (big + its OWN icon) · 2 sub-mains · 3 player-worlds
+    let big = select(0, 1, bigBand > 0);
     let ab = stRaw % 400;
     let st = ab % 200;
     let hue = fract(sv);
@@ -181,7 +182,30 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     if (d < rr) {
       let q = (uv - ctr) / rr;                     // -1..1 inside the disc
       var g = vec3f(0.0);
-      if (st == 0) {
+      if (bigBand == 2) {
+        // SUB-MAINS — a little constellation of gatherings (groups orbiting)
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = vec3f(0.02, 0.03, 0.05);
+        for (var k = 0; k < 5; k++) {
+          let ak = f32(k) * 1.2566 + t * 0.2;
+          let pk = q - vec2f(cos(ak), sin(ak)) * 0.42;
+          let dk = length(pk);
+          g += cA * smoothstep(0.13, 0.09, dk) * 0.8;
+          g += cA * smoothstep(0.04, 0.0, abs(dk - 0.11)) * 0.5;
+        }
+        g += cA * exp(-dot(q, q) * 5.0) * 0.6;
+      } else if (bigBand == 3) {
+        // PLAYER WORLDS — a world ringed by its players
+        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
+        g = cA * exp(-dot(q, q) * 6.0) * 1.4;
+        g += vec3f(0.9) * smoothstep(0.02, 0.0, abs(length(q) - 0.34)) * 0.3;
+        for (var k = 0; k < 8; k++) {
+          let ak = f32(k) * 0.7854 + t * 0.6;
+          let pk = q - vec2f(cos(ak), sin(ak)) * 0.6;
+          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.12 + vec3f(0.0, 0.33, 0.67)));
+          g += hk * smoothstep(0.07, 0.0, length(pk)) * 1.2;
+        }
+      } else if (st == 0) {
         // FABRIC — a lens wandering through stars
         var pp = q * 2.0;
         let lc = vec2f(sin(t * 0.6) * 0.5, cos(t * 0.47) * 0.4);
@@ -258,29 +282,6 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let comet = smoothstep(0.0, 0.55, sweep) * smoothstep(1.0, 0.55, sweep);
         let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
         g = vec3f(0.02, 0.02, 0.03) + cA * ring * (0.12 + comet * 1.3);
-      } else if (st == 20) {
-        // SUB-MAINS — a little constellation of gatherings (groups orbiting)
-        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
-        g = vec3f(0.02, 0.03, 0.05);
-        for (var k = 0; k < 5; k++) {
-          let ak = f32(k) * 1.2566 + t * 0.2;
-          let pk = q - vec2f(cos(ak), sin(ak)) * 0.42;
-          let dk = length(pk);
-          g += cA * smoothstep(0.13, 0.09, dk) * 0.8;
-          g += cA * smoothstep(0.04, 0.0, abs(dk - 0.11)) * 0.5;
-        }
-        g += cA * exp(-dot(q, q) * 5.0) * 0.6;
-      } else if (st == 21) {
-        // PLAYER WORLDS — a world ringed by its players
-        let cA = 0.5 + 0.5 * cos(6.2831 * (hue + vec3f(0.0, 0.33, 0.67)));
-        g = cA * exp(-dot(q, q) * 6.0) * 1.4;
-        g += vec3f(0.9) * smoothstep(0.02, 0.0, abs(length(q) - 0.34)) * 0.3;
-        for (var k = 0; k < 8; k++) {
-          let ak = f32(k) * 0.7854 + t * 0.6;
-          let pk = q - vec2f(cos(ak), sin(ak)) * 0.6;
-          let hk = 0.5 + 0.5 * cos(6.2831 * (f32(k) * 0.12 + vec3f(0.0, 0.33, 0.67)));
-          g += hk * smoothstep(0.07, 0.0, length(pk)) * 1.2;
-        }
       } else if (st >= 9) {
         // a real world — its screenshot, folded into the bubble by the shader
         g = cafeIcon(st - 9, q);
@@ -593,8 +594,8 @@ try {
           // place below (marked where the crown is set). Fixed positions = anchored.
           // a tight triangle at the heart: CHAMPION at the apex (pinned where the
           // crown is set, below), SUB-MAINS + PLAYER WORLDS along the base.
-          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 20, hue: 0.58, big: 1, fixed: [214, 300] }
-          want['PLAYER WORLDS'] = { launch: 'players:', style: 21, hue: 0.34, big: 1, fixed: [298, 300] }
+          want['SUB-MAINS'] = { launch: 'SUB-MAIN', style: 8, hue: 0.58, big: 1, cat: 2, fixed: [214, 300] }
+          want['PLAYER WORLDS'] = { launch: 'players:', style: 8, hue: 0.34, big: 1, cat: 3, fixed: [298, 300] }
         }
         for (const n of Object.keys(want)) {
           if (!U.bubbles[n]) {
@@ -632,6 +633,7 @@ try {
           const B = U.bubbles[n]
           B.launch = want[n].launch
           B.big = !!want[n].big
+          B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
           if (want[n].fixed) {   // a pinned big category bubble — hold its exact seat
             B.x = want[n].fixed[0]; B.y = want[n].fixed[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
           }
@@ -681,7 +683,7 @@ try {
           // before the first icon pass lands, an un-styled bubble (style 8) shows
           // a spinner instead of flashing the default emblem
           const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
-          B.iconLoading = B.style >= 8 && B.style < 20 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black). The big category glyphs (20/21) are drawn by the shader, no atlas.
+          B.iconLoading = !B.cat && B.style >= 8 && !ready   // atlas not uploaded yet: NO bubble wears an icon-style (it would sample black). The category glyphs draw from the shader, no atlas.
           const ns = SUB
             ? 1 + ((want[n].heat || 0) * 0.5) + (want[n].mineSub ? 100 : 0)
             : 1 / (1 + cellAge / 20) + bornHeat + reach * 1.4 + live * 0.7 + (champ ? 6 : 0)
@@ -757,7 +759,7 @@ try {
         if (sd < 0.5) { sx = Math.cos(angOf(U.order[i])); sy = Math.sin(angOf(U.order[i])); sd = 1 }
         // a BIG bubble clears a wider berth so the field makes space around it.
         // Anchored (pinned) big bubbles push neighbours out but never move themselves.
-        const clr = 76
+        const clr = (B.big || C.big) ? 62 : 76   // small bubbles nestle up to a big one (radii sum ~57, so 62 = just touching, no overlap)
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
@@ -907,7 +909,8 @@ try {
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
     const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
-    u.push(B.x, B.y, (B.big ? 400 : 0) + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
+    const band = B.cat ? B.cat * 400 : (B.big ? 400 : 0)   // 800 sub-mains · 1200 player-worlds · 400 champion-big · 0 normal
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
