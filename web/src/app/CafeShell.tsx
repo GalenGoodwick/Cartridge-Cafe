@@ -1474,32 +1474,44 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 )}
               </div>
             )}
-            {/* mine-mode's way out is the universal ◂ strip (top-left) */}
-            {!mine && (
-              <button onClick={() => myWorlds()} className={`${hubBtn} opacity-60 hover:opacity-100`}>MY WORLDS</button>
+            {/* one account menu holds the secondary actions — MY WORLDS, BREW
+                ICON, LEND AI, sign out — so the front bar stays a bell, an
+                identity, and the one call to action. */}
+            {who && !mine && (
+              <div className="relative">
+                <button onClick={() => setAcctOpen(o => !o)}
+                  className={`${hubBtn} ${acctOpen ? 'border-flame/60 text-glow' : 'opacity-70 hover:opacity-100'}`}>
+                  {(who.name || 'you').split(/[@ ]/)[0]} ▾
+                </button>
+                {acctOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-1.5 z-[70] font-mono text-[12px]">
+                    {[
+                      { label: '◈ MY WORLDS', onClick: () => { setAcctOpen(false); myWorlds() } },
+                      { label: '◆ BREW ICON', onClick: async () => {
+                          setAcctOpen(false)
+                          if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
+                          setIconOpen(true)
+                        } },
+                      { label: '🤝 LEND AI', onClick: async () => {
+                          setAcctOpen(false)
+                          if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
+                          setLendOpen(true)
+                        } },
+                    ].map(it => (
+                      <button key={it.label} onClick={it.onClick}
+                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors">
+                        {it.label}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-white/10" />
+                    <button onClick={() => signOut({ callbackUrl: '/' })}
+                      className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
+                      sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
-            {/* lend your idle AI to the swarm — needs a session to mint a uc_bt_ */}
-            <button onClick={async () => {
-              if (!who) {
-                const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-                if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
-              }
-              setLendOpen(o => !o)
-            }} className={`${hubBtn} opacity-60 hover:opacity-100 ${lendOpen ? 'border-flame/60 text-glow opacity-100' : ''}`}>
-              🤝 LEND AI
-            </button>
-            <button onClick={async () => {
-              // an AI prompt box: its token mint needs a session — auth first,
-              // with a live re-check so a slow session fetch doesn't bounce a
-              // signed-in player
-              if (!who) {
-                const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-                if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
-              }
-              setIconOpen(o => !o)
-            }} className={`${hubBtn} opacity-60 hover:opacity-100 ${iconOpen ? 'border-flame/60 text-glow opacity-100' : ''}`}>
-              BREW ICON
-            </button>
             <button onClick={brew}
               className="rounded-lg bg-flame hover:bg-glow px-5 py-2.5 font-mono text-[13px] tracking-[0.2em] text-void font-bold transition-all shadow-[0_0_28px_rgba(245,176,76,0.45)] hover:shadow-[0_0_40px_rgba(245,176,76,0.65)] hover:scale-[1.03]">
               ☕ BREW YOUR WORLD
