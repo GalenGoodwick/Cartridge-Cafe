@@ -5157,11 +5157,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   useEffect(() => {
     if (!spaceId || playScene) return
     let stop = false
+    let falseStreak = 0
     const poll = async () => {
       try {
+        // r.ok gates out 503-degraded + network errors → d is null → HOLD last
+        // known (a build in progress must not flicker off on one bad read).
         const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`).then(r => r.ok ? r.json() : null)
-        if (!stop && d) { setBuildJobActive(!!d.active); buildJobActiveRef.current = !!d.active }
-      } catch { /* offline is fine */ }
+        if (stop || !d) return
+        if (d.active) {
+          falseStreak = 0
+          setBuildJobActive(true); buildJobActiveRef.current = true
+        } else {
+          // require TWO confirmed "not building" reads (~12s) before closing —
+          // one authoritative-but-transient false shouldn't vanish the window.
+          if (++falseStreak >= 2) { setBuildJobActive(false); buildJobActiveRef.current = false }
+        }
+      } catch { /* offline is fine — hold last known */ }
     }
     poll()
     const t = setInterval(poll, 6000)
