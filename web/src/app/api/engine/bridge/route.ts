@@ -9,6 +9,8 @@ import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons } from '../commons-stream'
 import { prisma } from '@/lib/prisma'
 import { logVisit } from '@/lib/visits'
+import { validatePlayerToken } from '@/lib/player-token'
+import { slugify } from '@/lib/companion'
 
 export const maxDuration = 30
 
@@ -17,6 +19,7 @@ interface BridgeAuth {
   spaceId: string | null    // null = legacy global mode
   ownerId: string | null
   iconUserId?: string       // uc_it_ icon token — may ONLY brew this player's icon
+  playerId?: string         // uc_pt_ player key — chat the commons + create/checkout YOUR OWN worlds
   slug?: string
   spaceName?: string
   sceneName?: string        // set = branch-scoped (file-store scene); read/write isolated to it
@@ -58,6 +61,15 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
     return { authorized: true, spaceId: null, ownerId: null, sceneName: result.sceneName, slug, spaceName: result.sceneName }
   }
 
+  // Player key path — a signed-in player's personal credential (uc_pt_). It is
+  // NOT world-scoped: it may chat the commons and create/checkout THIS player's
+  // own worlds (each yields a uc_st_ world token that does the actual building).
+  if (token.startsWith('uc_pt_')) {
+    const p = await validatePlayerToken(token)
+    if (!p) return { authorized: false, spaceId: null, ownerId: null }
+    return { authorized: true, spaceId: null, ownerId: null, playerId: p.userId }
+  }
+
   // Legacy global token path (admin)
   const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
   if (envToken && token === envToken) {
@@ -65,6 +77,15 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
   }
 
   return { authorized: false, spaceId: null, ownerId: null }
+}
+
+/** Mint a fresh uc_st_ world token for a space (raw shown once, SHA-256 stored). */
+async function mintWorldToken(spaceId: string, name: string): Promise<string> {
+  const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
+  await prisma.spaceToken.create({
+    data: { name, tokenHash: crypto.createHash('sha256').update(raw).digest('hex'), tokenPrefix: raw.slice(0, 12) + '...', spaceId },
+  })
+  return raw
 }
 
 // Relay commands to the agent SSE queue
@@ -376,6 +397,44 @@ export async function POST(req: NextRequest) {
       if (auth.iconUserId && cmd.type !== 'set_player_icon') {
         results.push({ type: cmd.type, error: 'this token only brews the player icon — send set_player_icon' })
         continue
+      }
+
+      // Player key (uc_pt_): a personal, non-world credential. It may chat the
+      // commons (main_say/main_read, handled below) and BOOTSTRAP world tokens —
+      // create_world / use_world each return a uc_st_ world token that does the
+      // actual building. It can never edit a world directly, nor touch worlds it
+      // doesn't own — that keeps a leaked player key from being a wildcard.
+      if (auth.playerId) {
+        if (cmd.type === 'create_world') {
+          const name = (typeof cmd.name === 'string' && cmd.name.trim() ? cmd.name.trim() : 'untitled world').slice(0, 60)
+          const owned = await prisma.playerSpace.count({ where: { ownerId: auth.playerId } })
+          if (owned >= 20) { results.push({ type: cmd.type, error: 'world limit reached (20 per account) — delete one first' }); continue }
+          const base = slugify(name) || 'world'
+          let slug = base
+          for (let i = 0; i < 6; i++) {
+            const taken = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
+            if (!taken) break
+            slug = base + '-' + crypto.randomBytes(2).toString('hex')
+          }
+          const space = await prisma.playerSpace.create({ data: { name, slug, ownerId: auth.playerId } })
+          const worldToken = await mintWorldToken(space.id, 'created via player key')
+          results.push({ ok: true, created: slug, spaceName: name, token: worldToken,
+            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing.` })
+          continue
+        }
+        if (cmd.type === 'use_world') {
+          const slug = typeof cmd.slug === 'string' ? cmd.slug.trim() : ''
+          const sp = slug ? await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, name: true, ownerId: true } }) : null
+          if (!sp || sp.ownerId !== auth.playerId) { results.push({ type: cmd.type, error: `no world "${slug}" that you own` }); continue }
+          const worldToken = await mintWorldToken(sp.id, 'checked out via player key')
+          results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken,
+            next: `POST build commands with Authorization: Bearer ${worldToken} to edit "${sp.name}".` })
+          continue
+        }
+        if (cmd.type !== 'main_say' && cmd.type !== 'main_read') {
+          results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, main_say, main_read. Build a world with the uc_st_ token those return.' })
+          continue
+        }
       }
 
       // reset: clear server-side store alongside browser reset. NEVER for a

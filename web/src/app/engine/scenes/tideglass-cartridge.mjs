@@ -346,17 +346,89 @@ fn mod_tgo_seacol(p: vec3f, n: vec3f, sd: vec3f, md: vec3f, eye: vec3f, dist: ve
     if (bd > 3.2) { continue; }
     // expanding bob rings, born of the buoy's rhythm
     let ring = sin(bd * 7.5 - st * 2.6 - f32(bk) * 1.9);
-    let rings = smoothstep(0.55, 0.95, ring) * exp(-bd * 1.05) * smoothstep(0.12, 0.35, bd);
+    let rings = smoothstep(0.62, 0.97, ring) * exp(-bd * 1.35) * smoothstep(0.12, 0.35, bd) * 0.55;
     // churned collar at the hull
     let collar = smoothstep(0.34, 0.10, bd) * (0.45 + 0.55 * vnoise(p.xz * 9.0 + vec2f(st * 1.5, f32(bk) * 7.0)));
     let bfoam = clamp(rings * 0.7 + collar, 0.0, 1.0);
     col = mix(col, vec3f(0.88, 0.88, 0.86) * (0.35 + 0.65 * day + 0.22 * night), bfoam * 0.75);
     // the hull's shadow in its own water
-    col *= 1.0 - smoothstep(0.30, 0.08, bd) * 0.25;
+    col *= 1.0 - smoothstep(0.30, 0.08, bd) * 0.14;
   }
   return col;
 }
 
+// ═══ ancient machine-walls: height-field relief, engraved and fossiled ═══
+// a toothed ring pressed into stone — the gear fossils of the tide-race
+fn mod_tg_gearh(q: vec2f, r: f32, teeth: f32) -> f32 {
+  let a = atan2(q.y, q.x);
+  let tooth = smoothstep(0.30, 0.62, abs(fract(a * teeth * 0.15915) - 0.5) * 2.0);
+  let rr2 = r * (1.0 + tooth * 0.09);
+  let L = length(q);
+  let ring = smoothstep(0.022, 0.007, abs(L - rr2));
+  let spoke = smoothstep(0.030, 0.010, abs(fract(a * 0.9549 + 0.5) - 0.5) * max(L, 0.05)) * step(L, rr2 * 0.94) * step(rr2 * 0.30, L);
+  let hub = smoothstep(0.045, 0.018, abs(L - rr2 * 0.22));
+  return max(max(ring, spoke * 0.7), hub * 0.8);
+}
+// wall height by STYLE — every chamber speaks its own carved language:
+//   0 GEARWORKS (the gate): fossil gear trains + conduit grooves
+//   1 TIDE-SCRIPTORIUM (the record): engraved wave-charts + tally rows + strata
+//   2 FLUTED WATERCOURSE (the hall): organ-rib fluting + band clamps + drip stains
+fn mod_tg_wallh(p: vec2f, seed: f32, style: i32) -> f32 {
+  var h = fbm(p * 3.0 + vec2f(seed), 3) * 0.35;
+  h += fbm(p * 11.0 + vec2f(seed * 2.0), 2) * 0.15;
+  if (style == 0) {
+    h -= smoothstep(0.42, 0.5, abs(fract(p.y * 2.6 + fbm(p * 1.5, 2) * 0.25) - 0.5)) * 0.18;
+    let cell = floor(p * 1.15 + vec2f(seed));
+    let ch = hash21(cell);
+    if (ch > 0.48) {
+      let cq = (fract(p * 1.15 + vec2f(seed)) - 0.5) + (hash22(cell) - 0.5) * 0.26;
+      h += mod_tg_gearh(cq, 0.15 + ch * 0.16, floor(6.0 + ch * 9.0)) * 0.5;
+    }
+    let colId = floor(p.x * 0.9 + seed * 0.7);
+    let gx = abs(fract(p.x * 0.9 + seed * 0.7) - 0.5);
+    h -= smoothstep(0.055, 0.030, gx) * 0.22 * step(0.55, hash11(colId));
+  } else if (style == 1) {
+    // sediment strata, close-set
+    h -= smoothstep(0.40, 0.5, abs(fract(p.y * 4.2 + fbm(p * 1.2, 2) * 0.15) - 0.5)) * 0.14;
+    // engraved wave-chart lines: rows of carved sines, each row its own sea
+    let row = floor(p.y * 1.4 + seed);
+    let rh = hash11(row);
+    let wave = sin(p.x * (5.0 + rh * 7.0) + rh * 20.0) * (0.05 + rh * 0.05);
+    let chart = smoothstep(0.030, 0.010, abs(fract(p.y * 1.4 + seed) - 0.5 - wave));
+    h += chart * 0.42 * step(0.30, rh);
+    // tally strokes beneath some charts — the counted tides
+    let tq = vec2f(fract(p.x * 6.5 + rh * 5.0), fract(p.y * 1.4 + seed) - 0.72);
+    let tally = smoothstep(0.10, 0.04, abs(tq.x - 0.5)) * smoothstep(0.10, 0.05, abs(tq.y));
+    h -= tally * 0.30 * step(0.62, rh);
+  } else {
+    // vertical organ-rib fluting
+    h += smoothstep(0.5, 0.0, abs(fract(p.x * 3.4 + seed) - 0.5)) * 0.34;
+    // iron band clamps every few courses
+    h += smoothstep(0.045, 0.015, abs(fract(p.y * 1.1 + seed * 0.3) - 0.5)) * 0.30;
+    // drip stains running down from the bands
+    let dcol = floor(p.x * 5.0 + seed);
+    let dh2 = hash11(dcol);
+    h -= smoothstep(0.06, 0.02, abs(fract(p.x * 5.0 + seed) - 0.5)) * 0.12 * step(0.6, dh2) * fract(p.y * 0.7 + dh2);
+  }
+  return h;
+}
+// relief: (height, directional slope toward the key light, ridge01)
+fn mod_tg_relief(p: vec2f, seed: f32, lite: vec2f, style: i32) -> vec3f {
+  let h0 = mod_tg_wallh(p, seed, style);
+  let h1 = mod_tg_wallh(p + lite * 0.012, seed, style);
+  return vec3f(h0, (h0 - h1) * 9.0, smoothstep(0.12, 0.55, h0));
+}
+// the full ancient-wall material: stone base, relief light, verdigris in the
+// recesses, gold dust on the ridges — one call per wall pixel
+fn mod_tg_ancient(p: vec2f, seed: f32, lite: vec2f, warm: f32, style: i32) -> vec3f {
+  let rel = mod_tg_relief(p, seed, lite, style);
+  var c = mix(vec3f(0.028, 0.025, 0.028), vec3f(0.080, 0.070, 0.062), rel.z);
+  c *= clamp(1.0 + rel.y * 0.6, 0.35, 1.8);
+  c = mix(c, vec3f(0.050, 0.082, 0.066), (1.0 - rel.z) * 0.40 * smoothstep(0.45, 0.15, rel.x));   // verdigris pools
+  c += vec3f(0.55, 0.42, 0.16) * smoothstep(0.60, 0.80, rel.x) * 0.20 * warm;                     // gilt ridges
+  c += vec3f(0.85, 0.55, 0.25) * max(rel.y, 0.0) * 0.10 * warm;                                   // warm catch-light
+  return c;
+}
 // ── dusk→night sky, shared by shore + lens ──
 fn mod_tg_sky(p: vec2f, t: f32, night: f32) -> vec3f {
   let h = clamp(-p.y * 0.5 + 0.5, 0.0, 1.0);          // 0 horizon → 1 zenith
@@ -635,10 +707,30 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
 
 // ═══ THE TIDE RECORD — the stele's own chamber, right of the gate disc ═══
 fn mod_tg_stele(p: vec2f, px: vec2f, t: f32) -> vec3f {
-  // carved alcove: warm candle-lit stone, the record slab enthroned center
-  var c = mod_tg_rock(p * 1.9 + vec2f(31.0), vec3f(0.062, 0.055, 0.060));
-  // vaulted niche shading — dark corners, breathing warm core
-  c *= 0.30 + 0.62 * exp(-dot(p * vec2f(0.9, 0.75), p * vec2f(0.9, 0.75)) * 0.9);
+  // carved alcove: candle-lit ancient wall — gear fossils and tide-strata
+  let vign2 = 0.26 + 0.62 * exp(-dot(p * vec2f(0.9, 0.75), p * vec2f(0.9, 0.75)) * 0.9);
+  var c = mod_tg_ancient(p * 1.7 + vec2f(31.0), 7.0, vec2f(0.6, -0.7), vign2, 1) * vign2;
+  // archive pigeonholes flank the chamber: rows of scroll-filled recesses
+  if (abs(p.x) > 0.70 && p.y > -0.55 && p.y < 0.60) {
+    let hq = vec2f(fract(abs(p.x) * 7.0), fract((p.y + 0.55) * 5.2));
+    let hole = step(0.16, hq.x) * step(hq.x, 0.86) * step(0.14, hq.y) * step(hq.y, 0.84);
+    if (hole > 0.5) {
+      let hid = floor(vec2f(abs(p.x) * 7.0, (p.y + 0.55) * 5.2)) + vec2f(sign(p.x) * 9.0, 0.0);
+      let hh = hash21(hid);
+      var hc = vec3f(0.012, 0.010, 0.010);                          // deep recess
+      if (hh > 0.35) {
+        // a rolled scroll catches the candlelight — round end, wax seal fleck
+        let sq = (hq - vec2f(0.51, 0.49)) * vec2f(1.35, 1.8);
+        let scroll = smoothstep(0.30, 0.26, length(sq));
+        let paper = mix(vec3f(0.28, 0.22, 0.14), vec3f(0.42, 0.34, 0.22), hash21(hid + 4.0));
+        hc = mix(hc, paper * (0.35 + 0.65 * vign2) * (0.7 + 0.6 * smoothstep(0.3, -0.3, sq.x)), scroll);
+        hc += vec3f(0.55, 0.12, 0.08) * step(0.82, hh) * smoothstep(0.10, 0.05, length(sq - vec2f(0.12, 0.0))) * 0.8;
+      }
+      c = mix(c, hc, 0.92);
+      // worn sill light under each hole
+      c += vec3f(0.55, 0.34, 0.14) * smoothstep(0.14, 0.10, hq.y) * hole * vign2 * 0.15;
+    }
+  }
   // floor line + flags
   if (p.y > 0.66) {
     let fv = p.y - 0.66;
@@ -766,10 +858,18 @@ fn mod_tg_plate(p: vec2f, key: f32) -> vec3f {
 
 fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let open = uni(8);
-  // near-black cliff, warm breath only around the monument
-  var c = mod_tg_rock(p * 2.2, vec3f(0.038, 0.034, 0.036));
-  c *= 0.30 + 0.45 * exp(-dot(p - vec2f(0.0, -0.1), p - vec2f(0.0, -0.1)) * 1.1);
+  // the cliff is a MACHINE fossil: strata, gear imprints, conduit grooves —
+  // the observatory's dead works, pressed into the rock around the living door
+  let vign = 0.28 + 0.50 * exp(-dot(p - vec2f(0.0, -0.1), p - vec2f(0.0, -0.1)) * 1.0);
+  var c = mod_tg_ancient(p * 1.5, 3.0, vec2f(-0.7, -0.7), vign, 0) * vign;
   c += vec3f(0.30, 0.16, 0.07) * exp(-(p.x + 0.9) * (p.x + 0.9) * 1.0) * exp(-(p.y + 0.9) * (p.y + 0.9) * 1.1) * 0.4;
+  // one great half-buried flywheel arcs behind the portal's upper right
+  {
+    let fq = (p - vec2f(0.94, -0.86)) / 0.52;
+    let fg = mod_tg_gearh(fq, 0.72, 14.0);
+    c = mix(c, vec3f(0.062, 0.052, 0.040) * (0.8 + vign), fg * 0.55 * smoothstep(1.6, 0.9, length(fq)));
+    c += vec3f(0.45, 0.32, 0.12) * fg * 0.20 * vign;
+  }
   // ── the plate frame: aged bronze slab enthroning the disc ──
   let fp = p - vec2f(0.0, 0.02);
   let fr1 = abs(sdRoundedBox(fp, vec2f(0.80, 0.80), 0.10)) - 0.030;
@@ -941,8 +1041,18 @@ fn mod_tg_gate(p: vec2f, px: vec2f, t: f32) -> vec3f {
 fn mod_tg_hall(p: vec2f, px: vec2f, t: f32) -> vec3f {
   let lit = uni(31);            // 0 dim → 1 solved blaze
   let solved = uni(14);
-  // stone interior, floor below y=0.62
-  var c = mod_tg_rock(p * 2.0 + vec2f(20.0), vec3f(0.075, 0.070, 0.080));
+  // stone interior — the machine-wall again, and behind the organ a COLOSSAL
+  // flywheel entombed in the masonry, its teeth just breaking the surface
+  var c = mod_tg_ancient(p * 1.8 + vec2f(20.0), 13.0, vec2f(0.0, -0.9), 0.5 + lit * 0.5, 2) * (0.55 + 0.30 * lit);
+  {
+    let fq = (p - vec2f(0.0, 0.05)) / 1.15;
+    let fg = mod_tg_gearh(fq, 0.86, 18.0);
+    c = mix(c, vec3f(0.052, 0.045, 0.038) * (0.9 + lit * 0.8), fg * 0.45);
+    c += vec3f(0.50, 0.36, 0.14) * fg * (0.10 + lit * 0.22);
+    // its axle-boss behind the center pipe
+    let ax = length(p - vec2f(0.0, 0.05)) - 0.10;
+    c = mix(c, vec3f(0.070, 0.055, 0.038) * (1.0 + lit), smoothstep(0.015, -0.01, ax) * 0.8);
+  }
   // back-wall arcade: shadowed arches between the pipes
   for (var a = 0; a < 4; a++) {
     let ax = -0.375 + f32(a) * 0.25;
@@ -1084,6 +1194,11 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
     pc2 *= 1.0 - 0.30 * step(abs(fract(p.x * 6.0) - 0.5), 0.10) * smoothstep(0.05, 0.0, par);
     // rim catch-light from the beam
     pc2 += vec3f(0.45, 0.40, 0.55) * smoothstep(0.020, 0.0, par) * (0.25 + uni(16) * 0.5);
+    // engraved star-chart arcs + a rivet course along the parapet face
+    let arc = abs(length(vec2f(p.x, (p.y - 1.7) * 1.6)) - 1.30);
+    pc2 *= 1.0 - 0.25 * smoothstep(0.012, 0.004, min(arc, abs(arc - 0.09)));
+    let riv = length(vec2f(fract(p.x * 9.0) - 0.5, fract((par + 0.05) * 11.0) - 0.5));
+    pc2 += vec3f(0.40, 0.34, 0.28) * smoothstep(0.10, 0.04, riv) * smoothstep(0.10, 0.03, par) * 0.5;
     c = mix(c, pc2, smoothstep(0.0, 0.015, par));
   }
   // two glyph-lamp pylons at the platform's edge
@@ -1417,13 +1532,17 @@ const INSTRUCTIONS = [
 ].join('\n')
 
 async function main() {
-  // no bespoke icon_wgsl: the shelf auto-composes from the Tideglass visual +
-  // modules (composeIcon bundles modules as of Jul 19 2026)
-  await send({ type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS } }, 'world_data')
-  await send({ type: 'set_world_params', params: { gravity: 0, friction: 0.95, collisionForce: 0, boundaryMode: 'open', gravitationalConstant: 0 } }, 'world_params')
-  await send({ type: 'define_module', name: 'tg_lib', wgsl: MODULES }, 'module tg_lib')
-  await send({ type: 'define_module', name: 'tg_views', wgsl: VIEWS }, 'module tg_views')
-  await send({ type: 'define_visual', name: 'tideglass', wgsl: VISUAL }, 'visual tideglass')
+  // ONE atomic batch: separate POSTs raced each other to a live tab (module
+  // arriving after the visual that calls it → mid-burst quarantine). A single
+  // commands array rides one lambda, one SSE replay, in order.
+  await send([
+    // no bespoke icon_wgsl: the shelf auto-composes from the visual + modules
+    { type: 'set_world_data', data: { built_by: 'Claude Fable 5', singlePlayer: true, instructions: INSTRUCTIONS } },
+    { type: 'set_world_params', params: { gravity: 0, friction: 0.95, collisionForce: 0, boundaryMode: 'open', gravitationalConstant: 0 } },
+    { type: 'define_module', name: 'tg_lib', wgsl: MODULES },
+    { type: 'define_module', name: 'tg_views', wgsl: VIEWS },
+    { type: 'define_visual', name: 'tideglass', wgsl: VISUAL },
+  ], 'atomic world batch')
   const st = await fetch(URL, { headers: { Authorization: `Bearer ${TOKEN}` } }).then(r => r.json())
   const existing = (st.fields || []).find(f => f.name === 'Tideglass')
   if (!existing) {
