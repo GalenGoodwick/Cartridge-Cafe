@@ -30,6 +30,9 @@ export async function GET(req: NextRequest) {
     // keys) — the button says FACE ID and must summon exactly that. residentKey
     // required makes it discoverable, so passkey login needs no email typed.
     authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
+    // reinforce the platform lock with the browser hint (maps to
+    // hints:['client-device'] — newer UAs lead straight to Face ID / Touch ID)
+    preferredAuthenticatorType: 'localDevice',
   })
   const res = NextResponse.json(options)
   res.cookies.set(CHALLENGE_COOKIE, signChallenge(options.challenge), { httpOnly: true, sameSite: 'lax', maxAge: 300, path: '/' })
