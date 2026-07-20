@@ -248,7 +248,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   sceneRef.current = scene
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
-  const crumbRef = useRef<string[]>([])       // hubs we entered through, in order
+  const crumbRef = useRef<{ scene: string; sub: string | null }[]>([])   // hubs we entered through (+ which sub-main), in order
   const skipCrumbRef = useRef(false)
   const portalsRef = useRef(portals)
   portalsRef.current = portals
@@ -675,7 +675,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     setGoneScene(null)   // navigating away from a dead-scene landing
     // entering anywhere FROM a hub leaves a crumb — back climbs the trail
     if (!skipCrumbRef.current && portalsRef.current.length > 0 && name !== sceneRef.current) {
-      crumbRef.current.push(sceneRef.current)
+      // remember WHICH sub-main we're leaving (slug), so back returns to it and
+      // not the generic viewer / main. __cafeSub is still set here (go clears it below).
+      crumbRef.current.push({ scene: sceneRef.current, sub: subMode?.slug ?? (window as unknown as { __cafeSub?: string | null }).__cafeSub ?? null })
     }
     skipCrumbRef.current = false
     if (name !== sceneRef.current) { if (name === 'CAFE') sfx.leave(); else sfx.launch(name) }
@@ -1502,10 +1504,17 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               </button>
               <button onClick={() => {
                 pause(false); skipCrumbRef.current = true
-                // Back means THE DOCK. The crumb trail can carry world names
-                // (stale-portal pushes) — never follow it into another world.
+                // Back climbs ONE layer: return to the hub you came from. If that
+                // was a specific sub-main, re-enter THAT one (set __cafeSub, then
+                // land on SUB-MAIN which morphs into it) — not the generic viewer
+                // or main. Any non-hub crumb still falls back to the dock.
                 const c = crumbRef.current.pop()
-                go(c === 'CAFE' || c === 'SUB-MAIN' ? c : 'CAFE')
+                if (c?.scene === 'SUB-MAIN' && c.sub) {
+                  ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = c.sub
+                  go('SUB-MAIN')
+                } else {
+                  go(c?.scene === 'SUB-MAIN' ? 'SUB-MAIN' : 'CAFE')
+                }
               }}
                 className="brass-tab px-5 py-2 text-[16px]">
                 LEAVE
