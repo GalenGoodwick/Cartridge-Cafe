@@ -21,6 +21,7 @@ import type { TerminalEntry } from './AgentTerminalPanel'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, InteractionEffect, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
+import { worldBus } from './cafe-audio'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
@@ -631,6 +632,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the cafe mute switch rules world audio too — one button, all sound
   useEffect(() => {
     const audio = audioRef.current
+    // ONE audio system: adopt the cafe's shared AudioContext so world music and
+    // shell sfx live on a single context with a single mute + resume lifecycle.
+    try { const bus = worldBus(); if (bus) audio.attach(bus.ctx, bus.dest) } catch { /* no audio device */ }
+    // mute is now governed by the shared worldGain; this stays as belt-and-
+    // suspenders for any world created before the shared bus existed.
     try { if (localStorage.getItem('cc-mute')) audio.setVolume(0) } catch { /* fine */ }
     const onMute = (e: Event) => audio.setVolume((e as CustomEvent).detail ? 0 : 1)
     // world sounds fire from the frame loop, where browsers refuse to birth an

@@ -3,9 +3,25 @@
 export class GameAudio {
   private ctx: AudioContext | null = null
   private masterGain: GainNode | null = null
+  private attached = false   // true when running on the cafe's shared context (must NOT close it)
   private sounds: Map<string, AudioBuffer> = new Map()
   private masterVolume: number = 1.0
   private music: { source: AudioBufferSourceNode; gain: GainNode; url: string } | null = null
+
+  /** Adopt a SHARED AudioContext + destination (the cafe's single context) so
+   *  the whole app runs on one context, not one-per-world. Call before any
+   *  sound plays; safe to call once. Falls back to a private context if never
+   *  called (ensureContext below). */
+  attach(ctx: AudioContext, dest: AudioNode): void {
+    if (this.ctx && this.ctx !== ctx) return   // already on a context; don't swap under live nodes
+    this.ctx = ctx
+    this.attached = true
+    if (!this.masterGain || this.masterGain.context !== ctx) {
+      this.masterGain = ctx.createGain()
+      this.masterGain.gain.value = this.masterVolume
+    }
+    this.masterGain.connect(dest)
+  }
 
   /** Lazily initialize AudioContext (must be called from user gesture or after first interaction) */
   private ensureContext(): AudioContext {
@@ -303,11 +319,19 @@ export class GameAudio {
     }
   }
 
-  /** Destroy the audio context */
+  /** Tear down this world's audio. On the SHARED context we must NOT close the
+   *  context (the shell + other worlds live on it) — just disconnect our own
+   *  master node. Only a private (fallback) context is closed. */
   destroy(): void {
     this.stopScore()
     this.stopMusic(0.05)
-    if (this.ctx) {
+    if (this.attached) {
+      try { this.masterGain?.disconnect() } catch { /* already gone */ }
+      this.masterGain = null
+      // leave this.ctx (shared) alive; drop our reference
+      this.ctx = null
+      this.attached = false
+    } else if (this.ctx) {
       this.ctx.close().catch(() => {})
       this.ctx = null
       this.masterGain = null

@@ -14,7 +14,8 @@
 // per autoplay policy.
 
 let ctx: AudioContext | null = null
-let master: GainNode | null = null
+let master: GainNode | null = null       // the SHELL sfx bus (clicks/hover/portal), kept quiet
+let worldGain: GainNode | null = null    // the WORLD music/sfx bus (GameAudio routes into this)
 let ambGain: GainNode | null = null
 let oscRoot: OscillatorNode | null = null
 let oscFifth: OscillatorNode | null = null
@@ -53,9 +54,23 @@ function ensureCtx(): AudioContext | null {
     master = ctx.createGain()
     master.gain.value = muted ? 0 : 0.14
     master.connect(ctx.destination)
+    // the ONE world bus: every world's GameAudio connects its own master into
+    // this, so shell sfx and world music share a single AudioContext and a
+    // single mute. Unity gain — worlds set their own levels; mute lives here.
+    worldGain = ctx.createGain()
+    worldGain.gain.value = muted ? 0 : 1
+    worldGain.connect(ctx.destination)
     buildAmbient()
   }
   return ctx
+}
+
+/** The single shared context + the node world audio should connect into.
+ *  GameAudio.attach() uses this so there is only ever ONE AudioContext. */
+export function worldBus(): { ctx: AudioContext; dest: AudioNode } | null {
+  const c = ensureCtx()
+  if (!c || !worldGain) return null
+  return { ctx: c, dest: worldGain }
 }
 
 function noiseBuffer(c: AudioContext): AudioBuffer {
@@ -179,7 +194,10 @@ export function setMuted(m: boolean) {
   muted = m
   try { localStorage.setItem('cc-mute', m ? '1' : '') } catch { /* private mode */ }
   if (ctx && master) master.gain.setTargetAtTime(m ? 0 : 0.14, ctx.currentTime, 0.2)
-  // one switch rules ALL sound: world audio (GameAudio) listens for this
+  // one switch, one context: mute the world bus in the same place as the sfx bus
+  if (ctx && worldGain) worldGain.gain.setTargetAtTime(m ? 0 : 1, ctx.currentTime, 0.2)
+  // still emit for any listener that tracks mute UI state (GameAudio no longer
+  // needs it for sound — the shared worldGain above already governs its volume)
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('cafe:muted', { detail: m }))
   }
