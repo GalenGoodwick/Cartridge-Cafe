@@ -107,10 +107,9 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         </div>
         <p style={{ fontSize: 16, lineHeight: 1.7, color: '#c9b896', margin: 0 }}>
           {mobile ? (
-            <>cartridge.cafe renders living worlds right on your device&rsquo;s GPU — a
-              desktop-sized job phones can&rsquo;t carry <i>yet</i>. A mobile-friendly version is
-              in the works; for now it&rsquo;s best on a laptop or desktop, where the doors are
-              wide open.</>
+            <>cartridge.cafe renders living worlds right on your device&rsquo;s GPU — that&rsquo;s a
+              desktop-sized job, so the cafe is built for a laptop or desktop screen. Come
+              find us there and the doors are wide open.</>
           ) : blocked ? (
             <>your browser speaks WebGPU, but it can&rsquo;t reach your graphics card.
               Usually one of these relights it:<br /><br />
@@ -128,31 +127,15 @@ export default function SupportGate({ children }: { children: React.ReactNode })
           )}
         </p>
         {mobile && (
-          <>
-            <button
-              onClick={() => { try { void navigator.clipboard?.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ } }}
-              style={{
-                marginTop: 20, padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
-                border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)',
-                color: '#ffdba8', fontFamily: 'inherit', fontSize: 13, letterSpacing: '0.12em',
-              }}>
-              {copied ? 'LINK COPIED ✓' : '⧉ COPY LINK — OPEN ON YOUR COMPUTER'}
-            </button>
-            {/* the promised escape hatch: a big touchscreen laptop is flagged
-                'mobile' by the touch+width heuristic but can run the stack fine —
-                and the render governor now eases weak GPUs down instead of freezing */}
-            <div>
-              <button
-                onClick={() => { try { sessionStorage.setItem('cc-gate-override', '1') } catch { /* private mode */ } window.location.reload() }}
-                style={{
-                  marginTop: 12, padding: '6px 14px', borderRadius: 9, cursor: 'pointer',
-                  border: '1px solid rgba(201,184,150,0.25)', background: 'transparent',
-                  color: 'rgba(201,184,150,0.7)', fontFamily: 'inherit', fontSize: 12, letterSpacing: '0.14em',
-                }}>
-                on a big touchscreen? STEP IN ANYWAY
-              </button>
-            </div>
-          </>
+          <button
+            onClick={() => { try { void navigator.clipboard?.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ } }}
+            style={{
+              marginTop: 20, padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
+              border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)',
+              color: '#ffdba8', fontFamily: 'inherit', fontSize: 13, letterSpacing: '0.12em',
+            }}>
+            {copied ? 'LINK COPIED ✓' : '⧉ COPY LINK — OPEN ON YOUR COMPUTER'}
+          </button>
         )}
         {!mobile && (
           <>
