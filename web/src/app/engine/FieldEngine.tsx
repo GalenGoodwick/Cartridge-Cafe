@@ -214,6 +214,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Convention: key entry first (every input, one per line), then the point.
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrEdit, setInstrEdit] = useState(false)
+  // greet a player entering a game with its instructions, once per world (not on
+  // reloads/version-swaps of the same world, not on the CAFE/SUB-MAIN nav hubs)
+  const greetedInstrRef = useRef<string | null>(null)
+  const greetInstructions = (worldId: string) => {
+    if (!worldId || worldId === 'CAFE' || worldId === 'SUB-MAIN') return
+    if (greetedInstrRef.current === worldId) return
+    const instr = String(simulationRef.current?.worldData?.instructions || '').trim()
+    if (!instr) return
+    greetedInstrRef.current = worldId
+    setInstrOpen(true)
+  }
   const [instrDraft, setInstrDraft] = useState('')
   // ── branches: every world can be branched by anyone signed in; versions are
   // cut by the EYE — a watcher that snapshots each settled burst of AI edits ──
@@ -1455,6 +1466,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
+      greetInstructions(`space:${spaceSlug}`)   // pop instructions on first entry to this space
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
     } catch { /* leave where we are */ }
@@ -1897,6 +1909,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         sim.running = true
         setRunning(true)
         syncFields()
+        greetInstructions(playScene)   // pop the world's instructions on entry
       } catch (err) {
         console.error('Failed to load play scene:', err)
       } finally {
@@ -6366,7 +6379,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-[13px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
                   <div className="flex items-center gap-2">
-                    {(isOwner || !spaceId) && !instrEdit && (
+                    {can(ctx, 'editLaw') && !instrEdit && (
                       <>
                         <button
                           className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
