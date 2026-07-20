@@ -676,7 +676,7 @@ try {
             // still carry the "YYYY-MM-DD HH:MM" stamp. Named or built worlds show.
             if (s.blank && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.name || '')) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: (typeof s.ownerFx === 'number' && s.ownerFx >= 0 && s.ownerFx <= 4) ? (30 + s.ownerFx) : 8, hue: (typeof s.ownerHue === 'number' ? s.ownerHue : s.hue), ownerIcon: 1 }
           }
         } else if (HOUSE) {
           // THE HOUSE — everything unassigned to a real maker: the canonical
@@ -693,7 +693,7 @@ try {
             const o = s.owner
             if (o && o.handle && !o.isGuest) continue   // a claimed world belongs to its maker, not the house
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: (typeof s.ownerFx === 'number' && s.ownerFx >= 0 && s.ownerFx <= 4) ? (30 + s.ownerFx) : 8, hue: (typeof s.ownerHue === 'number' ? s.ownerHue : s.hue), ownerIcon: 1 }
           }
         } else if (PL) {
           // PLAYER WORLDS — a MAKERS directory: one bubble per player who has
@@ -722,7 +722,7 @@ try {
           for (const s of (sp.spaces || [])) {
             if (s.blank || s.building || s.isPublic === false) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: (typeof s.ownerFx === 'number' && s.ownerFx >= 0 && s.ownerFx <= 4) ? (30 + s.ownerFx) : 8, hue: (typeof s.ownerHue === 'number' ? s.ownerHue : s.hue), ownerIcon: 1 }
           }
           // THREE big front-door bubbles. SUB-MAINS opens the group layer; PLAYER
           // WORLDS opens the player-made shelf (those worlds collapse behind it
@@ -777,7 +777,8 @@ try {
           const B = U.bubbles[n]
           B.launch = want[n].launch
           B.big = !!want[n].big
-          B.square = !!want[n].square   // a branch draws square, not round
+          B.square = !!want[n].square       // a branch draws square, not round
+          B.ownerIcon = !!want[n].ownerIcon // a player world wears its OWNER's icon, not the world's own
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
           if (want[n].fixed) {   // a locked seat — first pin wakes the field so neighbours clear out
             if (!B.pinned) U.wake = Math.max(U.wake, 5)
@@ -829,7 +830,9 @@ try {
           // the world's own palette (hue from its field colors). Nothing stored.
           if (want[n].hue != null) B.hue = want[n].hue
           const slots = (typeof window !== 'undefined' && window.__cafeIconSlots) || null
-          B.iconSlot = slots && slots[n] != null ? slots[n] : null
+          // a player world wears its OWNER's icon (preset avatar or their hue
+          // emblem), NOT the world's own atlas icon — so skip the slot for those.
+          B.iconSlot = (!B.ownerIcon && slots && slots[n] != null) ? slots[n] : null
           // before the first icon pass lands, an un-styled bubble (style 8) shows
           // a spinner instead of flashing the default emblem
           const ready = (typeof window !== 'undefined') ? window.__cafeIconReady : true
