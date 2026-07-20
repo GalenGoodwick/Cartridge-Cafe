@@ -79,7 +79,10 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   let fmax = vec2f(u.fx + u.fw*0.5, u.fy + u.fh*0.5);
   if (grid.x < fmin.x || grid.y < fmin.y || grid.x > fmax.x || grid.y > fmax.y) { return vec4f(u.bgr,u.bgg,u.bgb,1.0); }
   let uv01 = (grid - fmin) / (fmax - fmin);
-  let uv = vec2f(uv01.x*2.0 - 1.0, -(uv01.y*2.0 - 1.0));
+  // MATCH THE ENGINE: cellPos.y=0 is the top row, so regionUVCentered.y = -1 at
+  // top (uv.y increases DOWNWARD). No flip here — the probe must render exactly
+  // what the engine does, or it can't catch orientation bugs.
+  let uv = vec2f(uv01.x*2.0 - 1.0, uv01.y*2.0 - 1.0);
   let o = visual_${vname}(uv, 0.0, vec4f(u.cr,u.cg,u.cb,u.ca), u.time, vec4f(0.0), vec4f(0.0));
   let keep = uni(0) * 0.0;
   return vec4f(mix(vec3f(u.bgr,u.bgg,u.bgb), o.rgb, clamp(o.a,0.0,1.0)) + vec3f(keep), 1.0);
