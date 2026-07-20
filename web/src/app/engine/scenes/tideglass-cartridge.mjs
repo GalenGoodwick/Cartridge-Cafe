@@ -1553,9 +1553,12 @@ try {
       // zone (440,300) overlap (64px apart), so a bare series fired BOTH: go(5)
       // then go(1), and the finale bounced view 1 back to the shore. else-if =
       // one hit wins, nearest-first.
-      if (G.vault > 0.03 && hit(214, 318, 80)) go(5)   // the RISEN dome → the constellation room
-      else if (hit(440, 300, 60)) go(5)                // the observatory building → the constellation room
-      else if (hit(487, 256, 42)) go(1)                // the right chevron → THE GATE (the classic path)
+      // RIGHT CHEVRON CHECKED FIRST so it always wins the right edge → THE GATE.
+      // (When the building zone was checked first they overlapped and stole the
+      // click to the lattice — the recurring 'right arrow goes to lattice' bug.)
+      if (hit(487, 256, 48)) go(1)                      // the right chevron → THE GATE
+      else if (G.vault > 0.03 && hit(214, 318, 80)) go(5)   // the risen dome → the constellation room
+      else if (hit(440, 300, 52)) go(5)                // the observatory building → the constellation room
     } else if (inView(5)) {
       if (hit(25, 256, 45)) go(0)                      // back down to the shore
     } else if (inView(1)) {
