@@ -3025,7 +3025,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
 
       // Update HUD overlay from worldData (cached element lookups, no per-frame DOM queries)
-      const hudData = sim.worldData['hud'] as HudElement[] | undefined
+      // The HUB (CAFE / SUB-MAIN) never shows a world's HUD — a game's score UI
+      // lingers in worldData.hud after you leave (the hook stops, the value stays,
+      // and the hub snapshot merges rather than clears), so it bled onto main.
+      // Detect the hub from the sim's OWN fields → hudData undefined → cleared below.
+      const onHubHud = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
+      const hudData = onHubHud ? undefined : (sim.worldData['hud'] as HudElement[] | undefined)
       const hudContainer = hudContainerRef.current
       if (hudContainer) {
         if (hudData && Array.isArray(hudData)) {
