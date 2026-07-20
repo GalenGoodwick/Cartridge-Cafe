@@ -295,10 +295,22 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   }
   const commons = (push = true) => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
-    setMine(null)
+    ;(window as unknown as { __cafePlayers?: unknown }).__cafePlayers = false
+    setMine(null); setPlayers(false)
     try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
-    if (push && typeof window !== 'undefined' && /^\/(mine$|u\/)/.test(window.location.pathname)) {
+    if (push && typeof window !== 'undefined' && (/^\/(mine$|u\/)/.test(window.location.pathname) || /[?&](players|house)\b/.test(window.location.search))) {
       window.history.pushState({}, '', '/')
+    }
+  }
+  /** PLAYER WORLDS / THE HOUSE as real, back-navigable URLs. They were in-memory
+   *  filters with no URL, so entering a /space world and backing out lost them
+   *  and dumped you on main. `/?players` and `/?house` survive the round-trip. */
+  const enterPlayers = (mode?: 'house', push = true) => {
+    ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
+    ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = mode === 'house' ? 'house' : true
+    setMine(null); setPlayers(true)
+    if (push && typeof window !== 'undefined') {
+      window.history.pushState({ players: mode || true }, '', mode === 'house' ? '/?house' : '/?players')
     }
   }
 
@@ -750,18 +762,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         ;(window as unknown as { __cafeSub?: string | null }).__cafeSub = name.slice(4)
         return
       }
-      if (name === 'players:') {
-        // PLAYER WORLDS — an in-scene filter (like MY WORLDS): the makers directory.
-        ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = true
-        setPlayers(true)
-        return
-      }
-      if (name === 'house:') {
-        // THE HOUSE — the unclaimed/guest-made worlds, in-scene sub-filter
-        ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = 'house'
-        setPlayers(true)
-        return
-      }
+      if (name === 'players:') { enterPlayers(undefined, true); return }   // PLAYER WORLDS (makers directory) — /?players
+      if (name === 'house:') { enterPlayers('house', true); return }       // THE HOUSE — /?house
       if (name.startsWith('maker:')) {
         // a maker bubble opens that player's space (their profile shelf)
         window.location.href = '/u/' + name.slice(6)
@@ -800,6 +802,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // like your own, instead of a flat profile list.
       ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, handle: initialMineHandle, who: initialMineHandle, viewing: true }
       setMine(initialMineHandle)
+    } else if (/[?&]house\b/.test(window.location.search)) {
+      enterPlayers('house', false)   // landed on /?house (e.g. back from a world)
+    } else if (/[?&]players\b/.test(window.location.search)) {
+      enterPlayers(undefined, false) // landed on /?players
     } else if (new URLSearchParams(window.location.search).get('commons')) {
       window.history.replaceState({}, '', '/')
       try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
@@ -860,6 +866,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       if (m) { go(decodeURIComponent(m[1]), false); return }
       // /u/<you> ↔ / — the personal shelf is a filter on the CAFE scene, not a scene
       if (sceneRef.current !== 'CAFE') go('CAFE', false)
+      const search = window.location.search
+      if (/[?&]house\b/.test(search)) { enterPlayers('house', false); return }     // back → THE HOUSE
+      if (/[?&]players\b/.test(search)) { enterPlayers(undefined, false); return }  // back → PLAYER WORLDS
       if (path === '/mine' || /^\/u\//.test(path)) myWorlds(false); else commons(false)
     }
     const onMove = (e: PointerEvent) => setMouse({ x: e.clientX, y: e.clientY })
