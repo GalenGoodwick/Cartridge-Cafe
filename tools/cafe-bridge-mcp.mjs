@@ -33,6 +33,11 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'cafe_describe',
+    description: 'A fast, no-GPU structural x-ray of your world: fieldCount, each field (visualType, skinned=does its visual actually exist, x/y, onScreen), which visualTypes are renderable, stepHook ids, worldData keys, and a WARNINGS list naming exact mistakes ("field X has no visual", "field Y off-screen at (0,0)"). Cheaper than cafe_state and cafe_probe — call it to sanity-check structure the instant something looks wrong.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'cafe_source',
     description: 'READ/SEARCH the real engine source (read-only). PREFER {search:"opSmooth"} — greps ALL source and returns matching file:line snippets in ONE call, so you find the one function/param you need instead of reading whole files. {path:"api/engine/bridge/route.ts"} → a whole file (the authoritative command+param list); page big files with {path,from,to}. No arg → lists files. Do not guess params — search for them.',
     inputSchema: { type: 'object', properties: { search: { type: 'string' }, path: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' } } },
@@ -83,6 +88,10 @@ async function callTool(name, args) {
   }
   if (name === 'cafe_state') {
     const r = await fetch(`${BASE}/api/engine/bridge`, { headers: H })
+    return await r.text()
+  }
+  if (name === 'cafe_describe') {
+    const r = await fetch(`${BASE}/api/engine/bridge?action=describe`, { headers: H })
     return await r.text()
   }
   if (name === 'cafe_send') {

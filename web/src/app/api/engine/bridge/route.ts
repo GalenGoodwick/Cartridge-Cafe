@@ -235,12 +235,53 @@ async function fetchShellIdentity(shellName: string, req: NextRequest): Promise<
  * Returns field state from the server-side store.
  * Optional ?fieldId=xxx for a single field.
  */
+// DESCRIBE — a no-GPU structural x-ray of a world: which fields have a working
+// skin, which sit off the 512 grid, hook ids, worldData keys, and a WARNINGS list
+// naming the exact recurring mistakes. This is the eyes an off-box AI (a brew
+// agent over HTTP) can get for free — it can't reach the GPU probe, but it CAN
+// learn "field X has no visual" and "field Y is off-screen at (0,0)" instantly.
+type DescribeSnap = { fields?: Array<Record<string, unknown>>; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: unknown[]; stepHooks?: Array<{ id?: string }>; worldData?: Record<string, unknown> } | null | undefined
+function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
+  const fields = snapshot?.fields ?? []
+  const visuals = snapshot?.visualTypes ?? []
+  const hooks = snapshot?.stepHooks ?? []
+  const wd = snapshot?.worldData ?? {}
+  const renderable = new Set(visuals.filter(v => /fn\s+visual_\w+\s*\(/.test(v.wgsl ?? '')).map(v => v.name))
+  const warnings: string[] = []
+  const fieldReport = fields.map(fr => {
+    const f = fr as { name?: string; id?: string; visualType?: unknown; visualTypeName?: string; transform?: { x?: number; y?: number }; x?: number; y?: number }
+    const vt = f.visualTypeName || (typeof f.visualType === 'string' ? f.visualType : null)
+    const x = f.transform?.x ?? f.x, y = f.transform?.y ?? f.y
+    const onScreen = x != null && y != null && x >= 0 && x <= 512 && y >= 0 && y <= 512
+    const skinned = !!(vt && renderable.has(vt))
+    if (!vt) warnings.push(`field "${f.name}" has NO visualType — it renders as NOTHING (define_visual, then set_visual it)`)
+    else if (!skinned) warnings.push(`field "${f.name}" uses visual "${vt}" but no "fn visual_${vt}(...)" is defined — it renders nothing`)
+    if (x != null && !onScreen) warnings.push(`field "${f.name}" is off-screen at (${x},${y}) — the grid is 0..512, camera fixed at center 256,256; build AROUND 256,256, never negatives`)
+    return { name: f.name, id: f.id, visualType: vt, skinned, x, y, onScreen }
+  })
+  if (!fields.length) warnings.push('no fields yet — the world is empty (a blank/black screen until you create + skin fields)')
+  const broken = visuals.filter(v => v.name && !renderable.has(v.name)).map(v => v.name)
+  if (broken.length) warnings.push(`visual(s) with no "fn visual_" body (won't render): ${broken.join(', ')}`)
+  return {
+    ...extra,
+    fieldCount: fields.length,
+    fields: fieldReport,
+    visualTypes: visuals.map(v => ({ name: v.name, renderable: renderable.has(v.name) })),
+    moduleCount: (snapshot?.modules ?? []).length,
+    stepHooks: hooks.map(h => h.id),
+    worldDataKeys: Object.keys(wd),
+    briefDone: !!wd.brief_done,
+    warnings,
+  }
+}
+
 export async function GET(req: NextRequest) {
   if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:GET', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const wantDescribe = new URL(req.url).searchParams.get('action') === 'describe'
 
   // Icon-scoped: the only readable state is the icon itself
   if (auth.iconUserId) {
@@ -251,6 +292,7 @@ export async function GET(req: NextRequest) {
   // Space-scoped: return snapshot from DB
   if (auth.spaceId) {
     const snapshot = await getSpaceSnapshot(auth.spaceId)
+    if (wantDescribe) return NextResponse.json(describeWorld(snapshot, { scope: 'space', slug: auth.slug, name: auth.spaceName }))
     // step-hook failures a player's browser reported — surface them by DEFAULT so
     // the building AI sees WHY a hook does nothing instead of guessing (empty = fine)
     const hookErrors = (await loadGameSlot('hook-err:space:' + (auth.slug || '').toLowerCase())) as unknown[] | undefined
@@ -274,6 +316,7 @@ export async function GET(req: NextRequest) {
   if (auth.sceneName) {
     await hydrateScene(auth.sceneName)
     const snapshot = loadScene(auth.sceneName)
+    if (wantDescribe) return NextResponse.json(describeWorld(snapshot as unknown as DescribeSnap, { scope: 'scene', slug: auth.slug, name: auth.sceneName }))
     const hookErrors = (await loadGameSlot('hook-err:scene:' + auth.sceneName.toLowerCase())) as unknown[] | undefined
     return NextResponse.json({
       scene: auth.sceneName,
