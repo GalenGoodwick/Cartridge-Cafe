@@ -238,7 +238,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
   const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
-  const [remixArm, setRemixArm] = useState(false)      // REMIX asks once before spawning a world (no accidental spam)
+  // REMIX hidden for now (users-first phase; returns as PAID remix). Keeping the
+  // state declared but referenced so the commented button re-enables cleanly.
+  const [remixArm, setRemixArm] = useState(false)
+  void remixArm; void setRemixArm
 
   // ESC closes the topmost open panel and stops there — it must never fall
   // through a modal into "leave this world" (the shell's ESC handler)
@@ -6148,10 +6151,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {/* SPACE flows — folded in from the retired SpaceToolbar. The buttons
                 live in the ONE dock; the modals/fetches live in SpaceStage,
                 reached by these window events. */}
+            {/* REMIX — hidden for now (users-first phase). The flow works and the
+                fork route is intact; this is the eventual home of PAID remix
+                (buy your own owned copy). See memory: cafe-remix-monetization.
             {spaceId && (
               <div className="flex items-center gap-1">
-                {/* REMIX spawns a whole new world — so it asks once. A second
-                    click within a few seconds confirms; otherwise it disarms. */}
                 <button
                   className={`px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'}`}
                   title="remix this world into a new one you own"
@@ -6163,6 +6167,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 </button>
               </div>
             )}
+            */}
             {/* CREATE BRANCH sits at the bottom of the dock, right against the VOTE
                 button — branching feeds the vote (each branch is a candidate).
                 GREEN = the create action, unmistakably. Under it, the ◂/▸ browse
@@ -6196,7 +6201,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <div className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
                   <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
                   {/* the one thing people ask: branch vs remix. Say it right here. */}
-                  <div className="text-[12px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker. want your own copy instead? use <span className="text-white/60">⑂ REMIX</span>.</div>
+                  <div className="text-[12px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
                   <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input
@@ -6252,12 +6257,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const sim = simulationRef.current
             const blank = (sim?.fields?.size ?? 0) === 0
             const brief = sim?.worldData?.creation_brief
-            // A real, unfinished build → the build UI. Two signals, either is
+            // A real, unfinished build → the build UI. THREE signals, any is
             // enough: the worldData gate (brief && !brief_done — can go stale
-            // client-side mid-adopt) OR the SERVER's live-BuildJob signal
-            // (buildJobActive — can't lie). Not gated on blank: the first field
-            // landing must never hide the console mid-build.
-            const building = (!!brief && !sim?.worldData?.brief_done) || buildJobActive
+            // client-side mid-adopt), the SERVER's live-BuildJob signal
+            // (buildJobActive — can't lie but can lag/miss branch jobs), OR live
+            // AI edits landing right now (aiLastEditRef — the most direct "it's
+            // building" signal, and it survives brief_done being set early).
+            // Not gated on blank: the first field landing must never hide the
+            // console mid-build.
+            const aiEditing = !!brief && (Date.now() - aiLastEditRef.current < 15000)
+            const building = (!!brief && !sim?.worldData?.brief_done) || buildJobActive || aiEditing
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —

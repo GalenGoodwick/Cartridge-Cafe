@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
   try {
     await ensureBuilderTables()
     const job = await prisma.buildJob.findFirst({
-      where: { spaceId, status: { in: ['pending', 'leased', 'building'] } },
+      // needs_review counts as active: the AI often keeps polishing after the
+      // render check flips the job, and the build window must not vanish then.
+      where: { spaceId, status: { in: ['pending', 'leased', 'building', 'needs_review'] } },
       select: { status: true, heartbeatAt: true, attempts: true },
       orderBy: { updatedAt: 'desc' },
     })
