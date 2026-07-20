@@ -173,11 +173,15 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let ab = stRaw % 400;
     let st = ab % 200;
     let hue = fract(sv);
-    let rawHead = uni(9 + i * 4);
+    let rawHead0 = uni(9 + i * 4);
+    let isBranch = rawHead0 > 1999.5;                // +2000 flags a BRANCH → draw it square, not round
+    let rawHead = select(rawHead0, rawHead0 - 2000.0, isBranch);
     let unvisited = rawHead > 900.5;                 // +1000 offset flags a world this browser hasn't entered
     let headCount = i32(select(rawHead, rawHead - 1000.0, unvisited) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
-    let d = length(uv - ctr);
+    // a branch is a rounded SQUARE (chebyshev-ish), a world a round disc
+    let dv = uv - ctr;
+    let d = select(length(dv), max(abs(dv.x), abs(dv.y)) * 0.92, isBranch);
     let R = 0.098 * zm * select(1.0, 1.25, big > 0);
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
@@ -655,7 +659,7 @@ try {
             if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
           }
           for (const base of Object.keys(best)) {
-            want[base] = { launch: best[base].scene, style: best[base].style }
+            want[base] = { launch: best[base].scene, style: best[base].style, square: 1 }   // a BRANCH reads as a square, distinct from a round world
           }
           // canonical worlds ASSIGNED to me (scene-makers) belong on my deed too
           const mineAttr = (sp && sp.sceneMakers) || {}
@@ -774,6 +778,7 @@ try {
           const B = U.bubbles[n]
           B.launch = want[n].launch
           B.big = !!want[n].big
+          B.square = !!want[n].square   // a branch draws square, not round
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
           if (want[n].fixed) {   // a locked seat — first pin wakes the field so neighbours clear out
             if (!B.pinned) U.wake = Math.max(U.wake, 5)
@@ -1121,7 +1126,7 @@ try {
     // and CAFE/SUB-MAIN never count as unvisited worlds.
     const lz = B.launch || ''
     const unvis = !!lz && !lz.startsWith('sub:') && !lz.startsWith('maker:') && !lz.startsWith('players:') && !lz.startsWith('house:') && lz !== 'CAFE' && lz !== 'SUB-MAIN' && !visited[lz]
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0))
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
