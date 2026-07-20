@@ -129,7 +129,7 @@ server.tool(
 
 server.tool(
   'world_state',
-  'Read a world\'s current state over the bridge — fields, visuals, hooks, worldData. Defaults to your latest brewed world.',
+  'Read a world\'s FULL current source over the bridge — every field, every visual\'s complete WGSL, every step-hook\'s complete JS code, plus worldData, params, modules, and interaction rules. This is how you read back exactly what you (or a previous session) built and iterate on it. Defaults to your latest brewed world.',
   { token: z.string().optional() },
   async ({ token }) => {
     const tok = token || mine[mine.length - 1]?.token
