@@ -60,11 +60,18 @@ export async function validateSpaceToken(rawToken: string): Promise<{
 
 // --- Snapshot load/save ---
 
-export async function getSpaceSnapshot(spaceId: string): Promise<SceneSnapshot | null> {
-  // Check cache first
-  const cached = cache.get(spaceId)
-  if (cached && Date.now() - cached.lastLoaded < CACHE_TTL) {
-    return cached.snapshot
+export async function getSpaceSnapshot(spaceId: string, fresh = false): Promise<SceneSnapshot | null> {
+  // Check cache first — UNLESS this is a read-modify-write (fresh=true). The
+  // cache is per-lambda; on serverless a warm lambda can hold a stale snapshot
+  // (missing what ANOTHER lambda just wrote). Mutating that stale copy and
+  // writing it back silently DROPS the other lambda's commands — that's how a
+  // world lost its robots visual/hook while keeping the arena. Reads for a MUTATE
+  // must come from the DB.
+  if (!fresh) {
+    const cached = cache.get(spaceId)
+    if (cached && Date.now() - cached.lastLoaded < CACHE_TTL) {
+      return cached.snapshot
+    }
   }
 
   const space = await prisma.playerSpace.findUnique({
@@ -612,7 +619,7 @@ export async function applyCommandToSnapshot(
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   eyeOnSpace(spaceId).catch(() => {})   // burst boundary? version the settled world first
-  const snap = (await getSpaceSnapshot(spaceId)) ?? emptySnapshot()
+  const snap = (await getSpaceSnapshot(spaceId, true)) ?? emptySnapshot()   // fresh: never mutate a stale cache
   const result = applyCommandToSnapshotObject(snap, cmd)
   // Bridge revision: a monotonic counter every bridge write bumps. A tab's own
   // 2s sync round-trips it unchanged, so `server rev > tab rev` means exactly

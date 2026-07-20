@@ -415,7 +415,7 @@ export async function POST(req: NextRequest) {
     // mid-way, we revert to this so a half-applied batch never persists.
     if (isSceneScoped) await hydrateScene(auth.sceneName!)   // this lambda may have never seen the branch
     const rollback = isSpaceScoped
-      ? await getSpaceSnapshot(auth.spaceId!).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
+      ? await getSpaceSnapshot(auth.spaceId!, true).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
       : isSceneScoped
         ? (() => { const s = loadScene(auth.sceneName!); return s ? JSON.parse(JSON.stringify(s)) : null })()
         : null
@@ -823,7 +823,7 @@ export async function POST(req: NextRequest) {
       // (logic-only invisible helper fields are legitimate).
       if (isSpaceScoped && cmd.type === 'set_world_data' && (cmd.data as Record<string, unknown> | undefined)?.brief_done) {
         try {
-          const snap = await getSpaceSnapshot(auth.spaceId!)
+          const snap = await getSpaceSnapshot(auth.spaceId!, true)   // fresh: gate brief_done on the true state
           const fields = (snap?.fields ?? []) as Array<{ name?: string; visualTypeName?: string }>
           // a visual only RENDERS if its wgsl defines a visual_* function — a
           // registered-but-wrong-shaped visual (standalone @fragment) draws

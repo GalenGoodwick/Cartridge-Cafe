@@ -102,7 +102,7 @@ export async function PATCH(
   // AI that connects and announces `built_by` would erase the brief). Going
   // through the store keeps the bridge, the cache, and the DB one source of truth.
   if (typeof body.brief === 'string' && body.brief.trim()) {
-    const snap = ((await getSpaceSnapshot(space.id)) as unknown as Record<string, unknown> | null) || { fields: [] as unknown[] }
+    const snap = ((await getSpaceSnapshot(space.id, true)) as unknown as Record<string, unknown> | null) || { fields: [] as unknown[] }
     const wd = (snap.worldData as Record<string, unknown>) || {}
     wd.creation_brief = { prompt: body.brief.trim(), by: user.id, at: Date.now() }
     delete wd.brief_done
