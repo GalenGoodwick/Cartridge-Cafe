@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
-import { loadGameSlot, saveGameSlot } from '../../engine/store'
+import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
 
 export const dynamic = 'force-dynamic'
@@ -188,6 +188,12 @@ export async function DELETE(
     if (uni?.bubbles?.[up]) {
       delete uni.bubbles[up]
       await saveGameSlot('cafe:universe', uni)
+    }
+    // sweep the world's BRANCH scenes ("<NAME> ⑂ …" / "<slug> ⑂ …") — otherwise
+    // they orphan in the scene store and haunt the shelf after the world is gone
+    await hydrateAllScenes()
+    for (const pre of [`${up} ⑂ `, `${slug.toLowerCase()} ⑂ `]) {
+      for (const n of listScenes().filter(s => s.toLowerCase().startsWith(pre.toLowerCase()))) deleteScene(n)
     }
   } catch { /* hygiene is best-effort */ }
 

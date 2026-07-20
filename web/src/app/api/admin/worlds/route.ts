@@ -56,20 +56,33 @@ export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => null) as { space?: string; name?: string } | null
   if (!body?.space && !body?.name) return NextResponse.json({ error: 'space or name required' }, { status: 400 })
 
+  // A world's BRANCHES live in the scene store as "<name> ⑂ …" — deleting the
+  // world never touched them, so every delete used to leave orphan branches
+  // haunting the shelf. Sweep them here (case-insensitive).
+  await hydrateAllScenes()
+  const deleteBranchesOf = (base: string): string[] => {
+    const pre = (base + ' ⑂ ').toLowerCase()
+    const gone = listScenes().filter(n => n.toLowerCase().startsWith(pre))
+    for (const nm of gone) deleteScene(nm)
+    return gone
+  }
+
   if (body.space) {
-    const space = await prisma.playerSpace.findUnique({ where: { slug: body.space }, select: { id: true } })
+    const space = await prisma.playerSpace.findUnique({ where: { slug: body.space }, select: { id: true, name: true } })
     if (!space) return NextResponse.json({ error: 'no such space' }, { status: 404 })
-    // clear dependents that don't cascade, then the space
     await prisma.buildJob.deleteMany({ where: { spaceId: space.id } }).catch(() => {})
     invalidateSpaceCache(space.id)
     await prisma.playerSpace.delete({ where: { id: space.id } })
-    return NextResponse.json({ ok: true, deleted: 'space:' + body.space })
+    // branches key off the DISPLAY name (uppercased) and the slug — sweep both
+    const branches = [...new Set([...deleteBranchesOf(space.name || ''), ...deleteBranchesOf((space.name || '').toUpperCase()), ...deleteBranchesOf(body.space)])]
+    return NextResponse.json({ ok: true, deleted: 'space:' + body.space, branchesRemoved: branches })
   }
 
-  await hydrateAllScenes()
   const strip = (n: string) => n.replace(/ · v\d+$/, '')
-  const targets = listScenes().filter(n => n === body.name || strip(n) === body.name)
-  if (!targets.length) return NextResponse.json({ error: 'no such world' }, { status: 404 })
+  const base = strip(body.name!)
+  const targets = listScenes().filter(n => n === body.name || strip(n) === base)
+  const branches = deleteBranchesOf(base)   // if a ROOT was named, take its branches too
+  if (!targets.length && !branches.length) return NextResponse.json({ error: 'no such world' }, { status: 404 })
   for (const nm of targets) deleteScene(nm)
-  return NextResponse.json({ ok: true, deleted: targets })
+  return NextResponse.json({ ok: true, deleted: [...targets, ...branches] })
 }
