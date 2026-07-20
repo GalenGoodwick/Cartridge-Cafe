@@ -97,6 +97,41 @@ export async function reconcile(now: Date): Promise<number> {
   return made
 }
 
+/** Cancel queued SPACE jobs whose consent evaporated: the brief got finished by
+ *  someone else (a connected AI setting brief_done never touches the job), the
+ *  house request was withdrawn, or the brief text changed. This is the missing
+ *  half of the __house_requested gate — the gate stops NEW enrollment, but jobs
+ *  queued BEFORE it (or before consent was withdrawn) still got served, which is
+ *  how the daemon grabbed and clobbered a connected AI's world (KINDLE).
+ *  Branch (sceneName) jobs are exempt: their enqueue IS the explicit consent
+ *  (the owner-authorized "have the house AI build it" button), and reconcile
+ *  never auto-enqueues scenes. A deleted world needs no case — the FK cascades. */
+export async function revalidate(now: Date): Promise<number> {
+  await ensureBuilderTables()
+  const open = await prisma.buildJob.findMany({
+    where: { status: 'pending', spaceId: { not: null } },
+  })
+  let cancelled = 0
+  for (const j of open) {
+    const s = await prisma.playerSpace.findUnique({ where: { id: j.spaceId! }, select: { snapshot: true } })
+    const wd = (s?.snapshot as { worldData?: { creation_brief?: { prompt?: string }; brief_done?: unknown; __house_requested?: unknown } } | null)?.worldData
+    const reason = wd?.brief_done ? 'brief already done (built by someone else)'
+      : !wd?.__house_requested ? 'house AI not (or no longer) requested'
+      : wd?.creation_brief?.prompt !== j.brief ? 'brief changed since enqueue'
+      : null
+    if (!reason) continue
+    await prisma.buildJob.update({
+      where: { id: j.id },
+      data: {
+        status: 'cancelled',
+        history: hist(j.history, { at: now.toISOString(), by: 'system', event: 'revalidate-cancel', note: reason }),
+      },
+    })
+    cancelled++
+  }
+  return cancelled
+}
+
 /** Requeue jobs whose lease expired (crashed/abandoned builder), applying the
  *  escalation ladder: pool → house AI (N) → needs_review (K). */
 export async function sweep(now: Date): Promise<number> {

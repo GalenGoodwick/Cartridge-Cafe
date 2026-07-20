@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { resolveHolder, mintBuildToken, hist, LEASE_MS } from '@/lib/builds'
+import { resolveHolder, mintBuildToken, revalidate, hist, LEASE_MS } from '@/lib/builds'
 import { mintSceneToken } from '@/app/api/engine/scene-token'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +15,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!holder) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const { id } = await params
   const now = new Date()
+
+  // Consent re-check at the moment of claim: a job enqueued while consent held
+  // must not be claimable after it's withdrawn (or the brief finished elsewhere).
+  // revalidate() cancels such jobs; the atomic guard below then 409s them.
+  await revalidate(now)
 
   // Atomic guard: only a pending job this holder hasn't already dropped, and
   // (for volunteers) not house-escalated. count===0 → lost the race → 409.

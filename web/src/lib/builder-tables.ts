@@ -15,6 +15,9 @@ export async function ensureBuilderTables(): Promise<void> {
   await prisma.$executeRawUnsafe(`DO $$ BEGIN
     CREATE TYPE "BuildJobStatus" AS ENUM ('pending','leased','building','done','needs_review','rejected');
   EXCEPTION WHEN duplicate_object THEN null; END $$;`)
+  // added later (same additive pattern): revalidate() cancels queued jobs whose
+  // consent evaporated. ADD VALUE is idempotent with IF NOT EXISTS.
+  await prisma.$executeRawUnsafe(`ALTER TYPE "BuildJobStatus" ADD VALUE IF NOT EXISTS 'cancelled'`)
 
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Builder" (
     "id" TEXT NOT NULL,

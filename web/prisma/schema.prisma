@@ -308,6 +308,7 @@ enum BuildJobStatus {
   done // brief_done set on the world
   needs_review // K-strikes tripped — a human looks at it
   rejected // hazard / abuse
+  cancelled // consent evaporated (brief done elsewhere / house request withdrawn / brief changed)
 }
 
 model Builder {

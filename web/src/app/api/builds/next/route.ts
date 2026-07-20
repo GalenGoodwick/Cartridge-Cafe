@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { resolveHolder, reconcile, sweep } from '@/lib/builds'
+import { resolveHolder, reconcile, revalidate, sweep } from '@/lib/builds'
 import { saveGameSlot } from '@/app/api/engine/store'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
   await reconcile(now)
+  await revalidate(now)   // stale/withdrawn-consent jobs die BEFORE one is served
   await sweep(now)
 
   // Volunteers skip house-escalated jobs and anything they've already dropped.

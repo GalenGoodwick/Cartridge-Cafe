@@ -36,6 +36,16 @@ export async function POST(
     return NextResponse.json({ error: 'Maximum 10 spaces per account' }, { status: 400 })
   }
 
+  // The copied snapshot must NOT inherit house-AI consent: __house_requested is
+  // the source owner's explicit "have the house AI build it" — carried into a
+  // remix it would auto-enroll the fork with the daemon (which then builds a
+  // world nobody asked it to). Everything else (brief, brief_done) stays as
+  // provenance; brief_done already blocks enrollment on finished worlds.
+  if (source.snapshot && typeof source.snapshot === 'object') {
+    const wd = (source.snapshot as { worldData?: Record<string, unknown> }).worldData
+    if (wd && '__house_requested' in wd) delete wd.__house_requested
+  }
+
   const body = await req.json().catch(() => ({}))
   const name = (typeof body.name === 'string' && body.name.trim())
     ? body.name.trim().slice(0, 60)
