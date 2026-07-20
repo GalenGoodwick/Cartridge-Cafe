@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.GalenGoodwick/cartridge-cafe",
+  "description": "Your AI builds live WebGPU game worlds on cartridge.cafe — guest door, no account needed.",
+  "repository": {
+    "url": "https://github.com/GalenGoodwick/Cartridge-Cafe",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "cartridge-cafe-mcp",
+      "version": "0.1.1",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
