@@ -1642,7 +1642,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // reload ONCE per real change, and only after edits settle
         if (rev > actedRev && Date.now() - aiLastEditRef.current > 4000) {
           actedRev = rev   // mark BEFORE reloading so this rev never fires twice
-          showToast('⚡ your AI updated this world — reloading', 'success')
+          showToast('⚡ this world was just updated — reloading', 'success')
           hotLoadSpaceVersion(undefined)
         }
       } catch { /* next heartbeat */ }
