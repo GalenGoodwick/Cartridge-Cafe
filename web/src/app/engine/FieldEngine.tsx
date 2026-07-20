@@ -5240,6 +5240,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (!playScene && !spaceId) return
     let stopped = false
     let seenRev = -1   // -1 = baseline unset; first poll records it (our own load)
+    let heldBuild = false   // true while adopts were held for an unfinished build
     const keyFor = (): string | null => {
       if (spaceId) return 'space:' + spaceId
       const s = lastSceneRef.current || playScene || ''
@@ -5293,9 +5294,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (!r.ok) return
         const { rev } = await r.json() as { rev: number }
         if (seenRev < 0) { seenRev = rev; return }   // baseline = our own load; don't re-adopt it
-        // hold adopts during a build — every command bumps the rev, so adopting
-        // each one loops the scene. We adopt once when the build ends (below).
-        if (buildJobActiveRef.current) { seenRev = rev; return }
+        const briefDone = !!simulationRef.current?.worldData?.brief_done
+        // Hold adopts during an UNFINISHED build — every command bumps the rev,
+        // so adopting each one loops the scene. Do NOT advance seenRev while
+        // holding, so the first poll after the hold lifts catches the world up in
+        // ONE adopt. Once brief_done is set the world is complete: stop holding
+        // (a lingering polish job must not keep the finished world hidden).
+        if (buildJobActiveRef.current && !briefDone) { heldBuild = true; return }
+        if (heldBuild) { heldBuild = false; seenRev = rev; await pullAndAdopt(); return }
         if (rev > seenRev) { seenRev = rev; await pullAndAdopt() }
       } catch { /* offline / cold start — keep polling */ }
     }
@@ -6265,8 +6271,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             // building" signal, and it survives brief_done being set early).
             // Not gated on blank: the first field landing must never hide the
             // console mid-build.
+            const done = !!sim?.worldData?.brief_done
             const aiEditing = !!brief && (Date.now() - aiLastEditRef.current < 15000)
-            const building = (!!brief && !sim?.worldData?.brief_done) || buildJobActive || aiEditing
+            // Once brief_done is set the world is COMPLETE — show it, never the
+            // build curtain, even if a polish job is queued (buildJobActive), the
+            // brief still lives in worldData, or the AI is doing live polish. While
+            // NOT done, any of three signals raises the curtain: an unfinished
+            // brief, a live server job, or AI edits landing now (covers branch
+            // jobs that carry no spaceId for buildJobActive to match).
+            const building = !done && (!!brief || buildJobActive || aiEditing)
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —
