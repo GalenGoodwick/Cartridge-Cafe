@@ -37,7 +37,15 @@ const ctxB = await browser.newContext({ viewport: { width: 900, height: 700 } })
 const A = await ctxA.newPage()
 const B = await ctxB.newPage()
 const log = []
-for (const [nm, p] of [['A', A], ['B', B]]) p.on('pageerror', e => log.push(`${nm} PAGEERROR ${e.message}`))
+// count socket (re)connections per client — a NEW "[cursors] connecting" on
+// navigation = the effect tore the socket down and rebuilt it (the churn that
+// blinks cursors). Persistent-socket room-switch should produce ZERO extra.
+const connects = { A: 0, B: 0 }
+for (const [nm, p] of [['A', A], ['B', B]]) {
+  p.on('pageerror', e => log.push(`${nm} PAGEERROR ${e.message}`))
+  p.on('console', m => { if (/\[cursors\] connecting to/.test(m.text())) connects[nm]++ })
+}
+const snapConnects = () => ({ A: connects.A, B: connects.B })
 
 const dbg = (p) => p.evaluate(() => (window).__ccPresenceDbg || null)
 // keep a client's cursor "active" (presence filters cursors idle > 60s)
@@ -59,9 +67,9 @@ const steps = []
 const record = async (label) => {
   await wiggle(A); await wiggle(B); await A.waitForTimeout(1200)
   const da = await dbg(A), db = await dbg(B)
-  const row = { label, A_room: da?.room, B_room: db?.room, A_sees_B: sees(da, db), B_sees_A: sees(db, da), A_n: da?.n, B_n: db?.n }
+  const row = { label, A_room: da?.room, B_room: db?.room, A_sees_B: sees(da, db), B_sees_A: sees(db, da), A_n: da?.n, B_n: db?.n, connects: snapConnects() }
   steps.push(row)
-  if (!asJson) console.log(`${label.padEnd(28)} A[${row.A_room}] B[${row.B_room}]  A→B:${row.A_sees_B}  B→A:${row.B_sees_A}`)
+  if (!asJson) console.log(`${label.padEnd(28)} A[${row.A_room}] B[${row.B_room}]  A→B:${row.A_sees_B}  B→A:${row.B_sees_A}  reconnects{A:${row.connects.A} B:${row.connects.B}}`)
   return row
 }
 

@@ -322,6 +322,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   const [presenceRoom, setPresenceRoom] = useState<string | undefined>(undefined)
   const [dbgPresence, setDbgPresence] = useState(false)   // ⌥⇧P presence overlay
   const [dbgTick, setDbgTick] = useState(0)               // repaints the overlay live
+  useEffect(() => { if (!dbgPresence) return; const iv = setInterval(() => setDbgTick(t => t + 1), 1000); return () => clearInterval(iv) }, [dbgPresence])
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
   const crumbRef = useRef<{ scene: string; sub: string | null }[]>([])   // hubs we entered through (+ which sub-main), in order
@@ -978,9 +979,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // (main → 'CAFE', sub-mains → 'SUB-MAIN' via playScene, all unchanged)
       setPresenceRoom(p.startsWith('main/players') ? 'CAFE/players' : undefined)
     }
-    // ⌥⇧P → the presence overlay; while open, tick it so room/peers update live
+    // ⌥⇧P → toggle the presence overlay (its live tick lives in its own effect)
     const onDbgKey = (ev: KeyboardEvent) => { if (ev.altKey && ev.shiftKey && (ev.code === 'KeyP')) { ev.preventDefault(); setDbgPresence(v => !v) } }
-    const dbgIv = setInterval(() => setDbgTick(t => t + 1), 1000)
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     // the group layer needs to know who's standing in it (found / join / pin)
@@ -1029,7 +1029,6 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.removeEventListener('cafe:submode', onSubMode)
       window.removeEventListener('cafe:presence', onPresence)
       window.removeEventListener('keydown', onDbgKey)
-      clearInterval(dbgIv)
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

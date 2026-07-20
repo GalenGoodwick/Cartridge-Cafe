@@ -858,6 +858,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     } catch { /* no window */ }
   }, [presenceOthers])
   const presenceIdRef = useRef<string>('')
+  // persistent socket + its current room — so a ROOM change (presenceKey) switches
+  // rooms on the LIVE socket via join-instance instead of tearing the whole
+  // presence effect down (that reconnect re-registered glyph modules → shader
+  // recompile → cursor blink; the churn that "broke" cursors on hub navigation).
+  const socketRef = useRef<Socket | null>(null)
+  const roomRef = useRef<string>('')
   // other players' brewed-glyph seats (pid → slot 0-2, pid → wgsl). Lives at
   // component level so the scene loader can re-overlay live seats after a
   // reload re-registers the cartridge's no-op modules.
@@ -984,13 +990,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const idleSweep = setInterval(publish, 10000)
     console.log('[cursors] connecting to', PRESENCE_URL, 'room', instance, 'as', id)
     const socket: Socket = io(PRESENCE_URL, { transports: ['websocket', 'polling'], reconnection: true })
+    socketRef.current = socket
+    roomRef.current = world   // the room-switch effect keeps this current on presenceKey changes
     const announce = () => {
-      socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: world, glyph: playerGlyphWgsl() })
+      socket.emit('auth', { userId: id, name: id, color: `hsl(${hueOf(id)},70%,60%)`, spaceSlug: roomRef.current, glyph: playerGlyphWgsl() })
     }
     socket.on('connect', () => {
       console.log('[cursors] connected', socket.id)
       announce()
-      socket.emit('join-instance', { instance })
+      socket.emit('join-instance', { instance: 'cursors:' + roomRef.current })
     })
     // icon brewed mid-session → re-auth; the server updates the live room
     // player and re-announces, so peers pick the new glyph up without a rejoin
@@ -1059,9 +1067,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       socket.emit('position', { rx: x / gridSize, ry: y / gridSize })
     }, 66)
     return () => { clearInterval(iv); cancelAnimationFrame(raf); window.removeEventListener('cafe:icon', onIconChange)
-      clearInterval(idleSweep); window.removeEventListener('pagehide', onPageHide); socket.disconnect() }
+      clearInterval(idleSweep); window.removeEventListener('pagehide', onPageHide); socketRef.current = null; socket.disconnect() }
+  // presenceKey is NOT a dep — a room change switches on the live socket below,
+  // never a teardown. spaceId/playScene DO reconnect (a genuinely different world).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, playScene, presenceKey])
+  }, [spaceId, playScene])
+
+  // ROOM SWITCH without churn: when only presenceKey changes (hub view → view),
+  // move the live socket to the new room via join-instance (the server leaves the
+  // old room, server.js:137) — no disconnect, no glyph re-register, no recompile.
+  useEffect(() => {
+    const s = socketRef.current
+    if (!s) return
+    const world = spaceId || presenceKey || playScene || 'global'
+    if (roomRef.current === world) return
+    roomRef.current = world
+    // drop the just-left room's pips so none linger from the old view; the new
+    // room's instance-state prunes the buffers to its own members on arrival
+    setPresenceOthers(prev => (prev.length ? [] : prev))
+    seenPipsRef.current = new Set()
+    try { const w = window as unknown as { __ccPresenceDbg?: Record<string, unknown> }; w.__ccPresenceDbg = { ...(w.__ccPresenceDbg || {}), room: 'cursors:' + world } } catch { /* no window */ }
+    // the server keeps our identity/glyph across the move, so join-instance alone
+    // switches rooms — no re-auth needed
+    if (s.connected) s.emit('join-instance', { instance: 'cursors:' + world })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenceKey])
   const spaceHeld = useRef(false)
   const lastPointer = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
