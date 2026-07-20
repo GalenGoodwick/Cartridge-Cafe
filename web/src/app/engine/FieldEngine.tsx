@@ -2184,7 +2184,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
 
         if (snapshot.worldParams) sim.setWorldParams(snapshot.worldParams)
-        if (snapshot.worldData) Object.assign(sim.worldData, snapshot.worldData)
+        // RESTART (R) reloads the page with a one-shot cc-reset flag. THIS is the
+        // path a reload takes (hotLoadSpaceVersion only runs on version change), so
+        // it must strip the world's saved game-state too — else "reset" reloads the
+        // exact save it meant to purge. Strip engine state + the world's declared
+        // __resets keys (e.g. TIDEGLASS's __tg) before they land in the sim.
+        if (snapshot.worldData) {
+          let reset = false
+          try { if (sessionStorage.getItem('cc-reset:' + spaceSlug)) { reset = true; sessionStorage.removeItem('cc-reset:' + spaceSlug) } } catch { /* private mode */ }
+          if (reset || versionView) {
+            const extra = Array.isArray(snapshot.worldData.__resets) ? snapshot.worldData.__resets : []
+            for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
+          }
+          Object.assign(sim.worldData, snapshot.worldData)
+          if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
+        }
         // Transient input state must never survive a restore (stuck ghost keys)
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
