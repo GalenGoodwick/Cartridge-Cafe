@@ -50,21 +50,6 @@ export async function GET() {
     return { ...rest, owner, blank, building, hue, iconWgsl }
   })
 
-  // each space wears its OWNER's brewed icon on the bubble (attribution — see
-  // whose world is whose): load the owner's player-icon (fx preset + hue) once
-  // per owner and attach it to their spaces.
-  const ownerIds = [...new Set(out.map(s => s.owner?.id).filter(Boolean))] as string[]
-  const ownerIcons = new Map<string, { fx?: number; hue?: number }>()
-  await Promise.all(ownerIds.map(async (oid) => {
-    const ic = (await loadGameSlot('player-icon:' + oid).catch(() => null)) as { fx?: number; hue?: number } | null
-    if (ic) ownerIcons.set(oid, ic)
-  }))
-  for (const s of out) {
-    const ic = s.owner?.id ? ownerIcons.get(s.owner.id) : null
-    ;(s as unknown as { ownerFx: number | null; ownerHue: number | null }).ownerFx = typeof ic?.fx === 'number' ? ic.fx : null
-    ;(s as unknown as { ownerFx: number | null; ownerHue: number | null }).ownerHue = typeof ic?.hue === 'number' ? ic.hue : null
-  }
-
   // MAKERS directory — one entry per player who has a real (non-blank) world,
   // carrying their BREWED ICON (avatar) so the PLAYER WORLDS bubbles wear it.
   const makerIds = new Map<string, { handle: string; name: string; worldHue: number | null }>()
