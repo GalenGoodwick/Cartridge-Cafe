@@ -359,6 +359,54 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // so the branch base (== the space slug) must come from spaceSlug or every branch view
   // (list, "main", the cell/vote) resolves an empty base and shows nothing.
   const cellBase = () => (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+
+  // AUTO-SAVE — per-player progress as INFRASTRUCTURE, opt-in. A world sets
+  // `worldData.persist = true` to become a "resume where you left off" world;
+  // then `worldData.save` is the player's private slice — the engine loads it on
+  // entry and writes it back on change (debounced) + on leave, scoped per-user
+  // per-world. Default (no flag) = fresh every visit (arcade-style), nothing
+  // saved. The world just reads/writes worldData.save; everything else stays
+  // shared/transient.
+  const persistOn = () => !!simulationRef.current?.worldData?.['persist']
+  const autoSaveSerRef = useRef('')
+  const autoSaveAtRef = useRef(0)
+  const autoSaveReadyRef = useRef(false)   // gate: don't persist until the load resolves (else the default overwrites the real save)
+  useEffect(() => {
+    if (!spaceSlug && !playScene) return
+    let stopped = false
+    autoSaveSerRef.current = ''; autoSaveAtRef.current = 0; autoSaveReadyRef.current = false
+    const slotOf = () => `${(lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]}:__autosave`
+    // 1) LOAD the player's save into worldData.save — ONLY for persist worlds
+    const tryLoad = (attempt = 0) => {
+      if (stopped) return
+      const sim = simulationRef.current
+      if (!sim) { if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200); return }
+      if (!sim.worldData?.['persist']) return   // arcade-style: no persistence, fresh each visit
+      fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`)
+        .then(r => r.json())
+        .then(j => {
+          const s = simulationRef.current
+          if (!stopped && s && j?.data != null) { s.worldData['save'] = j.data; autoSaveSerRef.current = JSON.stringify(j.data) }
+        })
+        .catch(() => {})
+        .finally(() => { autoSaveReadyRef.current = true })   // now the frame loop may persist changes
+    }
+    tryLoad()
+    // 2) FLUSH on leave — a final save so nothing since the last debounce is lost.
+    // NOT a reset: it persists the current state. Only for persist worlds.
+    const flush = () => {
+      if (!persistOn()) return
+      const sv = simulationRef.current?.worldData?.['save']
+      if (sv === undefined) return
+      try {
+        fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+          body: JSON.stringify({ slot: slotOf(), data: sv, scope: 'user', anon: whoRef.current }) }).catch(() => {})
+      } catch { /* leaving anyway */ }
+    }
+    window.addEventListener('pagehide', flush)
+    return () => { stopped = true; window.removeEventListener('pagehide', flush); flush() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceSlug, playScene])
   // NOTE: cellData now carries only presence (viewers) + discussion. Voting was
   // a SECOND tally here (a parallel quorum-of-5 nobody counted) — removed. The
   // one and only vote is the ⚔ reckoning (TournamentBar / the tournament doc).
@@ -1458,7 +1506,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // hook persisted — so vote previews resumed someone's half-finished run.
       // Engine state (__chapters/__trig) always resets; a world lists its own
       // game-state keys in worldData.__resets (e.g. TIDEGLASS resets '__tg').
-      if (v !== undefined) {
+      // A RESTART (R) reloads the page with a one-shot sessionStorage flag so the
+      // live snapshot's saved game-state is stripped on the way back in — a plain
+      // reload alone re-fetches __tg intact ("reset didn't purge the save").
+      let resetFlag = false
+      try {
+        if (sessionStorage.getItem('cc-reset:' + spaceSlug)) { resetFlag = true; sessionStorage.removeItem('cc-reset:' + spaceSlug) }
+      } catch { /* private mode */ }
+      if (v !== undefined || resetFlag) {
         const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
         if (wd) {
           const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
@@ -1690,6 +1745,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // refresh boots the world clean from an empty worldData and always lands
         // at the beginning — so that's what we do. spaceVer is preserved in the
         // URL, so a save-point view reloads that same version fresh.
+        // The one-shot cc-reset flag survives the reload; the load then strips the
+        // world's declared __resets keys (e.g. TIDEGLASS's __tg) out of the live
+        // snapshot, so the SAVE is purged too — a plain reload keeps __tg.
+        try { if (spaceSlug) sessionStorage.setItem('cc-reset:' + spaceSlug, '1') } catch { /* private mode */ }
         window.location.reload()
       } else {
         // reset: forget this session's run state + saved stash, then reload fresh
@@ -2813,6 +2872,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             if (s) s.worldData['game_save'] = { slot: loadReq.slot, data: j?.data ?? null }
           })
           .catch(() => {})
+      }
+
+      // AUTO-SAVE (infrastructure): for persist worlds, mirror worldData.save back
+      // to the player's slot whenever it changes, debounced. The world writes to
+      // worldData.save and forgets — no save/load code of its own. Gated on
+      // autoSaveReadyRef so we never clobber the just-loaded save with the default.
+      if (autoSaveReadyRef.current && sim.worldData['persist'] && sim.worldData['save'] !== undefined && now - autoSaveAtRef.current > 4000) {
+        const ser = JSON.stringify(sim.worldData['save'])
+        if (ser !== autoSaveSerRef.current) {
+          autoSaveSerRef.current = ser
+          autoSaveAtRef.current = now
+          fetch('/api/engine/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot: `${cellBase()}:__autosave`, data: sim.worldData['save'], scope: 'user', anon: whoRef.current }),
+          }).catch(() => {})
+        }
       }
 
       // Update HUD overlay from worldData (cached element lookups, no per-frame DOM queries)

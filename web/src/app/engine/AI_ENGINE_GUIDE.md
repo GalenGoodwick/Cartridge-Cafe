@@ -284,6 +284,25 @@ wd.gpuUniforms = [/* … */]; wd.gpuUniforms[24] = act   // shader reads uni(24)
 |---------|-----------|-------------|
 | `set_world_data` | `data: Record<string, unknown>, fieldId?` | Merge into global worldData object (set key to null to delete) |
 
+**Per-player saves are infrastructure — don't code save/load yourself.** Set
+`worldData.persist = true` and the engine auto-saves each player's progress: it
+loads their save into `worldData.save` on entry, writes it back whenever it
+changes (debounced) and on leave, scoped per-user per-world. Your hook just reads
+and writes `worldData.save` — a plain object — and forgets. Everything else in
+`worldData` stays shared/transient (reset fresh each visit).
+
+```js
+// opt in once (scene worldData or set_world_data):  { persist: true }
+// then in a step hook, treat worldData.save as this player's private slot:
+sim.worldData.save ??= { level: 1, coins: 0 }        // default on first visit
+sim.worldData.save.coins += 1                        // engine persists it for you
+```
+
+Default (no `persist` flag) = arcade-style: nothing saved, every visit starts
+fresh. Only set `persist` for RPG/progression worlds where "resume where you left
+off" is the point. For explicit named slots (multiple save files, leaderboards),
+the `__save_game` / `__load_game` hooks below still work independently.
+
 ### Audio — SFX + composed music (synthesized) or hosted tracks
 
 Audio is **composed as data** by default, the same way visuals are shaders: you write
@@ -762,6 +781,53 @@ The pattern, all in the hook, published on the whiteboard:
 - **Move**: `if (wd.key_w) { px += fwd[0]*spd; pz += fwd[1]*spd }` … movement follows where you LOOK. Publish `px, pz` as the camera origin; the shader reads them instead of a scripted path.
 - **Collision**: the cheapest that works — clamp to the playable corridor (`px = clamp(px, -0.95, 0.95)`). This also stops the camera clipping *inside* SDF geometry (which shows the scene's interior).
 - **Enemies that occlude correctly, cheaply**: billboard them. Publish each creature's world position; in the shader, `proj = dot(creaturePos - ro, rd)`; draw it only if `proj > 0 && proj < wallHitDistance` (so columns occlude it) and the pixel is within its projected disc. No extra SDF primitives in the march.
+
+---
+
+## Starter Skeleton (copy this first)
+
+A blank world doesn't have to start empty. This is a complete, working world — a
+player you drive with WASD/arrows, a glowing marker, a HUD line, a score on the
+action button, and correct restart behaviour. Send it as ONE bridge batch, watch
+it run, then reshape it into your game. It already wires the four things every
+world re-invents: **input, movement, HUD, and reset.**
+
+### Input — `wd.input` (read this instead of raw `key_*`)
+
+Every tick the engine hands your hook a ready-made `wd.input`. Use it — you rarely
+need raw `key_*`/`_n` counters again:
+
+- `input.held` / `input.pressed` / `input.released` — maps keyed by name (`w`,`a`,
+  `s`,`d`,`up`,`down`,`left`,`right`,`space`,`enter`,`shift`, letters, digits).
+  `held` = down now; `pressed` = went down THIS frame (the edge, already
+  de-duplicated); `released` = came up this frame. `input.pressed.space` is the
+  correct one-shot.
+- `input.moveX` / `input.moveY` — WASD **and** arrows folded into a −1..1 axis.
+  `moveY` is forward/up = +1.
+- `input.action` / `input.actionHeld` — space **or** enter (edge / held): the
+  primary "confirm / fire".
+- `input.pointer` — `{ x, y, down, pressed, released }` in grid coords.
+
+**Reserved keys:** `Esc` is never delivered (it closes menus / leaves the world).
+`R` is withheld only while *restart-with-R* is enabled for the world (so a reset
+can't be fought); otherwise `r` is yours. Every other key is bindable — WASD +
+space/enter are simply the conventional defaults.
+
+### The skeleton (one batch)
+
+```json
+{ "commands": [
+  { "type": "define_visual", "name": "starter", "wgsl": "fn visual_starter(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  var col = vec3f(0.05,0.06,0.11) + 0.02*sin(uv.y*8.0+time);\n  let g = abs(fract(uv*6.0)-0.5);\n  col += vec3f(0.05)*smoothstep(0.48,0.5,max(g.x,g.y));\n  let pl = (vec2f(uni(0),uni(1))-256.0)/256.0;\n  let d = length(uv-pl);\n  col = mix(col, vec3f(1.0,0.85,0.4), smoothstep(0.06,0.03,d));\n  col += vec3f(1.0,0.7,0.3)*exp(-d*d*40.0)*0.5;\n  return vec4f(col,1.0);\n}" },
+  { "type": "create_field", "name": "stage", "shape": "rect", "x": 256, "y": 256, "w": 512, "h": 512, "visualType": "starter" },
+  { "type": "add_step_hook", "hookId": "starter", "author": "starter", "description": "player + input + hud + reset", "code": "const wd = sim.worldData;\nconst inp = wd.input || { moveX:0, moveY:0, action:false, pointer:{} };\nwd.__resets = ['__g'];                    // restart / save-point view wipes __g\nif (wd.__fresh) { delete wd.__fresh; }    // per-session latches reset here\nif (!wd.__g) wd.__g = { x:256, y:256, score:0 };\nconst G = wd.__g;\nconst spd = 150 * dt;\nG.x = Math.max(20, Math.min(492, G.x + inp.moveX * spd));\nG.y = Math.max(20, Math.min(492, G.y - inp.moveY * spd));  // grid-y grows down; up feels up\nif (inp.action || (inp.pointer && inp.pointer.pressed)) G.score++;\nwd.gpuUniforms = [G.x, G.y];\nwd.hud = [{ id:'help', type:'text', x:'16px', y:'12px', text:'WASD / arrows to move  ·  space to score: ' + G.score, fontSize:'16px', color:'#ffdba8' }];" }
+] }
+```
+
+Then `save_world` to keep it. From here: swap the visual for your world's look,
+give `__g` your real state (keep it listed in `__resets`), and drive everything
+off `input`. Because state lives in `__g` + `__resets` and per-session latches
+reset on `__fresh`, **restart-with-R and save-point previews already work** — do
+not hand-roll persistence or reset logic.
 
 ---
 
