@@ -3885,6 +3885,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   }
 
   registerVisualType(name: string, wgsl: string): { id: number; error?: string } {
+    // A visual with undefined/null wgsl (a leftover define_visual that never
+    // carried code) must NOT crash here — `undefined.match(...)` below threw and
+    // aborted the ENTIRE snapshot load, blacking out the whole world over one
+    // junk visual. Coerce to empty; the uber-shader composer skips no-fn visuals.
+    wgsl = wgsl || ''
     const existing = this.visualTypeRegistry.get(name)
     let id: number
     if (existing) {

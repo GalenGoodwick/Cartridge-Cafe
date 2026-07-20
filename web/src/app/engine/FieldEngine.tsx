@@ -1687,43 +1687,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   useEffect(() => {
     if (!playScene && !spaceId) return
     const fit = () => {
-      // Default: center the 0..512 grid at zoom 1 — how worlds authored in that
-      // space expect to be framed.
-      let cx = gridSize / 2, cy = gridSize / 2, zoom = 1
-      // But an AI often builds in its OWN space — e.g. centered on (0,0) with
-      // negative coords. That world sits off in the corner / off-screen of the
-      // default view and reads as a BLACK SCREEN. So if the content clearly lives
-      // outside the default frame, FRAME IT: center on the content's bounding box
-      // and zoom to fit. Worlds already built for 0..512 are left exactly as-is.
-      const fields = simulationRef.current ? [...simulationRef.current.fields.values()] : []
-      if (fields.length > 0) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        for (const f of fields) {
-          const fx = Number(f.transform?.x) || 0, fy = Number(f.transform?.y) || 0
-          const sc = Number(f.transform?.scale) || 1
-          const hw = (Number(f.w) || 0) * sc / 2, hh = (Number(f.h) || 0) * sc / 2
-          minX = Math.min(minX, fx - hw); maxX = Math.max(maxX, fx + hw)
-          minY = Math.min(minY, fy - hh); maxY = Math.max(maxY, fy + hh)
-        }
-        const bw = maxX - minX, bh = maxY - minY
-        const bcx = (minX + maxX) / 2, bcy = (minY + maxY) / 2
-        const outside = minX < 0 || minY < 0 ||
-          bcx < gridSize * 0.25 || bcx > gridSize * 0.75 ||
-          bcy < gridSize * 0.25 || bcy > gridSize * 0.75
-        if (outside && bw > 0 && bh > 0) {
-          cx = bcx; cy = bcy
-          zoom = Math.max(0.5, Math.min(8, gridSize / (Math.max(bw, bh) * 1.25)))
-        }
-      }
-      cameraRef.current.x = cx
-      cameraRef.current.y = cy
-      cameraRef.current.zoom = zoom
+      cameraRef.current.x = gridSize / 2
+      cameraRef.current.y = gridSize / 2
+      cameraRef.current.zoom = 1
     }
     fit()
-    // re-run as the scene loads async (fields may not exist on the first tick)
-    const timers = [setTimeout(fit, 300), setTimeout(fit, 900), setTimeout(fit, 1800)]
+    const t = setTimeout(fit, 300)   // after the canvas settles
     window.addEventListener('resize', fit)
-    return () => { timers.forEach(clearTimeout); window.removeEventListener('resize', fit) }
+    return () => { clearTimeout(t); window.removeEventListener('resize', fit) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 

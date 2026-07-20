@@ -107,8 +107,14 @@ const SHADER_CMDS = new Set(['define_visual', 'define_module', 'inject_wgsl', 'a
  *  so the field renders as nothing and no error ever reaches a headless builder.
  *  Catch the wrong shape at the bridge and teach the right one inline. */
 function visualSignatureError(name: string, wgsl: string): string | null {
-  if (!wgsl) return null
   const sig = `fn visual_${name}(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f`
+  // An EMPTY visual is not a no-op — it registered with no code and every field
+  // pointing at it drew nothing; worse, a null wgsl crashed the whole world's
+  // load. Reject it here so the builder gets told, instead of shipping a black
+  // world. (define_visual is for real shaders; drop the probe entirely if unused.)
+  if (!wgsl || !wgsl.trim()) {
+    return `define_visual "${name}" has no wgsl. A visual MUST carry a shader: ${sig} { ... return vec4f(rgb, alpha); }. If this was a throwaway probe, don't register it.`
+  }
   if (/@fragment|@vertex|@compute/.test(wgsl)) {
     return `this engine does NOT take standalone entry points (@fragment/@vertex/@compute). A visual is a plain function composed into one shared module. Rewrite as: ${sig} { ... return vec4f(rgb, alpha); }`
   }
