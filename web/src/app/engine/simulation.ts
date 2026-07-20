@@ -725,21 +725,32 @@ export class FieldSimulation {
       const bounds = this.getFieldBounds(field.id)
       if (!bounds) continue
 
-      if (bounds.minX < 0) {
-        field.transform.x -= bounds.minX
-        if (field.transform.vx < 0) field.transform.vx = -field.transform.vx * wp.bounciness
+      // A field as wide/tall as the world can't be contained — it IS the walls.
+      // Enforcing the boundary on it just ping-pongs it 1px every frame (the
+      // "vibration" that hit every full-screen backdrop). It's a backdrop, not a
+      // physics body: skip containment on any axis where it doesn't fit inside.
+      const fitsX = (bounds.maxX - bounds.minX) < this.gridSize
+      const fitsY = (bounds.maxY - bounds.minY) < this.gridSize
+
+      if (fitsX) {
+        if (bounds.minX < 0) {
+          field.transform.x -= bounds.minX
+          if (field.transform.vx < 0) field.transform.vx = -field.transform.vx * wp.bounciness
+        }
+        if (bounds.maxX >= this.gridSize) {
+          field.transform.x -= (bounds.maxX - (this.gridSize - 1))
+          if (field.transform.vx > 0) field.transform.vx = -field.transform.vx * wp.bounciness
+        }
       }
-      if (bounds.maxX >= this.gridSize) {
-        field.transform.x -= (bounds.maxX - (this.gridSize - 1))
-        if (field.transform.vx > 0) field.transform.vx = -field.transform.vx * wp.bounciness
-      }
-      if (bounds.minY < 0) {
-        field.transform.y -= bounds.minY
-        if (field.transform.vy < 0) field.transform.vy = -field.transform.vy * wp.bounciness
-      }
-      if (bounds.maxY >= this.gridSize) {
-        field.transform.y -= (bounds.maxY - (this.gridSize - 1))
-        if (field.transform.vy > 0) field.transform.vy = -field.transform.vy * wp.bounciness
+      if (fitsY) {
+        if (bounds.minY < 0) {
+          field.transform.y -= bounds.minY
+          if (field.transform.vy < 0) field.transform.vy = -field.transform.vy * wp.bounciness
+        }
+        if (bounds.maxY >= this.gridSize) {
+          field.transform.y -= (bounds.maxY - (this.gridSize - 1))
+          if (field.transform.vy > 0) field.transform.vy = -field.transform.vy * wp.bounciness
+        }
       }
     }
   }
