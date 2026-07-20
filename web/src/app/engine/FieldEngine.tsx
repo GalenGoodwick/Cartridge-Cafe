@@ -6121,7 +6121,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
               title={chatLive.people > 0 ? `${chatLive.people} chatting here now — the world's commons` : "the world's commons — players, makers, and their AIs"}
             >
-              ⌁ WORLD CHAT
+              ⌁ {(spaceId ? (spaceName || spaceSlug || 'world') : (cellBase() || 'world')).split(' ⑂ ')[0].toUpperCase()} CHAT
               {(chatLive.people + chatLive.ai) > 0 && (
                 <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[13px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
                   {chatLive.people + chatLive.ai}
