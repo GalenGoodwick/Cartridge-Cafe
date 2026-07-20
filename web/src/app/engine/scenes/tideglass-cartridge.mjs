@@ -1399,12 +1399,59 @@ fn mod_tg_lattice(p: vec2f, px: vec2f, t: f32) -> vec3f {
   return col;
 }
 
+fn mod_tg_core(p: vec2f, px: vec2f, t: f32) -> vec3f {
+  // INSIDE THE ORB — a deep well with three rings of light. Each ring carries a
+  // notch (uni(40..42), radians, 0 = up); the player turns them to the top gate.
+  // uni(39)=solved, uni(43)=ignition glow, uni(27),uni(28)=cursor px.
+  let solved = uni(39);
+  let glow = uni(43);
+  let rr = length(p);
+  var col = vec3f(0.015, 0.02, 0.035);
+  let neb = fbm4(p * 2.0 + vec2f(t * 0.03, t * 0.02));
+  col = col + vec3f(0.02, 0.05, 0.09) * pow(neb, 2.0) * (1.0 - smoothstep(0.4, 1.15, rr));
+  let warm = max(solved, glow);
+  let ringCol = mix(vec3f(0.30, 0.72, 0.85), vec3f(1.05, 0.72, 0.22), warm);
+  let notchCol = mix(vec3f(0.75, 0.95, 1.0), vec3f(1.0, 0.90, 0.55), warm);
+  // the gate at 12 o'clock — where notches must land
+  let ang = atan2(p.x, -p.y);
+  let gate = exp(-ang * ang * 24.0) * smoothstep(0.34, 0.9, rr) * smoothstep(1.05, 0.86, rr);
+  col = col + vec3f(0.95, 0.88, 0.52) * gate * 0.4;
+  var radii = array<f32, 3>(0.30, 0.55, 0.80);
+  for (var i = 0; i < 3; i = i + 1) {
+    let R = radii[i];
+    let band = exp(-(rr - R) * (rr - R) * 320.0);
+    col = col + ringCol * band * 0.16;
+    let a = uni(40 + i);
+    let nd = vec2f(sin(a), -cos(a));
+    let np = nd * R;
+    let dn = length(p - np);
+    let al = exp(-a * a * 20.0);                       // 1 when this notch is at the top
+    let bright = 0.8 + al * 1.0;
+    col = col + notchCol * exp(-dn * dn * 1500.0) * bright;
+    col = col + notchCol * exp(-dn * dn * 240.0) * 0.22 * bright;
+  }
+  // the heart of the orb — dim until woken, then a small sun
+  let heart = exp(-rr * rr * 24.0);
+  col = col + mix(vec3f(0.09, 0.15, 0.21), vec3f(2.3, 1.75, 0.95), glow) * heart * (0.22 + glow * 1.7);
+  col = col + vec3f(1.7, 1.25, 0.65) * exp(-rr * rr * 230.0) * glow;
+  if (glow > 0.001 && glow < 0.999) {                  // ignition ring blooming outward
+    let fr = glow * 1.15;
+    col = col + vec3f(1.0, 0.8, 0.4) * exp(-(rr - fr) * (rr - fr) * 110.0) * (1.0 - glow) * 0.85;
+  }
+  let cur = (vec2f(uni(27), uni(28)) - 256.0) / 256.0;
+  let dc = p - cur;
+  col = col + vec3f(0.8, 0.95, 1.0) * exp(-dot(dc, dc) * 520.0) * 0.6;
+  col = col * smoothstep(1.3, 0.5, rr);
+  return col;
+}
+
 fn mod_tg_scene(view: i32, p: vec2f, px: vec2f, t: f32) -> vec3f {
   if (view == 1) { return mod_tg_gate(p, px, t); }
   if (view == 2) { return mod_tg_hall(p, px, t); }
   if (view == 3) { return mod_tg_lens(p, px, t); }
   if (view == 4) { return mod_tg_stele(p, px, t); }
   if (view == 5) { return mod_tg_lattice(p, px, t); }
+  if (view == 6) { return mod_tg_core(p, px, t); }
   return mod_tg_shore(p, px, t);
 }
 `
@@ -1442,6 +1489,20 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
     c += vec3f(0.22, 0.52, 0.62) * bhov * (0.10 + 0.05 * sin(t * 2.0));
   }
   if (view == 5) {                                    // the observatory room → back down to the shore
+    let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);
+    c = mix(c, a.rgb + c, a.a * 0.9);
+    // once the constellation is gold, the heart becomes a door: a pulsing ring
+    // at the centre invites the click that dives into the orb (view 6).
+    if (uni(38) > 0.5) {
+      let oc = vec2f(256.0, 256.0);
+      let rp = length(px - oc);
+      let hov = smoothstep(84.0, 24.0, length(mm - oc));
+      let pulse = 0.5 + 0.5 * sin(t * 2.5);
+      let ring = smoothstep(3.5, 0.0, abs(rp - (34.0 + pulse * 7.0)));
+      c += vec3f(1.0, 0.82, 0.36) * ring * (0.22 + hov * 0.55);
+    }
+  }
+  if (view == 6) {                                    // inside the orb → back to the constellation
     let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);
     c = mix(c, a.rgb + c, a.a * 0.9);
   }
@@ -1503,6 +1564,10 @@ try {
   G.t += dt
   // the observatory's constellation puzzle (view 5) — folded in from LATTICE
   if (!Array.isArray(G.lat)) { G.lat = [0, 0, 0, 0, 0]; G.latBloom = 0 }
+  // THE CORE (view 6) — reached only after the constellation locks gold. Three
+  // rings of light; click a ring to turn its notch 30°; land all three at the
+  // top gate to wake the core. Steps 0..11; solved when all are 0 (notch up).
+  if (!Array.isArray(G.core)) { G.core = [5, 8, 2]; G.coreSolved = 0; G.coreGlow = 0 }
 
   sim.defineChapters(['THE SHORE', 'THE GATE', 'THE ORGAN', 'THE LIGHT'])
 
@@ -1558,6 +1623,28 @@ try {
       else if (hit(440, 300, 62)) go(1)                // the observatory building → the gate
     } else if (inView(5)) {
       if (hit(25, 256, 45)) go(0)                      // back down to the shore
+      else if (G.latSolved && hit(256, 256, 46)) go(6) // the gold heart → dive into the orb
+    } else if (inView(6)) {
+      if (hit(25, 256, 45)) go(5)                      // back up to the constellation
+      else if (!G.coreSolved && hasMouse) {
+        // pick a ring by how far the click is from the centre, then turn its
+        // notch one step (30°). Bands match the draw radii (0.30/0.55/0.80).
+        const rn = Math.hypot(mx - 256, my - 256) / 256
+        let ring = -1
+        if (rn < 0.425) ring = 0
+        else if (rn < 0.675) ring = 1
+        else if (rn < 0.98) ring = 2
+        if (ring >= 0) {
+          G.core[ring] = (G.core[ring] + 1) % 12
+          sounds.push({ frequency: 330 + ring * 110, duration: 0.18, volume: 0.28, type: 'triangle' })
+          if (G.core[0] === 0 && G.core[1] === 0 && G.core[2] === 0) {
+            G.coreSolved = 1                             // all three notches at the gate — the core wakes
+            sounds.push({ frequency: 264, duration: 2.0, volume: 0.40, type: 'sine' },
+                        { frequency: 396, duration: 2.0, volume: 0.34, type: 'sine' },
+                        { frequency: 528, duration: 2.4, volume: 0.30, type: 'sine' })
+          }
+        }
+      }
     } else if (inView(1)) {
       if (hit(25, 256, 45)) go(0)
       if (hit(487, 256, 45)) go(4)                    // → the tide record
@@ -1687,12 +1774,14 @@ try {
   }
   // solving the constellation raises the vault-dome from the sea — a space opens
   if (G.latSolved) G.vault = Math.min(1, (G.vault || 0) + dt / 7)
+  // waking the core lights it, and the light holds — it blooms once, forever
+  if (G.coreSolved) { for (let i = 0; i < 3; i++) G.core[i] = 0; G.coreGlow = Math.min(1, (G.coreGlow || 0) + dt / 2.5) }
 
-  wd.music_mod = { brightness: 0.25 + (G.view === 0 ? 0.35 : G.view === 3 ? 0.3 : 0.12) + G.fin * 0.3, gain: 1 }
+  wd.music_mod = { brightness: 0.25 + (G.view === 0 ? 0.35 : G.view === 3 ? 0.3 : G.view === 6 ? 0.22 : 0.12) + G.fin * 0.3 + (G.coreGlow || 0) * 0.2, gain: 1 }
   if (sounds.length) wd.__play_sound = sounds
 
   // ── publish the whiteboard ──
-  const U = new Array(40).fill(0)
+  const U = new Array(48).fill(0)
   U[0] = G.view; U[1] = G.pv; U[2] = G.fade; U[3] = G.t
   for (let i = 0; i < 4; i++) U[4 + i] = G.dials[i]
   U[8] = G.door
@@ -1707,6 +1796,9 @@ try {
   U[32] = G.latBloom || 0
   for (let i = 0; i < 5; i++) U[33 + i] = G.lat[i]
   U[38] = G.latSolved ? 1 : 0
+  U[39] = G.coreSolved ? 1 : 0
+  for (let i = 0; i < 3; i++) U[40 + i] = (G.core[i] / 12) * Math.PI * 2   // ring notch angles (rad)
+  U[43] = G.coreGlow || 0
   wd.gpuUniforms = U
 } catch (e) { /* the island keeps its silence */ }
 `
