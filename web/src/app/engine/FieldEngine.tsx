@@ -526,6 +526,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     for (const h of stepHooks || []) sim.addStepHook(h.id, h.author, h.description, h.code)
   }, [])
+  /** EVERY hook this world owns — including sandbox-owned ones. A __sandbox
+   *  world's hooks run in the sealed Worker (mirrored in liveHooksRef) and are
+   *  NEVER registered in sim, so sim.getStepHookSnapshots() is EMPTY for them.
+   *  Any save/sync that reads sim alone silently ERASES the world's hooks from
+   *  the DB (the KINDLE frozen-cursor bug: the owner tab's own 2s sync wiped the
+   *  hook it was running). All persist paths must read THIS union instead. */
+  const allStepHookSnapshots = useCallback((sim: FieldSimulation) => {
+    const snaps = sim.getStepHookSnapshots()
+    const seen = new Set(snaps.map(h => h.id))
+    for (const h of liveHooksRef.current.values()) if (!seen.has(h.id)) snaps.push({ ...h })
+    return snaps
+  }, [])
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
   const startTimeRef = useRef<number>(0)
@@ -1146,7 +1158,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const renderer = rendererRef.current
     if (!sim) return null
     const fields = sim.generateSnapshots()
-    const stepHooks = sim.getStepHookSnapshots()
+    const stepHooks = allStepHookSnapshots(sim)
     // extraWorldData wins over the inherited sim.worldData — so a branch's
     // `branchedFrom` is stamped to ITS immediate parent, not the grandparent it
     // inherited (walk the chain for full genealogy; the name still flattens to root).
@@ -1330,7 +1342,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       fields: sim.generateSnapshots(),
       worldParams: sim.getWorldParams(),
       worldData: { ...sim.worldData },
-      stepHooks: sim.getStepHookSnapshots(),
+      stepHooks: allStepHookSnapshots(sim),
       interactionRules: [...sim.interactionRules],
       interactionEffects: [...sim.interactionEffects],
       visualTypes: renderer ? renderer.getAllVisualTypes().map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
@@ -4754,7 +4766,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 fields: sim.generateSnapshots(),
                 worldParams: sim.getWorldParams(),
                 worldData: { ...sim.worldData },
-                stepHooks: sim.getStepHookSnapshots(),
+                stepHooks: allStepHookSnapshots(sim),
                 interactionRules: [...sim.interactionRules],
                 interactionEffects: [...sim.interactionEffects],
                 // Quarantined visuals are not persisted — a broken shader must not
@@ -4839,7 +4851,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
                 }
                 if (scene.stepHooks) {
-                  for (const h of scene.stepHooks) sim.addStepHook(h.id, h.author, h.description, h.code)
+                  // through installHooks: resets the liveHooksRef mirror (else the
+                  // PREVIOUS world's sandbox hooks leak into this world's saves) and
+                  // honors __sandbox so untrusted hooks never hit the main thread
+                  installHooks(sim, scene.stepHooks, sim.worldData)
                   // A scene with logic should boot running (game cartridges)
                   if (scene.stepHooks.length > 0 && !sim.running) {
                     sim.running = true
@@ -5281,7 +5296,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             takeover: takeoverRef.current,
             fields: syncFields,
             worldParams: sim.getWorldParams(),
-            stepHooks: sim.getStepHookSnapshots(),
+            stepHooks: allStepHookSnapshots(sim),
             worldData: syncWorldData,
             renderedSamples: Object.fromEntries(renderedSamplesRef.current),
             interactionEffects: sim.interactionEffects,
