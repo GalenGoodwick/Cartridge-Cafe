@@ -6284,13 +6284,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       {/* GATE 3 — BUILD (locked until brief) */}
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
                         <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
-                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          className="w-full px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           OPEN + CONNECT AI
                         </button>
-                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
-                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
-                          ☕ HAVE THE HOUSE AI BUILD IT
-                        </button>
+                        {/* HOUSE AI build button backlogged/disabled: the headless
+                            builder can't drive the engine like a terminal yet.
+                            branchWithHouseAi + /api/builds/enqueue-scene stay. */}
                       </div>
                     </>)
                   })()}
