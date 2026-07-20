@@ -174,8 +174,10 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let st = ab % 200;
     let hue = fract(sv);
     let rawHead0 = uni(9 + i * 4);
-    let isBranch = rawHead0 > 1999.5;                // +2000 flags a BRANCH → a round bubble with a blue outline
-    let rawHead = select(rawHead0, rawHead0 - 2000.0, isBranch);
+    let isPlayerWorld = rawHead0 > 3999.5;           // +4000 flags a PLAYER WORLD (a space) → green rim
+    let r1 = select(rawHead0, rawHead0 - 4000.0, isPlayerWorld);
+    let isBranch = r1 > 1999.5;                       // +2000 flags a BRANCH → blue rim
+    let rawHead = select(r1, r1 - 2000.0, isBranch);
     let unvisited = rawHead > 900.5;                 // +1000 offset flags a world this browser hasn't entered
     let headCount = i32(select(rawHead, rawHead - 1000.0, unvisited) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
@@ -343,7 +345,8 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       else if (bigBand == 2) { rim = vec3f(0.45, 0.75, 1.55); rimBase = 0.45; }
       else if (bigBand == 3) { rim = vec3f(0.4, 1.45, 0.65); rimBase = 0.45; }
       else if (bigBand == 4) { rim = vec3f(1.4, 0.75, 0.35); rimBase = 0.45; }
-      if (isBranch) { rim = vec3f(0.30, 0.62, 1.75); rimBase = 0.6; }   // BRANCH — a blue outline on the round bubble
+      if (isBranch) { rim = vec3f(0.30, 0.62, 1.75); rimBase = 0.6; }        // BRANCH — a blue outline on the round bubble
+      if (isPlayerWorld) { rim = vec3f(0.40, 1.45, 0.65); rimBase = 0.5; }   // PLAYER WORLD — a green rim (matches the PLAYER WORLDS door)
       col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
     } else {
       // halo when hovered
@@ -778,6 +781,7 @@ try {
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.square = !!want[n].square   // a branch draws square, not round
+          B.playerWorld = (B.launch || '').startsWith('space:')   // a player-made world → green rim (its own icon stays)
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
           if (want[n].fixed) {   // a locked seat — first pin wakes the field so neighbours clear out
             if (!B.pinned) U.wake = Math.max(U.wake, 5)
@@ -1125,7 +1129,7 @@ try {
     // and CAFE/SUB-MAIN never count as unvisited worlds.
     const lz = B.launch || ''
     const unvis = !!lz && !lz.startsWith('sub:') && !lz.startsWith('maker:') && !lz.startsWith('players:') && !lz.startsWith('house:') && lz !== 'CAFE' && lz !== 'SUB-MAIN' && !visited[lz]
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0))
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
