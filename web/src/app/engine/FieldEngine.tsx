@@ -638,6 +638,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const onGesture = () => audio.unlock()
     window.addEventListener('pointerdown', onGesture, { capture: true })
     window.addEventListener('keydown', onGesture, { capture: true })
+    // Returning to a backgrounded tab leaves the AudioContext SUSPENDED — the
+    // looping score falls silent and, until now, only a fresh click revived it.
+    // Resume the instant the tab is visible/focused again so music never stays
+    // dead after an alt-tab. (unlock() = ensureContext(), which resumes.)
+    const onVisible = () => { if (!document.hidden) audio.unlock() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
     window.addEventListener('cafe:muted', onMute)
     // the door's bubble faces: the shell builds a packed screenshot atlas and
     // hands it here; the renderer folds it into the super pass so faces are
@@ -659,6 +666,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       window.removeEventListener('cafe:muted', onMute)
       window.removeEventListener('pointerdown', onGesture, { capture: true })
       window.removeEventListener('keydown', onGesture, { capture: true })
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
       window.removeEventListener('cafe:icon-atlas', onAtlas)
     }
   }, [])
