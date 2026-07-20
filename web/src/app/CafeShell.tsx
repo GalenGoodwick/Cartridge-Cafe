@@ -38,7 +38,7 @@ const ADS_ENABLED = false
 // two hubs read as the same layer (surface:'hub'), not two different UIs.
 const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
 
-export default function CafeShell({ initialScene = 'CAFE', initialMine = false }: { initialScene?: string; initialMine?: boolean }) {
+export default function CafeShell({ initialScene = 'CAFE', initialMine = false, initialMineHandle }: { initialScene?: string; initialMine?: boolean; initialMineHandle?: string }) {
   const [scene, setScene] = useState(initialScene)
 
   // the tab title follows you: into a world, and — the bug — back out again.
@@ -794,6 +794,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true }
       setMine('your')
       myWorlds(false)   // the /u/<you> shelf — the URL is already set
+    } else if (initialMineHandle) {
+      // viewing ANOTHER maker's deed — the SAME spatial shelf, filtered to their
+      // worlds by handle (read-only). This is what makes every /u/<handle> look
+      // like your own, instead of a flat profile list.
+      ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, handle: initialMineHandle, who: initialMineHandle, viewing: true }
+      setMine(initialMineHandle)
     } else if (new URLSearchParams(window.location.search).get('commons')) {
       window.history.replaceState({}, '', '/')
       try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }

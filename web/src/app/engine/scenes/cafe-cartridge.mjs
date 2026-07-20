@@ -523,7 +523,7 @@ try {
   // shelf. window.__cafeSub carries the slug while inside a group.
   const SUB = !!wd.__submain
   const subKey = SUB ? String((typeof window !== 'undefined' && window.__cafeSub) || '') : ''
-  const mineKey = MF ? String(MF.ownerId || MF.who || '') : PL ? (HOUSE ? 'house' : 'players') : (SUB ? 'sub:' + subKey : '')
+  const mineKey = MF ? String(MF.handle || MF.ownerId || MF.who || '') : PL ? (HOUSE ? 'house' : 'players') : (SUB ? 'sub:' + subKey : '')
   // every mode keeps its OWN persisted layout, so a joining player or a reload
   // adopts it AT REST instead of replaying the rim fly-in: main = the shared
   // universe, MY WORLDS = per-deed, SUB-MAIN = per-group (or the viewer roster).
@@ -644,7 +644,12 @@ try {
             const f = n.indexOf(' \u2442 ')
             const vAt = n.lastIndexOf(' \u00b7 v')
             if (f < 0 || vAt < f) continue
-            if (n.slice(f + 3, vAt) !== MF.who) continue
+            // the AUTHOR is the first token after the \u2442, before any label \u2014 match
+            // it by handle (works for another maker's deed) OR the legacy who.
+            // (slicing to vAt kept the label attached, so labeled branches never
+            //  matched \u2014 this also makes them show, which #14 wanted.)
+            const author = n.slice(f + 3).split(' \u00b7 ')[0]
+            if (author !== MF.who && author !== MF.handle) continue
             const v = parseInt(n.slice(vAt + 4), 10) || 0
             const base = n.slice(0, vAt)
             if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
@@ -660,7 +665,8 @@ try {
             }
           }
           for (const s of (sp.spaces || [])) {
-            if (!s.owner || s.owner.id !== MF.ownerId) continue
+            // match by ownerId (your own deed) OR handle (viewing another maker)
+            if (!s.owner || (s.owner.id !== MF.ownerId && s.owner.handle !== MF.handle)) continue
             // an unnamed blank DRAFT (still auto-timestamp-named, nothing built)
             // is abandoned scaffolding, not a world — keep it off the deed. Naming
             // a world PATCHes its real name in, so only truly-abandoned drafts
