@@ -325,6 +325,14 @@ export class WorldSandbox {
     try {
       const payload = cloneable(sim.worldData)
       payload.input = this.buildInput(sim.worldData)   // derived; never persisted to sim.worldData
+      // slim PRESENCE for hooks: the full presence blob is host-heavy and dropped
+      // by cloneable, but a hook that reacts to the ROOM (a shared/ambient world)
+      // needs everyone's cursor. Hand it a compact [{x,y}] — just positions, capped
+      // — so `wd.players` lets any hook light a fire per visitor, not just the local one.
+      const pres = sim.worldData['presence']
+      payload.players = Array.isArray(pres)
+        ? pres.slice(0, 32).map((pp) => { const o = pp as { x?: number; y?: number }; return { x: Number(o.x) || 0, y: Number(o.y) || 0 } })
+        : []
       this.worker.postMessage({ type: 'tick', worldData: payload, dt: useDt, fields })
       this.inFlight = true
       this.lastPostAt = perfNow()   // hang-detector baseline for this in-flight tick
