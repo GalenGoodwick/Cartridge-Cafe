@@ -1328,11 +1328,53 @@ fn mod_tg_lens(p: vec2f, px: vec2f, t: f32) -> vec3f {
   return c;
 }
 
+fn mod_tg_lattice(p: vec2f, px: vec2f, t: f32) -> vec3f {
+  // the observatory interior at night — weave the constellation the island keeps.
+  // whiteboard: uni(32)=bloom, uni(33..37)=the five anchor charges, uni(27),uni(28)=cursor px.
+  let bloom = uni(32);
+  let neb = fbm4(p * 1.5 + vec2f(t * 0.05, -t * 0.04));
+  var col = vec3f(0.015, 0.028, 0.05);
+  col = col + vec3f(0.04, 0.10, 0.16) * pow(neb, 2.0);
+  let s = 0.6;
+  var A = array<vec2f, 5>(vec2f(0.0, 0.0), vec2f(-s, 0.0), vec2f(s, 0.0), vec2f(0.0, -s), vec2f(0.0, s));
+  for (var i = 1; i < 5; i = i + 1) {
+    let pa = p - A[0]; let ba = A[i] - A[0];
+    let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    let d = length(pa - ba * h);
+    col = col + vec3f(0.06, 0.10, 0.15) * exp(-d * d * 70.0) * (0.6 + 0.4 * sin(t * 3.0 + f32(i)));
+  }
+  for (var i = 0; i < 5; i = i + 1) {
+    let ci = uni(33 + i);
+    for (var j = i + 1; j < 5; j = j + 1) {
+      let cj = uni(33 + j);
+      let sm = min(ci, cj);
+      if (sm > 0.55) {
+        let pa = p - A[i]; let ba = A[j] - A[i];
+        let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+        let d = length(pa - ba * h);
+        col = col + vec3f(0.30, 0.75, 0.85) * exp(-d * d * 90.0) * (sm - 0.5) * 2.0;
+      }
+    }
+  }
+  for (var i = 0; i < 5; i = i + 1) {
+    let c = uni(33 + i);
+    let d = p - A[i]; let r = dot(d, d);
+    col = col + vec3f(0.30, 0.70, 0.80) * exp(-r * 40.0) * (0.10 + c * 1.4);
+    col = col + vec3f(0.85, 0.95, 0.90) * exp(-r * 300.0) * (0.25 + c * 1.1);
+  }
+  let cur = (vec2f(uni(27), uni(28)) - 256.0) / 256.0;
+  let dc = p - cur;
+  col = col + vec3f(0.80, 0.95, 1.0) * exp(-dot(dc, dc) * 420.0) * 0.9;
+  col = mix(col, col + vec3f(0.5, 0.85, 0.9) * 0.7 + vec3f(0.12, 0.14, 0.18), bloom * 0.7);
+  return col;
+}
+
 fn mod_tg_scene(view: i32, p: vec2f, px: vec2f, t: f32) -> vec3f {
   if (view == 1) { return mod_tg_gate(p, px, t); }
   if (view == 2) { return mod_tg_hall(p, px, t); }
   if (view == 3) { return mod_tg_lens(p, px, t); }
   if (view == 4) { return mod_tg_stele(p, px, t); }
+  if (view == 5) { return mod_tg_lattice(p, px, t); }
   return mod_tg_shore(p, px, t);
 }
 `
@@ -1353,8 +1395,23 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
   let mm = vec2f(uni(27), uni(28));
   let act = uni(24);
   let fin = uni(17);
-  if (view == 0 && fin < 0.5) {                       // shore → gate
+  if (view == 0) {                                    // shore → gate (stays lit through the finale night)
     let a = mod_tg_chev(px, vec2f(487.0, 256.0), 0, smoothstep(55.0, 20.0, length(mm - vec2f(487.0, 256.0))), t);
+    c = mix(c, a.rgb + c, a.a * 0.9);
+    // the observatory itself answers the cursor — a teal breath over its silhouette
+    // so a player learns the whole building is the door, not just the edge chevron
+    let bc = vec2f(440.0, 300.0);
+    let hov = smoothstep(82.0, 30.0, length(mm - bc));
+    c += vec3f(0.22, 0.52, 0.62) * hov * (0.10 + 0.05 * sin(t * 2.0));
+    // once the moon is up, a chevron rises over the observatory — the door is open
+    let ni = uni(23);
+    if (ni > 0.03) {
+      let ob = mod_tg_chev(px, vec2f(440.0, 232.0), 3, 0.45 + 0.55 * hov, t);
+      c = mix(c, ob.rgb + c, ob.a * ni);
+    }
+  }
+  if (view == 5) {                                    // the observatory room → back down to the shore
+    let a = mod_tg_chev(px, vec2f(25.0, 256.0), 1, smoothstep(55.0, 20.0, length(mm - vec2f(25.0, 256.0))), t);
     c = mix(c, a.rgb + c, a.a * 0.9);
   }
   if (view == 1) {
@@ -1413,6 +1470,8 @@ try {
   }
   const G = wd.__tg
   G.t += dt
+  // the observatory's constellation puzzle (view 5) — folded in from LATTICE
+  if (!Array.isArray(G.lat)) { G.lat = [0, 0, 0, 0, 0]; G.latBloom = 0 }
 
   sim.defineChapters(['THE SHORE', 'THE GATE', 'THE ORGAN', 'THE LIGHT'])
 
@@ -1458,8 +1517,10 @@ try {
     const hit = (x, y, r) => Math.hypot(mx - x, my - y) < r
 
     if (inView(0)) {
-      if (hit(487, 256, 45) && G.fin < 0.5) go(1)
-      if (G.fin >= 0.5 && hit(487, 256, 45)) go(1)     // free travel after the end
+      if (hit(487, 256, 45)) go(1)                     // the edge chevron → the gate
+      if (hit(440, 300, 70)) go(5)                     // the observatory (blue building) → its constellation room
+    } else if (inView(5)) {
+      if (hit(25, 256, 45)) go(0)                      // back down to the shore
     } else if (inView(1)) {
       if (hit(25, 256, 45)) go(0)
       if (hit(487, 256, 45)) go(4)                    // → the tide record
@@ -1537,7 +1598,7 @@ try {
   // ── finale: return to a transformed shore ──
   if (G.fin > 0) {
     G.fin = Math.min(1, G.fin + dt / 3.5)
-    if (G.fin > 0.35 && G.view !== 0) go(0)
+    if (G.fin > 0.35 && G.view !== 0 && G.view !== 5) go(0)   // the night lets you linger in the observatory
     G.night = Math.min(1, G.night + dt / 6)
     if (G.fin > 0.6) G.vault = Math.min(1, G.vault + dt / 8)
   }
@@ -1560,11 +1621,32 @@ try {
       { inst: 'sawtooth', gain: 0.06, cutoff: 600, a: 1.5, d: 2.5, notes: 'D3+F#3+A3 . . . . . . . G3+B3+D4 . . . . . . . B2+D3+F#3 . . . . . . . A2+C#3+E3 . . . . . . .' },
     ] } }
   }
+  // ── the observatory constellation (view 5): weave near a star to kindle it ──
+  if (G.view === 5) {
+    const AX = [0, -0.6, 0.6, 0, 0]
+    const AY = [0, 0, 0, -0.6, 0.6]
+    const cux = hasMouse ? (mx - 256) / 256 : -99
+    const cuy = hasMouse ? (my - 256) / 256 : -99
+    let lit = 0
+    for (let i = 0; i < 5; i++) {
+      const d = Math.hypot(cux - AX[i], cuy - AY[i])
+      if (hasMouse && d < 0.22) G.lat[i] = Math.min(1, G.lat[i] + 0.06)
+      else G.lat[i] = Math.max(0, G.lat[i] - 0.0035)
+      if (G.lat[i] > 0.6) lit++
+    }
+    G.latBloom = lit >= 5 ? Math.min(1, (G.latBloom || 0) + 0.02) : Math.max(0, (G.latBloom || 0) - 0.01)
+    if (sim.trigger('tg-lattice', lit >= 5)) sounds.push({ frequency: 528, duration: 1.1, volume: 0.32, type: 'sine' })
+  } else {
+    // fade the weave when you leave the room, so re-entry starts calm
+    for (let i = 0; i < 5; i++) G.lat[i] = Math.max(0, G.lat[i] - dt * 0.5)
+    G.latBloom = Math.max(0, (G.latBloom || 0) - dt * 0.5)
+  }
+
   wd.music_mod = { brightness: 0.25 + (G.view === 0 ? 0.35 : G.view === 3 ? 0.3 : 0.12) + G.fin * 0.3, gain: 1 }
   if (sounds.length) wd.__play_sound = sounds
 
   // ── publish the whiteboard ──
-  const U = new Array(32).fill(0)
+  const U = new Array(40).fill(0)
   U[0] = G.view; U[1] = G.pv; U[2] = G.fade; U[3] = G.t
   for (let i = 0; i < 4; i++) U[4 + i] = G.dials[i]
   U[8] = G.door
@@ -1576,6 +1658,8 @@ try {
   U[27] = hasMouse ? mx : -100; U[28] = hasMouse ? my : -100
   U[29] = G.star; U[30] = (hasMouse && wd.mouse_down) ? 1 : 0
   U[31] = Math.max(G.organ, G.door * 0.25)
+  U[32] = G.latBloom || 0
+  for (let i = 0; i < 5; i++) U[33 + i] = G.lat[i]
   wd.gpuUniforms = U
 } catch (e) { /* the island keeps its silence */ }
 `
