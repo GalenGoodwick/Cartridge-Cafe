@@ -1425,10 +1425,9 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
   let mm = vec2f(uni(27), uni(28));
   let act = uni(24);
   let fin = uni(17);
-  if (view == 0) {                                    // the shore — two ways on
-    // the right chevron → the observatory's constellation room
-    let a = mod_tg_chev(px, vec2f(487.0, 256.0), 0, smoothstep(55.0, 20.0, length(mm - vec2f(487.0, 256.0))), t);
-    c = mix(c, a.rgb + c, a.a * 0.9);
+  if (view == 0) {                                    // the shore
+    // (right chevron removed — it never worked once the moon rose and the finale
+    //  pinned the view; the building is the way in, the risen dome the way up.)
     // an arrow over the dome — ONLY once the dome has actually breached the sea
     // (uni(26)=vault); by day there's no dome, so no orphaned chevron over water.
     if (uni(26) > 0.03) {
@@ -1553,12 +1552,10 @@ try {
       // zone (440,300) overlap (64px apart), so a bare series fired BOTH: go(5)
       // then go(1), and the finale bounced view 1 back to the shore. else-if =
       // one hit wins, nearest-first.
-      // RIGHT CHEVRON CHECKED FIRST so it always wins the right edge → THE GATE.
-      // (When the building zone was checked first they overlapped and stole the
-      // click to the lattice — the recurring 'right arrow goes to lattice' bug.)
-      if (hit(487, 256, 48)) go(1)                      // the right chevron → THE GATE
-      else if (G.vault > 0.03 && hit(214, 318, 80)) go(5)   // the risen dome → the constellation room
-      else if (hit(440, 300, 52)) go(5)                // the observatory building → the constellation room
+      // right chevron removed. The observatory BUILDING is the gate; the risen
+      // DOME (finale/solved) is the constellation room.
+      if (G.vault > 0.03 && hit(214, 318, 80)) go(5)   // the risen dome → the constellation room
+      else if (hit(440, 300, 62)) go(1)                // the observatory building → the gate
     } else if (inView(5)) {
       if (hit(25, 256, 45)) go(0)                      // back down to the shore
     } else if (inView(1)) {
