@@ -6,7 +6,7 @@
 // hook, same portal-position publishing (so the shell's name labels and live
 // head-count chips work automatically), but with its own world list laid out
 // on a golden-angle spiral. The result is a scene like any other — play it at
-// /play/<NAME>, portal in from anywhere, ESC/◂ climbs back out.
+// /hub/<NAME>, portal in from anywhere, ESC/◂ climbs back out.
 // Hubs publish portals, which also tells the engine to hide branch chrome.
 import { readFileSync, writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'

@@ -6822,7 +6822,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               // room; a space named without lineage goes to the cafe.
               if (spaceId) {
                 const base = (spaceName || '').split(' ⑂ ')[0].trim()
-                window.location.href = base && base !== (spaceName || '').trim() ? `/play/${encodeURIComponent(base)}` : '/'
+                window.location.href = base && base !== (spaceName || '').trim() ? `/hub/${encodeURIComponent(base)}` : '/'
                 return
               }
               if (typeof window !== 'undefined' && window.history.length > 1) window.history.back()

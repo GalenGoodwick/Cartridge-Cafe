@@ -74,7 +74,7 @@ export default function AdminPage() {
   )
 
   const View = ({ scene, small }: { scene: string; small?: boolean }) => (
-    <a href={scene.startsWith('space:') ? `/space/${scene.slice(6)}` : `/play/${encodeURIComponent(scene)}`} target="_blank" rel="noreferrer" style={{
+    <a href={scene.startsWith('space:') ? `/space/${scene.slice(6)}` : `/hub/${encodeURIComponent(scene)}`} target="_blank" rel="noreferrer" style={{
       fontFamily: 'inherit', fontSize: small ? 9 : 10, letterSpacing: '0.15em', textDecoration: 'none',
       padding: small ? '4px 10px' : '6px 14px', borderRadius: 8, whiteSpace: 'nowrap',
       border: '1px solid rgba(245,176,76,0.4)', background: 'rgba(185,122,42,0.12)', color: '#ffdba8',
@@ -104,7 +104,7 @@ export default function AdminPage() {
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
         <div style={{ fontSize: 26, fontStyle: 'italic', color: '#ffdba8', marginBottom: 4 }}>the keeper&rsquo;s shelf</div>
         <div style={{ fontSize: 11, color: '#c9b89680', marginBottom: 28 }}>
-          One row per world. A branch&rsquo;s switch covers all its versions. PRIVATE = unlisted everywhere; the direct /play link still works.
+          One row per world. A branch&rsquo;s switch covers all its versions. PRIVATE = unlisted everywhere; the direct /hub link still works.
         </div>
         {err && <div style={{ color: '#ff8080', fontSize: 13 }}>{err}</div>}
         {!err && !roots && <div style={{ color: '#c9b896', fontSize: 12 }}>fetching the shelf…</div>}

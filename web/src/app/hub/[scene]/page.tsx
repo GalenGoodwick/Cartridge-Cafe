@@ -1,10 +1,10 @@
 import CafeShell from '@/app/CafeShell'
 
-interface PlayPageProps {
+interface HubPageProps {
   params: Promise<{ scene: string }>
 }
 
-export async function generateMetadata({ params }: PlayPageProps) {
+export async function generateMetadata({ params }: HubPageProps) {
   const { scene } = await params
   const name = decodeURIComponent(scene)
   // the world's own instructions are its best description — first line wins
@@ -26,8 +26,9 @@ export async function generateMetadata({ params }: PlayPageProps) {
 }
 
 /** Deep link straight into a cartridge — same shell, so ESC still walks
- *  back to the cafe without a page load. */
-export default async function PlayPage({ params }: PlayPageProps) {
+ *  back to the cafe without a page load. (Formerly /play/[scene]; /play/* now
+ *  308-redirects here via next.config, so old links and bookmarks still land.) */
+export default async function HubPage({ params }: HubPageProps) {
   const { scene } = await params
   return <CafeShell initialScene={decodeURIComponent(scene)} />
 }

@@ -17,7 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (name.includes(' ⑂ ')) continue
       const scene = loadScene(name) as { worldData?: { __private?: boolean } } | undefined
       if (scene?.worldData?.__private) continue
-      out.push({ url: `${base}/play/${encodeURIComponent(name)}`, changeFrequency: 'weekly', priority: 0.8 })
+      out.push({ url: `${base}/hub/${encodeURIComponent(name)}`, changeFrequency: 'weekly', priority: 0.8 })
     }
     const { prisma } = await import('@/lib/prisma')
     const spaces = await prisma.playerSpace.findMany({ where: { isPublic: true }, select: { slug: true, owner: { select: { email: true } } } })

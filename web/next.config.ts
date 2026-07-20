@@ -10,6 +10,13 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        // /play was renamed to /hub. Old links, bookmarks, and the /play URLs
+        // already stored in notification rows keep working — no DB touched.
+        source: '/play/:scene*',
+        destination: '/hub/:scene*',
+        permanent: true,
+      },
+      {
         source: '/deliberations/:path*',
         destination: '/talks/:path*',
         permanent: true,

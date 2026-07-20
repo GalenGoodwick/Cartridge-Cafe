@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     } else if (body.channel.startsWith('chat:world:')) {
       const base = body.channel.slice(11)
       for (const admin of await adminUsers()) {
-        if (admin.id !== u.id) await notifyUser(admin.id, 'comment', `${who} in ${base}: “${preview}”`, `/play/${encodeURIComponent(base)}`)
+        if (admin.id !== u.id) await notifyUser(admin.id, 'comment', `${who} in ${base}: “${preview}”`, `/hub/${encodeURIComponent(base)}`)
       }
     }
     return NextResponse.json({ ok: true })

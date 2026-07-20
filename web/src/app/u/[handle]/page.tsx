@@ -69,7 +69,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
             <div className="text-[11px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">worlds · {attributed.length}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {attributed.map(n => (
-                <a key={n} href={`/play/${encodeURIComponent(n)}`}
+                <a key={n} href={`/hub/${encodeURIComponent(n)}`}
                   className="block rounded-lg border border-[#b9722a]/25 bg-black/30 px-4 py-3 hover:border-[#f5b04c]/60 transition-colors">
                   <div className="text-[14px]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{n}</div>
                   <div className="text-[10px] text-[#8a7454] mt-0.5">play ▸</div>
@@ -98,7 +98,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
           {branches.size === 0 && <div className="text-[12px] text-[#8a7454]">no branches yet — every world on the shelf can be branched</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[...branches.values()].map(b => (
-              <a key={b.name} href={`/play/${encodeURIComponent(b.name)}`}
+              <a key={b.name} href={`/hub/${encodeURIComponent(b.name)}`}
                 className="block rounded-lg border border-[#b9722a]/25 bg-black/30 px-4 py-3 hover:border-[#f5b04c]/60 transition-colors">
                 <div className="text-[13px]">{b.name.split(' ⑂ ')[0]} <span className="text-[#8a7454]">· v{b.v}</span></div>
                 <div className="text-[10px] text-[#8a7454] mt-0.5">play the head ▸</div>

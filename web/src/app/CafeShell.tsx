@@ -319,7 +319,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
 
   /** FOUND YOURS — one sub-main per person, named at birth */
   const foundSub = async () => {
-    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/play/SUB-MAIN'); return }
+    if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/hub/SUB-MAIN'); return }
     const name = window.prompt('Name your sub-main:')
     if (!name?.trim()) return
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -682,7 +682,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     if (push && typeof window !== 'undefined') {
       // returning to the shelf while filtered to your own worlds keeps the /u/<you> URL
       const m = (window as unknown as { __cafeMine?: { on?: boolean; handle?: string } }).__cafeMine
-      const url = name === 'CAFE' ? (m?.on && m.handle ? '/u/' + m.handle : '/') : `/play/${encodeURIComponent(name)}`
+      const url = name === 'CAFE' ? (m?.on && m.handle ? '/u/' + m.handle : '/') : `/hub/${encodeURIComponent(name)}`
       window.history.pushState({ scene: name }, '', url)
     }
     if (name !== 'CAFE') {
@@ -805,7 +805,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // make browser-back feel nothing like the ✕ (which it must equal)
       if (votingRef.current) return
       const path = window.location.pathname
-      const m = path.match(/^\/play\/(.+)$/)
+      const m = path.match(/^\/(?:hub|play)\/(.+)$/)   // /play kept for pre-rename links (they 308 to /hub, but be robust)
       if (m) { go(decodeURIComponent(m[1]), false); return }
       // /u/<you> ↔ / — the personal shelf is a filter on the CAFE scene, not a scene
       if (sceneRef.current !== 'CAFE') go('CAFE', false)
