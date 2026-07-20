@@ -1049,7 +1049,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, executed: results.length, results })
+    // INLINE HEALTH — ride the structural x-ray on every space build write, so the
+    // agent learns "field X has no visual" / "off-screen at (0,0)" the moment it
+    // makes the mistake, without a separate cafe_describe call. Cheap; best-effort.
+    let health: Record<string, unknown> | undefined
+    if (isSpaceScoped && commands.some(c => typeof c.type === 'string' && MUTATING.test(c.type))) {
+      try {
+        const d = describeWorld(await getSpaceSnapshot(auth.spaceId!) as unknown as DescribeSnap, {})
+        health = { fieldCount: d.fieldCount, skinnedFields: d.fields.filter(f => f.skinned).length, warnings: d.warnings }
+        if (d.warnings.length) health.next = 'Fix these, then cafe_probe to SEE the result before set_world_data brief_done.'
+      } catch { /* health is a courtesy */ }
+    }
+    return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
   } catch (error) {
     console.error('[Engine Bridge] Error:', error)
     return NextResponse.json(
