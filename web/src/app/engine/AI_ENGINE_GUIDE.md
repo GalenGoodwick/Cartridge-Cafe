@@ -308,6 +308,7 @@ looking at the **center, `(256, 256)`**, showing roughly `x,y ∈ [0, 512]`. So:
 | `set_position` | `fieldId, x, y` | Move field to absolute position |
 | `move` | `fieldId, dx, dy` | Relative position change |
 | `set_color` | `fieldId, color: [r,g,b,a]` | Set field color (0.0–1.0 per channel) |
+| `set_property` | `fieldId, key, value` | Set a render property. **`superimpose: true`** makes this field draw OPAQUE (last-write-wins) over whatever is behind it instead of alpha-blending — use it on a FOREGROUND field (a pitch over a crowd, a panel over a background) so the backdrop doesn't bleed through. Also `lighting` (0–1), `specular`, `bidirectionalBehind`. |
 | `set_scale` | `fieldId, scale` | Scale transform |
 | `set_shape` | `fieldId, shape?, shapeType?, radius?, w?, h?` | Change shape/size |
 | `set_name` | `fieldId, name` | Rename field |

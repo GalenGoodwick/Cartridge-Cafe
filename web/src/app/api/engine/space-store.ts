@@ -303,6 +303,21 @@ export function applyCommandToSnapshotObject(
       break
     }
 
+    case 'set_property': {
+      // Persist a field render property (the client already applies it live, but
+      // it was lost on reload / never reached a headless build). The key one is
+      // `superimpose: true` — that field draws OPAQUE (last-write-wins) over
+      // whatever's behind it instead of alpha-blending, so a foreground field (a
+      // pitch over a crowd) fully covers the backdrop instead of letting it bleed
+      // through. Also: lighting, specular, bidirectionalBehind.
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      const key = cmd.key as string | undefined
+      if (f && key) {
+        f.properties = { ...(f.properties as Record<string, unknown> | undefined), [key]: cmd.value }
+      }
+      break
+    }
+
     case 'clone_field': {
       const src = snap.fields.find(f => f.id === cmd.fieldId)
       if (src) {
