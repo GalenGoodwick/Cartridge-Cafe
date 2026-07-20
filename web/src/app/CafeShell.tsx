@@ -55,6 +55,46 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const [hint, setHint] = useState(false)
   const [hover, setHover] = useState<string | null>(null)
   const hoverBlockRef = useRef(0)
+  // the SLOGAN doubles as a LIVE TICKER: normally the tagline, but a new world
+  // (or a rework) glows in over it for a few seconds, then fades back. No toast,
+  // no stack — one quiet line that proves the cafe is alive.
+  const SLOGAN = 'Instant natural language to game world framework.'
+  const [ticker, setTicker] = useState<{ text: string; live: boolean }>({ text: SLOGAN, live: false })
+  useEffect(() => {
+    const seen = new Map<string, number>()   // slug → updatedAt(ms); prevents a burst on first load
+    let primed = false
+    let revert: ReturnType<typeof setTimeout> | null = null
+    const show = (text: string) => {
+      setTicker({ text, live: true })
+      if (revert) clearTimeout(revert)
+      revert = setTimeout(() => setTicker({ text: SLOGAN, live: false }), 7000)
+    }
+    const poll = async () => {
+      if (document.visibilityState === 'hidden') return
+      try {
+        const d = await fetch('/api/spaces/browse').then(r => r.json())
+        const list: Array<{ slug: string; name?: string; updatedAt?: string; blank?: boolean; building?: boolean; isPublic?: boolean }> = Array.isArray(d?.spaces) ? d.spaces : []
+        let ev: string | null = null, evT = 0
+        for (const s of list) {
+          if (s.blank || s.building || s.isPublic === false) continue
+          const t = new Date(s.updatedAt || 0).getTime()
+          const prev = seen.get(s.slug)
+          if (primed && (prev === undefined || t > prev + 1000) && t >= evT) {
+            const name = (s.name || s.slug)
+            ev = prev === undefined ? `✦ ${name} just joined the cafe` : `✦ ${name} was just reworked`
+            evT = t
+          }
+          seen.set(s.slug, t)
+        }
+        primed = true
+        if (ev) show(ev)
+      } catch { /* quiet is fine */ }
+    }
+    poll()
+    const iv = setInterval(poll, 20000)
+    return () => { clearInterval(iv); if (revert) clearTimeout(revert) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const hoverAtRef = useRef(0)
   // a tooltip lives only as long as the world keeps affirming it (the cafe
   // heartbeats hover twice a second) — unaffirmed names expire in 1.4s
@@ -1591,8 +1631,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <div className="cafe-sign text-2xl">
                 cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
               </div>
-              <div className="font-mono text-[14px] tracking-[0.18em] text-glow/50 mt-1">
-                Instant natural language to game world framework.
+              <div className={`font-mono text-[14px] tracking-[0.18em] mt-1 transition-all duration-700 ${ticker.live ? 'text-glow' : 'text-glow/50'}`}
+                style={ticker.live ? { textShadow: '0 0 14px rgba(245,176,76,0.55)' } : undefined}>
+                {ticker.text}
               </div>
             </div>
           )}
