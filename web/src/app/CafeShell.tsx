@@ -61,7 +61,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const SLOGAN = 'Instant natural language to game world framework.'
   const [ticker, setTicker] = useState<{ text: string; live: boolean }>({ text: SLOGAN, live: false })
   useEffect(() => {
-    const seen = new Map<string, number>()   // slug → updatedAt(ms); prevents a burst on first load
+    const worlds = new Map<string, { t: number; building: boolean }>()
+    const scenes = new Set<string>()                                   // for branch detection
+    let arena = { champion: null as string | null, tier: 0, votes: 0 } // the main reckoning
     let primed = false
     let revert: ReturnType<typeof setTimeout> | null = null
     const show = (text: string) => {
@@ -72,26 +74,52 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     const poll = async () => {
       if (document.visibilityState === 'hidden') return
       try {
-        const d = await fetch('/api/spaces/browse').then(r => r.json())
-        const list: Array<{ slug: string; name?: string; updatedAt?: string; blank?: boolean; building?: boolean; isPublic?: boolean }> = Array.isArray(d?.spaces) ? d.spaces : []
-        let ev: string | null = null, evT = 0
-        for (const s of list) {
-          if (s.blank || s.building || s.isPublic === false) continue
+        const now = Date.now()
+        const [bd, sd, ad] = await Promise.all([
+          fetch('/api/spaces/browse').then(r => r.json()).catch(() => null),
+          fetch('/api/engine/scene?action=list').then(r => r.json()).catch(() => null),
+          fetch('/api/engine/save?slot=' + encodeURIComponent('tournament:main')).then(r => r.json()).catch(() => null),
+        ])
+        const events: Array<{ text: string; pri: number; t: number }> = []
+        // ── worlds: born · built-right-now · reworked ──
+        for (const s of (Array.isArray(bd?.spaces) ? bd.spaces : []) as Array<{ slug: string; name?: string; updatedAt?: string; blank?: boolean; building?: boolean; isPublic?: boolean }>) {
+          if (s.blank || s.isPublic === false) continue
+          const name = s.name || s.slug
           const t = new Date(s.updatedAt || 0).getTime()
-          const prev = seen.get(s.slug)
-          if (primed && (prev === undefined || t > prev + 1000) && t >= evT) {
-            const name = (s.name || s.slug)
-            ev = prev === undefined ? `✦ ${name} just joined the cafe` : `✦ ${name} was just reworked`
-            evT = t
+          const prev = worlds.get(s.slug)
+          if (primed) {
+            if (s.building && !prev?.building) events.push({ text: `⚡ ${name} is being built right now`, pri: 5, t: now })
+            else if (!s.building && (prev === undefined || prev.building)) events.push({ text: `✦ ${name} just joined the cafe`, pri: 3, t })
+            else if (!s.building && prev && t > prev.t + 1000) events.push({ text: `✦ ${name} was just reworked`, pri: 2, t })
           }
-          seen.set(s.slug, t)
+          worlds.set(s.slug, { t, building: !!s.building })
+        }
+        // ── branches: a fresh ⑂ scene (its v1) ──
+        let branched: string | null = null
+        for (const n of (Array.isArray(sd?.scenes) ? sd.scenes : []) as string[]) {
+          if (primed && !scenes.has(n) && n.includes(' ⑂ ') && / · v1$/.test(n)) branched = n
+          scenes.add(n)
+        }
+        if (branched) events.push({ text: `⑂ ${branched.split(' ⑂ ')[0]} was just branched`, pri: 4, t: now })
+        // ── the reckoning: a vote cast · a new tier · a champion crowned ──
+        const doc = ad?.data as { cells?: Array<{ votes?: Record<string, string> }>; tier?: number; champion?: string } | null | undefined
+        if (doc && typeof doc === 'object') {
+          const votes = (doc.cells || []).reduce((a, c) => a + Object.keys(c.votes || {}).length, 0)
+          const tier = doc.tier || 0
+          const champ = doc.champion || null
+          if (primed) {
+            if (champ && champ !== arena.champion) events.push({ text: `👑 ${champ.split(' ⑂ ')[0]} was crowned champion`, pri: 9, t: now })
+            else if (tier > arena.tier) events.push({ text: `⚔ the reckoning reached tier ${tier}`, pri: 7, t: now })
+            else if (votes > arena.votes) events.push({ text: `⚔ a vote was cast in the reckoning`, pri: 3, t: now })
+          }
+          arena = { champion: champ, tier, votes }
         }
         primed = true
-        if (ev) show(ev)
+        if (events.length) { events.sort((a, b) => (b.pri - a.pri) || (b.t - a.t)); show(events[0].text) }
       } catch { /* quiet is fine */ }
     }
     poll()
-    const iv = setInterval(poll, 20000)
+    const iv = setInterval(poll, 15000)
     return () => { clearInterval(iv); if (revert) clearTimeout(revert) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
