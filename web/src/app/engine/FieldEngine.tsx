@@ -6243,7 +6243,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {/* the methodical create panel: 1 · name it · 2 · AI connects with its
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
-                <div className="absolute bottom-full right-0 mb-2 z-50 w-72 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
+                <div className="absolute right-full top-0 mr-2 z-50 w-72 max-h-[80vh] overflow-y-auto rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
                   <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
                   {/* the one thing people ask: branch vs remix. Say it right here. */}
                   <div className="text-[12px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
