@@ -1522,6 +1522,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     } catch { /* offline — leave where we are */ }
   }, [playScene, baseVers, handleLoadScene])
 
+  // true while a hot-reload is tearing down + recompiling — the 2s sync must not
+  // fire in this window or it persists a half-built (empty/hookless) world.
+  const reloadingRef = useRef(false)
+
   /** #3 — hot-swap a SPACE version in place (no reload), the same way the vote
    *  reckoning previews a `space:` snapshot: fetch it, hand it to the proven
    *  clear+restore (handleLoadScene), and mark the client version so ctx.view
@@ -1530,6 +1534,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  untrusted version's JS never auto-installs. */
   const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
     if (!spaceSlug) return
+    // Pause the 2s sync while a reload settles: handleLoadScene tears the renderer
+    // down (0 visuals) and reinstalls hooks over several frames; a sync firing in
+    // that window persists an empty/hookless world and renders it dark for everyone.
+    reloadingRef.current = true
+    setTimeout(() => { reloadingRef.current = false }, 4500)
     try {
       const q = v === undefined ? '' : `?version=${v}`
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`)
@@ -5231,6 +5240,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (lastSceneRef.current.includes(' ⑂ ')) return
       const sim = simulationRef.current
       if (!sim || sim.fields.size === 0) return
+      // Mid hot-reload: the renderer is torn down (0 visuals) and hooks aren't
+      // reinstalled yet — syncing now persists a half-built world (dark/hookless).
+      if (reloadingRef.current) return
       try {
         // Enrich worldData with cell presence samples for agents
         sim.worldData['cellSample'] = {
@@ -5251,22 +5263,29 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const syncWorldData = Object.fromEntries(
           Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation')
         )
+        const syncFields = sim.generateSnapshots()
+        // Quarantined visuals are not persisted — a broken shader must not circulate
+        // through the store forever, costing every fresh session an isolation sweep.
+        const syncVisuals = renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : []
+        // TEARDOWN GUARD: a hot-reload leaves the renderer with 0 visuals for a beat.
+        // If our 2s sync fires in that window it persists an EMPTY world — everyone
+        // then reloads to nothing and it renders DARK. A snapshot with skinned fields
+        // but no visuals is never a real state; it's a transient teardown. Skip it.
+        const someSkinned = syncFields.some(f => { const o = f as { visualType?: unknown; visualTypeName?: unknown }; return o.visualType || o.visualTypeName })
+        if (syncVisuals.length === 0 && someSkinned) return
         const syncRes = await fetch('/api/engine/state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientId: clientIdRef.current,
             takeover: takeoverRef.current,
-            fields: sim.generateSnapshots(),
+            fields: syncFields,
             worldParams: sim.getWorldParams(),
             stepHooks: sim.getStepHookSnapshots(),
             worldData: syncWorldData,
             renderedSamples: Object.fromEntries(renderedSamplesRef.current),
             interactionEffects: sim.interactionEffects,
-            // Quarantined visuals are not persisted — a broken shader must not
-            // circulate through the store forever, costing every fresh session
-            // an isolation sweep. A fixed re-register clears the flag.
-            visualTypes: renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
+            visualTypes: syncVisuals,
             modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
             // Space-scoped sync
             ...(spaceId ? { spaceId } : {}),
