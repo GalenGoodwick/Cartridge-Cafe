@@ -5768,8 +5768,35 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 
-  // (sub-space portal creation removed with the sub-spaces tool — WORLD TOOLS
-  //  carries DIRECT EDIT KEYS instead)
+  // CONNECT AI open flow — shared by the ⚡ CONNECT AI / ALTER button AND the
+  // "AI UNPLUGGED" status pill (clicking the pill should DO the obvious thing).
+  const openConnectAi = async () => {
+    // an AI prompt box: its key mint needs a session. Auth FIRST.
+    if (!me) {
+      let sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+      if (!sess?.user) {
+        const g = await fetch('/api/auth/guest', { method: 'POST' }).then(r => r.json()).catch(() => null)
+        if (g?.ok) { await signIn('guest', { redirect: false }); sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null) }
+        if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
+      }
+      setMe(sess.user.email || sess.user.name || null)
+    }
+    // owner on their LIVE space: CONNECT AI *is* ALTER — warn before handing the key
+    if (can(ctx, 'alterLive') && !plugOpen) { setAlterWarnOpen(true); return }
+    setPlugOpen(v => !v)
+    if (!plugToken && spaceSlug) {
+      setPlugBusy(true)
+      try {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
+        })
+        const d = await r.json()
+        if (r.ok) setPlugToken(d.token)
+      } finally { setPlugBusy(false) }
+    } else if (!plugToken && !spaceSlug && lastSceneRef.current?.includes(' ⑂ ')) {
+      mintBranchToken(lastSceneRef.current)
+    }
+  }
 
   return (
     <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}
@@ -6202,51 +6229,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 branch. On main/hubs it could only ever apologize (main is
                 immortal — you branch it or brew your own), so it's gone there. */}
             {(spaceSlug || lastSceneRef.current?.includes(' ⑂ ')) && <button
-              onClick={async () => {
-                // an AI prompt box: its key mint needs a session. Auth FIRST —
-                // signed out used to open the box and hand over a briefing with
-                // '(minting failed)' where the key belongs. Live re-check so a
-                // slow session fetch doesn't bounce a signed-in player.
-                if (!me) {
-                  let sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-                  if (!sess?.user) {
-                    // no account yet? fine — players hold GUEST standing (3
-                    // builds) before any auth wall. Mint a guest seat and
-                    // continue right here; only a failed mint (rate limit /
-                    // spent quota) walks them to the counter.
-                    const g = await fetch('/api/auth/guest', { method: 'POST' }).then(r => r.json()).catch(() => null)
-                    if (g?.ok) {
-                      await signIn('guest', { redirect: false })
-                      sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-                    }
-                    if (!sess?.user) {
-                      window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)
-                      return
-                    }
-                  }
-                  setMe(sess.user.email || sess.user.name || null)
-                }
-                // owner on their LIVE space: CONNECT AI *is* ALTER (the space token
-                // edits main directly) — say so before handing out the key
-                const alterMode = can(ctx, 'alterLive')
-                if (alterMode && !plugOpen) { setAlterWarnOpen(true); return }
-                setPlugOpen(v => !v)
-                if (!plugToken && spaceSlug) {
-                  setPlugBusy(true)
-                  try {
-                    const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: 'AI agent' }),
-                    })
-                    const d = await r.json()
-                    if (r.ok) setPlugToken(d.token)
-                  } finally { setPlugBusy(false) }
-                } else if (!plugToken && !spaceSlug && lastSceneRef.current?.includes(' ⑂ ')) {
-                  // a cafe-shell branch (scene, not a space) → mint its scoped uc_sc_ token
-                  mintBranchToken(lastSceneRef.current)
-                }
-              }}
+              onClick={openConnectAi}
               title={can(ctx, 'alterLive')
                 ? 'plug an AI into the LIVE world — it alters main directly, no branch'
                 : undefined}
@@ -6315,10 +6298,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               // busy is connection-independent: bridge writes (an AI editing
               // over HTTP, no SSE) must light the dot just like agent edits
               const busy = Date.now() - aiLastEditRef.current < 2500
+              const connectable = !!spaceSlug || !!lastSceneRef.current?.includes(' ⑂ ')
+              const dot = <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
+              const label = busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'
+              // UNPLUGGED is really an invitation — make it the CONNECT AI button
+              if (!busy && !agentConnected && connectable) {
+                return (
+                  <button onClick={openConnectAi} title="plug an AI into this world"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
+                    {dot}{label}<span className="text-emerald-300/70">· connect</span>
+                  </button>
+                )
+              }
               return (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
-                  <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
-                  {busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'}
+                  {dot}{label}
                 </div>
               )
             })()}
