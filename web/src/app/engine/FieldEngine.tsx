@@ -5522,6 +5522,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // mid-adopt — this one can't. Drives the build overlay + console persistence.
   const [buildJobActive, setBuildJobActive] = useState(false)
   const buildJobActiveRef = useRef(false)
+  // LATCH: once a world has been observed brief_done, it is COMPLETE — a later
+  // transient flicker of brief_done (during a chapter transition / mid-adopt
+  // reload) must NOT re-raise the build curtain. Reset only when the world
+  // actually changes. (The bug: entering a new TIDEGLASS chapter flashed the
+  // 'AI is building' window because brief_done briefly read false.)
+  const everDoneRef = useRef(false)
+  useEffect(() => { everDoneRef.current = false }, [spaceSlug, playScene])
   useEffect(() => {
     if (!spaceId || playScene) return
     let stop = false
@@ -6628,6 +6635,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             // Not gated on blank: the first field landing must never hide the
             // console mid-build.
             const done = !!sim?.worldData?.brief_done
+            if (done) everDoneRef.current = true   // latch: a completed world stays completed
             const aiEditing = !!brief && (Date.now() - aiLastEditRef.current < 15000)
             // Once brief_done is set the world is COMPLETE — show it, never the
             // build curtain, even if a polish job is queued (buildJobActive), the
@@ -6635,7 +6643,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             // NOT done, any of three signals raises the curtain: an unfinished
             // brief, a live server job, or AI edits landing now (covers branch
             // jobs that carry no spaceId for buildJobActive to match).
-            const building = !done && (!!brief || buildJobActive || aiEditing)
+            const building = !done && !everDoneRef.current && (!!brief || buildJobActive || aiEditing)
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —
