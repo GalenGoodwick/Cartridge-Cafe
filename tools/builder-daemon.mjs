@@ -141,6 +141,7 @@ async function tick() {
       `5. EVERY field must carry a visualType — create_field {"visualType":"<a name you define_visual'd>"} or set_visual {"fieldId":"...","visualType":"..."} right after. A field without one renders as NOTHING; a world of them is a black screen.`,
       `   SHADER SHAPE: a visual is a PLAIN FUNCTION — fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f. NEVER a standalone @fragment/@vertex fn main shader (the bridge rejects those; they compile nowhere in this engine).`,
       `   COORDINATE SPACE: the world is a 512×512 grid, camera fixed at the CENTER (256,256). Build AROUND (256,256), never around (0,0), and NEVER use negative x/y — a world centered on origin renders off-screen in the corner (looks dark). A field's x,y is its center; size ~300-450 fills the view.`,
+      `   PHYSICS: leave collisionForce at 0 (the default) for any world whose fields are stacked visual LAYERS (a full-screen backdrop with things on top). Overlapping fields with collisionForce>0 shove each other every frame and the whole world VIBRATES. Only set collisionForce for real physics worlds where separate bodies should bounce off each other.`,
       `6. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}. The bridge runs a RENDER CHECK: brief_done is REFUSED while no field has a registered visualType — fix the skins and finish properly.`,
       ``,
       `THE BRIEF: ${next.job.brief}`,
