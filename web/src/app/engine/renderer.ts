@@ -3349,13 +3349,30 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.hitIdPixelCount = pixelCount
   }
 
-  /** Write the world-uniform whiteboard (up to 256 floats). Cheap: skips upload when values unchanged. */
+  /** Write the world-uniform whiteboard (up to 256 floats). Cheap: skips upload when values unchanged.
+   *  Indices past what this frame writes are ZEROED — the whiteboard is a fresh
+   *  write each frame, never a carry-over, so a world that sets few uniforms
+   *  can't read another world's (or the hub's) leftovers. */
   updateWorldUniforms(vals: number[] | Float32Array): void {
     const n = Math.min(256, vals.length)
     let changed = false
     for (let i = 0; i < n; i++) {
       const v = Number.isFinite(vals[i]) ? vals[i] : 0
       if (this._worldUniData[i] !== v) { this._worldUniData[i] = v; changed = true }
+    }
+    for (let i = n; i < 256; i++) {
+      if (this._worldUniData[i] !== 0) { this._worldUniData[i] = 0; changed = true }
+    }
+    if (changed) this._worldUniDirty = true
+  }
+
+  /** Zero the whole whiteboard — called on world load so a hook-less world (one
+   *  that never writes gpuUniforms) starts clean instead of inheriting the
+   *  previous scene's uniforms. */
+  resetWorldUniforms(): void {
+    let changed = false
+    for (let i = 0; i < 256; i++) {
+      if (this._worldUniData[i] !== 0) { this._worldUniData[i] = 0; changed = true }
     }
     if (changed) this._worldUniDirty = true
   }

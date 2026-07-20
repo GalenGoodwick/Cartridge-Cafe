@@ -1338,6 +1338,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
       sim.clearAll()
       sim.fields.clear()
+      rendererRef.current?.resetWorldUniforms()   // a new world starts with a clean uniform whiteboard — no bleed from the last scene
       sim.interactionRules = []
       sim.interactionEffects = []
       sim.stepHooks.clear()
@@ -1872,6 +1873,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // session-start signal: hooks reset per-session state (timers, key latches)
         // while keeping restored save data
         sim.worldData.__fresh = true
+        rendererRef.current?.resetWorldUniforms()   // clean whiteboard on entry — a hook-less world won't read the hub's leftover uniforms
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
         }
