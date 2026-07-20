@@ -1469,6 +1469,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // to see what their AI built.
   useEffect(() => {
     if (!spaceSlug) return
+    // Track the rev we've already reconciled to. We compare against THIS, not
+    // worldData.__bridge_rev — a reload doesn't reliably stamp that number back
+    // onto the live sim, so comparing to it made the tab reload the SAME rev
+    // every 10s forever (the "it keeps reloading + never renders" loop; the
+    // constant teardown also never let the shader module finish compiling).
+    let actedRev = -1
     const iv = setInterval(async () => {
       if (document.hidden) return
       if (spaceVer !== undefined) return           // pinned to a save point — stay put
@@ -1476,12 +1482,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot?rev=1`)
         if (!r.ok) return
         const { rev } = await r.json() as { rev?: number }
-        const local = Number(simulationRef.current?.worldData?.['__bridge_rev']) || 0
-        // during a BUILD, every command bumps the rev — adopting each one is a
-        // reload loop. The build console shows progress; we adopt the world ONCE
-        // when the build ends. settle guard also holds during an active SSE burst.
-        if (buildJobActiveRef.current) return
-        if (typeof rev === 'number' && rev > local && Date.now() - aiLastEditRef.current > 4000) {
+        if (typeof rev !== 'number') return
+        if (actedRev < 0) { actedRev = rev; return }   // baseline = the world we already loaded
+        // during a BUILD every command bumps the rev — hold (Path B does the one
+        // catch-up adopt when it ends); just keep the baseline current.
+        if (buildJobActiveRef.current) { actedRev = rev; return }
+        // reload ONCE per real change, and only after edits settle
+        if (rev > actedRev && Date.now() - aiLastEditRef.current > 4000) {
+          actedRev = rev   // mark BEFORE reloading so this rev never fires twice
           showToast('⚡ your AI updated this world — reloading', 'success')
           hotLoadSpaceVersion(undefined)
         }
