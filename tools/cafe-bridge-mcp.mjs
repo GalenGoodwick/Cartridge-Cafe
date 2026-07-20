@@ -110,11 +110,30 @@ async function callTool(name, args) {
     return await r.text()
   }
   if (name === 'cafe_probe') {
-    // The eyes a headless agent lacks: pull the world state, render it on a real
-    // GPU via the Deno probe (co-located — this server runs on the GPU host), and
-    // hand back the struct + errors + motion + the IMAGE. Runs in the trusted
-    // SERVER (Node, full access); the agent still only sees tool results.
+    // The eyes a headless agent lacks. RENDERED IN THE CLOUD first: the bridge's
+    // render_probe command relays to the Railway render-service (software Vulkan),
+    // so builds never borrow the host Mac's GPU — this machine is not the farm.
+    // The co-located Deno probe survives only as a FALLBACK so a Railway hiccup
+    // doesn't blind a build mid-flight.
     const a = args || {}
+    let cloudErr = null
+    try {
+      const cmd = { type: 'render_probe', size: 320 }
+      if (a.name) cmd.name = String(a.name)
+      if (a.ticks != null) cmd.ticks = Number(a.ticks)
+      const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(cmd) })
+      const j = await r.json()
+      const res = (Array.isArray(j.results) ? j.results[0] : null) || {}
+      if (res.ok && res.image) {
+        const { image, imageMime, type: _t, ...struct } = res
+        return { __content: [
+          { type: 'text', text: JSON.stringify(struct) },
+          { type: 'image', data: image, mimeType: imageMime || 'image/png' },
+        ] }
+      }
+      cloudErr = res.error || j.error || `bridge ${r.status}`
+    } catch (e) { cloudErr = e.message }
+    // ── fallback: local Deno probe on this machine's GPU ──
     const os = await import('os'), fs = await import('fs'), path = await import('path'), cp = await import('child_process')
     const state = await (await fetch(`${BASE}/api/engine/bridge`, { headers: H })).text()
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cafe-probe-'))
