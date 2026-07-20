@@ -966,15 +966,24 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         ? 'fixed right-3 z-40 flex flex-col items-end gap-2'
         : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2'}
         style={rail ? { top: railTop ?? 205 } : undefined}>
-        <button
-          onClick={enterReckoning}
-          className={`${pill} rounded-full px-4 py-2 border backdrop-blur transition-colors ${
-            doc.champion
-              ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
-              : 'border-brass/40 bg-void/60 text-glow/80 hover:border-flame/60'
-          }`}>
-          {rail ? `⚔ VOTE · T${doc.tier}` : `⚔ TIER ${doc.tier} · VOTE`}
-        </button>
+        {/* a vote needs challengers: only clickable once at least one branch
+            exists (roster = MAIN + branches, so ≥2 means a real contest) */}
+        {(() => {
+          const canVote = roster.length >= 2
+          return (
+            <button
+              onClick={enterReckoning}
+              disabled={!canVote}
+              title={canVote ? 'enter the reckoning' : 'a vote needs challengers — branch this world first'}
+              className={`${pill} rounded-full px-4 py-2 border backdrop-blur transition-colors disabled:opacity-40 disabled:cursor-default ${
+                doc.champion
+                  ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
+                  : 'border-brass/40 bg-void/60 text-glow/80 enabled:hover:border-flame/60'
+              }`}>
+              {rail ? `⚔ VOTE · T${doc.tier}` : `⚔ TIER ${doc.tier} · VOTE`}
+            </button>
+          )
+        })()}
       </div>
     </>
   )

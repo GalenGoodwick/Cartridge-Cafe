@@ -96,7 +96,9 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`)
       const d = await r.json()
-      if (Array.isArray(d?.versions)) setVersions(d.versions)
+      // versions are 1-based — drop any v0/negative so the arena never stages a
+      // "v0" candidate (previewing which would pin the engine to a nonexistent version)
+      if (Array.isArray(d?.versions)) setVersions(d.versions.filter((v: { version: number }) => v.version >= 1))
     } catch { /* offline — no arena */ }
   }, [spaceSlug])
   useEffect(() => { loadVersions() }, [loadVersions])
@@ -165,7 +167,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         spaceOwnerHandle={ownerHandle}
         spaceOwnerId={ownerId}
         isOwner={engineOwner}
-        versionView={previewVersion ?? versionView}
+        versionView={previewVersion || versionView}
         onDockRect={setDockBottom}
         onBuilding={setBuilding}
         viewport={voting && stageRect
@@ -188,7 +190,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         onPreview={(w) => {
           if (!w || w === 'LIVE') { setPreviewVersion(null); return }
           const n = parseInt(String(w).replace(/^v/, ''), 10)
-          setPreviewVersion(Number.isFinite(n) ? n : null)
+          setPreviewVersion(Number.isFinite(n) && n >= 1 ? n : null)
         }}
         onStageRect={setStageRect}
       />
