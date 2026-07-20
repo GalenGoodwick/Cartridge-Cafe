@@ -673,7 +673,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     verPropRef.current = versionView
     if (spaceSlug) hotLoadSpaceVersionRef.current?.(versionView)
   }, [versionView, spaceSlug])
-  const hotLoadSpaceVersionRef = useRef<((v: number | undefined) => Promise<void>) | null>(null)
+  const hotLoadSpaceVersionRef = useRef<((v: number | undefined, fresh?: boolean) => Promise<void>) | null>(null)
 
   // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
   // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
@@ -1435,7 +1435,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  (and thus the read-only gates) follow. Owner-only — the owner's own hooks
    *  are trusted; a visitor keeps the server-rendered reload path so an
    *  untrusted version's JS never auto-installs. */
-  const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
+  const hotLoadSpaceVersion = useCallback(async (v: number | undefined, fresh = false) => {
     if (!spaceSlug) return
     try {
       const q = v === undefined ? '' : `?version=${v}`
@@ -1447,7 +1447,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // hook persisted — so vote previews resumed someone's half-finished run.
       // Engine state (__chapters/__trig) always resets; a world lists its own
       // game-state keys in worldData.__resets (e.g. TIDEGLASS resets '__tg').
-      if (v !== undefined) {
+      if (v !== undefined || fresh) {
         const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
         if (wd) {
           const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
@@ -1661,7 +1661,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Press R to reset the world to the start — only when the world opts in
   // (worldData.rResetKey, toggled in world tools). Ignored while typing.
   useEffect(() => {
-    if (!playScene) return
+    if (!playScene && !spaceId) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'r' && e.key !== 'R' || e.metaKey || e.ctrlKey || e.altKey) return
       const t = e.target as HTMLElement | null
@@ -1670,13 +1670,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (!sim || !sim.worldData.rResetKey) return
       // reset: forget this session's run state + saved stash, then reload fresh
       for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
-      try { localStorage.removeItem(`cc-save-${playScene}`) } catch { /* fine */ }
-      playLoadedRef.current = null   // force the load effect to re-run this scene
-      setReloadTick(v => v + 1)
+      const saveKey = playScene || spaceSlug
+      if (saveKey) { try { localStorage.removeItem(`cc-save-${saveKey}`) } catch { /* fine */ } }
+      if (spaceId) {
+        // space world: no playScene load effect — reload the current version fresh
+        hotLoadSpaceVersionRef.current?.(spaceVer, true)
+      } else {
+        playLoadedRef.current = null   // force the load effect to re-run this scene
+        setReloadTick(v => v + 1)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [playScene])
+  }, [playScene, spaceId, spaceSlug, spaceVer])
 
   // Play mode and spaces: the world IS the screen. Fit the 512 grid to the
   // viewport (contain: the whole world visible, void beyond it) on mount and
