@@ -379,6 +379,16 @@ export async function GET(req: NextRequest) {
  * Body: single command or { commands: [...] }
  * Commands: create_field, paint, add_effect, inject_glsl, emit_data, set_position, etc.
  */
+// CLAIM-LOCK — one builder per world at a time. Two builders editing one space
+// (the daemon + a Path-1/brew session, or two swarm members) write last-write-wins
+// and clobber each other (this is what broke big-monster). The FIRST builder to
+// send a mutating command holds a short lock, refreshed by every write; others are
+// refused until it lapses. A stalled builder's lock auto-expires, so nothing wedges.
+const BUILD_LOCK_TTL = 3 * 60_000
+// a command changes the world if it's a build op (define_/create_/set_/… ), not a
+// read or roundtable-chat command — only those contend for the lock.
+const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
+
 export async function POST(req: NextRequest) {
   if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:POST', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
   const auth = await authorize(req)
@@ -411,6 +421,24 @@ export async function POST(req: NextRequest) {
 
     if (commands.length === 0) {
       return NextResponse.json({ error: 'No commands. Send {type:"paint",...} or {commands:[...]}' }, { status: 400 })
+    }
+
+    // CLAIM-LOCK: a space edit by a build agent must hold the world. Contend only
+    // on mutating commands (reads/roundtable never lock). The holder is a hash of
+    // THIS token, so daemon vs Path-1 vs owner are distinct builders.
+    if (auth.spaceId && commands.some(c => typeof c.type === 'string' && MUTATING.test(c.type))) {
+      const token = req.headers.get('authorization')?.slice(7) || ''
+      const holder = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
+      const key = 'build-lock:' + auth.spaceId
+      const now = Date.now()
+      const cur = await loadGameSlot(key) as { holder?: string; until?: number } | undefined
+      if (cur?.until && cur.until > now && cur.holder !== holder) {
+        return NextResponse.json({
+          error: `Another builder is editing "${auth.slug}" right now — a claim-lock stops two builders clobbering one world. It holds until ${new Date(cur.until).toISOString()} (${Math.ceil((cur.until - now) / 1000)}s). Wait and retry, or build a different world.`,
+          buildLocked: true, until: cur.until,
+        }, { status: 409 })
+      }
+      await saveGameSlot(key, { holder, until: now + BUILD_LOCK_TTL, who: auth.slug || null }).catch(() => {})
     }
 
     const results: unknown[] = []
