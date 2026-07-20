@@ -72,7 +72,7 @@ async function consoleLine(spaceId, type, summary) {
     const prev = cur?.data && typeof cur.data === 'object' ? cur.data : {}
     let seq = prev.seq ?? 0
     const entries = Array.isArray(prev.entries) ? prev.entries : []
-    entries.push({ type, name: '', summary: String(summary).slice(0, 110), seq: ++seq, t: Date.now() })
+    entries.push({ type, name: '', summary: String(summary).slice(0, 1600), seq: ++seq, t: Date.now() })
     await api('/api/engine/save', { method: 'POST', body: JSON.stringify({ slot, data: { seq, entries: entries.slice(-120) } }) })
   } catch { /* the console is a courtesy */ }
 }
@@ -125,13 +125,14 @@ async function tick() {
 
     const prompt = [
       `You are the HOUSE AI of cartridge.cafe — the resident builder. A player left a creation brief for their world "${slug}" and is counting on you; they cannot see this conversation, only the world changing live.`,
-      `You have EXACTLY four tools and nothing else — no shell, no editable files, no other network. Build only through them:`,
+      `You build ONLY through the four cafe tools (no shell, no editable files):`,
       `  · cafe_guide  — the engine build guide (read it first).`,
       `  · cafe_source — READ the real engine source, read-only (you cannot edit it). No arg lists files; {path:"api/engine/bridge/route.ts"} is the authoritative list of every command + param the bridge accepts; shader files under engine/scenes are the real WGSL interface.`,
       `  · cafe_state  — the current world state (fields, visuals, params).`,
       `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}). Pass commands as a REAL JSON array, never a stringified one.`,
+      `You ALSO have WebSearch + WebFetch (read-only) to research shader techniques and game mechanics when genuinely stuck — but this engine is WGSL with the strict signature fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f, so LEARN the technique and ADAPT it (Shadertoy is GLSL — never paste it raw). Look up briefly, then build; do not spend your window researching. cafe_source (the engine's own ~40 built-in visuals + example cartridges) is usually the better reference.`,
       ``,
-      `NEVER search for, wait on, or monitor anything (no ToolSearch, no Monitor, no plan mode) — these four cafe tools are the entire universe; act with them immediately.`,
+      `NEVER use ToolSearch, Monitor, or plan mode — act immediately with the tools above.`,
       `DO NOT reverse-engineer the API by trial-and-error. If you are unsure what params a command takes, READ THE SOURCE with cafe_source (start: api/engine/bridge/route.ts) — the exact accepted types and params are all there. Probing wastes your whole window.`,
       ``,
       `1. cafe_guide, then cafe_state. When a command's params are unclear, cafe_source the bridge route rather than guessing.`,
@@ -166,7 +167,11 @@ async function tick() {
     // deny the box AND the harness: streamed builds showed the agent burning its
     // whole window on ToolSearch (hunting for tools) and Monitor (wait loops)
     // instead of building — the cafe tools are everything it needs.
-    const DENY = 'Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Task,KillShell,BashOutput,' +
+    // WebSearch/WebFetch are ALLOWED (read-only): the agent can research shader
+    // techniques + game mechanics. Safe because bash/fs stay denied — there's
+    // nothing on the box for a fetch to exfiltrate. Everything that touches the
+    // machine or the harness stays blocked.
+    const DENY = 'Bash,Edit,Write,Read,Glob,Grep,NotebookEdit,Task,KillShell,BashOutput,' +
       'ToolSearch,Monitor,Agent,TaskCreate,TaskUpdate,TaskList,TaskGet,TaskOutput,TaskStop,SendMessage,' +
       'EnterPlanMode,ExitPlanMode,EnterWorktree,ExitWorktree,Skill,Workflow,AskUserQuestion,Artifact,' +
       'ScheduleWakeup,CronCreate,CronDelete,CronList,PushNotification,RemoteTrigger,DesignSync'
@@ -177,7 +182,7 @@ async function tick() {
     const args = UNSAFE
       ? ['-p', prompt, '--model', MODEL, '--dangerously-skip-permissions']
       : ['-p', prompt, '--model', MODEL, '--mcp-config', mcpConfig, '--strict-mcp-config',
-         '--allowedTools', 'mcp__cafe-bridge', '--disallowedTools', DENY,
+         '--allowedTools', 'mcp__cafe-bridge,WebSearch,WebFetch', '--disallowedTools', DENY,
          '--output-format', 'stream-json', '--verbose']
     log(`spawning build ${slug}${UNSAFE ? ' [UNSAFE/wide-open]' : ' [locked: bridge-only]'} in ${scratch}`)
     const spaceId = claim.job?.spaceId || null
@@ -220,7 +225,7 @@ async function tick() {
                   lastSaid = c.text.trim()
                   if (Date.now() - lastThinkAt > 12_000) {   // throttle thinking lines
                     lastThinkAt = Date.now()
-                    void consoleLine(spaceId, 'agent', `💭 ${lastSaid.slice(0, 100).replace(/\n/g, ' ')}`)
+                    void consoleLine(spaceId, 'agent', `💭 ${lastSaid.slice(0, 1500).replace(/\n/g, ' ')}`)
                   }
                 }
               }
