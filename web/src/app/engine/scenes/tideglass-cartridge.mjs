@@ -583,29 +583,45 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let vy = horizon + 0.02 - vault * 0.16;         // rises out of the water
     let vp = (p - vec2f(-0.15, vy + 0.16)) / 0.20;
     let dome = length(vp * vec2f(1.0, 1.6)) - 1.0;
-    if (dome < 0.0 && p.y < vy + 0.16) {
+    let waterY = vy + 0.115;                          // where the sea cuts across the dome
+    // ── SUBMERGED FOUNDATION: a widening base + caustics seen down through water ──
+    // (drawn first, so the emerged shell overlaps it at the breach line)
+    let subDepth = p.y - waterY;                      // >0 = below the surface
+    if (subDepth > 0.0 && subDepth < 0.30) {
+      let fx = abs(p.x - (-0.15));
+      let w = mix(0.075, 0.20, subDepth / 0.30);      // the foundation flares as it descends
+      let inside = smoothstep(w, w * 0.55, fx);
+      let fade = smoothstep(0.30, 0.0, subDepth);     // murkier the deeper it sinks
+      let caust = 0.55 + 0.45 * sin(p.x * 44.0 + t * 2.1) * sin(p.y * 30.0 - t * 1.6);
+      var bc = vec3f(0.05, 0.17, 0.21) * (0.4 + 0.7 * caust);
+      bc += vec3f(0.16, 0.46, 0.52) * exp(-fx * fx * 130.0) * (0.4 + 0.6 * fade);   // lit central shaft
+      bc += vec3f(0.30, 0.72, 0.80) * pow(inside, 3.0) * fade * 0.5;                // rim of the base
+      c = mix(c, bc, vault * inside * (0.55 + 0.35 * fade));
+    }
+    // ── the emerged glass shell — full dome, murked below the waterline ──
+    if (dome < 0.0) {
       let nrm = clamp(-dome * 2.0, 0.0, 1.0);
-      // deep glass core, luminous fresnel rim — a lamp under a shell
       var vc = mix(vec3f(0.045, 0.10, 0.14), vec3f(0.16, 0.34, 0.42), nrm);
       vc += vec3f(0.55, 0.95, 1.05) * pow(1.0 - nrm, 2.5) * 1.3;               // rim light
       vc += vec3f(0.30, 0.75, 0.85) * exp(-dot(vp, vp) * 1.6) * (0.5 + 0.3 * sin(t * 0.9)); // inner lamp
       vc += vec3f(1.15, 1.0, 0.62) * mod_tg_glyph(2, vp * 2.4) * (0.8 + 0.5 * sin(t * 1.7));
-      // latitude ribs
-      vc *= 1.0 - 0.22 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));
-      c = mix(c, vc * (0.4 + vault), vault * smoothstep(0.02, -0.04, dome));
+      vc *= 1.0 - 0.22 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));             // latitude ribs
+      // below the waterline the shell dims, tints deep-teal, and its light wobbles
+      let below = smoothstep(waterY - 0.004, waterY + 0.03, p.y);
+      let caust2 = 0.5 + 0.5 * sin(vp.x * 8.0 + t * 2.0) * sin(vp.y * 6.0 - t * 1.5);
+      vc = mix(vc, mix(vc, vec3f(0.04, 0.15, 0.19), 0.62) * (0.42 + 0.4 * caust2), below);
+      c = mix(c, vc * (0.4 + vault), vault * smoothstep(0.03, -0.05, dome));
     }
-    // near halo where it breaches (the sea itself carries its glitter via the lamp)
+    // near halo where it breaches
     let lx = p.x + 0.15;
-    c += vec3f(0.30, 0.70, 0.90) * exp(-lx * lx * 22.0) * smoothstep(horizon, horizon + 0.22, p.y) * smoothstep(horizon + 0.45, horizon + 0.1, p.y) * vault * 0.25;
-    // water DISPLACED by the rising dome — rings shoved outward across the sea,
-    // strongest mid-breach (vault*(1-vault)) then a lasting wake. crest lifts the
-    // water bright, the trough behind it darkens — a real push, not just a glow.
-    let seaMask = smoothstep(horizon, horizon + 0.24, p.y) * smoothstep(horizon + 0.46, horizon + 0.08, p.y);
-    let db = length((p - vec2f(-0.15, horizon + 0.11)) * vec2f(1.0, 2.4));
-    let ring = sin(db * 15.0 - t * 3.0 - vault * 7.0) * exp(-db * 3.0);
-    let disp = ring * (vault * (1.0 - vault) * 3.6 + vault * 0.3);
-    c += vec3f(0.34, 0.72, 0.82) * max(disp, 0.0) * seaMask;              // lifted crest
-    c -= vec3f(0.10, 0.16, 0.18) * max(-disp, 0.0) * seaMask;             // trough behind it
+    c += vec3f(0.30, 0.70, 0.90) * exp(-lx * lx * 22.0) * smoothstep(horizon, horizon + 0.22, p.y) * smoothstep(horizon + 0.45, horizon + 0.1, p.y) * vault * 0.32;
+    // water DISPLACED by the rising dome — stronger rings, a real push
+    let seaMask = smoothstep(horizon, horizon + 0.30, p.y) * smoothstep(horizon + 0.52, horizon + 0.06, p.y);
+    let db = length((p - vec2f(-0.15, waterY + 0.02)) * vec2f(1.0, 2.0));
+    let ring = sin(db * 13.0 - t * 3.4 - vault * 7.0) * exp(-db * 2.5);
+    let disp = ring * (vault * (1.0 - vault) * 5.0 + vault * 0.5);
+    c += vec3f(0.46, 0.86, 0.96) * max(disp, 0.0) * seaMask;              // lifted crest
+    c -= vec3f(0.13, 0.21, 0.23) * max(-disp, 0.0) * seaMask;             // trough behind it
   }
   // ── the island observatory: raymarched against the same sky and sun ──
   if (p.x > 0.20 && p.y < 0.90 && rd.z > 0.0) {
