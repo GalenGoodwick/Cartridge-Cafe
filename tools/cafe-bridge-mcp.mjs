@@ -34,8 +34,8 @@ const TOOLS = [
   },
   {
     name: 'cafe_source',
-    description: 'READ the real engine source code (read-only — you cannot edit it). No arg → lists every readable file. {path:"api/engine/bridge/route.ts"} → that file (the authoritative list of every command + param the bridge accepts). Big files: page with {path, from, to} line numbers. Use this instead of guessing command params.',
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' } } },
+    description: 'READ/SEARCH the real engine source (read-only). PREFER {search:"opSmooth"} — greps ALL source and returns matching file:line snippets in ONE call, so you find the one function/param you need instead of reading whole files. {path:"api/engine/bridge/route.ts"} → a whole file (the authoritative command+param list); page big files with {path,from,to}. No arg → lists files. Do not guess params — search for them.',
+    inputSchema: { type: 'object', properties: { search: { type: 'string' }, path: { type: 'string' }, from: { type: 'number' }, to: { type: 'number' } } },
   },
   {
     name: 'cafe_send',
@@ -69,8 +69,10 @@ async function callTool(name, args) {
   }
   if (name === 'cafe_source') {
     const a = args || {}
-    const q = a.path ? `?path=${encodeURIComponent(a.path)}` +
-      (a.from != null ? `&from=${a.from}` : '') + (a.to != null ? `&to=${a.to}` : '') : ''
+    const q = a.search ? `?search=${encodeURIComponent(a.search)}`
+      : a.path ? `?path=${encodeURIComponent(a.path)}` +
+        (a.from != null ? `&from=${a.from}` : '') + (a.to != null ? `&to=${a.to}` : '')
+      : ''
     const r = await fetch(`${BASE}/api/engine/source${q}`)
     return await r.text()
   }

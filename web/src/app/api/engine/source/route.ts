@@ -58,6 +58,37 @@ async function walk(dir: string, out: string[]): Promise<void> {
 export async function GET(req: NextRequest) {
   logVisit({ kind: 'agent', path: '/api/engine/source', ref: req.headers.get('referer'), ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
   const path = req.nextUrl.searchParams.get('path')?.trim()
+  const search = req.nextUrl.searchParams.get('search')?.trim()
+
+  // ── SEARCH ─────────────────────────────────────────────────────────────
+  // grep the whole engine source for a term and return matching lines with a
+  // little context — so an agent finds the one function/param it needs in ONE
+  // call instead of paginating whole files. Case-insensitive substring.
+  if (search) {
+    const needle = search.toLowerCase()
+    const files: string[] = []
+    for (const r of ROOTS) await walk(join(APP, r), files)
+    const hits: { file: string; line: number; text: string }[] = []
+    for (const f of files.sort()) {
+      let src: string
+      try { src = await readFile(f, 'utf-8') } catch { continue }
+      const rel = relative(APP, f)
+      const ls = src.split('\n')
+      for (let i = 0; i < ls.length; i++) {
+        if (ls[i].toLowerCase().includes(needle)) {
+          hits.push({ file: rel, line: i + 1, text: ls[i].trim().slice(0, 200) })
+          if (hits.length >= 120) break
+        }
+      }
+      if (hits.length >= 120) break
+    }
+    const body = hits.map(h => `${h.file}:${h.line}\t${h.text}`).join('\n')
+    return new NextResponse(
+      `// search "${search}" — ${hits.length} match(es)${hits.length >= 120 ? ' (capped; narrow the term)' : ''}\n` +
+      `// each is file:line — read around one with ?path=<file>&from=<line-8>&to=<line+8>\n${body}\n`,
+      { headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+    )
+  }
 
   // ── LIST ────────────────────────────────────────────────────────────────
   if (!path) {
