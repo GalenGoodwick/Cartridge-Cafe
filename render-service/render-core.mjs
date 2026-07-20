@@ -26,12 +26,18 @@ async function getAdapter() {
 
 /**
  * @param {object} state   { fields, visualTypes, modules, worldData, stepHooks }
- * @param {object} opts     { name?, ticks?=45, samples?=6, size?=400, time? }
+ * @param {object} opts     { name?, ticks?=45, samples?=6, size?=400, time?, input? }
+ *   opts.input — the HANDS to go with the eyes. 'auto' | 'run-right' |
+ *   'tap-action' | 'sweep-cursor', or an explicit timeline:
+ *   [{from, to, keys?: ['right','space',...], pointer?: {x,y,down?}}] (ticks,
+ *   grid coords 0..512). The first ~1/3 of ticks always runs input-FREE as a
+ *   baseline; input starts after. The result gains inputReport with a measured
+ *   respondsToInput verdict — renders-but-ignores-controls becomes detectable.
  * @returns {Promise<{ok:boolean, png:Uint8Array|null, ...struct}>}
  */
 export async function renderProbe(state, opts = {}) {
   const S = parseInt(opts.size ?? 400);
-  const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : 45;
+  const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
   const DT = 1 / 60;
   const fields = state.fields || [];
   const visuals = state.visualTypes || [];
@@ -50,18 +56,87 @@ export async function renderProbe(state, opts = {}) {
   const hookErrors = [];
   const simFields = new Map();
   for (const f of fields) simFields.set(f.id, { id: f.id, name: f.name, transform: { ...(f.transform || { x: 256, y: 256 }) }, properties: f.properties });
-  const ZERO_INPUT = { held: {}, pressed: {}, released: {}, moveX: 0, moveY: 0, action: false, actionHeld: false, pointer: { x: 256, y: 256, down: false, pressed: false, released: false } };
   const sim = { worldData, fields: simFields, rand: Math.random, getFieldByName(n) { for (const f of simFields.values()) if (f.name === n) return f; return null; }, getField(id) { return simFields.get(id) || null; } };
   const compiled = [];
   if (Array.isArray(state.stepHooks)) for (const h of state.stepHooks) {
     try { compiled.push({ id: h.id, fn: new Function("sim", "dt", h.code) }); }
     catch (e) { hookErrors.push({ hookId: h.id, phase: "compile", error: String(e?.message || e) }); }
   }
+
+  // ── synthetic input: the HANDS (mirrors the browser exactly) ────────────────
+  // The engine has TWO input conventions and hooks use both: raw worldData keys
+  // (key_right, key_space, mouse_x/mouse_y/mouse_down — how KINDLE reads the
+  // cursor) and the derived wd.input {held,pressed,released,moveX,moveY,action,
+  // actionHeld,pointer} that world-sandbox.buildInput() computes. We drive BOTH.
+  const INPUT_START = Math.max(1, Math.floor(NTICKS / 3));   // phase A = baseline, no input
+  function scriptAt(t) {
+    // returns { keys: string[], pointer: {x,y,down}|null } for tick t, or null
+    if (!opts.input || t < INPUT_START) return null;
+    const spec = opts.input;
+    if (Array.isArray(spec)) {
+      const keys = [], ptr = { v: null };
+      for (const seg of spec) {
+        if (t < (seg.from ?? 0) || t >= (seg.to ?? NTICKS)) continue;
+        for (const k of (seg.keys || [])) keys.push(String(k));
+        if (seg.pointer) ptr.v = { x: +seg.pointer.x || 256, y: +seg.pointer.y || 256, down: !!seg.pointer.down };
+      }
+      return { keys, pointer: ptr.v };
+    }
+    const u = t - INPUT_START, span = Math.max(1, NTICKS - INPUT_START);
+    const keys = [];
+    let pointer = null;
+    const mode = String(spec);
+    if (mode === "run-right" || mode === "auto") {
+      keys.push("right");                                   // held the whole phase
+      if (u % 20 < 3) keys.push("space");                   // periodic jump/action taps
+    }
+    if (mode === "tap-action") { if (u % 15 < 3) keys.push("space"); }
+    if (mode === "sweep-cursor" || mode === "auto") {
+      const p = Math.min(1, u / span);                      // grid sweep, left → right
+      pointer = { x: 100 + 312 * p, y: 256, down: u % 30 < 10 };
+    }
+    return { keys, pointer };
+  }
+  // buildInput mirror (world-sandbox.ts): held/pressed/released from key_* edges,
+  // moveX/moveY fold wasd+arrows, action = space/enter edge, pointer from mouse_*.
+  let prevKeys = {}, prevPointerDown = false;
+  const KEYNAMES = ["left", "right", "up", "down", "space", "enter", "shift", "a", "d", "s", "w"];
+  function applyInput(t) {
+    const scr = scriptAt(t);
+    const active = new Set(scr ? scr.keys : []);
+    for (const k of KEYNAMES) if (active.has(k) || ("key_" + k) in worldData) worldData["key_" + k] = active.has(k);
+    if (scr?.pointer) { worldData.mouse_x = scr.pointer.x; worldData.mouse_y = scr.pointer.y; worldData.mouse_down = scr.pointer.down; }
+    const held = {}, pressed = {}, released = {}, now = {};
+    for (const k of Object.keys(worldData)) {
+      if (!k.startsWith("key_") || k.endsWith("_n")) continue;
+      const name = k.slice(4), down = !!worldData[k];
+      now[name] = down;
+      if (down) held[name] = true;
+      if (down && !prevKeys[name]) pressed[name] = true;
+      if (!down && prevKeys[name]) released[name] = true;
+    }
+    prevKeys = now;
+    const on = (n) => !!held[n], hit = (n) => !!pressed[n];
+    const pdown = !!worldData.mouse_down;
+    const pointer = {
+      x: worldData.mouse_x ?? 256, y: worldData.mouse_y ?? 256,
+      down: pdown, pressed: pdown && !prevPointerDown, released: !pdown && prevPointerDown,
+    };
+    prevPointerDown = pdown;
+    worldData.input = {
+      held, pressed, released,
+      moveX: (on("d") || on("right") ? 1 : 0) - (on("a") || on("left") ? 1 : 0),
+      moveY: (on("w") || on("up") ? 1 : 0) - (on("s") || on("down") ? 1 : 0),
+      action: hit("space") || hit("enter"), actionHeld: on("space") || on("enter"),
+      pointer,
+    };
+  }
+
   const runtimeErrs = new Map();
   const HOOK_BUDGET_MS = 3000; const hookT0 = performance.now();
   function tickOnce(t) {
     if (!compiled.length || NTICKS <= 0) return;
-    worldData.input = ZERO_INPUT;
+    applyInput(t);
     for (const h of compiled) {
       try { h.fn(sim, DT); }
       catch (e) { let rec = runtimeErrs.get(h.id); if (!rec) { rec = { hookId: h.id, phase: "runtime", error: String(e?.message || e), firstTick: t, count: 0 }; runtimeErrs.set(h.id, rec); } rec.count++; }
@@ -153,13 +228,16 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   }
 
   // ── run: tick, sampling the struct at several points across the loop ──
-  const NSAMPLES = (NTICKS > 0 && compiled.length) ? Math.max(2, parseInt(opts.samples ?? 6)) : 1;
+  // input mode wants more samples so BOTH phases (baseline / input-on) get ≥2 deltas
+  const NSAMPLES = (NTICKS > 0 && compiled.length) ? Math.max(2, parseInt(opts.samples ?? (opts.input ? 8 : 6))) : 1;
   const sampleTicks = NSAMPLES === 1 ? [NTICKS] : Array.from({ length: NSAMPLES }, (_, s) => Math.round(1 + s * (NTICKS - 1) / (NSAMPLES - 1)));
   const samples = [];
   let cur = 0;
   for (const target of sampleTicks) {
     while (cur < target) { tickOnce(cur); cur++; if (performance.now() - hookT0 > HOOK_BUDGET_MS) { hookErrors.push({ hookId: "*", phase: "budget", error: `hook loop exceeded ${HOOK_BUDGET_MS}ms — stopped at tick ${cur}` }); break; } }
-    samples.push(await sample((opts.time !== undefined ? parseFloat(opts.time) : cur * DT)));
+    const snap = await sample((opts.time !== undefined ? parseFloat(opts.time) : cur * DT));
+    snap.tick = cur;
+    samples.push(snap);
   }
   for (const rec of runtimeErrs.values()) hookErrors.push(rec);
 
@@ -185,6 +263,34 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
     };
   }
 
+  // ── input verdict: did pressing controls change anything? ───────────────────
+  // Split the per-frame deltas + travel into BASELINE (no input) vs INPUT-ON by
+  // the later sample's tick, and report whether the input phase is measurably
+  // more active. Catches "renders but ignores the controls" — the rhythm world
+  // that looked fine but nobody could actually play.
+  let inputReport = null;
+  if (opts.input && samples.length >= 3) {
+    const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+    const range = a => a.length ? Math.max(...a) - Math.min(...a) : 0;
+    const frameDelta = (i) => { let dd = 0; const a = samples[i].data, b = samples[i - 1].data; for (let p = 0; p < a.length; p += 4) dd += Math.abs(a[p] - b[p]) + Math.abs(a[p + 1] - b[p + 1]) + Math.abs(a[p + 2] - b[p + 2]); return dd / (S * S * 3); };
+    const baseD = [], inD = [];
+    for (let i = 1; i < samples.length; i++) (samples[i].tick <= INPUT_START ? baseD : inD).push(frameDelta(i));
+    const baseCom = samples.filter(s => s.tick <= INPUT_START), inCom = samples.filter(s => s.tick > INPUT_START);
+    const baseTravel = range(baseCom.map(s => s.comX)) + range(baseCom.map(s => s.comY));
+    const inTravel = range(inCom.map(s => s.comX)) + range(inCom.map(s => s.comY));
+    const baseDelta = +mean(baseD).toFixed(1), inDelta = +mean(inD).toFixed(1);
+    const responds = inDelta > Math.max(2, baseDelta * 1.4) || inTravel > Math.max(0.03, baseTravel * 1.5 + 0.02);
+    inputReport = {
+      preset: Array.isArray(opts.input) ? "timeline" : String(opts.input),
+      baselineFrameDelta: baseDelta, inputFrameDelta: inDelta,
+      baselineTravel: +baseTravel.toFixed(3), inputTravel: +inTravel.toFixed(3),
+      respondsToInput: !!responds,
+      note: responds
+        ? "the world reacted to the pressed controls"
+        : "NO measurable reaction to input — the controls may be unwired, or the world only auto-animates. If the brief promised interactivity, the input handling is broken; check that the hook reads wd.input (moveX/action/pointer) or wd.key_*/mouse_*.",
+    };
+  }
+
   // ── result: final (most-evolved) frame's struct + motion + PNG bytes ──
   const last = samples[samples.length - 1];
   const png = encode({ width: S, height: S, data: last.data, channels: 4 });
@@ -194,6 +300,6 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
     bbox: last.bbox,
     offscreenHint: last.bbox && (last.bbox.w < S * 0.15 || last.bbox.h < S * 0.15 || last.bbox.x > S * 0.7 || last.bbox.x + last.bbox.w < S * 0.3) ? "content tiny or hugging an edge — likely mis-placed" : null,
     quadrantLum: last.quadrantLum, dominantColors: last.dominantColors,
-    motion, png,
+    motion, inputReport, png,
   };
 }

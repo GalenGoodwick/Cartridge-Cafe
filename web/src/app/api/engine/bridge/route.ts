@@ -284,7 +284,7 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
  *  is unset/down, the caller still has the static eyes (describe/health). */
 async function renderViaService(
   snap: { fields?: unknown[]; visualTypes?: unknown[]; modules?: unknown[]; worldData?: Record<string, unknown>; stepHooks?: unknown[] } | null | undefined,
-  opts: { name?: unknown; ticks?: unknown; size?: unknown },
+  opts: { name?: unknown; ticks?: unknown; size?: unknown; input?: unknown },
 ): Promise<Record<string, unknown>> {
   const base = process.env.RENDER_SERVICE_URL
   const secret = process.env.RENDER_SECRET
@@ -306,6 +306,10 @@ async function renderViaService(
   if (typeof opts.name === 'string') payload.name = opts.name
   if (opts.ticks != null) payload.ticks = Number(opts.ticks)
   if (opts.size != null) payload.size = Math.min(512, Math.max(64, Number(opts.size) || 256))
+  // synthetic input — the HANDS: a preset string ('auto'|'run-right'|'tap-action'
+  // |'sweep-cursor') or an explicit timeline array. Lets the render VERIFY the
+  // world reacts to controls, not just that it draws.
+  if (typeof opts.input === 'string' || Array.isArray(opts.input)) payload.input = opts.input
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 25_000)
@@ -318,7 +322,10 @@ async function renderViaService(
     if (!r.ok) return { ok: false, error: `render service ${r.status}: ${(await r.text()).slice(0, 200)}` }
     const out = await r.json()
     // hint the caller how to READ the render, since it's raw pixel-stats not prose
-    if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.'
+    if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.' +
+      (out.inputReport
+        ? ` inputReport.respondsToInput=${out.inputReport.respondsToInput}: ${out.inputReport.note}`
+        : ' For anything INTERACTIVE, re-probe with {"input":"auto"} (or "run-right"/"tap-action"/"sweep-cursor") — it presses the controls and tells you if the world actually reacts.')
     return out
   } catch (e) {
     return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work` }
@@ -622,7 +629,7 @@ export async function POST(req: NextRequest) {
           : isSceneScoped
             ? loadScene(auth.sceneName!)
             : getEngineState()
-        const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size })
+        const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input })
         results.push({ type: 'render_probe', ...out })
         continue
       }

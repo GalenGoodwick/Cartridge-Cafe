@@ -48,7 +48,7 @@ Deno.serve({ port: PORT }, async (req) => {
     return Response.json({ ok: false, error: "expected { state: { fields, visualTypes, worldData, stepHooks } }" }, { status: 400 });
   }
   try {
-    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time });
+    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input });
     const { png, ...struct } = r;
     return Response.json({ ...struct, image: r.ok && png ? encodeBase64(png) : null, imageMime: "image/png" });
   } catch (e) {

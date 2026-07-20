@@ -49,8 +49,8 @@ const TOOLS = [
   },
   {
     name: 'cafe_probe',
-    description: 'SEE your world — render it headless on a real GPU and get back what you built. Returns a pixel-state report (meanLum, coveragePct, visible, bbox + centeredX/Y, offscreenHint, quadrantLum, dominantColors), any WGSL compile errors (exact line), hookErrors (step-hook throws), a motion profile (travel/vibrating/diverging/settling from ticking the hooks), AND the rendered IMAGE. This is your EYES: a headless build agent otherwise never knows if a shader compiled, a field is off-screen, or the world is just black. CALL IT after cafe_send and BEFORE brief_done — if it reports errors/blank/off-screen, fix and re-probe until it renders. Optional {name} picks which visual to render (default: the first field\'s), {ticks} how many hook steps to evolve (default 45; 0 = static).',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' }, ticks: { type: 'number' } } },
+    description: 'SEE your world — render it headless on a real GPU and get back what you built. Returns a pixel-state report (meanLum, coveragePct, visible, bbox + centeredX/Y, offscreenHint, quadrantLum, dominantColors), any WGSL compile errors (exact line), hookErrors (step-hook throws), a motion profile (travel/vibrating/diverging/settling from ticking the hooks), AND the rendered IMAGE. This is your EYES: a headless build agent otherwise never knows if a shader compiled, a field is off-screen, or the world is just black. CALL IT after cafe_send and BEFORE brief_done — if it reports errors/blank/off-screen, fix and re-probe until it renders. Optional {name} picks which visual to render (default: the first field\'s), {ticks} how many hook steps to evolve (default 45; 0 = static). {input} gives it HANDS — "auto" | "run-right" | "tap-action" | "sweep-cursor" presses the controls and adds inputReport.respondsToInput (true/false), so you can verify an interactive world actually PLAYS, not just renders. Use it for any game/toy that promises movement or interaction.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, ticks: { type: 'number' }, input: { type: 'string', enum: ['auto', 'run-right', 'tap-action', 'sweep-cursor'] } } },
   },
 ]
 
@@ -121,6 +121,7 @@ async function callTool(name, args) {
       const cmd = { type: 'render_probe', size: 320 }
       if (a.name) cmd.name = String(a.name)
       if (a.ticks != null) cmd.ticks = Number(a.ticks)
+      if (a.input) cmd.input = a.input   // the HANDS: press controls, verify it plays
       const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(cmd) })
       const j = await r.json()
       const res = (Array.isArray(j.results) ? j.results[0] : null) || {}
@@ -144,6 +145,7 @@ async function callTool(name, args) {
     const cli = ['run', '-A', '--unstable-webgpu', path.join(HERE, 'render-probe.mjs'), '--state', stateFile, '--out', pngFile]
     if (a.name) cli.push('--name', String(a.name))
     if (a.ticks != null) cli.push('--ticks', String(a.ticks))
+    if (typeof a.input === 'string') cli.push('--input', a.input)   // timeline arrays: cloud path only
     const run = cp.spawnSync(DENO, cli, { encoding: 'utf8', timeout: 45_000, maxBuffer: 16 * 1024 * 1024 })
     const lastLine = (run.stdout || '').trim().split('\n').filter(Boolean).pop() || ''
     let struct; try { struct = JSON.parse(lastLine) } catch { struct = { ok: false, error: 'probe produced no JSON', stderr: (run.stderr || '').slice(0, 600) } }
