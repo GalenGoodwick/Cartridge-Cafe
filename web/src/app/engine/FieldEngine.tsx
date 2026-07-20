@@ -1423,8 +1423,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // switch to"). Fetch first; mutate refs only once the scene is confirmed.
     // preScene: main's version scroller hands in a timestamped backup snapshot
     // directly (it has no scene NAME to fetch by) — skip the fetch and use it.
+    // It may arrive AS the snapshot object (version scroller) OR wrapped in an
+    // envelope { snapshot } / { scene } (the space snapshot endpoint, via
+    // hotLoadSpaceVersion). Unwrap either — a raw envelope has no .fields, so it
+    // silently loads a 0-field world and the tab goes BLACK on every live reload.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let scene: any = preScene
+      ? ((preScene as { scene?: unknown; snapshot?: unknown }).scene || (preScene as { snapshot?: unknown }).snapshot || preScene)
+      : preScene
     if (!scene) {
       try {
         const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
@@ -1564,6 +1570,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the grid torn ("worked when entering fresh, failed on the final load"). A
   // second request during a load queues (latest wins) and runs after.
   const pendingReloadRef = useRef<{ v: number | undefined } | null>(null)
+  // The __bridge_rev of the snapshot this tab has ACTUALLY rendered. A ref, so it
+  // survives effect re-mounts — the auto-load poll baselines against THIS (what's
+  // on screen), never a fresh server read. Seeding the baseline from a fresh poll
+  // instead let a re-mount that happened right after an AI edit adopt the new rev
+  // as "already seen" and silently swallow the update (stale tab, no reload).
+  // Set from the fetched SNAPSHOT (not the live sim's worldData, which a reload
+  // doesn't reliably re-stamp), so it can't drift into a reload-every-10s loop.
+  const renderedRevRef = useRef(-1)
 
   /** #3 — hot-swap a SPACE version in place (no reload), the same way the vote
    *  reckoning previews a `space:` snapshot: fetch it, hand it to the proven
@@ -1582,7 +1596,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     reloadingRef.current = true
     try {
       const q = v === undefined ? '' : `?version=${v}`
-      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`)
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`, { cache: 'no-store' })
       if (!r.ok) return
       const data = await r.json()          // { snapshot: {...} }
       // Viewing a SAVE POINT presents the world FRESH, not mid-game: a version
@@ -1605,6 +1619,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
+      // record the rev we just rendered so the auto-load poll baselines on what's
+      // actually on screen (this is the SAME __bridge_rev the snapshot?rev=1 poll reads)
+      renderedRevRef.current = Number((data?.snapshot as { worldData?: { __bridge_rev?: unknown } } | undefined)?.worldData?.__bridge_rev) || 0
       greetInstructions(`space:${spaceSlug}`)   // pop instructions on first entry to this space
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
@@ -1632,27 +1649,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // to see what their AI built.
   useEffect(() => {
     if (!spaceSlug) return
-    // Track the rev we've already reconciled to. We compare against THIS, not
-    // worldData.__bridge_rev — a reload doesn't reliably stamp that number back
-    // onto the live sim, so comparing to it made the tab reload the SAME rev
-    // every 10s forever (the "it keeps reloading + never renders" loop; the
-    // constant teardown also never let the shader module finish compiling).
-    let actedRev = -1
+    // Compare the server's rev to the rev this tab actually RENDERED
+    // (renderedRevRef — a ref, so a re-mount can't reset it and re-baseline onto
+    // an unshown edit). hotLoadSpaceVersion updates that ref when it lands, so a
+    // real change fires exactly once and never loops. renderedRevRef < 0 means we
+    // haven't loaded a snapshot yet — wait for the mount load to seed it.
     const iv = setInterval(async () => {
       if (document.hidden) return
       if (spaceVer !== undefined) return           // pinned to a save point — stay put
+      if (renderedRevRef.current < 0) return       // not loaded yet — nothing rendered to compare against
       try {
-        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot?rev=1`)
+        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot?rev=1`, { cache: 'no-store' })
         if (!r.ok) return
         const { rev } = await r.json() as { rev?: number }
         if (typeof rev !== 'number') return
-        if (actedRev < 0) { actedRev = rev; return }   // baseline = the world we already loaded
-        // during a BUILD every command bumps the rev — hold (Path B does the one
-        // catch-up adopt when it ends); just keep the baseline current.
-        if (buildJobActiveRef.current) { actedRev = rev; return }
-        // reload ONCE per real change, and only after edits settle
-        if (rev > actedRev && Date.now() - aiLastEditRef.current > 4000) {
-          actedRev = rev   // mark BEFORE reloading so this rev never fires twice
+        // during a BUILD every command bumps the rev — hold (the build-end catch-up,
+        // or the first poll after, adopts the finished world in one shot). Don't
+        // touch renderedRevRef: it still reflects what's on screen.
+        if (buildJobActiveRef.current) return
+        // reload ONCE per real change, and only after edits settle. The reload
+        // advances renderedRevRef to `rev`, so this same rev never fires twice.
+        if (rev > renderedRevRef.current && Date.now() - aiLastEditRef.current > 4000) {
           showToast('⚡ this world was just updated — reloading', 'success')
           hotLoadSpaceVersion(undefined)
         }
@@ -2167,6 +2184,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const resp = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${versionQ}`)
         const { snapshot } = await resp.json()
         if (!snapshot) return // Empty space — blank canvas
+        // baseline the auto-load poll on the rev we're rendering right now
+        renderedRevRef.current = Number((snapshot as { worldData?: { __bridge_rev?: unknown } })?.worldData?.__bridge_rev) || 0
 
         // Restore visual types and modules first
         if (snapshot.visualTypes) {
@@ -5444,7 +5463,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       try {
         // r.ok gates out 503-degraded + network errors → d is null → HOLD last
         // known (a build in progress must not flicker off on one bad read).
-        const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`).then(r => r.ok ? r.json() : null)
+        const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
         if (stop || !d) return
         if (d.active) {
           falseStreak = 0
@@ -5545,11 +5564,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       let snap: { stepHooks?: Array<{ id: string; author: string; description: string; code: string }>; visualTypes?: Array<{ name: string; wgsl: string }>; modules?: Array<{ name: string; wgsl: string }> } | null = null
       try {
         if (spaceId) {
-          const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/snapshot`)
+          const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/snapshot`, { cache: 'no-store' })
           if (r.ok) snap = (await r.json()).snapshot
         } else {
           const s = lastSceneRef.current || playScene || ''
-          const r = await fetch(`/api/engine/scene?name=${encodeURIComponent(s)}`)
+          const r = await fetch(`/api/engine/scene?name=${encodeURIComponent(s)}`, { cache: 'no-store' })
           if (r.ok) snap = (await r.json()).scene
         }
       } catch { return }
@@ -5569,6 +5588,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         for (const id of Array.from(sim.stepHooks.keys())) if (!keep.has(id)) sim.removeStepHook(id)
         installHooks(sim, snap.stepHooks, sim.worldData)
       }
+      // B just brought this tab up to the pulled snapshot — advance the rendered
+      // rev so the A-poll (snapshot?rev=1) doesn't then fire a redundant full
+      // reload for a change B already hot-applied in place.
+      if (spaceId) {
+        const applied = Number((snap as { worldData?: { __bridge_rev?: unknown } }).worldData?.__bridge_rev) || 0
+        if (applied > renderedRevRef.current) renderedRevRef.current = applied
+      }
       // surface the live edit to the player, same channel a bridge write uses
       aiLastEditRef.current = Date.now()
       setAiPulse(p => p + 1)
@@ -5578,7 +5604,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const key = keyFor()
       if (!key) return
       try {
-        const r = await fetch(`/api/engine/world-rev?key=${encodeURIComponent(key)}`)
+        const r = await fetch(`/api/engine/world-rev?key=${encodeURIComponent(key)}`, { cache: 'no-store' })
         if (!r.ok) return
         const { rev } = await r.json() as { rev: number }
         if (seenRev < 0) { seenRev = rev; return }   // baseline = our own load; don't re-adopt it

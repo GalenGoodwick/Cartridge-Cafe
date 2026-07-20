@@ -10,5 +10,5 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get('key')
   if (!key) return NextResponse.json({ error: 'key required' }, { status: 400 })
-  return NextResponse.json({ key, rev: getWorldRev(key) })
+  return NextResponse.json({ key, rev: await getWorldRev(key) })
 }
