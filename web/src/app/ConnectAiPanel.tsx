@@ -62,39 +62,42 @@ Only these endpoints. This key IS me — keep it secret; I can revoke it anytime
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono" onClick={onClose}>
       <div className="w-80 max-w-[92vw] rounded-xl border border-brass/40 bg-void/95 backdrop-blur p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <div className="text-[13px] tracking-[0.2em] text-flame">⚿ CONNECT AI</div>
+          <div className="text-[16px] tracking-[0.2em] text-flame">⚿ CONNECT AI</div>
           <button onClick={onClose} aria-label="close" className="text-glow/50 hover:text-glow text-sm leading-none px-1">×</button>
         </div>
-        <div className="text-[12px] text-glow/45 leading-relaxed mb-3">
-          Your personal key — hand it to any AI (or your terminal) and it can chat the commons and create/edit <b>your own</b> worlds. Shown once, revocable.
+        <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
+          Your personal key — it lets an AI chat the commons and build <b>your own</b> worlds. Shown once, revocable.
+        </div>
+        <div className="text-[13px] text-amber-300/70 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
+          ⚠ Use an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) <b>can’t</b> — it can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
         </div>
         {state && !state.signedIn ? (
-          <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[12px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
+          <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
         ) : fresh ? (
           <div className="space-y-2">
-            <div className="text-[12px] text-emerald-300 tracking-[0.15em]">PASTE TO YOUR AI — shown once</div>
+            <div className="text-[14px] text-emerald-300 tracking-[0.15em]">PASTE TO YOUR AI — shown once</div>
             <button onClick={() => copy(prompt(fresh), 'prompt')}
-              className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[12px] tracking-[0.15em] text-void font-bold transition-all">
+              className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all">
               {copied === 'prompt' ? 'COPIED ✓' : '📋 COPY CONNECT PROMPT'}
             </button>
-            <button onClick={() => copy(fresh, 'key')} className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[12px] text-steamer/70 hover:text-glow">
+            <button onClick={() => copy(fresh, 'key')} className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[14px] text-steamer/70 hover:text-glow">
               {copied === 'key' ? 'copied ✓' : 'copy just the key'}
             </button>
-            <button onClick={() => setFresh(null)} className="w-full text-[12px] text-glow/40 hover:text-glow/70 py-1">done</button>
+            <button onClick={() => setFresh(null)} className="w-full text-[14px] text-glow/40 hover:text-glow/70 py-1">done</button>
           </div>
         ) : (
           <div className="space-y-2">
             <button disabled={busy} onClick={mint}
-              className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[12px] tracking-[0.15em] text-void font-bold transition-all disabled:opacity-50">
+              className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all disabled:opacity-50">
               {busy ? '…' : (state?.keys?.length ? '↻ MINT A NEW KEY (revokes old)' : '⚿ MINT PLAYER KEY')}
             </button>
             {!!state?.keys?.length && (
               <button disabled={busy} onClick={revoke}
-                className="w-full rounded-md border border-red-500/40 hover:border-red-400 px-3 py-1.5 text-[12px] tracking-[0.15em] text-red-400/70 hover:text-red-400 transition-all">
+                className="w-full rounded-md border border-red-500/40 hover:border-red-400 px-3 py-1.5 text-[14px] tracking-[0.15em] text-red-400/70 hover:text-red-400 transition-all">
                 REVOKE {state.keys.length === 1 ? 'MY KEY' : `ALL (${state.keys.length})`}
               </button>
             )}
-            {!!state?.keys?.length && <div className="text-[12px] text-glow/30 text-center">{state.keys[0].prefix} · active</div>}
+            {!!state?.keys?.length && <div className="text-[14px] text-glow/30 text-center">{state.keys[0].prefix} · active</div>}
           </div>
         )}
       </div>
