@@ -26,15 +26,15 @@ export default function AgentDialogPanel({ entries }: { entries: DialogEntry[] }
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0">
+      <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border flex-shrink-0">
         Dialog <span className="text-accent">{entries.length}</span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-2 min-h-0">
         {entries.length === 0 && (
-          <div className="text-[12px] text-muted font-mono italic">No messages yet</div>
+          <div className="text-[14px] text-muted font-mono italic">No messages yet</div>
         )}
         {entries.map((e, i) => (
-          <div key={i} className="text-[13px] font-mono leading-snug">
+          <div key={i} className="text-[16px] font-mono leading-snug">
             <div className="flex items-center gap-1 mb-0.5">
               <span
                 className="inline-block w-2 h-2 rounded-full flex-shrink-0"
@@ -51,10 +51,10 @@ export default function AgentDialogPanel({ entries }: { entries: DialogEntry[] }
             </div>
             {e.data && (
               <details className="pl-3 mt-1">
-                <summary className="text-[12px] text-muted cursor-pointer hover:text-accent">
+                <summary className="text-[14px] text-muted cursor-pointer hover:text-accent">
                   data payload
                 </summary>
-                <pre className="text-[12px] text-muted mt-1 p-1 bg-black/30 rounded overflow-x-auto">
+                <pre className="text-[14px] text-muted mt-1 p-1 bg-black/30 rounded overflow-x-auto">
                   {JSON.stringify(e.data, null, 2)}
                 </pre>
               </details>

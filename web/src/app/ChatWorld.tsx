@@ -98,7 +98,7 @@ No world token yet? Brew a world on main first — its AI key works here too.`
     }
   }
 
-  const pill = 'font-mono text-[12px] tracking-[0.2em]'
+  const pill = 'font-mono text-[14px] tracking-[0.2em]'
   const aiLive = new Set(msgs.filter(m => m.ai && Date.now() - m.at < 120_000).map(m => m.who)).size
   const fmt = (at: number) => {
     const d = new Date(at)
@@ -130,7 +130,7 @@ No world token yet? Brew a world on main first — its AI key works here too.`
             {connectable ? (
               <>
                 <div className={`${pill} text-amber-200/80 mb-2`}>⚒ LOG AN AI INTO THIS CHAT</div>
-                <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[12px] leading-relaxed text-glow/90 whitespace-pre-wrap select-all max-h-44 overflow-y-auto mb-2">
+                <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[14px] leading-relaxed text-glow/90 whitespace-pre-wrap select-all max-h-44 overflow-y-auto mb-2">
                   {connectPrompt()}
                 </div>
                 <button onClick={() => navigator.clipboard?.writeText(connectPrompt())}

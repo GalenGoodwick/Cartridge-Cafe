@@ -98,14 +98,14 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         background: 'rgba(11,9,8,0.85)', padding: '38px 30px',
         boxShadow: '0 0 80px rgba(245,176,76,0.12)',
       }}>
-        <div style={{ fontSize: 40, marginBottom: 14 }}>{mobile ? '🖥️' : '🌑'}</div>
+        <div style={{ fontSize: 48, marginBottom: 14 }}>{mobile ? '🖥️' : '🌑'}</div>
         <div style={{
           fontFamily: 'var(--font-display, serif)', fontStyle: 'italic',
-          fontSize: 30, color: '#ffdba8', marginBottom: 12,
+          fontSize: 36, color: '#ffdba8', marginBottom: 12,
         }}>
           {mobile ? 'the cafe needs a bigger table' : 'the windows are dark'}
         </div>
-        <p style={{ fontSize: 13, lineHeight: 1.7, color: '#c9b896', margin: 0 }}>
+        <p style={{ fontSize: 16, lineHeight: 1.7, color: '#c9b896', margin: 0 }}>
           {mobile ? (
             <>cartridge.cafe renders living worlds on your machine&rsquo;s GPU — a desktop-sized
               job that phones can&rsquo;t carry yet. Come find us on a laptop or desktop, and the
@@ -132,14 +132,14 @@ export default function SupportGate({ children }: { children: React.ReactNode })
             style={{
               marginTop: 20, padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
               border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)',
-              color: '#ffdba8', fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.12em',
+              color: '#ffdba8', fontFamily: 'inherit', fontSize: 13, letterSpacing: '0.12em',
             }}>
             {copied ? 'LINK COPIED ✓' : '⧉ COPY LINK — OPEN ON YOUR COMPUTER'}
           </button>
         )}
         {!mobile && (
           <>
-            <div style={{ marginTop: 16, fontSize: 10, color: 'rgba(201,184,150,0.45)', lineHeight: 1.6 }}>
+            <div style={{ marginTop: 16, fontSize: 12, color: 'rgba(201,184,150,0.45)', lineHeight: 1.6 }}>
               {why || 'webgpu probe failed'}
             </div>
             {/* the probe can be wrong — let the machine overrule it. If the
@@ -149,14 +149,14 @@ export default function SupportGate({ children }: { children: React.ReactNode })
               style={{
                 marginTop: 18, padding: '8px 18px', borderRadius: 10, cursor: 'pointer',
                 border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.12)',
-                color: '#ffdba8', fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.15em',
+                color: '#ffdba8', fontFamily: 'inherit', fontSize: 13, letterSpacing: '0.15em',
               }}>
               STEP IN ANYWAY
             </button>
           </>
         )}
         <div style={{
-          marginTop: 22, fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase',
+          marginTop: 22, fontSize: 12, letterSpacing: '0.25em', textTransform: 'uppercase',
           color: 'rgba(245,176,76,0.4)',
         }}>
           cartridge.cafe · open all night

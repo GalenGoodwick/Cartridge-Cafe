@@ -22,12 +22,12 @@ export default function ShareWorld({ slug, name }: { slug: string; name: string 
     setOpen(o => !o)
   }
 
-  const item = 'w-full text-left px-3 py-2 rounded-lg font-mono text-[12px] tracking-[0.1em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors'
+  const item = 'w-full text-left px-3 py-2 rounded-lg font-mono text-[14px] tracking-[0.1em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors'
 
   return (
     <div className="fixed bottom-4 right-4 z-[60] font-mono select-none">
       <button onClick={native}
-        className="rounded-lg border border-brass/40 hover:border-flame/60 bg-void/70 backdrop-blur px-3 py-1.5 text-[12px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-colors">
+        className="rounded-lg border border-brass/40 hover:border-flame/60 bg-void/70 backdrop-blur px-3 py-1.5 text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-colors">
         ↗ SHARE
       </button>
       {open && (

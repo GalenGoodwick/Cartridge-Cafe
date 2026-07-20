@@ -247,7 +247,7 @@ export default function Dockstar({
           )}
         </div>
         {isDragging && (
-          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[12px] text-muted whitespace-nowrap font-mono">
+          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[14px] text-muted whitespace-nowrap font-mono">
             drop to dock
           </div>
         )}

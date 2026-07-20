@@ -28,7 +28,7 @@ export function NotifyMeButton({
   // a toggle here would be a dead button. Show the honest recovery path instead.
   if (permission === 'denied' && !isSubscribed) {
     return (
-      <p className={`font-mono text-[11px] text-grounds/70 ${variant === 'menu' ? 'px-3 py-2' : 'text-center'}`}>
+      <p className={`font-mono text-[13px] text-grounds/70 ${variant === 'menu' ? 'px-3 py-2' : 'text-center'}`}>
         notifications are blocked — turn them on for this site in your browser settings.
       </p>
     )
@@ -47,12 +47,12 @@ export function NotifyMeButton({
       <button onClick={onClick} disabled={isLoading}
         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors disabled:opacity-50">
         {isLoading ? '…' : isSubscribed ? '🔔 notifications on' : '🔕 notify me of builds'}
-        {err && <span className="block text-[11px] text-flame/70 tracking-normal mt-0.5">{err}</span>}
+        {err && <span className="block text-[13px] text-flame/70 tracking-normal mt-0.5">{err}</span>}
       </button>
     )
   }
 
-  const base = 'pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[12px] tracking-[0.15em] border transition-colors disabled:opacity-50'
+  const base = 'pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[14px] tracking-[0.15em] border transition-colors disabled:opacity-50'
   return (
     <div className={`flex flex-col items-center gap-1 ${className}`}>
       <button disabled={isLoading} onClick={onClick}
@@ -61,7 +61,7 @@ export function NotifyMeButton({
           : 'border-amber-300/40 bg-amber-400/10 text-amber-100/90 hover:bg-amber-400/20'}`}>
         {isLoading ? '…' : isSubscribed ? onLabel : label}
       </button>
-      {err && <span className="font-mono text-[11px] text-red-300/80">{err}</span>}
+      {err && <span className="font-mono text-[13px] text-red-300/80">{err}</span>}
     </div>
   )
 }

@@ -54,25 +54,25 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
   return (
     <div className="min-h-screen bg-[#0d0906] text-[#e8d5b5] font-mono">
       <div className="max-w-3xl mx-auto px-6 py-12">
-        <a href="/" className="text-[11px] tracking-[0.25em] text-[#8a7454] hover:text-[#e8d5b5]">◂ THE CAFE</a>
+        <a href="/" className="text-[13px] tracking-[0.25em] text-[#8a7454] hover:text-[#e8d5b5]">◂ THE CAFE</a>
         <div className="mt-6 flex items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] tracking-[0.4em] text-[#b9722a] uppercase">maker</div>
+            <div className="text-[12px] tracking-[0.4em] text-[#b9722a] uppercase">maker</div>
             <h1 className="text-4xl mt-1" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{display}</h1>
-            <div className="text-[11px] text-[#8a7454] mt-1">⑂ {handle}</div>
+            <div className="text-[13px] text-[#8a7454] mt-1">⑂ {handle}</div>
           </div>
           <ProfileActions handle={handle} />
         </div>
 
         {attributed.length > 0 && (
           <div className="mt-10">
-            <div className="text-[11px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">worlds · {attributed.length}</div>
+            <div className="text-[13px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">worlds · {attributed.length}</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {attributed.map(n => (
                 <a key={n} href={`/hub/${encodeURIComponent(n)}`}
                   className="block rounded-lg border border-[#b9722a]/25 bg-black/30 px-4 py-3 hover:border-[#f5b04c]/60 transition-colors">
-                  <div className="text-[14px]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{n}</div>
-                  <div className="text-[10px] text-[#8a7454] mt-0.5">play ▸</div>
+                  <div className="text-[17px]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{n}</div>
+                  <div className="text-[12px] text-[#8a7454] mt-0.5">play ▸</div>
                 </a>
               ))}
             </div>
@@ -80,28 +80,28 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
         )}
 
         <div className="mt-10">
-          <div className="text-[11px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">spaces · {spaces.length}</div>
-          {spaces.length === 0 && <div className="text-[12px] text-[#8a7454]">no public spaces yet</div>}
+          <div className="text-[13px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">spaces · {spaces.length}</div>
+          {spaces.length === 0 && <div className="text-[14px] text-[#8a7454]">no public spaces yet</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {spaces.map(s => (
               <a key={s.slug} href={`/space/${s.slug}`}
                 className="block rounded-lg border border-[#b9722a]/25 bg-black/30 px-4 py-3 hover:border-[#f5b04c]/60 transition-colors">
-                <div className="text-[14px]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{s.name}</div>
-                <div className="text-[10px] text-[#8a7454] mt-0.5">enter ▸</div>
+                <div className="text-[17px]" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>{s.name}</div>
+                <div className="text-[12px] text-[#8a7454] mt-0.5">enter ▸</div>
               </a>
             ))}
           </div>
         </div>
 
         <div className="mt-10">
-          <div className="text-[11px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">branches · {branches.size}</div>
-          {branches.size === 0 && <div className="text-[12px] text-[#8a7454]">no branches yet — every world on the shelf can be branched</div>}
+          <div className="text-[13px] tracking-[0.3em] text-[#b9722a] uppercase mb-3">branches · {branches.size}</div>
+          {branches.size === 0 && <div className="text-[14px] text-[#8a7454]">no branches yet — every world on the shelf can be branched</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[...branches.values()].map(b => (
               <a key={b.name} href={`/hub/${encodeURIComponent(b.name)}`}
                 className="block rounded-lg border border-[#b9722a]/25 bg-black/30 px-4 py-3 hover:border-[#f5b04c]/60 transition-colors">
-                <div className="text-[13px]">{b.name.split(' ⑂ ')[0]} <span className="text-[#8a7454]">· v{b.v}</span></div>
-                <div className="text-[10px] text-[#8a7454] mt-0.5">play the head ▸</div>
+                <div className="text-[16px]">{b.name.split(' ⑂ ')[0]} <span className="text-[#8a7454]">· v{b.v}</span></div>
+                <div className="text-[12px] text-[#8a7454] mt-0.5">play the head ▸</div>
               </a>
             ))}
           </div>

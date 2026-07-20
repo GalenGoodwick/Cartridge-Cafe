@@ -10,20 +10,20 @@ const H = ({ children }: { children: React.ReactNode }) => (
   <h2 className="cafe-sign text-xl text-glow mt-9 mb-2">{children}</h2>
 )
 const P = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <p className={`text-[15px] leading-relaxed text-crema/80 mb-3 ${className}`}>{children}</p>
+  <p className={`text-[18px] leading-relaxed text-crema/80 mb-3 ${className}`}>{children}</p>
 )
 
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-void text-crema/80" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
       <div className="mx-auto max-w-2xl px-6 py-16 font-mono">
-        <Link href="/" className="text-[12px] tracking-[0.2em] text-brass hover:text-flame">◂ cartridge.cafe</Link>
+        <Link href="/" className="text-[14px] tracking-[0.2em] text-brass hover:text-flame">◂ cartridge.cafe</Link>
         <h1 className="cafe-sign text-4xl text-glow mt-5 mb-1">terms & the commons deal</h1>
-        <div className="text-[12px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-07-19</div>
+        <div className="text-[14px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-07-19</div>
 
         {/* the human version, up top and loud */}
         <div className="rounded-xl border border-brass/40 bg-black/30 p-5 mt-6">
-          <div className="text-[12px] tracking-[0.2em] text-flame mb-2">THE COMMONS DEAL — in plain words</div>
+          <div className="text-[14px] tracking-[0.2em] text-flame mb-2">THE COMMONS DEAL — in plain words</div>
           <P><b className="text-glow">You own what you make.</b> Your worlds are yours.</P>
           <P><b className="text-glow">Public worlds can be remixed &amp; branched.</b> Make a world public and other members can <b>remix</b> it (take their own copy to build on) or <b>branch</b> it (enter a challenger in its arena). Both keep their lineage back to you &mdash; and your original always stays yours as <b>main</b>. A branch can win the podium, never your throne.</P>
           <P><b className="text-glow">Private worlds are yours alone.</b> No one else can see, open, or branch a private world. A shared link to a private world simply doesn&rsquo;t open for anyone but you.</P>
@@ -57,7 +57,7 @@ export default function TermsPage() {
         <H>8 · Changes</H>
         <P>We may update these terms. If we make material changes we&rsquo;ll note it here and update the date above. Continuing to use cartridge.cafe means you accept the current terms.</P>
 
-        <P className="mt-8 text-[13px] text-crema/50">Questions? See our <Link href="/privacy" className="text-brass hover:text-flame underline">Privacy Policy</Link>, or reach the keeper of the cafe.</P>
+        <P className="mt-8 text-[16px] text-crema/50">Questions? See our <Link href="/privacy" className="text-brass hover:text-flame underline">Privacy Policy</Link>, or reach the keeper of the cafe.</P>
       </div>
     </main>
   )

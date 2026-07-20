@@ -20,7 +20,7 @@ function TerminalLine({ entry }: { entry: TerminalEntry }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <div className="text-[13px] font-mono leading-snug">
+    <div className="text-[16px] font-mono leading-snug">
       <div className="flex items-start gap-1">
         {entry.author && (
           <span className="text-amber-400/80 flex-shrink-0">[{entry.author}]</span>
@@ -39,12 +39,12 @@ function TerminalLine({ entry }: { entry: TerminalEntry }) {
         <div className="pl-3 mt-0.5">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-[12px] text-muted hover:text-accent cursor-pointer"
+            className="text-[14px] text-muted hover:text-accent cursor-pointer"
           >
             {expanded ? '[ - hide code ]' : '[ + show code ]'}
           </button>
           {expanded && (
-            <pre className="text-[12px] text-emerald-400/80 mt-1 p-2 bg-black/40 rounded overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
+            <pre className="text-[14px] text-emerald-400/80 mt-1 p-2 bg-black/40 rounded overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap">
               {entry.detail}
             </pre>
           )}
@@ -69,7 +69,7 @@ export default function AgentTerminalPanel({ entries, header = true }: { entries
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {header && (
-        <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0">
+        <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border flex-shrink-0">
           Terminal <span className="text-accent">{entries.length}</span>
         </div>
       )}
@@ -78,7 +78,7 @@ export default function AgentTerminalPanel({ entries, header = true }: { entries
         className="flex-1 overflow-y-scroll p-2 space-y-1 min-h-0 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.35)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/30 [&::-webkit-scrollbar-track]:bg-transparent"
       >
         {entries.length === 0 && (
-          <div className="text-[12px] text-muted font-mono italic">No commands yet</div>
+          <div className="text-[14px] text-muted font-mono italic">No commands yet</div>
         )}
         {entries.map((e, i) => (
           <TerminalLine key={i} entry={e} />

@@ -20,7 +20,7 @@ export default function SubspaceOverlay({ hostName, hostColor, visitorCount, onE
           Following <span className="font-semibold" style={{ color: hostColor }}>{hostName}</span>
         </span>
         {visitorCount > 0 && (
-          <span className="text-[12px] font-mono text-muted-light/60">
+          <span className="text-[14px] font-mono text-muted-light/60">
             +{visitorCount}
           </span>
         )}
@@ -28,7 +28,7 @@ export default function SubspaceOverlay({ hostName, hostColor, visitorCount, onE
       {spaceSlug && (
         <a
           href={`/space/${spaceSlug}`}
-          className="text-[12px] font-mono px-2 py-0.5 rounded border border-border transition-colors mr-1.5"
+          className="text-[14px] font-mono px-2 py-0.5 rounded border border-border transition-colors mr-1.5"
           style={{ color: hostColor, borderColor: hostColor + '55' }}
         >
           Visit world →
@@ -36,7 +36,7 @@ export default function SubspaceOverlay({ hostName, hostColor, visitorCount, onE
       )}
       <button
         onClick={onExit}
-        className="text-[12px] font-mono text-muted-light/60 hover:text-foreground px-2 py-0.5 rounded border border-border hover:border-foreground/30 transition-colors"
+        className="text-[14px] font-mono text-muted-light/60 hover:text-foreground px-2 py-0.5 rounded border border-border hover:border-foreground/30 transition-colors"
       >
         Exit
       </button>

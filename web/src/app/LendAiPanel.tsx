@@ -11,7 +11,7 @@ type Builder = {
   idleOnly: boolean; jobsDone: number; abandons: number; lastSeenAt: string | null
 }
 
-const box = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[12px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
+const box = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
 
 export default function LendAiPanel({ onClose }: { onClose: () => void }) {
   const [builders, setBuilders] = useState<Builder[] | null>(null)
@@ -102,42 +102,42 @@ Only ever call these endpoints. Never touch anything else on my machine.`
         <button onClick={onClose} aria-label="close"
           className="font-mono text-glow/50 hover:text-glow text-sm leading-none -mt-0.5 px-1">×</button>
       </div>
-      <div className="font-mono text-[12px] text-glow/40 leading-relaxed mb-3">
+      <div className="font-mono text-[14px] text-glow/40 leading-relaxed mb-3">
         When your AI is idle, it builds worlds players asked for. It only talks to
         the cafe — one job at a time, stop anytime.
       </div>
 
       {freshToken ? (
         <div className="mb-3 space-y-2">
-          <div className="font-mono text-[12px] text-flame tracking-[0.15em]">PASTE THIS TO YOUR AI — token is inside, shown once</div>
+          <div className="font-mono text-[14px] text-flame tracking-[0.15em]">PASTE THIS TO YOUR AI — token is inside, shown once</div>
           <button onClick={() => copy(connectPrompt, 'prompt')}
-            className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 font-mono text-[12px] tracking-[0.15em] text-void font-bold transition-all">
+            className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 font-mono text-[14px] tracking-[0.15em] text-void font-bold transition-all">
             {copied === 'prompt' ? 'COPIED ✓' : '📋 COPY PROMPT'}
           </button>
-          <details className="font-mono text-[12px] text-glow/40">
+          <details className="font-mono text-[14px] text-glow/40">
             <summary className="cursor-pointer hover:text-glow/70">preview the prompt</summary>
-            <div className="mt-1 rounded-md border border-brass/30 bg-black/40 px-2 py-1.5 text-[12px] text-steamer/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{connectPrompt}</div>
+            <div className="mt-1 rounded-md border border-brass/30 bg-black/40 px-2 py-1.5 text-[14px] text-steamer/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{connectPrompt}</div>
           </details>
           <button onClick={() => setFreshToken(null)} className={`${box} w-full text-center`}>done</button>
         </div>
       ) : (
         <div className="mb-3 flex gap-2">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="name your AI (e.g. Ada's GPT-5)"
-            className="flex-1 rounded-md border border-brass/40 bg-black/40 px-2 py-1.5 font-mono text-[12px] text-steamer/90 placeholder:text-glow/25 focus:border-flame/60 outline-none" />
+            className="flex-1 rounded-md border border-brass/40 bg-black/40 px-2 py-1.5 font-mono text-[14px] text-steamer/90 placeholder:text-glow/25 focus:border-flame/60 outline-none" />
           <button disabled={busy} onClick={enroll}
-            className="rounded-md bg-flame hover:bg-glow px-3 py-1.5 font-mono text-[12px] tracking-[0.15em] text-void font-bold transition-all disabled:opacity-50">
+            className="rounded-md bg-flame hover:bg-glow px-3 py-1.5 font-mono text-[14px] tracking-[0.15em] text-void font-bold transition-all disabled:opacity-50">
             {busy ? '…' : 'LEND'}
           </button>
         </div>
       )}
 
-      {err && <div className="font-mono text-[12px] text-red-400/80 mb-2">{err}</div>}
+      {err && <div className="font-mono text-[14px] text-red-400/80 mb-2">{err}</div>}
 
       {builders && builders.length > 0 && (
         <div className="space-y-1.5 border-t border-brass/20 pt-2">
-          <div className="font-mono text-[12px] text-brass tracking-[0.2em] mb-1">YOUR BUILDERS</div>
+          <div className="font-mono text-[14px] text-brass tracking-[0.2em] mb-1">YOUR BUILDERS</div>
           {builders.map(b => (
-            <div key={b.id} className="flex items-center justify-between gap-2 font-mono text-[12px]">
+            <div key={b.id} className="flex items-center justify-between gap-2 font-mono text-[14px]">
               <div className="min-w-0">
                 <div className="text-steamer/90 truncate">{b.displayName}</div>
                 <div className="text-glow/35">{b.jobsDone} built{b.abandons ? ` · ${b.abandons} dropped` : ''} · {b.tokenPrefix}</div>
@@ -146,7 +146,7 @@ Only ever call these endpoints. Never touch anything else on my machine.`
                 <button onClick={() => setEnabled(b.id, !b.enabled)} className={`${box} px-2 py-1`}>
                   {b.enabled ? 'PAUSE' : 'RESUME'}
                 </button>
-                <button onClick={() => revoke(b.id)} className="rounded-lg border border-red-500/40 hover:border-red-400 px-2 py-1 font-mono text-[12px] text-red-400/70 hover:text-red-400 transition-all">
+                <button onClick={() => revoke(b.id)} className="rounded-lg border border-red-500/40 hover:border-red-400 px-2 py-1 font-mono text-[14px] text-red-400/70 hover:text-red-400 transition-all">
                   STOP
                 </button>
               </div>

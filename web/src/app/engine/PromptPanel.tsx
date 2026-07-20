@@ -36,7 +36,7 @@ export default function PromptPanel({
         {hasActiveEffect && (
           <button
             onClick={onClearEffect}
-            className="text-[12px] text-error/70 hover:text-error"
+            className="text-[14px] text-error/70 hover:text-error"
           >
             Clear Effect
           </button>
@@ -44,7 +44,7 @@ export default function PromptPanel({
       </div>
 
       {effectDescription && (
-        <p className="text-[13px] text-muted mb-2 italic">{effectDescription}</p>
+        <p className="text-[16px] text-muted mb-2 italic">{effectDescription}</p>
       )}
 
       <div className="flex items-center gap-1.5">
@@ -71,7 +71,7 @@ export default function PromptPanel({
       </div>
 
       {error && (
-        <p className="text-[13px] text-error mt-1.5">{error}</p>
+        <p className="text-[16px] text-error mt-1.5">{error}</p>
       )}
     </div>
   )

@@ -32,7 +32,7 @@ export default function VersionScrubber({
   const btn = 'hover:text-white px-1 disabled:opacity-30 disabled:cursor-default'
   return (
     <div className="relative">
-      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
+      <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
         <button className={`${btn} ${canOlder ? '' : 'invisible'}`} disabled={!canOlder} title="older version" onClick={onOlder}>◂</button>
         <button
           onClick={() => setOpen(o => !o)}
@@ -49,17 +49,17 @@ export default function VersionScrubber({
           {/* click-away */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-50 w-[220px] max-h-[260px] overflow-y-auto rounded-lg bg-[#0d0906]/95 backdrop-blur border border-white/15 shadow-xl py-1">
-            <div className="px-3 py-1.5 text-[12px] tracking-[0.25em] text-white/40 border-b border-white/10">VERSIONS · {total}</div>
+            <div className="px-3 py-1.5 text-[14px] tracking-[0.25em] text-white/40 border-b border-white/10">VERSIONS · {total}</div>
             {items.map(it => (
               <button
                 key={it.key}
                 onClick={() => { it.onPick(); setOpen(false) }}
-                className={`w-full flex items-baseline justify-between gap-2 px-3 py-1.5 text-left text-[12px] font-mono transition-colors ${
+                className={`w-full flex items-baseline justify-between gap-2 px-3 py-1.5 text-left text-[14px] font-mono transition-colors ${
                   it.active ? 'bg-amber-500/15 text-amber-200' : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 <span className="tracking-[0.1em]">{it.active ? '▸ ' : ''}{it.label}</span>
-                {it.sub && <span className="text-white/30 text-[12px] truncate">{it.sub}</span>}
+                {it.sub && <span className="text-white/30 text-[14px] truncate">{it.sub}</span>}
               </button>
             ))}
           </div>

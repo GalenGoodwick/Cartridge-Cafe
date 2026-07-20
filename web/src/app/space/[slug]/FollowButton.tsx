@@ -43,7 +43,7 @@ export default function FollowButton({ handle, isOwner }: { handle?: string | nu
     <button
       onClick={toggle} disabled={busy}
       title={state.following ? 'following — you get their new worlds & edits' : 'follow — get their new worlds & edits'}
-      className={`px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono backdrop-blur border transition-colors disabled:opacity-60 ${
+      className={`px-2 py-1 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors disabled:opacity-60 ${
         state.following
           ? 'bg-amber-400/20 border-amber-300/50 text-amber-100'
           : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'

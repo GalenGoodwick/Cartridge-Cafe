@@ -56,14 +56,14 @@ export default function MainCommonsChat({ visible, onEnter, channel = 'commons:m
       <span className="relative flex items-center justify-center w-11 h-11 rounded-full border border-brass/50 bg-gradient-to-br from-[#3a2410] to-[#120a04] text-glow text-lg">
         ⌁
         {unread > 0 && (
-          <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-black text-[12px] font-mono font-bold flex items-center justify-center ${peopleLive > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
+          <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-black text-[14px] font-mono font-bold flex items-center justify-center ${peopleLive > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
             {unread > 99 ? '99+' : unread}
           </span>
         )}
       </span>
       <span className="text-left">
-        <span className="block font-mono text-[13px] tracking-[0.22em] text-glow/90">{label}</span>
-        <span className="block font-mono text-[12px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
+        <span className="block font-mono text-[16px] tracking-[0.22em] text-glow/90">{label}</span>
+        <span className="block font-mono text-[14px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
           {(() => {
             const parts: string[] = []
             if (peopleLive) parts.push(`${peopleLive} ${peopleLive === 1 ? 'person' : 'people'} chatting`)

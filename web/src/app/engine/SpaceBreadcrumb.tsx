@@ -33,7 +33,7 @@ export default function SpaceBreadcrumb({ spaceSlug }: SpaceBreadcrumbProps) {
   const parent = ancestors[ancestors.length - 1]
 
   return (
-    <div className="absolute top-0 left-0 right-96 z-30 bg-surface/90 backdrop-blur-sm border-b border-border px-3 py-1.5 text-[12px] font-mono flex items-center gap-1.5 overflow-hidden">
+    <div className="absolute top-0 left-0 right-96 z-30 bg-surface/90 backdrop-blur-sm border-b border-border px-3 py-1.5 text-[14px] font-mono flex items-center gap-1.5 overflow-hidden">
       <a
         href={`/space/${parent.slug}`}
         className="text-accent hover:text-accent-hover transition-colors flex-shrink-0"

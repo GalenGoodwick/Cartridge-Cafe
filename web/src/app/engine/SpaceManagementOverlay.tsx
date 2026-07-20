@@ -150,7 +150,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
     return (
       <button
         onClick={() => setOpen(true)}
-        className="absolute top-3 right-3 z-20 px-2 py-1 bg-surface/80 backdrop-blur-sm border border-border rounded text-[12px] font-mono text-muted hover:text-accent hover:border-accent/30 transition-colors"
+        className="absolute top-3 right-3 z-20 px-2 py-1 bg-surface/80 backdrop-blur-sm border border-border rounded text-[14px] font-mono text-muted hover:text-accent hover:border-accent/30 transition-colors"
         title="Space settings"
       >
         # {space?.name || spaceSlug}
@@ -160,8 +160,8 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
 
   return (
     <div className={embedded
-      ? 'w-full max-h-[40vh] flex flex-col border-b border-border overflow-hidden text-[12px] font-mono'
-      : 'absolute top-3 right-3 z-20 w-80 max-h-[70vh] flex flex-col bg-surface/95 backdrop-blur-sm border border-border rounded-lg overflow-hidden text-[12px] font-mono'}>
+      ? 'w-full max-h-[40vh] flex flex-col border-b border-border overflow-hidden text-[14px] font-mono'
+      : 'absolute top-3 right-3 z-20 w-80 max-h-[70vh] flex flex-col bg-surface/95 backdrop-blur-sm border border-border rounded-lg overflow-hidden text-[14px] font-mono'}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         {editingName ? (
@@ -171,7 +171,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
             onChange={e => setNameValue(e.target.value)}
             onBlur={saveName}
             onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setEditingName(false); setNameValue(space?.name || '') } }}
-            className="flex-1 bg-background border border-accent/50 rounded px-1.5 py-0.5 text-foreground text-[12px] font-mono outline-none"
+            className="flex-1 bg-background border border-accent/50 rounded px-1.5 py-0.5 text-foreground text-[14px] font-mono outline-none"
             autoFocus
           />
         ) : (
@@ -221,7 +221,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                 </button>
               </div>
               {/* the commons deal, said right where the switch is thrown */}
-              <div className="mt-1.5 text-[12px] leading-snug text-muted/70">
+              <div className="mt-1.5 text-[14px] leading-snug text-muted/70">
                 {space?.isPublic
                   ? 'on the shelf — anyone can play & branch it; credit follows you through lineage'
                   : 'yours alone — no one else can open, play, or branch it'}
@@ -278,7 +278,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                     onChange={e => setTokenName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') generateToken() }}
                     placeholder="token name..."
-                    className="flex-1 bg-background border border-border rounded px-2 py-1 text-foreground text-[12px] font-mono outline-none focus:border-accent/50"
+                    className="flex-1 bg-background border border-border rounded px-2 py-1 text-foreground text-[14px] font-mono outline-none focus:border-accent/50"
                     autoFocus
                   />
                   <button

@@ -130,7 +130,7 @@ export default function Toolbar({
 
         {/* Brush size */}
         <div className="flex items-center gap-1 px-1">
-          <span className="text-[12px] text-muted">Size</span>
+          <span className="text-[14px] text-muted">Size</span>
           <input
             type="range"
             min="1" max="32" step="1"
@@ -138,7 +138,7 @@ export default function Toolbar({
             onChange={e => onBrushChange({ ...brush, size: Number(e.target.value) })}
             className="w-16 h-1 accent-accent"
           />
-          <span className="text-[12px] text-muted font-mono w-4">{brush.size}</span>
+          <span className="text-[14px] text-muted font-mono w-4">{brush.size}</span>
         </div>
 
         <div className="w-px h-6 bg-border mx-1" />
@@ -162,7 +162,7 @@ export default function Toolbar({
               {brush.activeFieldId === field.id && fields.size > 1 && (
                 <span
                   onClick={e => { e.stopPropagation(); onDeleteField(field.id) }}
-                  className="absolute -top-1 -right-1 w-3 h-3 bg-error text-white text-[11px] rounded-full items-center justify-center hidden group-hover:flex leading-none"
+                  className="absolute -top-1 -right-1 w-3 h-3 bg-error text-white text-[13px] rounded-full items-center justify-center hidden group-hover:flex leading-none"
                 >
                   x
                 </span>
