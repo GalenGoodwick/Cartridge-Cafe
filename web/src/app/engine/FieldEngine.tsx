@@ -158,12 +158,12 @@ function iconCacheSave(c: NonNullable<typeof cafeIconCache>): void {
     const bytes = new Uint8Array(c.atlas.buffer, c.atlas.byteOffset, c.atlas.byteLength)
     let bin = ''
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    localStorage.setItem('cc:cafeIconAtlas:v5', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
+    localStorage.setItem('cc:cafeIconAtlas:v6', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
   } catch { /* quota or private mode — cache stays page-local */ }
 }
 function iconCacheLoad(): typeof cafeIconCache {
   try {
-    const raw = localStorage.getItem('cc:cafeIconAtlas:v5')
+    const raw = localStorage.getItem('cc:cafeIconAtlas:v6')
     if (!raw) return null
     const { sig, slots, b64 } = JSON.parse(raw) as { sig: string; slots: Record<string, number>; b64: string }
     const bin = atob(b64)
@@ -5431,6 +5431,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const f = (n: number) => { const k = (n + h * 6) % 6; return 0.92 - 0.92 * 0.65 * Math.max(0, Math.min(k, 4 - k, 1)) }
       return [f(5), f(3), f(1)]
     }
+    // content hash of a shader — the sig keys on this, not wgsl.length, so a
+    // promotion that swaps in a SAME-LENGTH shader still busts the dedup and
+    // repaints (djb2, base36; ':'-free so the delta parse below stays valid)
+    const wgslHash = (s: string): string => { let h = 5381; for (let k = 0; k < s.length; k++) h = ((h * 33) ^ s.charCodeAt(k)) >>> 0; return h.toString(36) }
     let lastSig = ''
     const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
     // COMING BACK TO MAIN: the previous atlas is plain pixels — re-upload it and
@@ -5498,7 +5502,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // only re-render the atlas when the roster or a world's shader changed —
       // icons are cheap stills, not a per-frame GPU cost. (Scales to any count:
       // only the ≤64 on-shelf worlds ever render, and only once each.)
-      const sig = next.map(i => `${nameOfSlot[i.slot]}:${i.wgsl.length}`).join('|')   // name-keyed: immune to roster reordering
+      const sig = next.map(i => `${nameOfSlot[i.slot]}:${wgslHash(i.wgsl)}`).join('|')   // name-keyed: immune to roster reordering; content-keyed: catches same-length swaps
       if (sig === lastSig) return
       // SAME ROSTER, few changed shaders → repaint just those slots in place
       // (renderOneIcon draws into the live atlas). The full 64-shader re-render
