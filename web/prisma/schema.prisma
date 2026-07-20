@@ -28,6 +28,7 @@ model User {
   spaceFlags    SpaceFlag[]
   companions    Companion[]    @relation("CompanionOwners")
   passkeys      Passkey[]      @relation("UserPasskeys")
+  pushSubs      PushSubscription[] @relation("UserPushSubs")
   builders      Builder[]      @relation("BuilderOwners")
 }
 // (follows live in the CafeFollow table, created via raw SQL in lib/notify.ts —
@@ -153,6 +154,21 @@ model Companion {
 
 // Device-bound HUMAN auth: a WebAuthn passkey. The private key never leaves
 // the user's device; we store only the public half and a signature counter.
+// Web-push subscription: a browser's push endpoint + its keys. One per browser
+// per user; the send path prunes dead ones (410/404). Ported from Unity Chant.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation("UserPushSubs", fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
 model Passkey {
   id           String    @id @default(cuid())
   userId       String

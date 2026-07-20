@@ -63,6 +63,10 @@ export async function POST(req: NextRequest) {
     })
     if (!verified || !registrationInfo) return NextResponse.json({ error: 'Not verified' }, { status: 400 })
     const cred = registrationInfo.credential
+    // MUST ensure the table here too: the GET set tableReady on ITS lambda, but
+    // this POST usually runs on a different serverless instance where the table
+    // was never created — so the insert threw and Face ID "did nothing".
+    await ensurePasskeyTable()
     await prisma.passkey.create({
       data: {
         userId: user.id,

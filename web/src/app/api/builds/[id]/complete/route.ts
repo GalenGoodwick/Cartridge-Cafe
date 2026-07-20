@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveHolder, hist } from '@/lib/builds'
+import { notifyUser } from '@/lib/notify'
+import { sendPushToUser, cafePush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -31,6 +33,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: holder.id },
       data: { jobsDone: { increment: 1 }, reputation: { increment: 1 } },
     }).catch(() => {})
+  }
+
+  // Tell the world's owner it's ready — in-app bell (always) + OS push (if they
+  // opted in). A brewed world can queue and take minutes; this is the ping.
+  if (job.spaceId) {
+    const space = await prisma.playerSpace.findUnique({
+      where: { id: job.spaceId },
+      select: { ownerId: true, name: true, slug: true },
+    }).catch(() => null)
+    if (space?.ownerId) {
+      const nm = space.name || space.slug
+      void notifyUser(space.ownerId, 'built', `✦ "${nm}" finished building — come see it.`, `/space/${space.slug}`).catch(() => {})
+      void sendPushToUser(space.ownerId, cafePush.worldBuilt(nm, space.slug)).catch(() => {})
+    }
   }
   return NextResponse.json({ ok: true })
 }

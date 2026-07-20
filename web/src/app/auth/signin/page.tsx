@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { signIn, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
+import { NotifyMeButton } from '@/components/NotifyMeButton'
 
 // next-auth error codes, translated into cafe language
 const ERROR_TEXT: Record<string, string> = {
@@ -94,6 +95,10 @@ function SignInInner() {
                   ⌘ ADD FACE ID / TOUCH ID
                 </button>
                 {enrolled && <p className="font-mono text-[12px] text-grounds">{enrolled}</p>}
+                <div className="pt-1">
+                  <p className="font-sans text-[13px] text-grounds mb-2">get a ping when a world you brewed finishes building — even after you leave.</p>
+                  <NotifyMeButton label="🔔 TURN ON NOTIFICATIONS" onLabel="🔔 NOTIFICATIONS ON" className="items-stretch" />
+                </div>
               </div>
             )}
             {errorCode && (
@@ -101,6 +106,10 @@ function SignInInner() {
                 {ERROR_TEXT[errorCode] || ERROR_TEXT.Default}
               </p>
             )}
+            {/* The sign-in DOORS. Once you're in, they vanish — the only thing
+                left is the post-auth card above (name is set, secure the device,
+                turn on notifications). "After auth" belongs after auth. */}
+            {!session?.user && <>
             {(!providers || !!providers.google) && (
               <button
                 onClick={() => signIn('google', { callbackUrl })}
@@ -187,6 +196,14 @@ function SignInInner() {
               <a href="/privacy" className="text-brass hover:text-flame underline">privacy</a>.
               <br />worlds you make public can be branched by others · private stays yours.
             </div>
+            </>}
+            {/* once signed in, the way onward — the doors above are gone */}
+            {session?.user && (
+              <a href={callbackUrl}
+                className="block w-full text-center rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[13px] tracking-[0.2em] px-6 py-3.5 transition-colors">
+                ENTER THE CAFE →
+              </a>
+            )}
           </div>
         </div>
         <a href="/" className="brass-tab inline-block px-2 py-1 text-[12px] mt-6 arrive" style={{ animationDelay: '0.2s' }}>

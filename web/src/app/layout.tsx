@@ -4,6 +4,7 @@ import './globals.css'
 import Beacon from './Beacon'
 import { Providers } from './providers'
 import SupportGate from './SupportGate'
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
 
 const sourceSerif = Source_Serif_4({ subsets: ['latin'], variable: '--font-serif', display: 'swap' })
 const libreFranklin = Libre_Franklin({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         <Providers><SupportGate>{children}</SupportGate></Providers>
         <Beacon />
+        <ServiceWorkerRegistration />
       </body>
     </html>
   )
