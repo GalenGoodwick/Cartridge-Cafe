@@ -23,7 +23,6 @@ import { GameAudio } from './audio'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
-import { NotifyMeButton } from '@/components/NotifyMeButton'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
 
 let fieldCounter = 0
@@ -6343,8 +6342,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     )}
                   </div>
                 )}
-                {/* leave & get pinged when it's done — the whole point of the queue */}
-                {building && (isOwner || !spaceId) && <NotifyMeButton />}
                 {/* the live build console — the AI's coding progress, in a box */}
                 {building && (
                   <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
