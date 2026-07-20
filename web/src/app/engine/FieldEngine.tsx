@@ -6,6 +6,7 @@ import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
+import { GAME_STATE_KEYS } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
@@ -1624,7 +1625,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
         if (wd) {
           const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
-          for (const k of ['__chapters', '__trig', ...extra]) delete wd[k]
+          // RESTART (R) is a FULL reset — strip EVERY game/runtime key (the whole
+          // GAME_STATE_KEYS set, not just __chapters/__trig — that left __edge,
+          // gpuUniforms, __budget etc. behind = a half-reset). A version VIEW only
+          // clears transient engine progress so the saved state still shows.
+          const keys = resetFlag ? [...GAME_STATE_KEYS, ...extra] : ['__chapters', '__trig', ...extra]
+          for (const k of keys) delete wd[k]
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
@@ -2233,7 +2239,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           try { if (sessionStorage.getItem('cc-reset:' + spaceSlug)) { reset = true; sessionStorage.removeItem('cc-reset:' + spaceSlug) } } catch { /* private mode */ }
           if (reset || versionView) {
             const extra = Array.isArray(snapshot.worldData.__resets) ? snapshot.worldData.__resets : []
-            for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
+            // R = FULL reset (every GAME_STATE_KEY); version view = engine state only
+            const keys = reset ? [...GAME_STATE_KEYS, ...extra] : ['__chapters', '__trig', ...extra]
+            for (const k of keys) delete snapshot.worldData[k]
           }
           Object.assign(sim.worldData, snapshot.worldData)
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches

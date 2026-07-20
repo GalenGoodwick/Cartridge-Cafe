@@ -24,25 +24,9 @@
 import { prisma } from '@/lib/prisma'
 import { getSpaceSnapshot, applyCommandToSnapshot } from '@/app/api/engine/space-store'
 import { deleteGameSlot } from '@/app/api/engine/store'
+import { GAME_STATE_KEYS, PRESERVED_KEYS } from '@/lib/gameStateKeys'
 
-/** GAME-state keys in worldData — wiped on a reset. `game` is the new unified
- *  holder; the rest are legacy scattered keys kept clearable for old worlds. */
-export const GAME_STATE_KEYS = [
-  'game',                                            // ← the unified holder new worlds use
-  '__tg', '__trig', '__edge', '__chapters', '__fresh',
-  'gpuUniforms', 'gpuPopulation', 'save2', 'music_mod', 'ai_focus',
-  '__trail', '__nudge', '__budget',
-  'last_hook_error', 'last_compile_error', '__hook_quarantined', '__hookError',
-  'cellSample', 'hud',
-] as const
-
-/** CONFIG/CONTENT keys that a reset must NEVER touch (the world itself). */
-export const PRESERVED_KEYS = new Set([
-  'icon_wgsl', 'instructions', 'built_by', 'persist', 'postProcess', 'singlePlayer',
-  'creation_brief', 'brief_done', 'built_notes', 'build_notes',
-  '__sandbox', '__house_requested', '__resets', '__built_ua', '__built_at',
-  '__bridge_rev', 'rResetKey', '__k', '__fixedStep', '__seed',
-])
+export { GAME_STATE_KEYS, PRESERVED_KEYS }
 
 export interface ResetOpts {
   clearPlayer?: boolean   // also wipe per-user progress (worldData.save)
