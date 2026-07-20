@@ -254,7 +254,22 @@ export function applyCommandToSnapshotObject(
     case 'create_field': {
       const fieldId = `field_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const color = (cmd.color as [number, number, number, number]) ?? [1, 1, 1, 1]
-      const shape = (cmd.shape as string) ?? 'circle'
+      // Shape default follows what the field IS. This is a shader-composition
+      // engine: a skinned field's real shape is its visual's ALPHA (the engine
+      // reads back per-field pixel presence for pixel-perfect interaction), so
+      // the geometric primitive is just the canvas the shader paints inside.
+      // Defaulting a skinned field to a 20px circle shipped dot-sized worlds
+      // (LATTICE). So:
+      //   · skinned + no size given  → 'screen' (full-viewport canvas; alpha = shape)
+      //   · explicit radius          → 'circle' (bounded, movable disc)
+      //   · explicit w/h             → 'rect'   (bounded, movable box)
+      //   · unskinned + nothing      → 'circle' r20 (a real physics primitive)
+      const hasRadius = cmd.radius != null
+      const hasWH = cmd.w != null || cmd.width != null || cmd.h != null || cmd.height != null
+      const skinned = cmd.visualType != null
+      const shape = (cmd.shape as string) ?? (
+        hasRadius ? 'circle' : hasWH ? 'rect' : skinned ? 'screen' : 'circle'
+      )
       snap.fields.push({
         id: fieldId,
         name: (cmd.name as string) ?? 'Unnamed',

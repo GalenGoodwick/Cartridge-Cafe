@@ -197,7 +197,16 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
     const gpu = Array.isArray(worldData.gpuUniforms) ? worldData.gpuUniforms : [];
     const UARR = new Float32Array(256); for (let i = 0; i < Math.min(gpu.length, 256); i++) UARR[i] = +gpu[i] || 0;
     const tr = simFields.get(field.id)?.transform || field.transform || {};
-    const fx = tr.x ?? 256, fy = tr.y ?? 256, fw = field.w ?? 512, fh = field.h ?? 512, col = field.color || [1, 1, 1, 1];
+    const fx = tr.x ?? 256, fy = tr.y ?? 256, col = field.color || [1, 1, 1, 1];
+    // Honor the field's SHAPE so the render is truthful about SIZE: a 20px circle
+    // must look like a 20px dot, not a full screen. (Framing every field to fill
+    // is how a dot-sized world — LATTICE — passed the probe.) screen = full grid,
+    // circle = 2·radius box, rect/other = w/h.
+    const shapeType = field.shapeType || (field.radius != null ? "circle" : (field.w != null ? "rect" : "screen"));
+    let fw, fh;
+    if (shapeType === "screen") { fw = 512; fh = 512; }
+    else if (shapeType === "circle") { const rad = field.radius ?? 20; fw = 2 * rad; fh = 2 * rad; }
+    else { fw = field.w ?? 512; fh = field.h ?? 512; }
     device.queue.writeBuffer(ubuf, 0, new Float32Array([S, time, fx, fy, fw, fh, col[0], col[1], col[2], col[3] ?? 1, BG[0], BG[1], BG[2], 0, 0, 0]));
     device.queue.writeBuffer(gbuf, 0, UARR);
     const enc = device.createCommandEncoder();
