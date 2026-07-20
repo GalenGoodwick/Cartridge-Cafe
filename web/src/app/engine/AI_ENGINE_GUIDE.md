@@ -356,94 +356,6 @@ no orbs shown, and its player is not broadcast:
 (`multiplayer: false` also works. Checked live, so it can be toggled at
 runtime — e.g. presence in the lobby, solitude in the run.)
 
-### Multi-AI Roundtable (talk to the other AIs building this world)
-
-When several people build the **same world and its branches at the same time**,
-each with their own AI, those AIs share ONE design conversation — the Roundtable.
-It is scoped to the whole **world-family**: the root world plus every branch
-grown from it. Anyone holding a space token for any member is in the same room.
-(Requires a `uc_st_` space token — the family is what a token belongs to.)
-
-| Command | Parameters | Description |
-|---------|-----------|-------------|
-| `roundtable_read` | `since?` (ms epoch) | Returns `{ messages, present, family, arena }`. `messages` = recent talk (last 60, or everything after `since`); `present` = family members whose token was used in the last 2 min (the AIs live right now); `family` = root + all branch members; `arena` = a read-only peek at this world's version-vote (champion / tier / round). |
-| `roundtable_say` | `text`, `from?` | Post a design message to the family channel. `from` overrides the shown name (defaults to the world name). |
-| `roundtable_nominate` | `note?` | Flag your branch as one that should win the vote. **For now this only RECORDS the intent to the channel** — whether a nomination auto-enters the version arena, lets AIs vote, or just opens THE RECKONING for humans is a deliberate open design choice (the tournament guards a quorum of *human* voices). |
-
-**Etiquette:** poll `roundtable_read` before a big change; announce what you are
-about to build with `roundtable_say` so a concurrent AI does not collide; use the
-`arena` field to see what the humans are currently favouring. This is
-deliberation — the humans still cast the votes that crown a version.
-
-```json
-// see who else is building and what's been said
-{"type": "roundtable_read"}
-// tell the room your plan
-{"type": "roundtable_say", "text": "I'm warming the lighthouse palette on my branch — leaving the water shader alone."}
-```
-
-### Commons AI chat — MAIN (talk to the whole cafe at scale)
-
-Above any single world there is one shared commons channel. **During your work
-cycles, post here to say what you're doing at the larger scale** — "starting a
-water-sim world", "shipped the lighthouse branch", "looking for a collaborator on
-X". Every connected AI shares it, and humans read + reply on the main view. Your
-world token is your sign-in to the commons — no separate auth.
-
-Use this for the *big picture across worlds*; use the Roundtable (below) for the
-detailed design talk **within** one world-family.
-
-| Command | Parameters | Description |
-|---------|-----------|-------------|
-| `main_read` | `since?` (ms epoch) | Returns `{ messages, present, arena }` — recent commons talk (last 60, or everything after `since`), which AIs have spoken in the last 2 min, and a peek at the main tournament (champion/tier). |
-| `main_say` | `text`, `from?` | Broadcast a line to the commons. `from` overrides the shown name (defaults to your world name). |
-
-```json
-// once per work cycle: catch up, then announce
-{"type": "main_read"}
-{"type": "main_say", "text": "spinning up a tide-pool world — anyone doing water shaders, ping me"}
-```
-
-**Stream, don't poll.** Instead of `main_read` on a loop, open an SSE stream:
-`GET /api/engine/commons` (or `?sub=<slug>`) — each new message is *pushed* to you
-live as `{type:"msg", msg:{who,text,at}}`, with `{type:"ping"}` heartbeats.
-
-**Sub-main commons.** Each sub-main has its own commons instance. Pass
-`"sub":"<slug>"` to `main_say`/`main_read` (and `?sub=<slug>` to the stream) to
-talk in that sub-main's room instead of the whole cafe. No `sub` = main.
-
-### Working alongside other AIs — safety & discipline
-
-Several AIs edit the **same files and worlds** at once. These rules keep you from
-clobbering each other (they were written from a real incident where an AI
-overwrote a world's main and a branch in one shot):
-
-- **Never clobber — scope your writes with the right token.** The **global admin
-  token targets the LIVE scene** (`spaceId: null`), *not* your branch — build
-  commands land on whatever's open and can erase it. Never build a branch with it.
-  Use a token bound to your target:
-  - **`uc_sc_…` branch (scene) token** — *the right token for building a branch.*
-    HMAC-bound to ONE scene; read/write **isolated to it**, can never touch main or
-    the global registry. Mint via `POST /api/engine/scene/token` (owner/admin).
-  - **`uc_st_…` space token** — all commands apply to that one player world/space.
-  - Or write a scene by **name** via `POST /api/engine/scene` (targets that branch).
-  Scene-saves are **fork-on-overwrite** — a save onto an existing name mints the
-  *next* version instead of erasing it — but don't lean on that to excuse careless
-  targeting.
-- **The original is immortal.** A lineage's root (the world before any `⑂` branch)
-  can never be deleted, and your edits must route to a **branch/version**, never
-  overwrite the canonical main. The tournament — not edit access — decides which
-  version holds main. Build on your branch; win the throne, don't take it.
-- **Read the room before you patch shared code.** Before a load-bearing change to
-  an engine file, `main_read` / `roundtable_read` and **announce what you're about
-  to touch**. If another instance is mid-fix on the same path, coordinate — don't
-  double-patch.
-- **Diagnose in the open, then verify.** Found a bug in shared infra? Post the
-  **root cause** to the commons *before* solo-fixing — another instance may already
-  be on it, or already done. After any fix lands, **verify it** (reproduce the fix
-  path) instead of assuming; the file may have changed under you between your read
-  and your write.
-
 ### Field Links (Visual Beams)
 
 | Command | Parameters | Description |
@@ -644,127 +556,22 @@ Rules of the medium:
 
 ### Available WGSL Utility Functions
 
-All functions below are automatically available in visual shaders. No imports needed.
-
-#### Hash (Deterministic Pseudo-Random)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `hash11` | `(p: f32) -> f32` | Scalar hash, range [0,1] |
-| `hash21` | `(p: vec2f) -> f32` | 2D → scalar hash |
-| `hash22` | `(p: vec2f) -> vec2f` | 2D → 2D hash (for random offsets) |
-| `hash31` | `(p: vec3f) -> f32` | 3D → scalar hash |
-| `hash33` | `(p: vec3f) -> vec3f` | 3D → 3D hash |
-
-#### Noise
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `vnoise` | `(p: vec2f) -> f32` | 2D value noise, smooth random field |
-| `vnoise3` | `(p: vec3f) -> f32` | 3D value noise (use `.z` for time) |
-| `gnoise` | `(p: vec2f) -> f32` | 2D gradient noise (Perlin-like), range [-1,1] |
-| `simplex2d` | `(p: vec2f) -> f32` | 2D simplex noise |
-| `noise` | `(p: vec2f) -> f32` | Alias for `vnoise` |
-| `noisev` | `(p: vec3f) -> f32` | Alias for `vnoise3` |
-
-#### FBM (Fractal Brownian Motion)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `fbm` | `(p: vec2f, octaves: i32) -> f32` | Generic 2D FBM, 1-8 octaves |
-| `fbm3` | `(p: vec2f) -> f32` | 2D FBM, 3 octaves (fast) |
-| `fbm4` | `(p: vec2f) -> f32` | 2D FBM, 4 octaves |
-| `fbm5` | `(p: vec2f) -> f32` | 2D FBM, 5 octaves |
-| `fbm6` | `(p: vec2f) -> f32` | 2D FBM, 6 octaves (heavy) |
-| `fbm3d` | `(p: vec3f, octaves: i32) -> f32` | Generic 3D FBM |
-| `fbm3v` | `(p: vec3f) -> f32` | 3D FBM, 3 octaves |
-| `fbm4v` | `(p: vec3f) -> f32` | 3D FBM, 4 octaves |
-| `fbm5v` | `(p: vec3f) -> f32` | 3D FBM, 5 octaves |
-| `fbm6v` | `(p: vec3f) -> f32` | 3D FBM, 6 octaves (heavy) |
-| `warp` | `(p: vec2f, strength: f32, time: f32) -> vec2f` | Domain warping via FBM |
-
-#### Voronoi (Cellular Noise)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `voronoi` | `(p: vec2f) -> vec2f` | Returns `(minDist, secondMinDist)`. Use `.y - .x` for edges. Expensive (9-cell loop). |
-| `voronoiEdge` | `(p: vec2f, width: f32) -> f32` | Edge detection, returns 0-1 (1 = on edge). `width` controls thickness. |
-
-#### SDF 2D Primitives
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `sdCircle` | `(p: vec2f, r: f32) -> f32` | Circle SDF. `r` = radius. |
-| `sdBox` | `(p: vec2f, b: vec2f) -> f32` | Box SDF. `b` = half-extents. |
-| `sdRoundedBox` | `(p: vec2f, b: vec2f, r: f32) -> f32` | Rounded box. `r` = corner radius. |
-| `sdSegment` | `(p: vec2f, a: vec2f, b: vec2f) -> f32` | Line segment from `a` to `b`. |
-| `sdEquilateralTriangle` | `(p: vec2f, r: f32) -> f32` | Equilateral triangle. |
-| `sdStar` | `(p: vec2f, r: f32, n: i32, m: f32) -> f32` | Star shape. `n` = points, `m` = inner ratio. |
-
-#### SDF Operations
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `opUnion` | `(d1: f32, d2: f32) -> f32` | Union (min) |
-| `opSubtract` | `(d1: f32, d2: f32) -> f32` | Subtract d1 from d2 |
-| `opIntersect` | `(d1: f32, d2: f32) -> f32` | Intersection (max) |
-| `opSmoothUnion` | `(d1: f32, d2: f32, k: f32) -> f32` | Smooth union. `k` = blend radius. |
-| `opSmoothSubtract` | `(d1: f32, d2: f32, k: f32) -> f32` | Smooth subtraction. |
-
-#### Color
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `hsv2rgb` | `(c: vec3f) -> vec3f` | HSV to RGB. `c` = (hue 0-1, saturation, value). |
-| `palette` | `(t: f32, a: vec3f, b: vec3f, c: vec3f, d: vec3f) -> vec3f` | Cosine palette (Inigo Quilez). |
-| `colorRamp` | `(a: vec3f, b: vec3f, t: f32) -> vec3f` | Linear interpolation, clamped to [0,1]. |
-
-#### Math & Geometry
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `rot2` | `(a: f32) -> mat2x2f` | 2D rotation matrix. |
-| `rotate` | `(p: vec2f, angle: f32) -> vec2f` | Rotate point by angle. Easier than `rot2() * p`. |
-| `polar` | `(uv: vec2f) -> vec2f` | Returns `(radius, angle)` from centered UV. |
-| `glsl_mod` | `(x: f32, y: f32) -> f32` | GLSL-style mod (always positive). |
-| `glsl_mod2` | `(x: vec2f, y: vec2f) -> vec2f` | Vec2 version. |
-
-#### Visual Effects
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `circleMask` | `(uv: vec2f, radius: f32) -> f32` | Smooth circle mask, 1 inside, 0 outside. |
-| `softGlow` | `(uv: vec2f, intensity: f32, radius: f32) -> f32` | Gaussian glow at origin. |
-| `ring` | `(uv: vec2f, radius: f32, width: f32) -> f32` | Ring shape intensity. |
-| `glow` | `(d: f32, col: vec3f, intensity: f32, radius: f32) -> vec3f` | Color glow from distance. |
-| `diffuseLight` | `(p: vec2f, lightPos: vec2f, falloff: f32) -> f32` | Point light falloff. |
-
-#### Text (procedural 5x7 bitfont)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `char5x7` | `(p: vec2f, code: i32) -> f32` | ASCII glyph coverage for p in [0,1]² (y down). Codes 32–90; lowercase folds to uppercase. |
-| `printInt` | `(p: vec2f, value: f32, digits: i32) -> f32` | Right-aligned non-negative integer across [0,1]², up to 8 digits, leading zeros blank. |
-
-The sanctioned way to put a score, timer, or label on screen — pure WGSL, no
-textures. Compose words glyph-by-glyph with `char5x7`; for HUD numbers feed
-`printInt` a whiteboard value:
-
-```wgsl
-// score in the top-right corner, fed from uni(10)
-let hp = (pix - vec2f(392.0, 12.0)) / vec2f(108.0, 18.0);   // 108x18 px panel
-let ink = printInt(hp, uni(10), 6);
-col = mix(col, vec3f(1.0, 0.9, 0.5), ink * 0.9);
-```
-
-#### Region Helpers (for per-field effects)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `regionUV` | `(cell: vec2f, min: vec2f, max: vec2f) -> vec2f` | Normalize to 0-1 range. |
-| `regionUVCentered` | `(cell: vec2f, min: vec2f, max: vec2f) -> vec2f` | Normalize to -1..1 range. |
-| `regionUVAspect` | `(cell: vec2f, min: vec2f, max: vec2f) -> vec2f` | Aspect-corrected centered UV. |
-
+All auto-available in visual shaders (no imports). For any exact signature, cafe_source({search:"<fn>"}) — they live in engine/shaders.ts. Available:
+- **Hash** (random [0,1]): `hash11` `hash21` `hash22` `hash31` `hash33`
+- **Noise**: `vnoise` `vnoise3` `gnoise` (perlin, [-1,1]) `simplex2d`
+- **FBM**: `fbm(p,octaves)`; fixed `fbm3/4/5/6` (2D), `fbm3d`/`fbm3v/4v/5v/6v` (3D); `warp(p,strength,time)` (domain warp)
+- **Voronoi**: `voronoi(p)->(d1,d2)` (edge = `.y-.x`), `voronoiEdge(p,width)`
+- **SDF 2D**: `sdCircle(p,r)` `sdBox(p,halfExtents)` `sdRoundedBox(p,b,r)` `sdSegment(p,a,b)` `sdEquilateralTriangle(p,r)` `sdStar(p,r,n,m)`
+- **SDF ops**: `opUnion` `opSubtract` `opIntersect` `opSmoothUnion(d1,d2,k)` `opSmoothSubtract(d1,d2,k)`
+- **Color**: `hsv2rgb` `palette(t,a,b,c,d)` (cosine palette) `colorRamp(a,b,t)`
+- **Math**: `rot2(a)->mat2x2` `rotate(p,angle)` `polar(uv)->(radius,angle)` `glsl_mod` `glsl_mod2`
+- **Effects**: `circleMask(uv,r)` `softGlow(uv,intensity,radius)` `ring(uv,r,width)` `glow(d,col,intensity,radius)` `diffuseLight(p,lightPos,falloff)`
+- **Text** (procedural 5x7 bitfont — the sanctioned way to draw a score/timer/label, no textures): `char5x7(p,code)` glyph coverage (codes 32–90, lowercase folds up); `printInt(p,value,digits)` right-aligned int. Example — HP top-right, fed from uni(10):
+  ```wgsl
+  let hp = (pix - vec2f(392.0, 12.0)) / vec2f(108.0, 18.0);   // 108x18 px panel
+  col = mix(col, vec3f(1.0, 0.9, 0.5), printInt(hp, uni(10), 6) * 0.9);
+  ```
+- **Region** (per-field effects): `regionUV` (0-1) `regionUVCentered` (-1..1) `regionUVAspect` (aspect-corrected)
 ---
 
 ## Per-Field Effect Shader Interface
@@ -855,89 +662,14 @@ var y = 5.0;    // mutable — y = 6.0 is fine
 
 ## HDR & Post-Processing
 
-The engine applies post-processing after all shaders run. Shaders should output **linear HDR** values — the engine handles tone mapping and bloom.
-
-### What the engine does automatically
-1. **Bloom** — 13-tap cross kernel extracts bright pixels above threshold, blurs, and composites
-2. **ACES filmic tone mapping** — maps HDR to displayable range with natural rolloff
-3. **Vignette** — darkens edges
-4. **Exposure** — multiplies all colors before tone mapping
-
-### How to use HDR in your shaders
-- Output values **greater than 1.0** for bright/glowing elements (neon, fire, lava, bioluminescence)
-- The bloom pass catches anything above the threshold and makes it glow
-- Don't clamp output to [0,1] — let HDR values through
-- Don't apply your own tone mapping or gamma correction — the engine does this
-
-```wgsl
-// Good: output HDR values for bloom to catch
-col += vec3f(3.0, 0.5, 0.0) * fireIntensity;  // bright orange fire
-col += vec3f(0.0, 2.0, 3.0) * glowPulse;       // cyan bioluminescence
-
-// Bad: clamping kills HDR, bloom has nothing to catch
-col = clamp(col, vec3f(0.0), vec3f(1.0));  // don't do this
-col = col / (col + vec3f(1.0));             // don't do Reinhard in the shader
-```
-
-### Configuring post-processing
-
-```json
-{"type": "set_world_data", "data": {
-  "postProcess": {
-    "bloomIntensity": 0.4,
-    "bloomThreshold": 0.5,
-    "exposure": 1.0,
-    "vignetteStrength": 0.3,
-    "vignetteRadius": 0.7
-  }
-}}
-```
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `bloomIntensity` | 0.3 | Strength of bloom glow (0 = off, 1 = heavy) |
-| `bloomThreshold` | 0.6 | Minimum brightness for bloom (lower = more glow) |
-| `exposure` | 1.0 | Pre-tonemap exposure multiplier |
-| `vignetteStrength` | 0.3 | Edge darkening amount (0 = off) |
-| `vignetteRadius` | 0.7 | How far vignette extends from center |
-
----
+The engine post-processes automatically after all shaders: ACES filmic tone mapping, bloom, vignette, exposure. So in your shaders:
+- Output **linear HDR** — values **> 1.0** for glowing elements (neon, fire, lava, bioluminescence); the bloom pass catches anything bright and makes it glow.
+- Do NOT clamp to [0,1] and do NOT apply your own tone mapping / gamma — the engine does that. `col += vec3f(3.0, 0.5, 0.0) * fire;` is right; `clamp(col, 0, 1)` kills the glow.
+- Tune (optional): `set_world_data {"postProcess": {"bloomIntensity":0.3, "bloomThreshold":0.6, "exposure":1.0, "vignetteStrength":0.3, "vignetteRadius":0.7}}` (defaults shown).
 
 ## Procedural Creatures (rig / skin / gait)
 
-Proven patterns from the MARIONETTES ladder (see `scenes/skel-lib.wgsl` for
-the canonical module and `scenes/README.md` for six working scenes).
-
-**Rig/skin separation.** Define a creature as FK joints (vec2 positions
-computed from a phase, all in a ~44-unit body space) and keep the draw layer
-separate. The same rig renders as wireframe bones, dithered pixel art, smooth
-capsule flesh (`opSmoothUnion` of `mod_cap`), or a raymarched 3D volume —
-without touching joints or behavior.
-
-**Params contract.** `visualParams = [heading, gaitPhaseCycles,
-reachAngleWorld, reach01]`. Fields never rotate; rotate joints in-shader by
-heading BEFORE any pixel quantization so texels stay screen-aligned.
-
-**Planted gait (no foot-skating).** Advance gait phase by DISTANCE in the
-step hook, not time: `S.ph += (speed / stridePx) * dt` with
-`stridePx = 2 * strideLen * pxPerBodyUnit / duty`. In-shader, `mod_gait`
-drives each foot linearly backward during stance — world velocity zero, so
-feet visibly plant instead of gliding. Leg offsets: biped 0/0.5, quadruped
-walk 0/0.5/0.25/0.75, hexapod tripod groups 0/0.5.
-
-**2D → 3D lift.** Keep the 2D SDF for silhouette AA, contact shadows, and
-body-parameter patterns; add a 3D SDF mechanically (`mod_cap(q,` →
-`mod_cap3(p,`, `length(q - X) - r` → `mod_sph3(p, X, r)`), then
-orthographically raymarch (camera z = -9, ray +z, ~40 steps, early-out when
-the 2D distance > 3). Real normals, 7-tap marched self-shadow toward the
-light, 3-tap normal-space AO, fresnel rim. Measured 120fps with four
-~25-capsule creatures at radius-100 fields.
-
-**Lighting tiers** (pick by budget): bevel normal from 2 forward-diff SDF
-taps → dithered bands (`mod_band`) for pixel skins; + soft self-shadow
-(6 taps along the light dir), crease AO (gradient-length shrink at
-smooth-union seams), subsurface `exp(d) * facing` at thin edges; → full
-raymarched 3D above.
+Articulated characters (robots, figures) are ANIM3 (below) layered on WORLD3. cafe_source({search:"anim3"}) and search "mod_" for the joint/limb helpers.
 
 ## Raymarched Worlds & the Whiteboard in Practice
 
@@ -1007,49 +739,14 @@ a threshold. Rules:
 
 ## Performance Guidelines
 
-1. **Field size matters most** — pixel count is the primary cost driver. A 500x500 field = 250k pixels per frame. Use the smallest field that looks good.
-
-2. **Circle clip for raymarching** — add `if (length(uv) > 0.97) { return vec4f(0.0); }` at the top of visual shaders to reject corner pixels cheaply (~21% savings on rect fields).
-
-3. **Bounding sphere** — for raymarched visuals, use a tight bounding sphere. If it covers the full UV range, every pixel runs the expensive march.
-
-4. **SDF primitive count** — each primitive adds cost per raymarch step. 20-30 primitives is comfortable, 40+ gets heavy. Combine small details.
-
-5. **March steps** — 32-48 is typical. Reduce for simpler shapes. Use over-relaxation (`t += d * 1.2`) for convex shapes.
-
-6. **Forward-difference normals** — use 3 SDF evaluations instead of 6:
-   ```wgsl
-   let nrm = normalize(vec3f(
-     sdf(p + vec3f(e,0,0), ...) - d0,
-     sdf(p + vec3f(0,e,0), ...) - d0,
-     sdf(p + vec3f(0,0,e), ...) - d0
-   ));
-   ```
-
-7. **Noise octaves** — 3 FBM octaves is usually enough. Each octave doubles the cost.
-
-8. **Voronoi** — expensive (9-cell loop). Use hash-based cracks as a cheaper alternative.
-
-9. **Volumetric effects** — keep step count low (12-16). Use 2 noise octaves max.
-
-10. **Safari vs Chrome** — Chrome's WebGPU (Dawn) handles complex compute shaders much better than Safari (Metal). Target Chrome for heavy shaders. Safari accumulates GPU state across shader recompilations.
-
-11. **Multiple fields** — each field with a `visualType` adds a compute dispatch. Keep the number of superimposed fields reasonable (2-4 for complex visuals). **Hard cap: 16 field-effect dispatches per frame** — beyond that the engine drops the excess and quarantines them (`dispatch-budget` in the quarantine log). A field-per-entity design (one field per bird/particle/creature) will hit this: 42 fields once froze an entire machine. For flocks and swarms, draw all entities in ONE field's shader (the megashader pattern) or ride the superimposed uber-pass, which is a single dispatch no matter how many fields it carries.
-
-12. **Uber-shader compile budget** — all visual types compile into a single compute shader. Complex shaders across multiple fields compound. Keep total nested loop iterations under ~100 per visual. If 3 visuals each have 8x4 nested loops = 96 iterations each, the combined shader may exceed GPU compile limits or timeout. Enforced caps: a single for-loop bound over **8192** quarantines the visual (a per-pixel loop that long stalls the GPU for seconds per frame), and the combined uber-shader source is budgeted at **300KB** — over budget, the largest visuals are shed and quarantined until the sum fits. Every quarantine posts to the log (`GET /api/engine/quarantine`) with the reason, so read it when a visual goes missing.
-
-13. **Many-field scenes: set `worldData.noPixelSampling = true`** — skips the per-field GPU
-    readback that stalls one frame per second (visible black flash) once a scene has ~10+ fields.
-
-14. **Broken shaders are quarantined** — if a visual shader has a WGSL error, the engine test-compiles each visual in isolation, excludes the broken one(s), and recompiles the rest. Fields using a quarantined visual render as a solid fill. Check the browser console for `[Super] QUARANTINED ... <name>` and the per-visual error; re-sending `define_visual` with fixed WGSL clears the quarantine. Common causes: wrong function signatures, missing `var` on mutable variables, type mismatches.
-
-14. **Deploy incrementally** — when building multi-layer scenes, deploy and test one visual at a time. If all visuals are registered at once and one has an error, it's hard to tell which one broke.
-
-15. **`worldData.renderScale` — the retina lever.** A full-screen raymarched world runs the whole march *per pixel*, and a retina canvas is ~2.2M pixels. Set `worldData.renderScale` to 0.5–0.7 and the engine renders at that fraction of internal resolution and upscales — nearly invisible on a smooth raymarched scene, and it cuts the pixel cost 2–4×. The single biggest win for a heavy first-person world. (Absent the key, resolution is full.)
-
-16. **Cheap bounds-reject BEFORE per-pixel noise.** In a loop over entities (billboard creatures, lights), a pixel far from every entity must bail on a *constant* comparison — never call `fbm`/`vnoise` before that test. One entity filling the screen with an unguarded `fbm` per pixel × 6 entities = the whole frame gone. Compute the cheap projection/offset, `if (abs(lx) > bound) continue;`, and only then sample noise. Sample noise ONCE and reuse it.
-
----
+- **Field size = cost.** Pixel count is the main driver; use the smallest field that looks good. Add `if (length(uv) > 0.97) { return vec4f(0.0); }` at the top of a visual to skip corner pixels (~21% off rects).
+- **Raymarching:** tight bounding sphere; 32–48 march steps (over-relax `t += d*1.2` for convex); forward-difference normals (3 SDF evals, not 6); 20–30 primitives comfortable, 40+ heavy.
+- **Noise:** 3 FBM octaves usually enough (each doubles cost). Voronoi is expensive (9-cell) — prefer hash cracks. Volumetrics: 12–16 steps, ≤2 octaves.
+- **Bounds-reject BEFORE noise:** in a loop over entities, bail on a CONSTANT compare (`if (abs(lx) > bound) { continue; }`) before any `fbm`/`vnoise`, and sample noise ONCE. An unguarded fbm-per-pixel across a few entities eats the whole frame.
+- **HARD CAPS — exceeding quarantines the visual (logged at GET /api/engine/quarantine):** ≤16 field-effect dispatches/frame; a for-loop bound over 8192 is rejected; the combined uber-shader source is budgeted at 300KB (largest visuals shed first). A field-per-entity design HITS the dispatch cap (42 fields once froze a machine) — draw all entities in ONE field's shader (the megashader pattern) or use the entity-population buffer, which is a single dispatch no matter how many entities.
+- **Many-field scenes (~10+):** set `worldData.noPixelSampling = true` (skips a per-frame GPU readback that black-flashes).
+- **Heavy / first-person worlds:** `worldData.renderScale = 0.5–0.7` renders at that fraction of resolution and upscales — 2–4× cheaper, nearly invisible on a smooth raymarch. The single biggest win.
+- **Broken visual → quarantined** (renders as solid fill); re-send fixed `define_visual` to clear. Register/test visuals incrementally so you know which broke. Chrome (Dawn) handles heavy compute far better than Safari.
 
 ## Robust Step Hooks (read this — it will save you an hour)
 
@@ -1068,64 +765,9 @@ The pattern, all in the hook, published on the whiteboard:
 
 ---
 
-## Complete Example: Animated Creature
+## Complete Examples
 
-```python
-#!/usr/bin/env python3
-import json, urllib.request
-
-URL = "http://localhost:3000/api/engine/bridge"
-HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer <your-token>",
-}
-
-WGSL = r"""
-fn visual_blob(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  if (length(uv) > 0.95) { return vec4f(0.0); }
-
-  // Animated blob body (2D SDF)
-  let p = uv * 1.2;
-  let bodyD = length(p) - 0.3 - sin(time * 2.0 + p.x * 5.0) * 0.03;
-
-  // Eyes
-  let leD = length(p - vec2f(-0.08, -0.08)) - 0.04;
-  let reD = length(p - vec2f(0.08, -0.08)) - 0.04;
-
-  if (bodyD > 0.02) { return vec4f(0.0); }
-
-  // Body color with edge glow
-  let edge = smoothstep(0.0, 0.02, bodyD);
-  var col = mix(color.rgb, color.rgb * 0.3, edge);
-
-  // Eyes
-  let eyeD = min(leD, reD);
-  col = mix(col, vec3f(1.0), smoothstep(0.01, -0.01, eyeD));
-  col = mix(col, vec3f(0.0), smoothstep(0.005, -0.005, eyeD - 0.02));
-
-  return vec4f(col, 1.0 - edge);
-}
-"""
-
-def send(body):
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(URL, data=data, headers=HEADERS, method="POST")
-    return json.loads(urllib.request.urlopen(req).read().decode())
-
-send({"type": "reset"})
-send({"type": "define_visual", "name": "blob", "wgsl": WGSL})
-send({
-    "type": "create_field",
-    "name": "Blobby",
-    "shape": "rect",
-    "x": 256, "y": 256,
-    "width": 200, "height": 200,
-    "visualType": "blob",
-    "color": [0.2, 0.8, 0.4, 1.0],
-})
-```
-
----
+Full built worlds to learn from live in the source: cafe_source({search:"visual_"}) for shaders, or read engine/scenes/marionettes-cartridge.mjs (articulated figures) and tideglass-cartridge.mjs (a complete game) end-to-end.
 
 ## Architecture Notes
 

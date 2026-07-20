@@ -60,7 +60,7 @@ async function callTool(name, args) {
     // point the rest at cafe_source (which pages the same file).
     const r = await fetch(`${BASE}/api/engine/guide`)
     const md = await r.text()
-    const CAP = 46_000
+    const CAP = 52_000   // trimmed guide is ~46.5k — fits whole, well under the ~74k tool-result limit
     if (md.length <= CAP) return md
     return md.slice(0, CAP) +
       `\n\n---\n[guide truncated at ${CAP} chars — read the rest with ` +
