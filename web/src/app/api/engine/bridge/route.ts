@@ -100,6 +100,27 @@ function wgslHazard(wgsl: string): string | null {
 }
 const SHADER_CMDS = new Set(['define_visual', 'define_module', 'inject_wgsl', 'add_effect', 'update_effect', 'add_state_shader'])
 
+/** VISUAL SIGNATURE CHECK — the exact blindness that shipped a dark stadium.
+ *  The engine superimposes every visual into ONE module and calls
+ *  `fn visual_<name>(uv, sdf, color, time, params, behind) -> vec4f`; a
+ *  standalone `@fragment fn main(...)` shader compiles NOWHERE in that pipeline,
+ *  so the field renders as nothing and no error ever reaches a headless builder.
+ *  Catch the wrong shape at the bridge and teach the right one inline. */
+function visualSignatureError(name: string, wgsl: string): string | null {
+  if (!wgsl) return null
+  const sig = `fn visual_${name}(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f`
+  if (/@fragment|@vertex|@compute/.test(wgsl)) {
+    return `this engine does NOT take standalone entry points (@fragment/@vertex/@compute). A visual is a plain function composed into one shared module. Rewrite as: ${sig} { ... return vec4f(rgb, alpha); }`
+  }
+  if (/@location|@builtin|@group|@binding/.test(wgsl)) {
+    return `no @location/@builtin/@group bindings — a visual is a pure function, not a pipeline stage. Rewrite as: ${sig}`
+  }
+  if (!/fn\s+visual_\w+\s*\(/.test(wgsl)) {
+    return `no visual_* function found — the engine looks for fn visual_<name>(...) and found nothing to call, so this field would render as NOTHING. Define: ${sig}`
+  }
+  return null
+}
+
 /** Mint a fresh uc_st_ world token for a space (raw shown once, SHA-256 stored). */
 async function mintWorldToken(spaceId: string, name: string): Promise<string> {
   const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
@@ -778,6 +799,15 @@ export async function POST(req: NextRequest) {
           results.push({ type: cmd.type, name: cmd.name, error: `HAZARD — rejected, not applied: ${hazard}. Rewrite this shader and resend.` })
           continue
         }
+        // SIGNATURE CHECK — a visual in the wrong shape (standalone @fragment)
+        // compiles nowhere and renders as nothing; reject with the right form.
+        if (cmd.type === 'define_visual') {
+          const sigErr = visualSignatureError(String(cmd.name ?? ''), code)
+          if (sigErr) {
+            results.push({ type: cmd.type, name: cmd.name, error: `WRONG SHADER SHAPE — rejected, not applied: ${sigErr}` })
+            continue
+          }
+        }
       }
 
       // RENDER CHECK — brief_done means "the world is done"; refuse it while the
@@ -789,14 +819,20 @@ export async function POST(req: NextRequest) {
         try {
           const snap = await getSpaceSnapshot(auth.spaceId!)
           const fields = (snap?.fields ?? []) as Array<{ name?: string; visualTypeName?: string }>
-          const registered = new Set(((snap?.visualTypes ?? []) as Array<{ name?: string }>).map(v => v.name))
-          const skinned = fields.filter(f => f.visualTypeName && registered.has(f.visualTypeName))
-          const unskinned = fields.filter(f => !f.visualTypeName || !registered.has(f.visualTypeName))
+          // a visual only RENDERS if its wgsl defines a visual_* function — a
+          // registered-but-wrong-shaped visual (standalone @fragment) draws
+          // nothing, which is exactly how a fully-linked stadium shipped dark.
+          const visuals = (snap?.visualTypes ?? []) as Array<{ name?: string; wgsl?: string }>
+          const renderable = new Set(visuals.filter(v => /fn\s+visual_\w+\s*\(/.test(v.wgsl ?? '')).map(v => v.name))
+          const broken = visuals.filter(v => v.name && !renderable.has(v.name)).map(v => v.name)
+          const skinned = fields.filter(f => f.visualTypeName && renderable.has(f.visualTypeName))
+          const unskinned = fields.filter(f => !f.visualTypeName || !renderable.has(f.visualTypeName))
           if (fields.length > 0 && skinned.length === 0) {
             results.push({ type: cmd.type, error:
-              `RENDER CHECK FAILED — brief_done refused: every field is INVISIBLE (none has a registered visualType), so the world renders black. ` +
-              `Attach visuals first: create_field {"visualType":"<name you define_visual'd>"} or set_visual {"fieldId":"...","visualType":"<name>"}. ` +
-              `Unskinned fields: ${unskinned.map(f => f.name).filter(Boolean).slice(0, 10).join(', ')}` })
+              `RENDER CHECK FAILED — brief_done refused: no field has a WORKING visual, so the world renders black. ` +
+              (broken.length ? `These visuals are the WRONG SHAPE (no fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f — standalone @fragment shaders compile nowhere here): ${broken.slice(0, 12).join(', ')}. Re-send each with define_visual in the correct form. ` : '') +
+              `Attach working visuals: create_field {"visualType":"<name>"} or set_visual {"fieldId":"...","visualType":"<name>"}. ` +
+              `Fields without a working skin: ${unskinned.map(f => f.name).filter(Boolean).slice(0, 10).join(', ')}` })
             continue   // brief_done NOT set; the build isn't done until it renders
           }
           if (unskinned.length > 0) {

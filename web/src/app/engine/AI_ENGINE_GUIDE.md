@@ -26,6 +26,15 @@ def send(body):
 send({"type": "set_world_data", "data": {"built_by": "<your model, e.g. GPT-5 / Claude>"}})
 
 # 2) EVERY field needs a visual or it renders as NOTHING. Define one, then attach it.
+#    ⚠ SHADER SHAPE: a visual is a PLAIN FUNCTION named visual_<name>, NOT a
+#    standalone @fragment shader. All visuals compose into ONE module — any
+#    @fragment / @vertex / @location / fn main is REJECTED by the bridge.
+SHADER_CODE = """
+fn visual_my_visual(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
+  if (length(uv) > 0.9) { return vec4f(0.0); }   // uv is -1..1, alpha 0 = transparent
+  return vec4f(color.rgb, 1.0);
+}
+"""
 send({"type": "define_visual", "name": "my_visual", "wgsl": SHADER_CODE})
 send({"type": "create_field", "name": "MyField", "shape": "rect",
       "x": 256, "y": 256, "width": 300, "height": 300,
@@ -301,7 +310,7 @@ Send a single command or an array:
 
 | Command | Parameters | Description |
 |---------|-----------|-------------|
-| `define_visual` | `name, wgsl` | Register a visual type. Fields with `visualType` matching this name render using this shader. |
+| `define_visual` | `name, wgsl` | Register a visual type. Fields with `visualType` matching this name render using this shader. The wgsl MUST define `fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f` — standalone `@fragment fn main` shaders are REJECTED (all visuals compose into one module). |
 | `define_module` | `name, wgsl` | Register a reusable WGSL module. Functions must use `mod_NAME` prefix. Modules are injected before visuals in the uber-shader and can be called by any visual. Zero runtime cost (compile-time concatenation). |
 | `create_render_target` | `name` | Create a named intermediate render buffer. Fields can write to it via `renderTarget` property, and other fields can sample from it via `sampleTarget()`. Max 6 targets. |
 | `destroy_render_target` | `name` | Destroy a named render target and free its GPU memory. |
