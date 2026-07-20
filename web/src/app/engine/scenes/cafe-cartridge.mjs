@@ -924,7 +924,7 @@ try {
         // own radius (big ≈ 31u, small ≈ 25u) plus a constant breathing gap.
         const rSum = (B.big ? 31 : 25) + (C.big ? 31 : 25)
         // a big bubble keeps EXTRA distance from the field so its click zone is clear
-        const clr = rSum + ((B.big || C.big) ? 58 : 36)
+        const clr = rSum + ((B.big || C.big) ? 50 : 28)
         if (sd < clr) {
           const push = (clr - sd) * 9 * dt2
           if (!B.anchored) { B.vx += sx / sd * push; B.vy += sy / sd * push }
@@ -934,7 +934,7 @@ try {
         // correction, so even a SETTLED / adopted layout keeps its breathing room —
         // the soft velocity push only spaces things while they're moving. Moves
         // anchored bubbles too; only the PINNED three are immovable.
-        const floor = rSum + ((B.big || C.big) ? 40 : 16)
+        const floor = rSum + ((B.big || C.big) ? 32 : 10)
         if (sd < floor) {
           const over = floor - sd, nx = sx / sd, ny = sy / sd
           if (!B.pinned && !C.pinned) { B.x += nx * over * 0.5; B.y += ny * over * 0.5; C.x -= nx * over * 0.5; C.y -= ny * over * 0.5 }
