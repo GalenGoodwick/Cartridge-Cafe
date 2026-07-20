@@ -113,9 +113,24 @@ function validateSubmainsWrite(prevRaw: unknown, nextRaw: unknown, userId: strin
   return true
 }
 
+/** Game saves are PER-PLAYER: the server — not a client-supplied string — decides
+ *  whose save a slot is. A signed-in or guest session keys the slot by its user id
+ *  (spoof-proof: a client can't read another player's save by guessing a name); a
+ *  session-less browser falls back to a per-browser anon token it supplies (unique
+ *  per browser, so still never a shared slot). Callers opt in with `scope=user`.
+ *  Without it the slot is shared as before (tournaments, the group registry, chat).
+ *  This is what keeps one player's save out of everyone else's. */
+async function userScopedSlot(slot: string, anon: string | null): Promise<string> {
+  const uid = (await getServerSession(authOptions))?.user?.id
+  if (uid) return `usr:${uid}:${slot}`
+  const tok = (anon || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40)
+  return `usr:anon-${tok || 'x'}:${slot}`
+}
+
 /**
- * GET /api/engine/save?slot=xxx     — read a save slot
- * GET /api/engine/save?action=list  — list all slots
+ * GET /api/engine/save?slot=xxx               — read a shared save slot
+ * GET /api/engine/save?slot=xxx&scope=user    — read THIS player's slot (per-user)
+ * GET /api/engine/save?action=list            — list all slots
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -124,7 +139,10 @@ export async function GET(req: NextRequest) {
   }
   const slot = searchParams.get('slot')
   if (!slot) return NextResponse.json({ error: 'slot or action=list required' }, { status: 400 })
-  const data = await loadGameSlot(slot)
+  const key = searchParams.get('scope') === 'user'
+    ? await userScopedSlot(slot, searchParams.get('anon'))
+    : slot
+  const data = await loadGameSlot(key)
   return NextResponse.json({ slot, data: data ?? null })
 }
 
@@ -170,7 +188,12 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'Not authorized to change groups you do not own' }, { status: 403 })
         }
       }
-      await saveGameSlot(body.slot, body.data)
+      // per-player game saves are namespaced by the SERVER's idea of who you are,
+      // never the client's — so a player's save can't land in another's slot
+      const key = body.scope === 'user'
+        ? await userScopedSlot(body.slot, typeof body.anon === 'string' ? body.anon : null)
+        : body.slot
+      await saveGameSlot(key, body.data)
       return NextResponse.json({ ok: true })
     }
     return NextResponse.json({ error: 'slot and data required' }, { status: 400 })

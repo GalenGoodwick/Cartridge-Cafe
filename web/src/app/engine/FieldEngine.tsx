@@ -2790,20 +2790,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
       // Game saves: __save_game {slot, data} persists; __load_game {slot} answers
       // into worldData.game_save = { slot, data } for the hook to consume
+      // each player owns their save, isolated PER WORLD. The server namespaces the
+      // slot by the authenticated user (scope:'user') — the client identity is only
+      // a fallback token for session-less browsers, never the source of truth — and
+      // we prefix the world so a game's save in one world can't collide with another.
       const saveReq = sim.worldData['__save_game'] as { slot?: string; data?: unknown } | undefined
       if (saveReq && typeof saveReq.slot === 'string') {
         delete sim.worldData['__save_game']
-        // each player owns their save: slots are namespaced by identity
         fetch('/api/engine/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slot: `${whoRef.current || 'anon'}:${saveReq.slot}`, data: saveReq.data ?? null }),
+          body: JSON.stringify({ slot: `${cellBase()}:${saveReq.slot}`, data: saveReq.data ?? null, scope: 'user', anon: whoRef.current }),
         }).catch(() => {})
       }
       const loadReq = sim.worldData['__load_game'] as { slot?: string } | undefined
       if (loadReq && typeof loadReq.slot === 'string') {
         delete sim.worldData['__load_game']
-        fetch(`/api/engine/save?slot=${encodeURIComponent(`${whoRef.current || 'anon'}:${loadReq.slot}`)}`)
+        fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(`${cellBase()}:${loadReq.slot}`)}`)
           .then(r => r.json())
           .then(j => {
             const s = simulationRef.current
@@ -5621,7 +5624,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {/* fault banner: the world went down, and here is why */}
           {fault && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[13px] text-red-100 shadow-2xl">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[16px] text-red-100 shadow-2xl">
               <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind} <span className="text-red-300/50">({ENGINE_BUILD})</span></div>
               {fault.kind === 'gpu-lost'
                 ? <div className="text-red-100/90 leading-relaxed">This world overloaded the GPU and crashed it — likely a shader too heavy for this device. Rendering is stopped so it can&rsquo;t keep flickering. Reload to recover; the rest of the cafe is fine.</div>
@@ -5700,7 +5703,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             }
             const toggleBtn = (on: boolean, onClick: () => void) => (
               <button onClick={onClick}
-                className={`px-2 py-0.5 rounded-full border text-[12px] tracking-[0.15em] transition-colors ${on
+                className={`px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] transition-colors ${on
                   ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200'
                   : 'bg-white/5 border-white/15 text-white/40'}`}>
                 {on ? 'ON' : 'OFF'}
@@ -5708,7 +5711,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             )
             return (
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-h-[82vh] overflow-y-auto rounded-xl bg-black/80 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[12px] tracking-[0.25em] text-white/50">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[14px] tracking-[0.25em] text-white/50">
                   <span>WORLD TOOLS</span>
                   <button onClick={() => setChromeVisible(false)} aria-label="close" className="text-white/40 hover:text-white text-sm leading-none px-1">×</button>
                 </div>
@@ -5722,7 +5725,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 )}
                 <div className="px-3 py-2.5 space-y-2.5 border-b border-white/10">
                   {canEditLaw && (
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-[16px]">
                     <span>multiplayer</span>
                     {toggleBtn(mp, () => {
                       const sim = simulationRef.current
@@ -5734,7 +5737,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     })}
                   </div>
                   )}
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-[16px]">
                     <span>player presence</span>
                     {toggleBtn(!presenceOff, () => {
                       const v = !presenceOff
@@ -5743,7 +5746,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     })}
                   </div>
                   {canEditLaw && (
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-[16px]">
                     <span>restart with R</span>
                     {toggleBtn(!!wd?.['rResetKey'], () => {
                       const sim = simulationRef.current
@@ -5758,7 +5761,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       earns a podium; your main stays yours. Flip this and the
                       popular winner takes main automatically. Owner-gated server-side. */}
                   {canEditLaw && lineageBase && (
-                  <div className="flex items-center justify-between text-[13px]">
+                  <div className="flex items-center justify-between text-[16px]">
                     <span>winner takes main</span>
                     {toggleBtn(winnerTakesMain, async () => {
                       const next = !winnerTakesMain
@@ -5771,7 +5774,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     })}
                   </div>
                   )}
-                  <div className="text-[12px] text-white/35 leading-relaxed">
+                  <div className="text-[14px] text-white/35 leading-relaxed">
                     {canEditLaw
                       ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start. winner-takes-main hands the throne to a challenger that wins the vote — off by default, so your main stays yours (a win is only a podium)."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
@@ -5780,24 +5783,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {/* LINEAGE — where this world came from. Anyone can see it; credit follows the work. */}
                 <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-[12px] tracking-[0.2em] text-white/40">LINEAGE</div>
+                    <div className="text-[14px] tracking-[0.2em] text-white/40">LINEAGE</div>
                     <button
                       onClick={loadLineage} disabled={lineageBusy}
                       title="trace this world back to the original it grew from"
-                      className="px-2 py-0.5 rounded-full border text-[12px] tracking-[0.15em] border-white/25 text-white/70 hover:border-emerald-300/60 hover:text-emerald-200 transition-colors disabled:opacity-50">
+                      className="px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] border-white/25 text-white/70 hover:border-emerald-300/60 hover:text-emerald-200 transition-colors disabled:opacity-50">
                       {lineageBusy ? '…' : (lineageTrail ? '↻ TRAIL' : '≡ TRAIL')}
                     </button>
                   </div>
                   {lineageTrail && (
                     lineageTrail.length <= 1 ? (
-                      <div className="text-[12px] text-white/35 leading-relaxed">an original — nothing upstream of it.</div>
+                      <div className="text-[14px] text-white/35 leading-relaxed">an original — nothing upstream of it.</div>
                     ) : (
                       <div className="space-y-0.5">
                         {lineageTrail.map((n, i) => {
                           const here = i === lineageTrail.length - 1
                           const label = n.kind === 'root' ? n.name : (n.by ? `⑂ ${n.by}` : n.name)
                           return (
-                            <div key={i} className={`text-[12px] leading-snug ${here ? 'text-amber-200/90' : 'text-white/55'}`}>
+                            <div key={i} className={`text-[14px] leading-snug ${here ? 'text-amber-200/90' : 'text-white/55'}`}>
                               <span className="text-white/25">{i === 0 ? '● ' : '↳ '}</span>
                               {n.slug ? (
                                 <a href={`/space/${n.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{label}</a>
@@ -5811,9 +5814,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   )}
                   {lineageTrail && lineageRemixes.length > 0 && (
                     <div className="pt-1 space-y-0.5">
-                      <div className="text-[12px] text-white/30">{lineageRemixes.length} remix{lineageRemixes.length === 1 ? '' : 'es'} grew from this →</div>
+                      <div className="text-[14px] text-white/30">{lineageRemixes.length} remix{lineageRemixes.length === 1 ? '' : 'es'} grew from this →</div>
                       {lineageRemixes.map(rx => (
-                        <div key={rx.slug} className="text-[12px] leading-snug text-white/55">
+                        <div key={rx.slug} className="text-[14px] leading-snug text-white/55">
                           <span className="text-white/25">↳ </span>
                           <a href={`/space/${rx.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{rx.name}</a>
                         </div>
@@ -5848,52 +5851,52 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   }
                   return (
                     <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
-                      <div className="text-[12px] tracking-[0.2em] text-white/40">DIRECT EDIT KEYS</div>
+                      <div className="text-[14px] tracking-[0.2em] text-white/40">DIRECT EDIT KEYS</div>
                       {spaceSlug && spaceId && (
-                        <div className="flex items-center justify-between text-[13px]">
+                        <div className="flex items-center justify-between text-[16px]">
                           <span>world <span className="text-white/35">(live)</span></span>
                           <button onClick={mintWorldKey}
                             title="mint + copy a key that edits this world live over the bridge"
-                            className="px-2 py-0.5 rounded-full border text-[12px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
+                            className="px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
                             🔑 MINT + COPY
                           </button>
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5 text-[13px]">
+                      <div className="flex items-center gap-1.5 text-[16px]">
                         <input
                           value={keyScene || defaultKeyScene}
                           onChange={e => setKeyScene(e.target.value)}
                           placeholder="WORLD ⑂ you · v1"
                           title="a branch or version scene name — the key edits ONLY it, never main"
-                          className="flex-1 min-w-0 bg-white/5 border border-white/15 focus:border-amber-300/50 outline-none rounded px-2 py-1 text-[12px] text-white/80 placeholder:text-white/25"
+                          className="flex-1 min-w-0 bg-white/5 border border-white/15 focus:border-amber-300/50 outline-none rounded px-2 py-1 text-[14px] text-white/80 placeholder:text-white/25"
                         />
                         <button onClick={mintSceneKey}
-                          className="px-2 py-0.5 rounded-full border text-[12px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors flex-shrink-0">
+                          className="px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors flex-shrink-0">
                           🔑 MINT
                         </button>
                       </div>
-                      <div className="text-[12px] text-white/35 leading-relaxed">
+                      <div className="text-[14px] text-white/35 leading-relaxed">
                         world key edits the LIVE world. the named key edits only that branch or version (any ⑂ name, e.g. · v2) — never main. hand either to an AI.
                       </div>
                     </div>
                   )
                 })()}
                 <div className="px-3 py-2">
-                  <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
+                  <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
                   <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
                     {[...fields.values()].map(f => (
-                      <div key={f.id} className="flex items-center justify-between text-[12px]">
+                      <div key={f.id} className="flex items-center justify-between text-[14px]">
                         <span className="text-white/75 truncate">{f.name || f.id}</span>
                         <span className="text-white/30 ml-2 flex-shrink-0">{f.shapeType || ''}</span>
                       </div>
                     ))}
-                    {fields.size === 0 && <div className="text-[12px] text-white/30">an empty world, waiting</div>}
+                    {fields.size === 0 && <div className="text-[14px] text-white/30">an empty world, waiting</div>}
                   </div>
                 </div>
                 {isOwner && (
                   <button
                     onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
-                    className="w-full text-left px-3 py-2 border-t border-white/10 text-[13px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
+                    className="w-full text-left px-3 py-2 border-t border-white/10 text-[16px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
                     ✕ delete this world
                   </button>
                 )}
@@ -5925,12 +5928,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && (
             <button
               onClick={() => setWorldChatOpen(true)}
-              className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
+              className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
               title={chatLive.people > 0 ? `${chatLive.people} chatting here now — the world's commons` : "the world's commons — players, makers, and their AIs"}
             >
               ⌁ WORLD CHAT
               {(chatLive.people + chatLive.ai) > 0 && (
-                <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[11px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
+                <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[13px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
                   {chatLive.people + chatLive.ai}
                 </span>
               )}
@@ -5942,7 +5945,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               ? INSTRUCTIONS
             </button>
@@ -5953,7 +5956,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <button
                 onClick={() => setUiDockOpen(v => !v)}
                 title={uiDockOpen ? 'hide world controls' : 'world controls — branch, versions, connect AI, vote'}
-                className="px-2.5 py-1.5 rounded-lg text-[13px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                className="px-2.5 py-1.5 rounded-lg text-[16px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
               </button>
@@ -5969,7 +5972,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   if (orig.startsWith('space:')) window.location.href = '/space/' + orig.slice(6)
                   else handleLoadScene(orig)
                 }}
-                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-amber-500/15 backdrop-blur border border-amber-400/40 text-amber-200/90 hover:bg-amber-500/25 transition-colors"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-500/15 backdrop-blur border border-amber-400/40 text-amber-200/90 hover:bg-amber-500/25 transition-colors"
               >
                 ★ ORIGINAL
               </button>
@@ -5980,7 +5983,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {!isHub && can(ctx, 'toolsPanel') && (
               <button
                 onClick={() => setChromeVisible(v => !v)}
-                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
               </button>
@@ -6016,7 +6019,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       else showToast('could not set head — is this branch yours?', 'error')
                     }}
                     title="crown THIS version as the branch's head — it becomes the newest version, the challenger the arena stages"
-                    className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-amber-400/15 backdrop-blur border border-amber-300/40 text-amber-200 hover:bg-amber-400/25 transition-colors"
+                    className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-400/15 backdrop-blur border border-amber-300/40 text-amber-200 hover:bg-amber-400/25 transition-colors"
                   >
                     ⚑ SET AS HEAD
                   </button>
@@ -6042,7 +6045,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             )}
             {!isHub && <button
               onClick={() => { setBranchesOpen(v => !v); loadBranchHeads() }}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               ≡ BRANCHES
             </button>}
@@ -6062,7 +6065,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const canOlder = cur === undefined ? vs.length > 0 : idx > 0
               const canNewer = cur !== undefined
               return (
-                <div className="flex items-stretch rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[12px]">
+                <div className="flex items-stretch rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[14px]">
                   <button disabled={!canOlder} title="older version"
                     onClick={() => go(cur === undefined ? vs[vs.length - 1] : vs[idx - 1])}
                     className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">◂</button>
@@ -6131,7 +6134,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               title={can(ctx, 'alterLive')
                 ? 'plug an AI into the LIVE world — it alters main directly, no branch'
                 : undefined}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               {can(ctx, 'alterLive') ? '⚡ ALTER' : '⚡ CONNECT AI'}
             </button>}
@@ -6152,7 +6155,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   }
                 }}
                 title="have your AI author a tiny shader icon for this world's shelf bubble"
-                className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 ◆ MAKE ICON
               </button>
@@ -6180,11 +6183,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 }
               }
               return (<>
-                <div className={`flex items-center px-2 py-1 rounded-lg text-[12px] font-mono bg-black/60 backdrop-blur border ${hot ? 'border-amber-300/40 text-amber-200/90' : 'border-white/10 text-white/45'}`}
+                <div className={`flex items-center px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border ${hot ? 'border-amber-300/40 text-amber-200/90' : 'border-white/10 text-white/45'}`}
                   title="this branch's standing in the world's tournament — cast your vote in the ⚔ reckoning">
                   {standing}
                 </div>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[12px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
                   <span className="text-amber-200/80">⑂ {author}</span>
                   <button className="px-1 hover:text-white" title="discuss this branch" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
                 </div>
@@ -6197,7 +6200,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               // over HTTP, no SSE) must light the dot just like agent edits
               const busy = Date.now() - aiLastEditRef.current < 2500
               return (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[12px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
                   <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
                   {busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'}
                 </div>
@@ -6212,7 +6215,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {spaceId && (
               <div className="flex items-center gap-1">
                 <button
-                  className={`px-2 py-1 rounded-lg text-[12px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'}`}
+                  className={`px-2 py-1 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'}`}
                   title="remix this world into a new one you own"
                   onClick={() => {
                     if (remixArm) { setRemixArm(false); window.dispatchEvent(new CustomEvent('cafe:remix-world')) }
@@ -6227,7 +6230,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 button — branching feeds the vote (each branch is a candidate).
                 GREEN = the create action, unmistakably. Under it, the ◂/▸ browse
                 row steps the family (main → each branch head) — no sign-in needed. */}
-            {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[12px]">
+            {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
               <button
                 onClick={handleBranch}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
@@ -6239,7 +6242,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
-                <span className="px-1 py-1 text-[12px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
+                <span className="px-1 py-1 text-[14px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
                 <button onClick={() => stepBranch(1)} title="next branch — browse the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
@@ -6247,23 +6250,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {/* VOTE sits at the bottom of the grid — a resolution the commons weighs in on */}
               {spaceId && (
                 <button onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}
-                  className="px-2.5 py-1.5 rounded-lg text-[12px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+                  className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
                   title="open a resolution the commons can weigh in on">⚖ VOTE</button>
               )}
               {/* the methodical create panel: 1 · name it · 2 · AI connects with its
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
                 <div className="absolute right-full top-0 mr-2 z-50 w-72 max-h-[80vh] overflow-y-auto rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
-                  <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
+                  <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
                   {/* the one thing people ask: branch vs remix. Say it right here. */}
-                  <div className="text-[12px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
+                  <div className="text-[14px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
-                  <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
+                  <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input
                     autoFocus value={branchLabel} onChange={e => setBranchLabel(e.target.value)} maxLength={40}
                     onKeyDown={e => { if (e.key === 'Escape') setBranchCreateOpen(false) }}
                     placeholder="e.g. neon-remix"
-                    className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50"
+                    className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[16px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50"
                   />
                   {(() => {
                     const nameOk = branchLabel.trim().length >= 2
@@ -6272,27 +6275,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     return (<>
                       {/* GATE 2 — BRIEF (locked until name) */}
                       <div className={'transition-opacity ' + (nameOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-                        <div className="text-[12px] tracking-[0.2em] text-white/40 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/30">· name it first</span>}</div>
+                        <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/30">· name it first</span>}</div>
                         <textarea value={branchBrief} onChange={e => setBranchBrief(e.target.value)} maxLength={500} rows={3} disabled={!nameOk}
                           placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
-                          className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[12px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50 resize-none" />
-                        <div className="text-[12px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · min 100 to unlock</span></div>
+                          className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50 resize-none" />
+                        <div className="text-[14px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · min 100 to unlock</span></div>
                       </div>
                       {/* GATE 3 — BUILD (locked until brief) */}
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
                         <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
-                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[12px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           OPEN + CONNECT AI
                         </button>
                         <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
-                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[12px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           ☕ HAVE THE HOUSE AI BUILD IT
                         </button>
                       </div>
                     </>)
                   })()}
                   <button onClick={() => setBranchCreateOpen(false)} aria-label="cancel"
-                    className="w-full mt-2 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[12px] transition-colors">cancel</button>
+                    className="w-full mt-2 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[14px] transition-colors">cancel</button>
                 </div>
               )}
             </div>}
@@ -6339,13 +6342,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             return (
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
-                <div className="font-mono text-[12px] tracking-[0.25em] text-white/50">
+                <div className="font-mono text-[14px] tracking-[0.25em] text-white/50">
                   {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : 'LOADING WORLD…'}
                 </div>
                 {/* no builder yet: reassure (the world is SAFE, never lost) + a way
                     out — build it yourself with the player key / CONNECT AI. */}
                 {building && !agentConnected && terminalLog.length === 0 && (
-                  <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[12px] leading-relaxed text-amber-100/80 text-center">
+                  <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[14px] leading-relaxed text-amber-100/80 text-center">
                     In the queue — <b>your world is saved</b>, and it&rsquo;ll build when a builder is free. This can take a few minutes; you can close this tab.
                     {(isOwner || !spaceId) && (
                       <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>.</>
@@ -6355,13 +6358,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {/* the live build console — the AI's coding progress, in a box */}
                 {building && (
                   <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[11px] tracking-[0.2em] text-white/40">
+                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
                       <span>⌁ BUILD CONSOLE</span>
                       <span className="text-white/25">{terminalLog.length} steps</span>
                     </div>
                     <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                       {terminalLog.length === 0
-                        ? <div className="font-mono text-[12px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
+                        ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
                         : <AgentTerminalPanel entries={terminalLog} header={false} />}
                     </div>
                   </div>
@@ -6371,7 +6374,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {building && (isOwner || !spaceId) && (
                   <button
                     onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
-                    className="pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[12px] tracking-[0.15em] border border-red-400/40 text-red-300/80 hover:text-red-200 hover:bg-red-500/10 transition-colors">
+                    className="pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[14px] tracking-[0.15em] border border-red-400/40 text-red-300/80 hover:text-red-200 hover:bg-red-500/10 transition-colors">
                     ✕ CANCEL BUILD
                   </button>
                 )}
@@ -6384,15 +6387,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   card, not a curtain: the vote rail and the world stay visible
                   and clickable while it's open (✕ or ESC closes) */}
               <div
-                className="w-[380px] max-w-[80vw] max-h-[62vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 backdrop-blur p-5 font-mono text-[15px] leading-relaxed text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
+                className="w-[380px] max-w-[80vw] max-h-[62vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 backdrop-blur p-5 font-mono text-[18px] leading-relaxed text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-[13px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
+                  <div className="text-[16px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
                   <div className="flex items-center gap-2">
                     {can(ctx, 'editLaw') && !instrEdit && (
                       <>
                         <button
-                          className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                          className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
                           onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
                         >
                           EDIT
@@ -6401,7 +6404,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     )}
                     <button
                       aria-label="Close instructions"
-                      className="w-6 h-6 rounded text-white/60 hover:text-white hover:bg-white/10 text-[15px] leading-none transition-colors"
+                      className="w-6 h-6 rounded text-white/60 hover:text-white hover:bg-white/10 text-[18px] leading-none transition-colors"
                       onClick={() => { setInstrOpen(false); setInstrEdit(false) }}
                     >
                       ✕
@@ -6414,13 +6417,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       value={instrDraft}
                       onChange={e => setInstrDraft(e.target.value)}
                       rows={10}
-                      className="w-full bg-black/60 border border-white/15 rounded-lg p-3 text-[15px] font-mono text-white/85 outline-none focus:border-white/35"
+                      className="w-full bg-black/60 border border-white/15 rounded-lg p-3 text-[18px] font-mono text-white/85 outline-none focus:border-white/35"
                       placeholder={'Key entry first, one per line:\nWASD — move · SPACE — dash · CLICK — select\n\nThen the point: what the player is trying to do, and what winning is.'}
                     />
                     <div className="flex gap-2 mt-3 justify-end">
-                      <button className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
+                      <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
                       <button
-                        className="text-[12px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                        className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
                         onClick={() => { const s = simulationRef.current; if (s) s.worldData.instructions = instrDraft; setInstrEdit(false) }}
                       >
                         SAVE
@@ -6442,10 +6445,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* BRANCHES — the CELL: viewers gather, five unlock the vote, every branch has a table */}
           {versionsOpen && spaceSlug && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setVersionsOpen(false)}>
-              <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[14px] text-white/85" onClick={e => e.stopPropagation()}>
+              <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-[13px] tracking-[0.25em] text-white/50">⏱ VERSIONS OF {(playScene || spaceSlug || '').toUpperCase()}</div>
-                  <button aria-label="Close" className="text-white/40 hover:text-white text-[15px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30" onClick={() => setVersionsOpen(false)}>✕</button>
+                  <div className="text-[16px] tracking-[0.25em] text-white/50">⏱ VERSIONS OF {(playScene || spaceSlug || '').toUpperCase()}</div>
+                  <button aria-label="Close" className="text-white/40 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30" onClick={() => setVersionsOpen(false)}>✕</button>
                 </div>
                 {(isOwner || !spaceId) && (
                   <button
@@ -6462,23 +6465,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       } catch { showToast('could not save version', 'error') } finally { setVersionBusy(false) }
                     }}
                   >
-                    ＋ SAVE A VERSION <span className="text-white/40 text-[12px]">— snapshot the world as it stands (identical saves are skipped)</span>
+                    ＋ SAVE A VERSION <span className="text-white/40 text-[14px]">— snapshot the world as it stands (identical saves are skipped)</span>
                   </button>
                 )}
-                {versionList.length === 0 && <div className="text-white/35 text-[13px] px-1 py-2">no versions yet — save one, or the eye will as you build.</div>}
+                {versionList.length === 0 && <div className="text-white/35 text-[16px] px-1 py-2">no versions yet — save one, or the eye will as you build.</div>}
                 {versionList.map(v => (
                   <div key={v.version} className="flex items-center gap-2 rounded-lg border border-white/10 mb-1.5 px-3 py-2">
                     <span className="text-amber-200/90 tracking-[0.1em]">v{v.version}</span>
-                    <span className="flex-1 text-white/50 text-[12px] truncate">{v.note || (v.author?.name ? `by ${v.author.name}` : '—')}</span>
+                    <span className="flex-1 text-white/50 text-[14px] truncate">{v.note || (v.author?.name ? `by ${v.author.name}` : '—')}</span>
                     <button
-                      className="text-[12px] text-white/50 hover:text-white px-1.5"
+                      className="text-[14px] text-white/50 hover:text-white px-1.5"
                       title="preview this version in a new tab"
                       onClick={() => window.open(`/space/${encodeURIComponent(spaceSlug)}?version=${v.version}`, '_blank')}
                     >VIEW</button>
                     {(isOwner || !spaceId) && (
                       <button
                         disabled={versionBusy}
-                        className="text-[12px] border border-white/15 rounded px-2 py-0.5 text-white/60 hover:text-white hover:border-white/40 disabled:opacity-40"
+                        className="text-[14px] border border-white/15 rounded px-2 py-0.5 text-white/60 hover:text-white hover:border-white/40 disabled:opacity-40"
                         title="restore this version as the live world (current state is saved first)"
                         onClick={async () => {
                           if (!window.confirm(`Restore v${v.version} as the live world? Your current state is saved as a new version first.`)) return
@@ -6495,7 +6498,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     )}
                   </div>
                 ))}
-                <div className="text-[12px] text-white/30 mt-2">save points are versions · restoring never destroys — the live world is snapshotted first</div>
+                <div className="text-[14px] text-white/30 mt-2">save points are versions · restoring never destroys — the live world is snapshotted first</div>
               </div>
             </div>
           )}
@@ -6511,12 +6514,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             }
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBranchesOpen(false)}>
-                <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[14px] text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[13px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
-                    <button aria-label="Close" className="text-white/40 hover:text-white text-[15px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
+                    <div className="text-[16px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
+                    <button aria-label="Close" className="text-white/40 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
                   </div>
-                  <div className="flex items-center gap-2 mb-3 text-[12px] text-white/40">
+                  <div className="flex items-center gap-2 mb-3 text-[14px] text-white/40">
                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
                     <span>{viewers.length} here now</span>
                     <span className="text-white/25">· ride, discuss — cast your vote in the ⚔ reckoning</span>
@@ -6531,14 +6534,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         <button className="w-full text-left px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-400/10 hover:bg-amber-400/20 transition-colors mb-1.5"
                           onClick={() => { setBranchesOpen(false); handleLoadScene(podium.name) }}>
                           <span className="text-amber-200">⚔ WINNER</span>
-                          <span className="text-white/45 text-[12px]"> — the vote's champion{of ? ` (${of})` : ''} · v{podium.v} · ride it</span>
+                          <span className="text-white/45 text-[14px]"> — the vote's champion{of ? ` (${of})` : ''} · v{podium.v} · ride it</span>
                         </button>
                       )
                     }
                     return (
                       <div className="w-full px-3 py-2 rounded-lg border border-white/10 border-dashed mb-1.5">
                         <span className="text-white/35">⚔ no winner yet</span>
-                        <span className="text-white/25 text-[12px]"> — the vote decides; the champion stands here</span>
+                        <span className="text-white/25 text-[14px]"> — the vote decides; the champion stands here</span>
                       </div>
                     )
                   })()}
@@ -6551,7 +6554,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     else { handleLoadScene(base) }
                   }}>
                     <span className="text-emerald-300/90">main</span>
-                    <span className="text-white/40 text-[12px]"> — the world as it stands</span>
+                    <span className="text-white/40 text-[14px]"> — the world as it stands</span>
                   </button>
                   {branchList.filter(bB => bB.author !== 'winner' && !bB.author.startsWith('winner · ')).map(bB => {
                     const chat = cellData.discussion[bB.author] || []
@@ -6560,17 +6563,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         <div className="flex items-center">
                           <button className="flex-1 text-left px-3 py-2 hover:bg-white/5 transition-colors" onClick={() => { setBranchesOpen(false); handleLoadScene(bB.name) }}>
                             <span className="text-amber-200/90">⑂ {bB.author}</span>
-                            <span className="text-white/40 text-[12px]"> — v{bB.v} · ride it</span>
+                            <span className="text-white/40 text-[14px]"> — v{bB.v} · ride it</span>
                           </button>
-                          <button className="mr-2 px-2 py-1 text-[12px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
+                          <button className="mr-2 px-2 py-1 text-[14px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
                             💬{chat.length > 0 ? chat.length : ''}
                           </button>
                         </div>
                         {discOpen === bB.author && (
                           <div className="border-t border-white/10 px-3 py-2">
-                            {chat.length === 0 && <div className="text-white/30 text-[12px] mb-1">no discussion yet — say why this branch should win</div>}
+                            {chat.length === 0 && <div className="text-white/30 text-[14px] mb-1">no discussion yet — say why this branch should win</div>}
                             {chat.slice(-8).map((m, i) => (
-                              <div key={i} className="text-[13px] mb-0.5"><span className="text-white/45">{m.who}:</span> {m.text}</div>
+                              <div key={i} className="text-[16px] mb-0.5"><span className="text-white/45">{m.who}:</span> {m.text}</div>
                             ))}
                             <div className="flex gap-1.5 mt-1.5">
                               <input
@@ -6578,9 +6581,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                                 onChange={e => setCellDraft(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') say(bB.author) }}
                                 placeholder="speak in the cell…"
-                                className="flex-1 bg-black/60 border border-white/15 rounded px-2 py-1 text-[13px] outline-none focus:border-white/35"
+                                className="flex-1 bg-black/60 border border-white/15 rounded px-2 py-1 text-[16px] outline-none focus:border-white/35"
                               />
-                              <button className="text-[12px] px-2 border border-white/15 rounded hover:border-white/40" onClick={() => say(bB.author)}>SAY</button>
+                              <button className="text-[14px] px-2 border border-white/15 rounded hover:border-white/40" onClick={() => say(bB.author)}>SAY</button>
                             </div>
                           </div>
                         )}
@@ -6588,9 +6591,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     )
                   })}
                   {branchList.length === 0 && (
-                    <div className="text-white/35 text-[13px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
+                    <div className="text-white/35 text-[16px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
                   )}
-                  <div className="text-[12px] text-white/30 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
+                  <div className="text-[14px] text-white/30 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
                 </div>
               </div>
             )
@@ -6600,25 +6603,25 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               until the owner has read what "live" means. BRANCH INSTEAD is the out. */}
           {alterWarnOpen && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setAlterWarnOpen(false)}>
-              <div className="max-w-md w-[92%] rounded-xl border border-amber-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[14px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
-                <div className="text-[13px] tracking-[0.25em] text-amber-300/90 mb-3">⚠ ALTER THE LIVE WORLD</div>
-                <p className="text-white/70 text-[13px] mb-2">
+              <div className="max-w-md w-[92%] rounded-xl border border-amber-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="text-[16px] tracking-[0.25em] text-amber-300/90 mb-3">⚠ ALTER THE LIVE WORLD</div>
+                <p className="text-white/70 text-[16px] mb-2">
                   This plugs an AI straight into the LIVE world — <span className="text-amber-200">no branch is made</span>.
                   Every edit lands on main, for everyone, as it happens.
                 </p>
-                <p className="text-white/50 text-[13px] mb-4">
+                <p className="text-white/50 text-[16px] mb-4">
                   A save point of the world as it stands is kept first; what the AI leaves becomes the new main.
                   ⏱ VERSIONS is the way back.
                 </p>
                 <div className="flex gap-2 justify-end">
                   <button
-                    className="text-[12px] tracking-[0.15em] border border-white/20 rounded px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                    className="text-[14px] tracking-[0.15em] border border-white/20 rounded px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
                     onClick={() => { setAlterWarnOpen(false); handleBranch() }}
                   >
                     ⑂ BRANCH INSTEAD
                   </button>
                   <button
-                    className="text-[12px] tracking-[0.15em] rounded px-3 py-1.5 bg-amber-500/80 hover:bg-amber-400 text-black transition-colors"
+                    className="text-[14px] tracking-[0.15em] rounded px-3 py-1.5 bg-amber-500/80 hover:bg-amber-400 text-black transition-colors"
                     onClick={beginAlter}
                   >
                     ALTER LIVE
@@ -6656,21 +6659,21 @@ ${plugBrief.trim() ? (alter ? 'ALTER THIS: ' : 'BUILD THIS: ') + plugBrief.trim(
 ${scope}`
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
-                <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[14px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
+                <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className={`text-[13px] tracking-[0.25em] ${alter ? 'text-amber-300/80' : 'text-white/50'}`}>{alter ? '⚡ ALTER THE LIVE WORLD' : '⚡ CONNECT YOUR AI'}</div>
-                    <div className="flex items-center gap-1.5 text-[12px] tracking-[0.2em] text-white/50">
+                    <div className={`text-[16px] tracking-[0.25em] ${alter ? 'text-amber-300/80' : 'text-white/50'}`}>{alter ? '⚡ ALTER THE LIVE WORLD' : '⚡ CONNECT YOUR AI'}</div>
+                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
                       <span className={`inline-block w-2 h-2 rounded-full ${agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
                       {agentConnected ? 'LIVE' : 'WAITING'}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-2 text-[13px]">
+                  <p className="text-white/60 mb-2 text-[16px]">
                     {alter
                       ? 'Describe the alteration, then paste this to any AI (Claude, or anything that speaks HTTP). It edits the LIVE world — main changes as it works. When it settles, SAVE VERSION records the result.'
                       : 'Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.'}
                   </p>
                   {mintFailed ? (
-                    <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-[13px] leading-relaxed text-amber-100/90">
+                    <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-[16px] leading-relaxed text-amber-100/90">
                       <div className="text-amber-300/90 tracking-[0.2em] mb-1">⚠ NO KEY MINTED — nothing to paste yet</div>
                       A connection prompt is useless without a key, so it&rsquo;s hidden. This usually means:
                       <ul className="list-disc ml-5 mt-1.5 space-y-0.5 text-amber-100/70">
@@ -6682,14 +6685,14 @@ ${scope}`
                     <>
                       <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
                         placeholder={alter ? 'what should the AI alter in the live world? (optional)' : 'what should the AI build in this branch? (optional)'}
-                        className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/35 mb-3" />
-                      <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[13px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
+                        className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[17px] text-white/90 outline-none focus:border-white/35 mb-3" />
+                      <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[16px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
                     </>
                   )}
                   <div className="flex gap-2 mt-3 justify-end">
                     {alter && spaceSlug && (
                       <button
-                        className="text-[12px] tracking-[0.15em] border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 rounded px-3 py-1 transition-colors mr-auto"
+                        className="text-[14px] tracking-[0.15em] border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 rounded px-3 py-1 transition-colors mr-auto"
                         title="snapshot the altered world as a version — it is already main; this records it"
                         onClick={async () => {
                           try {
@@ -6706,13 +6709,13 @@ ${scope}`
                     )}
                     {!mintFailed && (
                       <button
-                        className="text-[12px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                        className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
                         onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
                       >
                         COPY
                       </button>
                     )}
-                    <button className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
+                    <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
                   </div>
                 </div>
               </div>
@@ -6734,29 +6737,29 @@ HARD RULES — it renders alone in a 64px disc with NOTHING but its inputs:
 Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see what it is)'}. Reply to confirm once set.`
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMkIconOpen(false)}>
-                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[14px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[13px] tracking-[0.25em] text-white/50">◆ MAKE YOUR ICON</div>
-                    <div className="flex items-center gap-1.5 text-[12px] tracking-[0.2em] text-white/50">
+                    <div className="text-[16px] tracking-[0.25em] text-white/50">◆ MAKE YOUR ICON</div>
+                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
                       <span className={`inline-block w-2 h-2 rounded-full ${mkIconSet ? 'bg-emerald-400' : 'bg-white/25'}`} />
                       {mkIconSet ? 'ICON SET' : 'WAITING'}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-2 text-[13px]">Describe the icon (optional), then hand this to your AI. It writes a small self-contained shader for your shelf bubble — no image, nothing stored but the code.</p>
+                  <p className="text-white/60 mb-2 text-[16px]">Describe the icon (optional), then hand this to your AI. It writes a small self-contained shader for your shelf bubble — no image, nothing stored but the code.</p>
                   <input value={mkIconDesc} onChange={e => setMkIconDesc(e.target.value)} maxLength={120}
                     placeholder="e.g. a dusk tidepool, anemones glowing"
-                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[14px] text-white/90 outline-none focus:border-white/35 mb-3" />
-                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[10.5px] text-emerald-200/90 select-all max-h-48 overflow-y-auto">{prompt}</pre>
+                    className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[17px] text-white/90 outline-none focus:border-white/35 mb-3" />
+                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[13px] text-emerald-200/90 select-all max-h-48 overflow-y-auto">{prompt}</pre>
                   <div className="flex gap-2 mt-3 justify-end">
                     <button
-                      className="text-[12px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
+                      className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
                       onClick={() => { navigator.clipboard?.writeText(prompt); setMkIconCopied(true); setTimeout(() => setMkIconCopied(false), 1600) }}
                     >
                       {mkIconCopied ? 'COPIED ✓' : 'COPY PROMPT'}
                     </button>
-                    <button className="text-[12px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setMkIconOpen(false)}>CLOSE</button>
+                    <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setMkIconOpen(false)}>CLOSE</button>
                   </div>
-                  <p className="text-white/40 mt-2 text-[12px]">{mkIconSet ? 'Your AI set the icon — it appears on the shelf shortly.' : 'The moment your AI stores it, this flips to ICON SET.'}</p>
+                  <p className="text-white/40 mt-2 text-[14px]">{mkIconSet ? 'Your AI set the icon — it appears on the shelf shortly.' : 'The moment your AI stores it, this flips to ICON SET.'}</p>
                 </div>
               </div>
             )
@@ -6776,7 +6779,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               worlds (spaces have no playScene), which read as a stray debug box. */}
           {pixelInfo && !playScene && chromeVisible && (
             <div
-              className="fixed z-50 pointer-events-none bg-black/85 text-white text-[12px] font-mono px-2 py-1 rounded border border-white/20 whitespace-nowrap"
+              className="fixed z-50 pointer-events-none bg-black/85 text-white text-[14px] font-mono px-2 py-1 rounded border border-white/20 whitespace-nowrap"
               style={{ left: pixelInfo.screenX + 14, top: pixelInfo.screenY - 10 }}
             >
               <div>({pixelInfo.gridX}, {pixelInfo.gridY})</div>
@@ -6848,7 +6851,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                         kind: r.ok ? 'hint' : 'error',
                       } }))
                     }}
-                    className="pointer-events-auto px-2.5 rounded-lg font-mono text-[12px] tracking-[0.15em] text-amber-200/80 hover:text-amber-100 bg-black/55 backdrop-blur border border-amber-300/25 hover:border-amber-300/60 transition-colors">
+                    className="pointer-events-auto px-2.5 rounded-lg font-mono text-[14px] tracking-[0.15em] text-amber-200/80 hover:text-amber-100 bg-black/55 backdrop-blur border border-amber-300/25 hover:border-amber-300/60 transition-colors">
                     ♛ SET MAIN
                   </button>
                 )}
@@ -6872,14 +6875,14 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           })()}
           {/* Info overlay */}
           {chromeVisible && !spaceId && !playScene && (
-          <div className="absolute top-3 left-3 text-[12px] text-muted font-mono flex items-center gap-2">
+          <div className="absolute top-3 left-3 text-[14px] text-muted font-mono flex items-center gap-2">
             <span className="pointer-events-none">
               {gridSize}x{gridSize} | zoom: {cameraRef.current.zoom.toFixed(1)}x
               {selectedField && <span> | selected: {selectedField.name}</span>}
               {agentConnected && <span className="text-accent"> | agent live</span>}
             </span>
             {worldLocked && (
-              <span className="flex items-center gap-2 px-2 py-0.5 rounded bg-error/20 border border-error/40 text-error text-[12px] font-bold">
+              <span className="flex items-center gap-2 px-2 py-0.5 rounded bg-error/20 border border-error/40 text-error text-[14px] font-bold">
                 READ-ONLY — another session is writing this world
                 <button
                   onClick={() => { takeoverRef.current = true }}
@@ -6912,7 +6915,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                   body: JSON.stringify({ type: 'reset' }),
                 }).catch(() => {})
               }}
-              className="px-2 py-1 bg-error/20 text-error border border-error/30 rounded text-[12px] font-bold hover:bg-error/40 transition-colors"
+              className="px-2 py-1 bg-error/20 text-error border border-error/30 rounded text-[14px] font-bold hover:bg-error/40 transition-colors"
             >
               RESET MATCH
             </button>
@@ -6927,18 +6930,18 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
         <div className="h-40 flex-shrink-0 border-t border-border bg-background/95 overflow-y-auto">
           <div className="px-3 py-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[12px] text-muted font-mono">{fields.size} fields</span>
+              <span className="text-[14px] text-muted font-mono">{fields.size} fields</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleSaveScene}
-                  className="text-[12px] font-mono px-2 py-0.5 bg-success/20 text-success border border-success/30 rounded hover:bg-success/40 transition-colors"
+                  className="text-[14px] font-mono px-2 py-0.5 bg-success/20 text-success border border-success/30 rounded hover:bg-success/40 transition-colors"
                 >
                   Save Scene
                 </button>
                 {brush.activeFieldId && fields.has(brush.activeFieldId) && (
                   <button
                     onClick={() => handleSaveToLibrary(brush.activeFieldId!)}
-                    className="text-[12px] font-mono px-2 py-0.5 bg-accent/20 text-accent border border-accent/30 rounded hover:bg-accent/40 transition-colors"
+                    className="text-[14px] font-mono px-2 py-0.5 bg-accent/20 text-accent border border-accent/30 rounded hover:bg-accent/40 transition-colors"
                   >
                     Save to Library
                   </button>
@@ -6948,7 +6951,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
             {savedScenes.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-1">
                 {savedScenes.map(name => (
-                  <div key={name} className="flex items-center gap-0.5 px-1.5 py-0.5 bg-surface/50 border border-border rounded text-[12px] font-mono group">
+                  <div key={name} className="flex items-center gap-0.5 px-1.5 py-0.5 bg-surface/50 border border-border rounded text-[14px] font-mono group">
                     <button
                       onClick={() => handleLoadScene(name)}
                       className="text-foreground hover:text-accent transition-colors truncate max-w-[120px]"
@@ -6975,7 +6978,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                     setBrush(prev => ({ ...prev, activeFieldId: f.id }))
                     updateSelectionMask(f.id)
                   }}
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-[12px] font-mono cursor-pointer transition-colors ${
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-[14px] font-mono cursor-pointer transition-colors ${
                     brush.activeFieldId === f.id
                       ? 'bg-accent/20 border border-accent/40'
                       : 'bg-surface/50 border border-border hover:border-muted'
@@ -7011,7 +7014,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
       <div className="w-96 flex-shrink-0 flex flex-col border-l border-border bg-background overflow-hidden">
         {/* Inspector Panel */}
         <div className="flex-shrink-0 overflow-y-auto" style={{ maxHeight: '50%' }}>
-          <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0 flex items-center justify-between">
+          <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border flex-shrink-0 flex items-center justify-between">
             <span>Inspector</span>
             {brush.activeFieldId && fields.has(brush.activeFieldId) && (
               <span className="text-accent">{fields.get(brush.activeFieldId)!.name}</span>
@@ -7020,10 +7023,10 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           <div className="px-3 py-2">
             {(() => {
               const inspField = brush.activeFieldId ? fields.get(brush.activeFieldId) : null
-              if (!inspField) return <div className="text-[12px] text-muted font-mono py-4 text-center">Click a field to inspect</div>
+              if (!inspField) return <div className="text-[14px] text-muted font-mono py-4 text-center">Click a field to inspect</div>
               const sim = simulationRef.current
               return (
-                <div className="space-y-2 text-[12px] font-mono">
+                <div className="space-y-2 text-[14px] font-mono">
                   {/* Name */}
                   <div className="flex items-center gap-2">
                     <span className="text-muted w-12 flex-shrink-0">Name</span>
@@ -7036,7 +7039,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                           if (f) { f.name = e.target.value; syncFields() }
                         }
                       }}
-                      className="flex-1 bg-surface/50 border border-border rounded px-1.5 py-0.5 text-foreground text-[12px] font-mono"
+                      className="flex-1 bg-surface/50 border border-border rounded px-1.5 py-0.5 text-foreground text-[14px] font-mono"
                     />
                   </div>
                   {/* Color */}
@@ -7139,7 +7142,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
 
         {/* Interactions Panel */}
         <div className="flex-shrink-0 border-t border-border overflow-y-auto" style={{ maxHeight: '25%' }}>
-          <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border">
+          <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border">
             Interactions
           </div>
           <div className="px-3 py-2">
@@ -7158,10 +7161,10 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               )
               const total = rules.length + pairs.length + effects.length
               if (total === 0) return (
-                <div className="text-[12px] text-muted font-mono py-2 text-center">No interactions</div>
+                <div className="text-[14px] text-muted font-mono py-2 text-center">No interactions</div>
               )
               return (
-                <div className="space-y-1 text-[12px] font-mono">
+                <div className="space-y-1 text-[14px] font-mono">
                   {pairs.map((p, i) => {
                     const nameA = sim.fields.get(p.fieldA)?.name || p.fieldA
                     const nameB = sim.fields.get(p.fieldB)?.name || p.fieldB
@@ -7198,7 +7201,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
 
         {/* AI Prompt Panel — scoped to selected field */}
         <div className="flex-shrink-0 border-t border-border">
-          <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border">
+          <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border">
             {brush.activeFieldId && fields.has(brush.activeFieldId)
               ? `AI Prompt — ${fields.get(brush.activeFieldId)!.name}`
               : 'AI Prompt — global'
@@ -7207,7 +7210,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
           <div className="px-3 py-2">
             <input
               type="text"
-              className="w-full bg-surface/50 border border-border text-foreground text-[12px] font-mono px-2 py-1.5 rounded"
+              className="w-full bg-surface/50 border border-border text-foreground text-[14px] font-mono px-2 py-1.5 rounded"
               placeholder={brush.activeFieldId ? `Edit ${fields.get(brush.activeFieldId)?.name || 'field'}...` : 'Type a prompt...'}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && e.currentTarget.value.trim()) {
@@ -7232,7 +7235,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
         <div className="flex-1 border-t border-border flex flex-col min-h-0 overflow-hidden">
           <button
             onClick={() => setTerminalOpen(prev => !prev)}
-            className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0 flex items-center justify-between hover:bg-surface/30 transition-colors cursor-pointer w-full text-left"
+            className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border flex-shrink-0 flex items-center justify-between hover:bg-surface/30 transition-colors cursor-pointer w-full text-left"
           >
             <span>Terminal <span className="text-accent">{terminalLog.length}</span></span>
             <span>{terminalOpen ? '▼' : '▶'}</span>
