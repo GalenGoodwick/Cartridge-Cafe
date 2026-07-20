@@ -1547,6 +1547,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // true while a hot-reload is tearing down + recompiling — the 2s sync must not
   // fire in this window or it persists a half-built (empty/hookless) world.
   const reloadingRef = useRef(false)
+  // hot-loads must be SERIAL. At build-end two mechanisms both pull the finished
+  // world (the build-status poll AND the rev watcher whose baseline missed the
+  // final brief_done bumps) — two overlapping clear+restores interleave and leave
+  // the grid torn ("worked when entering fresh, failed on the final load"). A
+  // second request during a load queues (latest wins) and runs after.
+  const pendingReloadRef = useRef<{ v: number | undefined } | null>(null)
 
   /** #3 — hot-swap a SPACE version in place (no reload), the same way the vote
    *  reckoning previews a `space:` snapshot: fetch it, hand it to the proven
@@ -1556,11 +1562,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  untrusted version's JS never auto-installs. */
   const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
     if (!spaceSlug) return
-    // Pause the 2s sync while a reload settles: handleLoadScene tears the renderer
+    // Already mid-load: queue this request (latest wins) instead of interleaving
+    // a second clear+restore over the first — that interleave tears the grid.
+    if (reloadingRef.current) { pendingReloadRef.current = { v }; return }
+    // Pause the 2s sync while the reload settles: handleLoadScene tears the renderer
     // down (0 visuals) and reinstalls hooks over several frames; a sync firing in
     // that window persists an empty/hookless world and renders it dark for everyone.
     reloadingRef.current = true
-    setTimeout(() => { reloadingRef.current = false }, 4500)
     try {
       const q = v === undefined ? '' : `?version=${v}`
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`)
@@ -1590,6 +1598,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
     } catch { /* leave where we are */ }
+    finally {
+      // release AFTER the load actually finished (not a fixed timer from entry):
+      // hold the sync-pause a beat for the recompile to settle, then run the
+      // newest queued request, if any — so a legit follow-up edit still adopts.
+      setTimeout(() => {
+        reloadingRef.current = false
+        const p = pendingReloadRef.current
+        pendingReloadRef.current = null
+        if (p) hotLoadSpaceVersionRef.current?.(p.v)
+      }, 1500)
+    }
   }, [spaceSlug, handleLoadScene])
   hotLoadSpaceVersionRef.current = hotLoadSpaceVersion
 
