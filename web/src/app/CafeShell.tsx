@@ -314,6 +314,12 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
+  // NESTED PRESENCE (web/docs/presence-nesting-spec.md). The door cartridge emits
+  // 'cafe:presence' with this view's location path; we key the live-cursor room
+  // off it. STEP 1: scope ONLY the PLAYER WORLDS directory (the confirmed bleed)
+  // to its own room; main + sub-mains keep their existing rooms → presenceKey
+  // stays undefined for them, so FieldEngine falls back to playScene as today.
+  const [presenceRoom, setPresenceRoom] = useState<string | undefined>(undefined)
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
   const crumbRef = useRef<{ scene: string; sub: string | null }[]>([])   // hubs we entered through (+ which sub-main), in order
@@ -964,6 +970,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     }
     const onModal = (e: Event) => setModalUp(!!(e as CustomEvent).detail)
     const onSubMode = (e: Event) => setSubMode((e as CustomEvent).detail)
+    const onPresence = (e: Event) => {
+      const p = ((e as CustomEvent).detail as { path?: string } | null)?.path || 'main'
+      // STEP 1: only the players directory gets a distinct room; else undefined
+      // (main → 'CAFE', sub-mains → 'SUB-MAIN' via playScene, all unchanged)
+      setPresenceRoom(p.startsWith('main/players') ? 'CAFE/players' : undefined)
+    }
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     // the group layer needs to know who's standing in it (found / join / pin)
@@ -996,6 +1008,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     window.addEventListener('cafe:portals', onPortals)
     window.addEventListener('cafe:modal', onModal)
     window.addEventListener('cafe:submode', onSubMode)
+    window.addEventListener('cafe:presence', onPresence)
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('cafe:back', onBack)
@@ -1008,6 +1021,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.removeEventListener('cafe:portals', onPortals)
       window.removeEventListener('cafe:modal', onModal)
       window.removeEventListener('cafe:submode', onSubMode)
+      window.removeEventListener('cafe:presence', onPresence)
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1171,6 +1185,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
       <FieldEngine playScene={voting && previewScene ? previewScene : scene}
         onDockRect={setDockBottom}
+        presenceKey={scene === 'CAFE' ? presenceRoom : undefined}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
 
       {/* the rolling tournament — every page is its own arena.

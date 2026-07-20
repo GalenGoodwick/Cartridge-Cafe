@@ -850,6 +850,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // after a pip has rendered once, mark it seen so its NEXT position change
   // animates (snap only on the very first frame it appears)
   useEffect(() => { for (const o of presenceOthers) seenPipsRef.current.add(o.id) }, [presenceOthers])
+  // PHASE-0 instrumentation: publish WHO I currently see (ids) for the harness/overlay
+  useEffect(() => {
+    try {
+      const w = window as unknown as { __ccPresenceDbg?: Record<string, unknown> }
+      w.__ccPresenceDbg = { ...(w.__ccPresenceDbg || {}), others: presenceOthers.map(o => o.id), n: presenceOthers.length }
+    } catch { /* no window */ }
+  }, [presenceOthers])
   const presenceIdRef = useRef<string>('')
   // other players' brewed-glyph seats (pid → slot 0-2, pid → wgsl). Lives at
   // component level so the scene loader can re-overlay live seats after a
@@ -876,6 +883,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // browsing a sub-main / player-worlds directory doesn't bleed onto main as a
     // live cursor (they nest on main as a docked orb via /api/presence instead).
     const world = spaceId || presenceKey || playScene || 'global'
+    // PHASE-0 instrumentation (web/docs/presence-nesting-spec.md): expose the live
+    // room + who I currently see, for the two-client Playwright harness and the
+    // ⌥⇧P overlay. Read-only — nothing in the app consumes it.
+    try {
+      const w = window as unknown as { __ccPresenceDbg?: Record<string, unknown> }
+      w.__ccPresenceDbg = { ...(w.__ccPresenceDbg || {}), room: 'cursors:' + world, scene: playScene || spaceSlug || '', me: presenceIdRef.current }
+    } catch { /* no window */ }
     // entering a new world: drop the previous world's pips + snap-tracking, so no
     // cursor animates in from where it stood in the world you just left
     setPresenceOthers(prev => (prev.length ? [] : prev))

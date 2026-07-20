@@ -542,6 +542,17 @@ try {
   // layout is saved the bubbles land settled; only a genuinely new world (the
   // newborn branch) wakes the field, so unchanged rosters never re-animate.
   if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.hintedEmpty = false; U.sharedAt = 0
+    // NESTED PRESENCE (web/docs/presence-nesting-spec.md) — emit this view's
+    // location path on view change (deduped by mineKey, no React-state lag). The
+    // shell keys the live-cursor room off it. STEP 1: only PLAYER WORLDS acts on
+    // this (the confirmed bleed); main + sub-mains keep their current rooms.
+    if (typeof window !== 'undefined') {
+      const path = MF ? 'main/mine/' + mineKey
+        : PL ? (HOUSE ? 'main/players/house' : 'main/players')
+        : SUB ? (subKey ? 'main/subs/sub:' + subKey : 'main/subs')
+        : 'main'
+      window.dispatchEvent(new CustomEvent('cafe:presence', { detail: { path } }))
+    }
     // SNAP: a mode flip re-centers the view on the new roster instantly. Without
     // this the camera keeps wherever main was panned/zoomed, so MY WORLDS opens
     // off in a corner and never "arrives".
