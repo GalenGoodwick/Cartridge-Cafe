@@ -121,6 +121,12 @@ export class WorldSandbox {
   private quarantined = false
   private lastPostAt = 0
   private slowStrikes = 0
+  // input edge-detection: last frame's held-state, so the hook is handed a ready
+  // `input` object (held / pressed / released / moveX / moveY / action) instead
+  // of diffing raw key_* itself. ESC is never a game key (unmapped upstream); R
+  // is withheld while restart-with-R is armed so a world can't fight the reset.
+  private prevKeys: Record<string, boolean> = {}
+  private prevPointerDown = false
 
   /** Put a hook failure where players AND agents can see it: worldData
    *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay. */
@@ -154,6 +160,49 @@ export class WorldSandbox {
           keepalive: true,
         }).catch(() => {})
       } catch { /* telemetry must never throw into the render path */ }
+    }
+  }
+
+  /** Derive a ready-to-use input frame from the raw key_ and mouse_ held-state the
+   *  host writes, so a hook reads `wd.input.pressed.space` etc. instead of tracking
+   *  key-press deltas by hand. Reserved keys: ESC is never mapped upstream (so never
+   *  appears here); R is withheld while restart-with-R is armed. moveX/moveY fold
+   *  WASD + arrows into a -1..1 axis (moveY: forward/up = +1). */
+  private buildInput(wd: Record<string, unknown>): Record<string, unknown> {
+    const held: Record<string, boolean> = {}
+    const pressed: Record<string, boolean> = {}
+    const released: Record<string, boolean> = {}
+    const rArmed = !!wd['rResetKey']
+    const now: Record<string, boolean> = {}
+    for (const k of Object.keys(wd)) {
+      if (!k.startsWith('key_') || k.endsWith('_n')) continue
+      const name = k.slice(4)
+      if (name === 'r' && rArmed) continue        // reset owns R
+      const down = !!wd[k]
+      now[name] = down
+      if (down) held[name] = true
+      if (down && !this.prevKeys[name]) pressed[name] = true
+      if (!down && this.prevKeys[name]) released[name] = true
+    }
+    this.prevKeys = now
+    const on = (n: string) => !!held[n]
+    const hit = (n: string) => !!pressed[n]
+    const moveX = (on('d') || on('right') ? 1 : 0) - (on('a') || on('left') ? 1 : 0)
+    const moveY = (on('w') || on('up') ? 1 : 0) - (on('s') || on('down') ? 1 : 0)
+    const pdown = !!wd['mouse_down']
+    const pointer = {
+      x: (wd['mouse_x'] as number) ?? 0,
+      y: (wd['mouse_y'] as number) ?? 0,
+      down: pdown,
+      pressed: pdown && !this.prevPointerDown,
+      released: !pdown && this.prevPointerDown,
+    }
+    this.prevPointerDown = pdown
+    return {
+      held, pressed, released, moveX, moveY,
+      action: hit('space') || hit('enter'),         // primary-action edge
+      actionHeld: on('space') || on('enter'),
+      pointer,
     }
   }
 
@@ -274,7 +323,9 @@ export class WorldSandbox {
     const fs = sim.worldData['__fixedStep']
     const useDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : dt
     try {
-      this.worker.postMessage({ type: 'tick', worldData: cloneable(sim.worldData), dt: useDt, fields })
+      const payload = cloneable(sim.worldData)
+      payload.input = this.buildInput(sim.worldData)   // derived; never persisted to sim.worldData
+      this.worker.postMessage({ type: 'tick', worldData: payload, dt: useDt, fields })
       this.inFlight = true
       this.lastPostAt = perfNow()   // hang-detector baseline for this in-flight tick
     } catch (e) {
