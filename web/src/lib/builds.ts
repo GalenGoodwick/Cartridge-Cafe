@@ -68,9 +68,14 @@ export async function reconcile(now: Date): Promise<number> {
   })
   let made = 0
   for (const s of spaces) {
-    const wd = (s.snapshot as { worldData?: { creation_brief?: { prompt?: string }; brief_done?: unknown } } | null)?.worldData
+    const wd = (s.snapshot as { worldData?: { creation_brief?: { prompt?: string }; brief_done?: unknown; __house_requested?: unknown } } | null)?.worldData
     const brief = wd?.creation_brief?.prompt
     if (!brief || wd?.brief_done) continue
+    // The house AI only builds what was EXPLICITLY handed to it ("have the house AI
+    // build it"). A brief alone is NOT consent — a player may be building the world
+    // themselves or with their own connected AI (it reads the brief too). Without
+    // this the daemon scavenged every brief and collided with the real builder.
+    if (!wd.__house_requested) continue
     // Dedup on (space, brief text) including `done` — so a finished build whose
     // brief_done didn't persist can't spawn a rebuild loop, while a genuinely
     // new/edited brief (different text) still enqueues fresh.

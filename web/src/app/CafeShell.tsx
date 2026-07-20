@@ -78,6 +78,24 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false }
   const [iconOpen, setIconOpen] = useState(false)
   const [lendOpen, setLendOpen] = useState(false)   // "Lend your AI" volunteer panel
   const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — your personal player key
+  // FIRST-VISIT ORIENTATION — shown once per person. localStorage covers this
+  // browser (incl. a guest who then signs up, same tab); the server flag
+  // (/api/oriented, keyed by user id) covers cross-device + after sign-up.
+  const [orientOpen, setOrientOpen] = useState(false)
+  useEffect(() => {
+    let seen = false
+    try { seen = !!localStorage.getItem('cc-oriented') } catch { /* private mode */ }
+    if (seen) return
+    fetch('/api/oriented').then(r => r.json()).then(d => {
+      if (d?.seen) { try { localStorage.setItem('cc-oriented', '1') } catch { /* private mode */ } ; return }
+      setOrientOpen(true)
+    }).catch(() => setOrientOpen(true))
+  }, [])
+  const dismissOrient = () => {
+    setOrientOpen(false)
+    try { localStorage.setItem('cc-oriented', '1') } catch { /* private mode */ }
+    fetch('/api/oriented', { method: 'POST' }).catch(() => {})   // records against the user if signed in
+  }
   const [icon, setIcon] = useState<{ fx: number; hue: number; size: number; wgsl?: string }>({ fx: 5, hue: 0.55, size: 1 })
   useEffect(() => {
     try {
@@ -614,13 +632,15 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   /** Deliver the brief and open the world — fired either by the player's OWN AI
    *  logging in (brewAi), or by "have the house AI build it": setting the brief
    *  enqueues it, and a resident/volunteer builder picks it up and builds live. */
-  const finalizeBrief = async () => {
+  const finalizeBrief = async (houseAi = false) => {
     if (brewFinalizedRef.current || !connectReady) return
     brewFinalizedRef.current = true
     setBrewErr('')
     const r = await fetch('/api/spaces/' + brewSlugRef.current, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim() }),
+      // houseAi:true ONLY when they chose "have the house AI build it" — that's the
+      // one consent that lets the daemon claim this world. Own-AI connect leaves it off.
+      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim(), houseAi }),
     }).catch(() => null)
     const d = await r?.json().catch(() => null)
     if (!r || !r.ok) { brewFinalizedRef.current = false; setBrewErr(d?.error || 'could not open the world'); return }
@@ -1035,6 +1055,24 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
       {ad && <AdInterstitial ad={ad} onClose={() => setAd(null)} />}
+      {/* FIRST-VISIT ORIENTATION — one-time, on the hub. ✕ or GOT IT dismisses. */}
+      {orientOpen && scene === 'CAFE' && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={dismissOrient}>
+          <div className="relative w-full max-w-md rounded-2xl border border-brass/30 bg-[#0d0906]/95 backdrop-blur p-6 font-mono text-crema/85 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={dismissOrient} aria-label="close orientation"
+              className="absolute top-3 right-3 w-7 h-7 rounded text-crema/50 hover:text-crema hover:bg-white/10 text-lg leading-none transition-colors">✕</button>
+            <div className="cafe-sign text-2xl mb-3">welcome to cartridge.cafe</div>
+            <div className="text-[15px] leading-relaxed text-crema/75 space-y-2.5">
+              <p>a place of little worlds — all made by people and their AIs.</p>
+              <p><span className="text-flame">▶ play</span> — click any glowing bubble to step into a world.</p>
+              <p><span className="text-emerald-300">✎ build your own</span> — tap <b>BREW YOURS</b>, name it, then hand the briefing to an AI (Claude Code, Cursor…). It builds live over the web — no coding needed.</p>
+              <p><span className="text-amber-300">⚖ weigh in</span> — branch a world to challenge it, and vote in the reckoning.</p>
+            </div>
+            <button onClick={dismissOrient}
+              className="mt-5 w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 text-[15px] tracking-[0.2em] text-void transition-colors">GOT IT</button>
+          </div>
+        </div>
+      )}
       <FieldEngine playScene={voting && previewScene ? previewScene : scene}
         onDockRect={setDockBottom}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
@@ -1393,7 +1431,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 COPY CONNECTION PROMPT
               </button>
               <div className="font-mono text-[14px] tracking-[0.2em] text-crema/70 text-center my-2">— or —</div>
-              <button disabled={!connectReady} onClick={finalizeBrief}
+              <button disabled={!connectReady} onClick={() => finalizeBrief(true)}
                 className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 ☕ HAVE THE HOUSE AI BUILD IT
               </button>

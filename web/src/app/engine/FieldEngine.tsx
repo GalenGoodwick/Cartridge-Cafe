@@ -250,6 +250,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
   const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
+  const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
+  useEffect(() => {
+    if (!uiDockOpen) return
+    try { if (localStorage.getItem('cc-edit-coached')) return } catch { return }
+    setEditCoach(true)
+  }, [uiDockOpen])
+  const dismissEditCoach = () => {
+    setEditCoach(false)
+    try { localStorage.setItem('cc-edit-coached', '1') } catch { /* private mode */ }
+  }
   // REMIX hidden for now (users-first phase; returns as PAID remix). Keeping the
   // state declared but referenced so the commented button re-enables cleanly.
   const [remixArm, setRemixArm] = useState(false)
@@ -288,7 +298,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (!spaceSlug) return
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`).then(x => x.json())
-      setVersionList(Array.isArray(r.versions) ? r.versions : [])
+      // versions are 1-based; drop any v0/negative a legacy or flag-time path may
+      // have left in the data so the ◂/▸ stepper can't land on a "version 0"
+      setVersionList(Array.isArray(r.versions) ? r.versions.filter((v: { version: number }) => v.version >= 1) : [])
     } catch { setVersionList([]) }
   }, [spaceSlug])
   // load up front on a space: the ⏱ VERSIONS ◂/▸ arrows need the roster to step
@@ -323,7 +335,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const vs: number[] = []
       for (const nm of (scenes || []) as string[]) {
         const sm = nm.match(/^(.*) · v(\d+)$/)
-        if (sm && sm[1] === ident) vs.push(+sm[2])
+        if (sm && sm[1] === ident && +sm[2] >= 1) vs.push(+sm[2])   // versions are 1-based; never a v0
       }
       vs.sort((a, b) => a - b)
       setVerList(vs)
@@ -523,6 +535,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const frameMsEmaRef = useRef<number>(16)
   const budgetWroteRef = useRef<number>(0)
   const budgetWarnedRef = useRef<boolean>(false)
+  // RENDER-SCALE GOVERNOR — an internal multiplier on the world's declared
+  // renderScale. It eases DOWN under sustained load (fewer pixels → the GPU
+  // recovers) and recovers UP when frames are comfortable, so a heavy world
+  // degrades gracefully instead of freezing the tab.
+  const autoScaleRef = useRef<number>(1)       // 1 = full res; floor ~0.55
+  const govAdjAtRef = useRef<number>(0)         // last adjustment time (cooldown, anti-thrash)
+  const govNotifiedRef = useRef<boolean>(false) // told the player once this session
+  // device-tier START: weak/mobile GPUs begin a notch down so the first heavy
+  // frames can't spike into a freeze before the governor reacts (it recovers to
+  // full on its own if the device can actually handle it).
+  useEffect(() => {
+    try {
+      const weak = (navigator.hardwareConcurrency || 8) <= 4 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+      if (weak) autoScaleRef.current = 0.8
+    } catch { /* fine */ }
+  }, [])
   const lastSampleTimeRef = useRef<number>(0)
   const lastPresenceRef = useRef<number>(0)
   const cachedOverlapMasksRef = useRef<Map<string, Uint8Array>>(new Map())
@@ -713,7 +741,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // (public/private moved into the merged WORLD TOOLS panel — the embedded
   //  SpaceManagementOverlay's "visibility" is the single front-door control)
   // DIRECT EDIT KEYS: the branch/version scene name being keyed (empty = current branch)
-  const [keyScene, setKeyScene] = useState('')
   // ONE toolbox everywhere — WORLD TOOLS also serves a ⑂ branch that is YOURS
   // (matches the ownership rule the legacy chip row used: handle in the branch name)
   const ownBranchTools = (() => {
@@ -2763,6 +2790,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
       // ── budget meter: cost must be visible BEFORE it becomes a freeze ──
       frameMsEmaRef.current = frameMsEmaRef.current * 0.95 + Math.min(dt * 1000, 250) * 0.05
+      // ── render-scale GOVERNOR ── ease down under load, recover when comfortable.
+      // Thresholds are separated (33ms down / 20ms up) with a cooldown so it settles
+      // instead of pulsing; down-steps are bigger than up-steps (drop fast, recover
+      // slow). A player is told ONCE, the first time it actually has to help.
+      {
+        const ema = frameMsEmaRef.current
+        const FLOOR = 0.55
+        const easeNote = () => {
+          if (!govNotifiedRef.current) { govNotifiedRef.current = true; showToast('⚡ easing render quality a touch to keep this world smooth', 'info') }
+        }
+        if (ema > 120 && autoScaleRef.current > FLOOR) {
+          autoScaleRef.current = FLOOR; govAdjAtRef.current = now; easeNote()   // catastrophic → snap to floor
+        } else if (now - govAdjAtRef.current > 700) {
+          if (ema > 33 && autoScaleRef.current > FLOOR) {
+            autoScaleRef.current = Math.max(FLOOR, autoScaleRef.current - 0.1); govAdjAtRef.current = now; easeNote()
+          } else if (ema < 20 && autoScaleRef.current < 1) {
+            autoScaleRef.current = Math.min(1, autoScaleRef.current + 0.05); govAdjAtRef.current = now
+          }
+        }
+      }
       if (now - budgetWroteRef.current > 2000) {
         budgetWroteRef.current = now
         let effectCount = 0
@@ -3375,7 +3422,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // retina. Absent the key, reset to full res so it never leaks between
       // worlds.
       const rScale = (sim.worldData['renderScale'] as number | undefined) ?? 1.0
-      if (rScale !== renderer.renderScale) renderer.setRenderScale(rScale)
+      // the governor MULTIPLIES the world's declared scale; clamp so the two
+      // together never drop absurdly low (still readable, just softer under load)
+      const effScale = Math.max(0.4, rScale * autoScaleRef.current)
+      if (effScale !== renderer.renderScale) renderer.setRenderScale(effScale)
       // per-world pixel budget: detail-heavy but cheap-per-pixel worlds can buy
       // back full retina sharpness (the 2.2M default upscales ~30-50% on hidpi,
       // which reads as soft focus). Clamped so no world can order a GPU-killer.
@@ -5923,75 +5973,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     </div>
                   )}
                 </div>
-                {canEditLaw && (() => {
-                  // DIRECT EDIT KEYS — mint the credential that lets an AI edit each tier:
-                  // world (live space, uc_st_) · branch / version (any ⑂ scene name, uc_sc_).
-                  // Canonical mains stay admin-only — the original is immortal.
-                  const defaultKeyScene = lastSceneRef.current?.includes(' ⑂ ') ? lastSceneRef.current : ''
-                  const sceneName = (keyScene || defaultKeyScene).trim()
-                  const mintWorldKey = async () => {
-                    try {
-                      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/token`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: 'direct edit' }),
-                      })
-                      const d = await r.json()
-                      if (!r.ok || !d.token) { showToast(d.error || 'could not mint a world key', 'error'); return }
-                      await navigator.clipboard.writeText(d.token)
-                      showToast('world key copied — it edits this world LIVE', 'success')
-                    } catch { showToast('clipboard blocked — try again', 'error') }
-                  }
-                  const mintSceneKey = async () => {
-                    if (!sceneName.includes(' ⑂ ')) { showToast('branches and versions only — a canonical world stays admin-only', 'error'); return }
-                    const tok = await mintBranchToken(sceneName)
-                    if (!tok) { showToast('could not mint — are you the owner of that branch?', 'error'); return }
-                    try { await navigator.clipboard.writeText(tok); showToast('key copied — it edits only ' + sceneName, 'success') }
-                    catch { showToast('clipboard blocked — try again', 'error') }
-                  }
-                  return (
-                    <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
-                      <div className="text-[14px] tracking-[0.2em] text-white/40">DIRECT EDIT KEYS</div>
-                      {spaceSlug && spaceId && (
-                        <div className="flex items-center justify-between text-[16px]">
-                          <span>world <span className="text-white/35">(live)</span></span>
-                          <button onClick={mintWorldKey}
-                            title="mint + copy a key that edits this world live over the bridge"
-                            className="px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors">
-                            🔑 MINT + COPY
-                          </button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1.5 text-[16px]">
-                        <input
-                          value={keyScene || defaultKeyScene}
-                          onChange={e => setKeyScene(e.target.value)}
-                          placeholder="WORLD ⑂ you · v1"
-                          title="a branch or version scene name — the key edits ONLY it, never main"
-                          className="flex-1 min-w-0 bg-white/5 border border-white/15 focus:border-amber-300/50 outline-none rounded px-2 py-1 text-[14px] text-white/80 placeholder:text-white/25"
-                        />
-                        <button onClick={mintSceneKey}
-                          className="px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] border-white/25 text-white/70 hover:border-amber-300/60 hover:text-amber-200 transition-colors flex-shrink-0">
-                          🔑 MINT
-                        </button>
-                      </div>
-                      <div className="text-[14px] text-white/35 leading-relaxed">
-                        world key edits the LIVE world. the named key edits only that branch or version (any ⑂ name, e.g. · v2) — never main. hand either to an AI.
-                      </div>
-                    </div>
-                  )
-                })()}
-                <div className="px-3 py-2">
-                  <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1.5">CONTENTS · {fields.size}</div>
-                  <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
-                    {[...fields.values()].map(f => (
-                      <div key={f.id} className="flex items-center justify-between text-[14px]">
-                        <span className="text-white/75 truncate">{f.name || f.id}</span>
-                        <span className="text-white/30 ml-2 flex-shrink-0">{f.shapeType || ''}</span>
-                      </div>
-                    ))}
-                    {fields.size === 0 && <div className="text-[14px] text-white/30">an empty world, waiting</div>}
-                  </div>
-                </div>
+                {/* DIRECT EDIT KEYS removed — CONNECT AI / ALTER already mints the
+                    world + branch keys, so a second door here only confused people.
+                    CONTENTS (raw field list) removed too — dev-only clutter. */}
                 {isOwner && (
                   <button
                     onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
@@ -6041,7 +6025,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {/* Mandatory world instructions + branch + AI status — top right, every world.
               On the CAFE door it drops below the sign chrome (THE SHELF / BREW YOURS). */}
-          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-end gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+          {/* items-stretch → every control in the dock takes the SAME width (the
+              widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
+              one clean column instead of ragged-right buttons */}
+          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
@@ -6175,7 +6162,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const canOlder = cur === undefined ? vs.length > 0 : idx > 0
               const canNewer = cur !== undefined
               return (
-                <div className="flex items-stretch rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[14px]">
+                <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[14px]">
                   <button disabled={!canOlder} title="older version"
                     onClick={() => go(cur === undefined ? vs[vs.length - 1] : vs[idx - 1])}
                     className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">◂</button>
@@ -6357,12 +6344,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
               )}
-              {/* VOTE sits at the bottom of the grid — a resolution the commons weighs in on */}
-              {spaceId && (
-                <button onClick={() => window.dispatchEvent(new CustomEvent('cafe:call-vote'))}
-                  className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-                  title="open a resolution the commons can weigh in on">⚖ VOTE</button>
-              )}
+              {/* (the ⚖ "call a resolution/issue" button was removed — it wasn't
+                  wired up yet. The world's ONE real vote is the ⚔ RECKONING that
+                  TournamentBar seats just below this dock.) */}
               {/* the methodical create panel: 1 · name it · 2 · AI connects with its
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
@@ -6501,15 +6485,40 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </div>
             </div>
           )}
+          {/* EDIT COACH — shown once, the first time the ✎ EDIT dock is opened,
+              so a new builder knows what each control does. ✕ / GOT IT dismiss. */}
+          {editCoach && (
+            <div className="absolute inset-0 z-[58] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={dismissEditCoach}>
+              <div className="relative w-full max-w-sm rounded-2xl border border-white/15 bg-[#0d0906]/95 backdrop-blur p-5 font-mono text-white/85 shadow-2xl" onClick={e => e.stopPropagation()}>
+                <button onClick={dismissEditCoach} aria-label="close"
+                  className="absolute top-3 right-3 w-7 h-7 rounded text-white/50 hover:text-white hover:bg-white/10 text-lg leading-none transition-colors">✕</button>
+                <div className="text-[15px] tracking-[0.2em] text-white/50 mb-3">THE EDIT MENU</div>
+                <div className="text-[14px] leading-relaxed text-white/70 space-y-1.5">
+                  <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
+                  <div><span className="text-white/90">⌁ BUILD CONSOLE</span> — watch your AI build, live.</div>
+                  <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>
+                  <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
+                  <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI to build or alter it.</div>
+                  <div><span className="text-white/90">◆ MAKE ICON</span> — have your AI author the world&apos;s shelf badge.</div>
+                  <div><span className="text-emerald-300">⑂ CREATE BRANCH</span> — fork this world to challenge it in the vote.</div>
+                  <div><span className="text-amber-300">⚔ VOTE</span> — open the reckoning (needs at least one branch).</div>
+                </div>
+                <button onClick={dismissEditCoach}
+                  className="mt-4 w-full rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 py-2 text-[14px] tracking-[0.2em] transition-colors">GOT IT</button>
+              </div>
+            </div>
+          )}
           {instrOpen && (
             <div className={`absolute right-36 z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}>
               {/* anchored to the grid's top-right under its button — a reference
                   card, not a curtain: the vote rail and the world stay visible
                   and clickable while it's open (✕ or ESC closes) */}
+              {/* header bar (title + EDIT + ✕) is PINNED; the body below scrolls,
+                  so the title and close stay visible however long the text runs */}
               <div
-                className="w-[380px] max-w-[80vw] max-h-[62vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 backdrop-blur p-5 font-mono text-[18px] leading-relaxed text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
+                className="w-[380px] max-w-[80vw] max-h-[62vh] flex flex-col overflow-hidden rounded-xl border border-white/15 bg-black/90 backdrop-blur font-mono text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               >
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-white/10 bg-black/90 flex-shrink-0">
                   <div className="text-[16px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
                   <div className="flex items-center gap-2">
                     {can(ctx, 'editLaw') && !instrEdit && (
@@ -6531,6 +6540,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     </button>
                   </div>
                 </div>
+                <div className="min-h-0 overflow-y-auto px-5 py-4 text-[18px] leading-relaxed">
                 {instrEdit ? (
                   <>
                     <textarea
@@ -6558,6 +6568,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         : 'No instructions written for this world yet.'))}
                   </div>
                 )}
+                </div>
               </div>
             </div>
           )}
@@ -6825,6 +6836,25 @@ ${scope}`
                         }}
                       >
                         ✓ SAVE VERSION
+                      </button>
+                    )}
+                    {alter && spaceSlug && (
+                      <button
+                        disabled={!plugBrief.trim()}
+                        className="text-[14px] tracking-[0.15em] bg-brass/80 hover:bg-glow text-void rounded px-3 py-1 transition-colors disabled:opacity-40"
+                        title="hand your brief to the house AI — it alters your LIVE world"
+                        onClick={async () => {
+                          try {
+                            const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
+                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ brief: plugBrief.trim(), houseAi: true }),
+                            })
+                            if (r.ok) { showToast('house AI queued — it will alter your live world as one comes free', 'success'); setPlugOpen(false) }
+                            else showToast('could not queue the house AI', 'error')
+                          } catch { showToast('could not queue the house AI', 'error') }
+                        }}
+                      >
+                        ☕ HAVE THE HOUSE AI DO IT
                       </button>
                     )}
                     {!mintFailed && (
