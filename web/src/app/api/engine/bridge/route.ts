@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
+import { resetWorld, worldStores } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
@@ -617,6 +618,21 @@ export async function POST(req: NextRequest) {
           results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, main_say, main_read. Build a world with the uc_st_ token those return.' })
           continue
         }
+      }
+
+      // UNIFIED RESET — one coherent wipe of a world's GAME state (the puzzle:
+      // __tg/__trig/__chapters/whiteboard + the new `game` holder), preserving
+      // CONTENT/CONFIG. {player:true} also wipes per-user progress, {social:true}
+      // also clears the version-tournament/cell slots. Space-scoped only.
+      if (cmd.type === 'reset_world' && isSpaceScoped) {
+        const out = await resetWorld(auth.spaceId!, { clearPlayer: cmd.player === true, clearSocial: cmd.social === true })
+        results.push({ type: 'reset_world', ...out, next: 'open tabs must HARD-REFRESH to pick up the reset (a running tab would otherwise sync its old state back).' })
+        continue
+      }
+      // manifest of every store this world touches (read-only)
+      if (cmd.type === 'world_stores' && isSpaceScoped) {
+        results.push({ type: 'world_stores', ...(await worldStores(auth.spaceId!)) })
+        continue
       }
 
       // #12 render_probe — SEE this world. Renders its shader on the cloud GPU

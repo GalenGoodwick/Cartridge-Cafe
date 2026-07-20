@@ -120,11 +120,16 @@ function validateSubmainsWrite(prevRaw: unknown, nextRaw: unknown, userId: strin
  *  per browser, so still never a shared slot). Callers opt in with `scope=user`.
  *  Without it the slot is shared as before (tournaments, the group registry, chat).
  *  This is what keeps one player's save out of everyone else's. */
-async function userScopedSlot(slot: string, anon: string | null): Promise<string> {
+async function userScopedSlot(slot: string, anon: string | null): Promise<string | null> {
   const uid = (await getServerSession(authOptions))?.user?.id
   if (uid) return `usr:${uid}:${slot}`
-  const tok = (anon || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40)
-  return `usr:anon-${tok || 'x'}:${slot}`
+  // A guest per-player save needs a STRONG per-browser token. The old code fell
+  // back to `usr:anon-x:` when the token was empty/short — so every private-mode
+  // guest (no localStorage) AND colliding short tokens shared ONE bucket and read
+  // each other's saves. Refuse to scope on a weak token: no leak, just no save.
+  const tok = (anon || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)
+  if (tok.replace(/^anon-?/i, '').length < 8) return null
+  return `usr:${tok}:${slot}`
 }
 
 /**
@@ -142,6 +147,7 @@ export async function GET(req: NextRequest) {
   const key = searchParams.get('scope') === 'user'
     ? await userScopedSlot(slot, searchParams.get('anon'))
     : slot
+  if (key === null) return NextResponse.json({ slot, data: null, unscoped: true })  // weak guest token → no shared bucket
   const data = await loadGameSlot(key)
   return NextResponse.json({ slot, data: data ?? null })
 }
@@ -193,6 +199,7 @@ export async function POST(req: NextRequest) {
       const key = body.scope === 'user'
         ? await userScopedSlot(body.slot, typeof body.anon === 'string' ? body.anon : null)
         : body.slot
+      if (key === null) return NextResponse.json({ ok: true, saved: false, unscoped: true })  // weak guest token → drop, don't pool
       await saveGameSlot(key, body.data)
       return NextResponse.json({ ok: true })
     }

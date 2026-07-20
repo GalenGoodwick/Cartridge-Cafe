@@ -371,9 +371,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [playScene, spaceSlug])
   const whoRef = useRef('')
   useEffect(() => {
+    // a guest's per-player saves key off THIS token, so it must be strong +
+    // stable per browser. 4 chars collided (birthday paradox ~1500 guests) and
+    // an empty one pooled everyone into one shared save. 16 chars + reuse the
+    // existing presence id (cc:pid) so a browser has ONE stable guest identity.
     let anon = ''
     try { anon = localStorage.getItem('cc-anon') || '' } catch { /* fine */ }
-    if (!anon) { anon = 'anon-' + Math.random().toString(36).slice(2, 6); try { localStorage.setItem('cc-anon', anon) } catch { /* fine */ } }
+    if (!anon || anon.replace(/^anon-?/i, '').length < 8) {
+      let pid = ''
+      try { pid = localStorage.getItem('cc:pid') || '' } catch { /* fine */ }
+      anon = 'anon-' + (pid || (Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10)))
+      try { localStorage.setItem('cc-anon', anon) } catch { /* private mode: in-memory only, no cross-guest leak */ }
+    }
     whoRef.current = me ? me.split('@')[0] : anon
   }, [me])
   // spaceSlug fallback: on a space page the scene refs are unset until you branch/load,
