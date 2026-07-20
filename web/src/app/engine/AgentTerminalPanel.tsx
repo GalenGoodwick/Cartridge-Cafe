@@ -33,7 +33,7 @@ function TerminalLine({ entry }: { entry: TerminalEntry }) {
           {entry.fieldName}
         </span>
         <span className="text-accent flex-shrink-0">{entry.type}</span>
-        <span className="text-slate-400 break-words">{entry.summary}</span>
+        <span className="text-slate-400 break-words min-w-0 flex-1">{entry.summary}</span>
       </div>
       {entry.detail && (
         <div className="pl-3 mt-0.5">
@@ -54,21 +54,29 @@ function TerminalLine({ entry }: { entry: TerminalEntry }) {
   )
 }
 
-export default function AgentTerminalPanel({ entries }: { entries: TerminalEntry[] }) {
+export default function AgentTerminalPanel({ entries, header = true }: { entries: TerminalEntry[]; header?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // follow the newest line — but only while the reader is already near the
+  // bottom, so scrolling up to read history isn't yanked back every command
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    const el = scrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+    if (nearBottom) el.scrollTop = el.scrollHeight
   }, [entries.length])
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0">
-        Terminal <span className="text-accent">{entries.length}</span>
-      </div>
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-1 min-h-0">
+      {header && (
+        <div className="px-3 py-2 text-[12px] font-mono text-muted border-b border-border flex-shrink-0">
+          Terminal <span className="text-accent">{entries.length}</span>
+        </div>
+      )}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-scroll p-2 space-y-1 min-h-0 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.35)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/30 [&::-webkit-scrollbar-track]:bg-transparent"
+      >
         {entries.length === 0 && (
           <div className="text-[12px] text-muted font-mono italic">No commands yet</div>
         )}

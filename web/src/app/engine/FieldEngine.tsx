@@ -6310,10 +6310,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       <span>⌁ BUILD CONSOLE</span>
                       <span className="text-white/25">{terminalLog.length} steps</span>
                     </div>
-                    <div ref={buildConsoleRef} className="flex-1 overflow-y-scroll px-3 py-2 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.3)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-track]:bg-transparent">
+                    <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                       {terminalLog.length === 0
-                        ? <div className="font-mono text-[12px] text-white/30 leading-relaxed">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
-                        : <AgentTerminalPanel entries={terminalLog} />}
+                        ? <div className="font-mono text-[12px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
+                        : <AgentTerminalPanel entries={terminalLog} header={false} />}
                     </div>
                   </div>
                 )}

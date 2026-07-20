@@ -1547,6 +1547,19 @@ fn visual_organic(uv: vec2f, sdf: f32, col: vec4f, time: f32, p: vec4f, behind: 
  * Fields are stored in a storage buffer as packed FieldGPU structs (5 vec4f each).
  * Visual types are parameterized function IDs dispatched via switch.
  */
+
+/** A registered visual only renders if its wgsl actually defines the function
+ *  the dispatch switch will call (`visual_<name>`). Empty / junk / wrong-shaped
+ *  visuals — e.g. leftover API-probe registrations, or a shader the AI wrote as
+ *  a standalone @fragment — would otherwise emit `case: return visual_x(...)` for
+ *  a function that doesn't exist, failing the ENTIRE uber-shader compile and
+ *  blacking out every field in the world. Skip them: fields that point at a
+ *  skipped visual simply draw nothing, and every other visual still works. */
+function definesVisualFn(t: { name: string; wgsl?: string }): boolean {
+  const nm = t.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`fn\\s+visual_${nm}\\s*\\(`).test(t.wgsl || '')
+}
+
 export function buildSuperimposedComputeShader(
   visualTypes?: VisualTypeEntry[],
   interactionTypes?: InteractionEntry[],
@@ -1573,7 +1586,7 @@ export function buildSuperimposedComputeShader(
     seenNames.add(t.name)
     seenIds.add(t.id)
     return true
-  })
+  }).filter(definesVisualFn)   // drop junk/empty visuals so one can't fail the whole compile
   const visualFunctions = dedupedTypes.map(t => t.wgsl).join('\n\n')
 
   // Generate switch cases for visual dispatch
@@ -2160,7 +2173,7 @@ export function buildSuperimposed3DComputeShader(
     if (seenNames.has(t.name)) return false
     seenNames.add(t.name)
     return true
-  })
+  }).filter(definesVisualFn)   // drop junk/empty visuals so one can't fail the whole compile
   const visualFunctions = dedupedTypes.map(t => t.wgsl).join('\n\n')
   const switchCases = dedupedTypes.map(t =>
     `    case ${t.id}u: { return visual_${t.name}(uv, sdf, col, time, p, behind); }`

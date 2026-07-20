@@ -199,7 +199,14 @@ async function tick() {
           if (!line.trim()) continue
           try {
             const ev = JSON.parse(line)
-            if (/usage limit|rate limit|\bquota\b|out of credit|credit balance|too many requests|\b429\b|limit reached|resets? at/i.test(line)) hitLimit = true
+            // Limit detection ONLY from harness error events — never from the
+            // agent's prose or tool results. The guide itself says "daily
+            // creation quota", which the old any-line scan matched: every build
+            // that READ the guide got falsely requeued as credit-limited.
+            if ((ev.type === 'result' && ev.is_error) || ev.type === 'error' || (ev.type === 'system' && ev.subtype === 'error')) {
+              const errText = String(ev.result ?? ev.error ?? ev.message ?? line)
+              if (/usage limit|rate limit|\bquota\b|out of credit|credit balance|too many requests|\b429\b|limit reached|resets? at/i.test(errText)) hitLimit = true
+            }
             if (ev.type === 'assistant' && ev.message?.content) {
               for (const c of ev.message.content) {
                 if (c.type === 'tool_use') {
@@ -234,15 +241,17 @@ async function tick() {
 
     // 4) close out the lease — done on success, release (requeue) on failure/timeout
     clearInterval(heartbeat); heartbeat = null
-    if (hitLimit) {
+    if (ok) {
+      // a session that ran to a clean exit is DONE — complete it even if a limit
+      // error surfaced along the way (the work is saved; don't phantom-requeue)
+      await api(`/api/builds/${jobId}/complete`, { method: 'POST', body: '{}' })
+      log(`completed ${slug}`)
+    } else if (hitLimit) {
       // out of credits — requeue this brief for another builder and go dark so
       // the swarm reports the house AI unavailable until the cooldown passes
       creditsCooldownUntil = Date.now() + CREDITS_COOLDOWN_MS
       await api(`/api/builds/${jobId}/release`, { method: 'POST', body: '{}' }).catch(() => {})
       log(`usage/credit limit hit — house AI unavailable for ${CREDITS_COOLDOWN_MS / 60000}min; ${slug} requeued`)
-    } else if (ok) {
-      await api(`/api/builds/${jobId}/complete`, { method: 'POST', body: '{}' })
-      log(`completed ${slug}`)
     } else {
       await api(`/api/builds/${jobId}/release`, { method: 'POST', body: '{}' })
       log(`released ${slug} — build failed/timed out, requeued`)
