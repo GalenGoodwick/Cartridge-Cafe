@@ -1,0 +1,10 @@
+# Smithery configuration — https://smithery.ai/docs/build/project-config
+# A local stdio server: Smithery runs it via npx, no build step, no config needed.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+    required: []
+  commandFunction: |-
+    (config) => ({ command: 'npx', args: ['-y', 'cartridge-cafe-mcp'] })
