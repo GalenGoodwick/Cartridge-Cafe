@@ -1530,9 +1530,13 @@ try {
     const hit = (x, y, r) => Math.hypot(mx - x, my - y) < r
 
     if (inView(0)) {
-      if (hit(487, 256, 45)) go(5)                     // the right chevron → the observatory's constellation room
-      if (hit(214, 318, 75)) go(5)                     // the dome breaching the sea → the constellation room
-      if (hit(440, 300, 70)) go(1)                     // the observatory building → the gate
+      // MUTUALLY EXCLUSIVE — the right-chevron zone (487,256) and the building
+      // zone (440,300) overlap (64px apart), so a bare series fired BOTH: go(5)
+      // then go(1), and the finale bounced view 1 back to the shore. else-if =
+      // one hit wins, nearest-first.
+      if (hit(214, 318, 80)) go(5)                     // the dome breaching the sea → the constellation room
+      else if (hit(487, 256, 42)) go(5)                // the right chevron → the constellation room
+      else if (hit(440, 300, 60)) go(1)                // the observatory building → the gate
     } else if (inView(5)) {
       if (hit(25, 256, 45)) go(0)                      // back down to the shore
     } else if (inView(1)) {
