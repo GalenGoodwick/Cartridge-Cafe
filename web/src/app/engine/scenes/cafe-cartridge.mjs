@@ -1129,7 +1129,11 @@ try {
     // and CAFE/SUB-MAIN never count as unvisited worlds.
     const lz = B.launch || ''
     const unvis = !!lz && !lz.startsWith('sub:') && !lz.startsWith('maker:') && !lz.startsWith('players:') && !lz.startsWith('house:') && lz !== 'CAFE' && lz !== 'SUB-MAIN' && !visited[lz]
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0))
+    // docked presence orbs (headCount) belong ONLY to the main commons; on the
+    // directory / sub-mains, pack 0 so the shader draws no docked orbs (live DOM
+    // cursors show there instead).
+    const showHeads = (!MF && !SUB && !PL) ? (heads[n] || 0) : 0
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride
@@ -1139,9 +1143,10 @@ try {
   // glyph in the preset's seat and the preset stands down.
   // no brewed fx at all (icon state not landed yet) = 5, the default cursor
   u.push(wd.__glyphOn === 1 ? -1 : (typeof ic.fx === 'number' ? ic.fx | 0 : 5), typeof ic.hue === 'number' ? ic.hue : 0.55, typeof ic.size === 'number' ? ic.size : 1.0)
-  // the dancing shader effect IS the other player here — suppress the DOM cursor
-  // pip that would otherwise draw a dot on top of it
-  wd.noPresenceCursors = true
+  // On MAIN the dancing shader orbs ARE the presence — suppress the DOM pips so
+  // they don't double up. On the directory / sub-mains we do the OPPOSITE: no
+  // docked orbs (heads packed 0 above), and let the DOM pips draw LIVE cursors.
+  wd.noPresenceCursors = !MF && !SUB && !PL
   // other players — positions are already smoothly interpolated upstream (entity
   // interpolation in the engine's presence loop), so just pack them. Screen coords
   // (256 = center). Capped so we never overrun the 96-float buffer.
