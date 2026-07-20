@@ -661,6 +661,7 @@ try {
     if (!id) return null
     const st = A.s[id]
     st.on = 1; st.x = x; st.y = y; st.vx = vx || 0; st.vy = vy || 0; st.age = 0; st.rest = 0
+    st.heat = 1   // a reused slot MUST start hot — else a stale burnt-out ember dies on frame 1 (the spawn-die loop)
     return id
   }
   const park = (id) => { const st = A.s[id]; st.on = 0; st.x = -100; st.y = -100; if (A.grab === id) A.grab = null }
@@ -671,14 +672,14 @@ try {
   if (A.wellT <= 0) {
     A.wellT = 1.5
     const want = { ember: 4, dew: 4, gale: 3, loam: 3 }
-    for (const sp of Object.keys(want)) {
-      const n = active.filter(id => A.s[id].sp === sp).length
-      if (n < want[sp]) {
-        const w = SP[sp].well
-        if (wake(sp, w[0] + (Math.random() - 0.5) * 46, w[1] + (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 14, 0)) {
-          tone(SP[sp].tone * 0.5, 0.05, 0.25)
-        }
-        break   // one breath at a time
+    // breathe in a RANDOM under-target primal each time, so the vessel fills
+    // interleaved (fire, water, air, earth…) instead of 4-of-one-then-4-of-the-next
+    const under = Object.keys(want).filter(sp => active.filter(id => A.s[id].sp === sp).length < want[sp])
+    if (under.length) {
+      const sp = under[Math.floor(Math.random() * under.length)]
+      const w = SP[sp].well
+      if (wake(sp, w[0] + (Math.random() - 0.5) * 46, w[1] + (Math.random() - 0.5) * 16, (Math.random() - 0.5) * 14, 0)) {
+        tone(SP[sp].tone * 0.5, 0.05, 0.25)
       }
     }
   }
@@ -788,8 +789,16 @@ try {
       }
       const cxp = (a.x + b.x) / 2, cyp = (a.y + b.y) / 2
       const cvx = (a.vx + b.vx) / 2, cvy = (a.vy + b.vy) / 2
+      // snapshot the parents: parking them first frees a same-species slot for
+      // the child, but if the child's pool is STILL full we must not eat them
+      // (silent loss = "not all combinations work"). Undo on failure.
+      const pa = { sp: a.sp, x: a.x, y: a.y, vx: a.vx, vy: a.vy }
+      const pb = { sp: b.sp, x: b.x, y: b.y, vx: b.vx, vy: b.vy }
       park(act2[i]); park(act2[j])
-      wake(child, cxp, cyp, cvx, cvy)
+      if (!wake(child, cxp, cyp, cvx, cvy)) {
+        wake(pa.sp, pa.x, pa.y, pa.vx, pa.vy); wake(pb.sp, pb.x, pb.y, pb.vx, pb.vy)
+        continue   // pool full — nothing lost; the pair meets again next contact
+      }
       if (child === 'ember') wake('ember', cxp + 16, cyp - 8, 20, -20)   // wildfire spreads
       if (key === 'dew+moss') wake('moss', cxp + 20, cyp + 4, 12, -8)    // watered: the moss doubles
       // the flare IS the fusion made visible
