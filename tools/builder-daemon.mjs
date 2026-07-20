@@ -117,6 +117,19 @@ async function tick() {
     claimedId = jobId
     log(`claimed ${slug} (attempt ${claim.job.attempts}) — "${next.job.brief.slice(0, 80)}"`)
 
+    // FORWARD COMPACTION — a build session dies at the credit limit, and a fresh
+    // one used to re-read the whole engine from scratch and never get to build.
+    // A previous session leaves build_notes (engine facts it learned + what it
+    // built + what's next) in worldData; inject them so this session resumes
+    // where the last one stopped instead of re-researching.
+    let priorNotes = ''
+    try {
+      const snap = await fetch(`${BASE}/api/spaces/${encodeURIComponent(slug)}/snapshot`).then(r => r.json())
+      const bn = ((snap?.snapshot ?? snap)?.worldData ?? {}).build_notes
+      if (bn && typeof bn === 'string') priorNotes = bn.slice(0, 6000)
+    } catch { /* no notes yet — fresh build */ }
+    if (priorNotes) log(`  resuming ${slug} with ${priorNotes.length} chars of prior build_notes`)
+
     // 3) keep the lease alive while the build runs
     const period = Math.max(15_000, Math.floor((claim.leaseMs || 90_000) / 2))
     heartbeat = setInterval(() => {
@@ -136,8 +149,8 @@ async function tick() {
       `DO NOT reverse-engineer the API by trial-and-error. If you are unsure what params a command takes, READ THE SOURCE with cafe_source (start: api/engine/bridge/route.ts) — the exact accepted types and params are all there. Probing wastes your whole window.`,
       ``,
       `1. cafe_guide, then cafe_state. When a command's params are unclear, cafe_source the bridge route rather than guessing.`,
-      `2. RESUME-AWARE: if cafe_state already has fields, a previous build was interrupted — CONTINUE it, never restart. Otherwise begin fresh.`,
-      `3. PLAN FIRST (one call): cafe_send set_world_data {"data":{"build_plan":"<the 3-6 steps you will build>"}}. This records your intent so any re-run follows it.`,
+      `2. RESUME-AWARE: if cafe_state already has fields, a previous build was interrupted — CONTINUE it, never restart. Otherwise begin fresh. If PRIOR NOTES are given below, they are YOUR last session's hard-won research and progress — TRUST them and continue; do NOT re-read source you already noted.`,
+      `3. FORWARD COMPACTION — you WILL likely hit a usage limit mid-build and a fresh session will take over with NO memory except what you wrote down. So EARLY (right after your first research) and after every milestone, cafe_send set_world_data {"data":{"build_notes":"<cumulative, concise: the engine facts you learned (shader signature, the raymarch/uni scaffold, coordinate rules), WHAT you've built so far, and the NEXT concrete steps>"}}. This is the ONLY thing that survives a crash — it's how your successor skips the research and finishes the world. Overwrite it with the full current picture each time; keep it under ~800 words. (Also set build_plan once.)`,
       `4. Then BUILD THE BRIEF below — their words, not your own idea. Work INCREMENTALLY: send small cafe_send batches EARLY and OFTEN so the world fills in live and every step PERSISTS even if you run out of time. Do NOT spend your session only planning — ship real fields within your first few tool calls. Skin every field (visualType or it renders as nothing), make it ALIVE and playable, ship worldData.instructions, set built_by to "cafe house AI".`,
       `5. EVERY field must carry a visualType — create_field {"visualType":"<a name you define_visual'd>"} or set_visual {"fieldId":"...","visualType":"..."} right after. A field without one renders as NOTHING; a world of them is a black screen.`,
       `   SHADER SHAPE: a visual is a PLAIN FUNCTION — fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f. NEVER a standalone @fragment/@vertex fn main shader (the bridge rejects those; they compile nowhere in this engine).`,
@@ -145,8 +158,9 @@ async function tick() {
       `   PHYSICS: leave collisionForce at 0 (the default) for any world whose fields are stacked visual LAYERS (a full-screen backdrop with things on top). Overlapping fields with collisionForce>0 shove each other every frame and the whole world VIBRATES. Only set collisionForce for real physics worlds where separate bodies should bounce off each other.`,
       `6. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}. The bridge runs a RENDER CHECK: brief_done is REFUSED while no field has a registered visualType — fix the skins and finish properly.`,
       ``,
+      priorNotes ? `PRIOR NOTES (from your last session before it hit the limit — resume from here, do NOT restart or re-research):\n${priorNotes}\n` : ``,
       `THE BRIEF: ${next.job.brief}`,
-    ].join('\n')
+    ].filter(Boolean).join('\n')
 
     // Per-build scratch dir + a per-build MCP config carrying the world token
     // (the model never sees the token — it lives in the MCP server's env).
