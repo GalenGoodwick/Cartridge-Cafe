@@ -1066,7 +1066,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <p>a place of little worlds — all made by people and their AIs.</p>
               <p><span className="text-flame">▶ play</span> — click any glowing bubble to step into a world.</p>
               <p><span className="text-emerald-300">✎ build your own</span> — tap <b>BREW YOURS</b>, name it, then hand the briefing to an AI (Claude Code, Cursor…). It builds live over the web — no coding needed.</p>
-              <p><span className="text-amber-300">⚖ weigh in</span> — branch a world to challenge it, and vote in the reckoning.</p>
+              <p><span className="text-amber-300">⚖ vote</span> — worlds compete in <b>the reckoning</b>. Tap <b>⚔ VOTE</b>, witness the contenders, then back the one you like best. Votes crown the champions everyone sees first — and can hand a world&apos;s spot to a challenger.</p>
+              <p><span className="text-amber-300">⑂ challenge</span> — branch any world to enter it as a contender in that reckoning.</p>
             </div>
             <button onClick={dismissOrient}
               className="mt-5 w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 text-[15px] tracking-[0.2em] text-void transition-colors">GOT IT</button>
