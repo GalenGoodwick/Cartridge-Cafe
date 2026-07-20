@@ -292,7 +292,7 @@ export async function GET(req: NextRequest) {
   // Space-scoped: return snapshot from DB
   if (auth.spaceId) {
     const snapshot = await getSpaceSnapshot(auth.spaceId)
-    if (wantDescribe) return NextResponse.json(describeWorld(snapshot, { scope: 'space', slug: auth.slug, name: auth.spaceName }))
+    if (wantDescribe) return NextResponse.json(describeWorld(snapshot as unknown as DescribeSnap, { scope: 'space', slug: auth.slug, name: auth.spaceName }))
     // step-hook failures a player's browser reported — surface them by DEFAULT so
     // the building AI sees WHY a hook does nothing instead of guessing (empty = fine)
     const hookErrors = (await loadGameSlot('hook-err:space:' + (auth.slug || '').toLowerCase())) as unknown[] | undefined
