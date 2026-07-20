@@ -237,9 +237,10 @@ async function fetchShellIdentity(shellName: string, req: NextRequest): Promise<
  */
 // DESCRIBE — a no-GPU structural x-ray of a world: which fields have a working
 // skin, which sit off the 512 grid, hook ids, worldData keys, and a WARNINGS list
-// naming the exact recurring mistakes. This is the eyes an off-box AI (a brew
-// agent over HTTP) can get for free — it can't reach the GPU probe, but it CAN
-// learn "field X has no visual" and "field Y is off-screen at (0,0)" instantly.
+// naming the exact recurring mistakes. The CHEAP eyes: instant, always available
+// on Vercel (no GPU). For the FULL eyes (actual rendered pixels + PNG), an off-box
+// AI now uses {type:"render_probe"} → the Railway render-service (see #12 below).
+// describe stays the fast structural pre-check; render_probe is the pixel truth.
 type DescribeSnap = { fields?: Array<Record<string, unknown>>; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: unknown[]; stepHooks?: Array<{ id?: string }>; worldData?: Record<string, unknown> } | null | undefined
 function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   const fields = snapshot?.fields ?? []
@@ -272,6 +273,55 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
     worldDataKeys: Object.keys(wd),
     briefDone: !!wd.brief_done,
     warnings,
+  }
+}
+
+/** #12 — the eyes over HTTP. The GPU lives only on Railway's render-service
+ *  (software Vulkan/lavapipe — no real GPU needed for our tiny shaders). We POST
+ *  the world's render-relevant slice there and hand the struct + PNG straight
+ *  back to the caller. So ANY AI over HTTP (a user's own Cursor/Claude, a cloud
+ *  brew agent) SEES its world — not just the co-located daemon. If the service
+ *  is unset/down, the caller still has the static eyes (describe/health). */
+async function renderViaService(
+  snap: { fields?: unknown[]; visualTypes?: unknown[]; modules?: unknown[]; worldData?: Record<string, unknown>; stepHooks?: unknown[] } | null | undefined,
+  opts: { name?: unknown; ticks?: unknown; size?: unknown },
+): Promise<Record<string, unknown>> {
+  const base = process.env.RENDER_SERVICE_URL
+  const secret = process.env.RENDER_SECRET
+  if (!base || !secret) {
+    return { ok: false, error: 'render service not configured (no eyes over HTTP yet) — use describe_scene / health for structural eyes', configured: false }
+  }
+  const state = {
+    fields: snap?.fields ?? [],
+    visualTypes: snap?.visualTypes ?? [],
+    modules: snap?.modules ?? [],
+    worldData: snap?.worldData ?? {},
+    stepHooks: snap?.stepHooks ?? [],
+  }
+  if (!Array.isArray(state.fields) || state.fields.length === 0) {
+    return { ok: false, error: 'nothing to render — the world has no fields yet' }
+  }
+  const url = base.replace(/\/+$/, '') + '/render'
+  const payload: Record<string, unknown> = { state, size: 256 }
+  if (typeof opts.name === 'string') payload.name = opts.name
+  if (opts.ticks != null) payload.ticks = Number(opts.ticks)
+  if (opts.size != null) payload.size = Math.min(512, Math.max(64, Number(opts.size) || 256))
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 25_000)
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer))
+    if (!r.ok) return { ok: false, error: `render service ${r.status}: ${(await r.text()).slice(0, 200)}` }
+    const out = await r.json()
+    // hint the caller how to READ the render, since it's raw pixel-stats not prose
+    if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.'
+    return out
+  } catch (e) {
+    return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work` }
   }
 }
 
@@ -560,6 +610,21 @@ export async function POST(req: NextRequest) {
           results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, main_say, main_read. Build a world with the uc_st_ token those return.' })
           continue
         }
+      }
+
+      // #12 render_probe — SEE this world. Renders its shader on the cloud GPU
+      // (render-service) and returns pixel-stats + a base64 PNG. A read; never
+      // mutates. Icon/player tokens never reach here (guarded above), so this is
+      // scoped to the world the token already owns.
+      if (cmd.type === 'render_probe') {
+        const snap = isSpaceScoped
+          ? await getSpaceSnapshot(auth.spaceId!)
+          : isSceneScoped
+            ? loadScene(auth.sceneName!)
+            : getEngineState()
+        const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size })
+        results.push({ type: 'render_probe', ...out })
+        continue
       }
 
       // reset: clear server-side store alongside browser reset. NEVER for a
@@ -1057,7 +1122,7 @@ export async function POST(req: NextRequest) {
       try {
         const d = describeWorld(await getSpaceSnapshot(auth.spaceId!) as unknown as DescribeSnap, {})
         health = { fieldCount: d.fieldCount, skinnedFields: d.fields.filter(f => f.skinned).length, warnings: d.warnings }
-        if (d.warnings.length) health.next = 'Fix these, then cafe_probe to SEE the result before set_world_data brief_done.'
+        if (d.warnings.length) health.next = 'Fix these, then {type:"render_probe"} to SEE the actual rendered pixels (struct + base64 PNG) before set_world_data brief_done.'
       } catch { /* health is a courtesy */ }
     }
     return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
