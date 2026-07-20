@@ -110,12 +110,31 @@ self.onmessage = function (ev) {
       goChapter(n) { const c = this._ch(); if (c.unlocked.includes(n)) { c.cur = n; return true; } return false; },
       completeChapter() { const c = this._ch(); const nx = c.cur + 1; if (nx <= this.chapterCount()) { this.unlockChapter(nx); c.cur = nx; return true; } return false; },
     };
+    // A hook reaching for a sim member this sandbox doesn't provide (a new
+    // FieldSimulation method not yet mirrored here) would throw — and many hooks
+    // wrap themselves in a try/catch that SILENTLY swallows it, so the world just
+    // freezes with no error surfaced anywhere (the TIDEGLASS hunt: hours to find
+    // one missing sim.trigger). Trap unknown members: record the name, hand back a
+    // no-op so the hook keeps running, and REPORT the gap instead of losing it.
+    const __missing = new Set();
+    const __noop = function () { return undefined; };
+    const __sim = new Proxy(sim, {
+      get(t, p, r) {
+        if (typeof p === 'symbol' || p in t) return Reflect.get(t, p, r);
+        __missing.add(String(p));
+        return __noop;
+      },
+    });
     const __now = () => (self.performance && self.performance.now) ? self.performance.now() : Date.now();
     const __t0 = __now();
     let __runErr = null;
     for (const h of __hooks) {
-      try { h.fn(sim, msg.dt); }
+      try { h.fn(__sim, msg.dt); }
       catch (e) { __runErr = (h.id || '?') + ': ' + String((e && e.message) || e); }  // keep running the rest
+    }
+    if (__missing.size) {
+      const m = 'sandbox has no sim.' + [...__missing].join('/sim.') + ' — a hook called it; returned a no-op. Mirror it in world-sandbox.ts.';
+      __runErr = __runErr ? (__runErr + ' | ' + m) : m;
     }
     const __ms = __now() - __t0;   // host watches this for a runaway-cost kill-switch
     // only fields a hook actually changed — never hand the host a stale
