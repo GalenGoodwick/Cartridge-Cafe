@@ -58,6 +58,17 @@ export default function AdminPage() {
     setBusy(''); load()
   }
 
+  const del = async (key: { space?: string; name?: string }, label: string) => {
+    if (!confirm(`Delete "${label}" permanently? This cannot be undone.`)) return
+    setBusy(key.space ?? key.name ?? '')
+    const r = await fetch('/api/admin/worlds', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(key),
+    }).catch(() => null)
+    if (r && !r.ok) alert('Delete failed: ' + (await r.text().catch(() => r.status)))
+    setBusy(''); load()
+  }
+
   const Hidden = () => (
     <span style={{ fontSize: 8, letterSpacing: '0.2em', color: '#ffb0b0', border: '1px solid rgba(255,120,120,0.45)', background: 'rgba(120,30,30,0.25)', borderRadius: 5, padding: '2px 6px' }}>HIDDEN</span>
   )
@@ -78,6 +89,14 @@ export default function AdminPage() {
       background: priv ? 'rgba(255,255,255,0.05)' : 'rgba(60,160,90,0.15)',
       color: priv ? '#c9b896' : '#9be3a8',
     }}>{priv ? 'PRIVATE — publish?' : 'ON MAIN — hide?'}</button>
+  )
+
+  const Del = ({ onClick, small }: { onClick: () => void; small?: boolean }) => (
+    <button onClick={onClick} title="delete permanently" style={{
+      fontFamily: 'inherit', fontSize: small ? 9 : 10, letterSpacing: '0.15em', cursor: 'pointer',
+      padding: small ? '4px 9px' : '6px 11px', borderRadius: 8, whiteSpace: 'nowrap',
+      border: '1px solid rgba(255,120,120,0.4)', background: 'rgba(120,30,30,0.2)', color: '#ffb0b0',
+    }}>✕ DELETE</button>
   )
 
   return (
@@ -108,7 +127,10 @@ export default function AdminPage() {
                 }}>{openRoot === r.name ? '▾' : '▸'} {r.branches.length} branch{r.branches.length > 1 ? 'es' : ''}</button>
               )}
               <View scene={r.space ? 'space:' + r.space : r.name} />
-              {busy === (r.space ?? r.name) ? <span style={{ fontSize: 10 }}>…</span> : <Btn priv={r.private} onClick={() => toggle(r.space ? { space: r.space } : { name: r.name }, !r.private)} />}
+              {busy === (r.space ?? r.name) ? <span style={{ fontSize: 10 }}>…</span> : <>
+                <Btn priv={r.private} onClick={() => toggle(r.space ? { space: r.space } : { name: r.name }, !r.private)} />
+                <Del onClick={() => del(r.space ? { space: r.space } : { name: r.name }, r.name)} />
+              </>}
             </div>
             {openRoot === r.name && r.branches.map(b => (
               <div key={b.base} style={{
@@ -121,7 +143,10 @@ export default function AdminPage() {
                 </div>
                 {b.private && <Hidden />}
                 <View small scene={b.latest} />
-                {busy === b.base ? <span style={{ fontSize: 10 }}>…</span> : <Btn small priv={b.private} onClick={() => toggle({ base: b.base }, !b.private)} />}
+                {busy === b.base ? <span style={{ fontSize: 10 }}>…</span> : <>
+                  <Btn small priv={b.private} onClick={() => toggle({ base: b.base }, !b.private)} />
+                  <Del small onClick={() => del({ name: b.base }, b.label)} />
+                </>}
               </div>
             ))}
           </div>

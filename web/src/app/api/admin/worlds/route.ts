@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/adminAuth'
-import { listScenes, loadScene, saveScene, hydrateAllScenes } from '../../engine/store'
+import { listScenes, loadScene, saveScene, hydrateAllScenes, deleteScene } from '../../engine/store'
+import { invalidateSpaceCache } from '../../engine/space-store'
 import { prisma } from '@/lib/prisma'
 
 /** GET /api/admin/worlds — every world (store scenes + player spaces) with its visibility.
@@ -45,4 +46,30 @@ export async function POST(req: NextRequest) {
   }
   if (!done) return NextResponse.json({ error: 'no such world' }, { status: 404 })
   return NextResponse.json({ ok: true, changed: done, private: body.private })
+}
+
+/** DELETE /api/admin/worlds { space: slug } — hard-delete a player space, OR
+ *  { name } — delete a store scene. Admin OVERRIDE: skips the owner-only fairness
+ *  gates (branches/flags/lineage) — the keeper can always clear a world. */
+export async function DELETE(req: NextRequest) {
+  if (!(await isAdmin(req.headers.get('authorization')))) return NextResponse.json({ error: 'not the keeper' }, { status: 403 })
+  const body = await req.json().catch(() => null) as { space?: string; name?: string } | null
+  if (!body?.space && !body?.name) return NextResponse.json({ error: 'space or name required' }, { status: 400 })
+
+  if (body.space) {
+    const space = await prisma.playerSpace.findUnique({ where: { slug: body.space }, select: { id: true } })
+    if (!space) return NextResponse.json({ error: 'no such space' }, { status: 404 })
+    // clear dependents that don't cascade, then the space
+    await prisma.buildJob.deleteMany({ where: { spaceId: space.id } }).catch(() => {})
+    invalidateSpaceCache(space.id)
+    await prisma.playerSpace.delete({ where: { id: space.id } })
+    return NextResponse.json({ ok: true, deleted: 'space:' + body.space })
+  }
+
+  await hydrateAllScenes()
+  const strip = (n: string) => n.replace(/ · v\d+$/, '')
+  const targets = listScenes().filter(n => n === body.name || strip(n) === body.name)
+  if (!targets.length) return NextResponse.json({ error: 'no such world' }, { status: 404 })
+  for (const nm of targets) deleteScene(nm)
+  return NextResponse.json({ ok: true, deleted: targets })
 }
