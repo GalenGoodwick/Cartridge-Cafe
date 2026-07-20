@@ -70,6 +70,45 @@ self.onmessage = function (ev) {
       rand: __rand,
       getFieldByName(n) { for (const f of fields.values()) if (f.name === n) return f; return null; },
       getField(id) { return fields.get(id) || null; },
+      // ── chapter / trigger primitives — MUST mirror FieldSimulation exactly, or a
+      // sandboxed puzzle hook throws on the first sim.trigger()/sim.act it reaches,
+      // its own try/catch swallows it, and the world freezes with stale uniforms
+      // (the TIDEGLASS/HELIOS freeze — a sandboxed world using chapters had NO
+      // access to these). All are pure worldData ops, so they port verbatim.
+      trigger(id, cond) {
+        const wd = this.worldData;
+        if (!wd.__trig) wd.__trig = {};
+        const L = wd.__trig;
+        if (cond) { if (!L[id]) { L[id] = true; return true; } }
+        return false;
+      },
+      edge(id, cond) {
+        const wd = this.worldData;
+        if (!wd.__edge) wd.__edge = {};
+        const L = wd.__edge;
+        const was = !!L[id]; const now = !!cond; L[id] = now;
+        return now && !was;
+      },
+      resetTrigger(id) { const L = this.worldData.__trig; if (L) delete L[id]; },
+      _ch() {
+        const wd = this.worldData;
+        let c = wd.__chapters;
+        if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; wd.__chapters = c; }
+        return c;
+      },
+      defineChapters(names) {
+        const c = this._ch();
+        c.names = ['', ...names];
+        if (!Array.isArray(c.unlocked) || !c.unlocked.length) c.unlocked = [1];
+        if (!c.cur) c.cur = 1;
+      },
+      get act() { return this._ch().cur; },
+      chapterName(n) { const c = this._ch(); return c.names[n == null ? c.cur : n] || ''; },
+      chapterCount() { return this._ch().names.length - 1; },
+      chapterUnlocked(n) { return this._ch().unlocked.includes(n); },
+      unlockChapter(n) { const c = this._ch(); if (n >= 1 && n <= this.chapterCount() && !c.unlocked.includes(n)) c.unlocked.push(n); },
+      goChapter(n) { const c = this._ch(); if (c.unlocked.includes(n)) { c.cur = n; return true; } return false; },
+      completeChapter() { const c = this._ch(); const nx = c.cur + 1; if (nx <= this.chapterCount()) { this.unlockChapter(nx); c.cur = nx; return true; } return false; },
     };
     const __now = () => (self.performance && self.performance.now) ? self.performance.now() : Date.now();
     const __t0 = __now();
