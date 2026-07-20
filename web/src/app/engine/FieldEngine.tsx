@@ -820,12 +820,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // (the cap per viewing instance). Others also land in worldData.presence,
   // so a world's hook or shader can react to visitors without engine changes.
   const [presenceOthers, setPresenceOthers] = useState<Array<{ id: string; x: number; y: number; hue: number }>>([])
+  // pids rendered at least once THIS world — a pip snaps to place on first sight
+  // (no CSS transition) so it never slides in from a stale/off-screen position.
+  const seenPipsRef = useRef<Set<string>>(new Set())
   const [presenceOff, setPresenceOff] = useState(false)
   const presenceOffRef = useRef(false)
   const [, setToolsTick] = useState(0)
   useEffect(() => {
     try { const v = !!localStorage.getItem('cc-presence-off'); setPresenceOff(v); presenceOffRef.current = v } catch { /* fine */ }
   }, [])
+  // after a pip has rendered once, mark it seen so its NEXT position change
+  // animates (snap only on the very first frame it appears)
+  useEffect(() => { for (const o of presenceOthers) seenPipsRef.current.add(o.id) }, [presenceOthers])
   const presenceIdRef = useRef<string>('')
   // other players' brewed-glyph seats (pid → slot 0-2, pid → wgsl). Lives at
   // component level so the scene loader can re-overlay live seats after a
@@ -849,6 +855,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     const id = presenceIdRef.current
     const world = spaceId || playScene || 'global'
+    // entering a new world: drop the previous world's pips + snap-tracking, so no
+    // cursor animates in from where it stood in the world you just left
+    setPresenceOthers(prev => (prev.length ? [] : prev))
+    seenPipsRef.current = new Set()
     // Presence over the Railway Socket.IO server (persistent → shared in
     // PRODUCTION, unlike the per-instance in-memory HTTP route). Cursors ride the
     // same room protocol as the hub (join-instance / position → player-moved).
@@ -5873,18 +5883,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {presenceOthers.map(o => {
                   const p = toScreen(o.x, o.y)
                   if (p.left < -20 || p.left > w + 20 || p.top < -20 || p.top > h + 20) return null
+                  // first sight of this pip → no transition (snap into place);
+                  // once seen, smooth its motion between sparse network samples
+                  const move = seenPipsRef.current.has(o.id) ? 'left 0.25s linear, top 0.25s linear' : 'none'
                   return (
                     <div key={o.id} className="absolute rounded-full"
                       style={playScene ? {
                         // in a world: a presence is a quiet dot, not a lamp — no bloom on the art
                         left: p.left - 4, top: p.top - 4, width: 8, height: 8, opacity: 0.7,
                         background: `hsl(${o.hue} 70% 65%)`,
-                        transition: 'left 0.25s linear, top 0.25s linear',
+                        transition: move,
                       } : {
                         left: p.left - 7, top: p.top - 7, width: 14, height: 14,
                         background: `radial-gradient(circle at 35% 35%, hsl(${o.hue} 90% 82%), hsl(${o.hue} 85% 55%) 60%, transparent 78%)`,
                         boxShadow: `0 0 12px 2px hsl(${o.hue} 90% 60% / 0.55)`,
-                        transition: 'left 0.25s linear, top 0.25s linear',
+                        transition: move,
                       }} />
                   )
                 })}
