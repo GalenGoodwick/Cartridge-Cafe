@@ -320,6 +320,8 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // to its own room; main + sub-mains keep their existing rooms → presenceKey
   // stays undefined for them, so FieldEngine falls back to playScene as today.
   const [presenceRoom, setPresenceRoom] = useState<string | undefined>(undefined)
+  const [dbgPresence, setDbgPresence] = useState(false)   // ⌥⇧P presence overlay
+  const [dbgTick, setDbgTick] = useState(0)               // repaints the overlay live
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
   const crumbRef = useRef<{ scene: string; sub: string | null }[]>([])   // hubs we entered through (+ which sub-main), in order
@@ -976,6 +978,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       // (main → 'CAFE', sub-mains → 'SUB-MAIN' via playScene, all unchanged)
       setPresenceRoom(p.startsWith('main/players') ? 'CAFE/players' : undefined)
     }
+    // ⌥⇧P → the presence overlay; while open, tick it so room/peers update live
+    const onDbgKey = (ev: KeyboardEvent) => { if (ev.altKey && ev.shiftKey && (ev.code === 'KeyP')) { ev.preventDefault(); setDbgPresence(v => !v) } }
+    const dbgIv = setInterval(() => setDbgTick(t => t + 1), 1000)
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
     onResize()
     // the group layer needs to know who's standing in it (found / join / pin)
@@ -1009,6 +1014,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     window.addEventListener('cafe:modal', onModal)
     window.addEventListener('cafe:submode', onSubMode)
     window.addEventListener('cafe:presence', onPresence)
+    window.addEventListener('keydown', onDbgKey)
     window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('cafe:back', onBack)
@@ -1022,6 +1028,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       window.removeEventListener('cafe:modal', onModal)
       window.removeEventListener('cafe:submode', onSubMode)
       window.removeEventListener('cafe:presence', onPresence)
+      window.removeEventListener('keydown', onDbgKey)
+      clearInterval(dbgIv)
       window.removeEventListener('resize', onResize)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1187,6 +1195,18 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         onDockRect={setDockBottom}
         presenceKey={scene === 'CAFE' ? presenceRoom : undefined}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
+      {dbgPresence && (() => {
+        const d = (typeof window !== 'undefined' ? (window as unknown as { __ccPresenceDbg?: { room?: string; others?: string[]; me?: string } }).__ccPresenceDbg : null) || {}
+        return (
+          <div key={dbgTick} className="fixed top-2 left-2 z-[300] font-mono text-[11px] leading-[1.6] bg-black/85 text-emerald-300 border border-emerald-500/40 rounded p-2 max-w-[320px] pointer-events-none whitespace-pre-wrap">
+            {`PRESENCE  ⌥⇧P to hide\n`}
+            {`room   ${d.room || '—'}\n`}
+            {`scene  ${scene}\n`}
+            {`me     ${(d.me || '').slice(0, 8)}\n`}
+            {`peers I see (${d.others?.length || 0}): ${(d.others || []).map(x => x.slice(0, 6)).join(' ') || '—'}`}
+          </div>
+        )
+      })()}
 
       {/* the rolling tournament — every page is its own arena.
           commons: all core worlds · MY WORLDS: your deeds · SUB-MAIN: the
