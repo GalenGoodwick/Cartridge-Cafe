@@ -1429,11 +1429,14 @@ fn visual_tideglass(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
     // the right chevron → the observatory's constellation room
     let a = mod_tg_chev(px, vec2f(487.0, 256.0), 0, smoothstep(55.0, 20.0, length(mm - vec2f(487.0, 256.0))), t);
     c = mix(c, a.rgb + c, a.a * 0.9);
-    // an arrow over the dome breaching the sea — the other way into the constellation
-    let dm = vec2f(214.0, 318.0);
-    let dhov = smoothstep(92.0, 28.0, length(mm - dm));
-    let da = mod_tg_chev(px, vec2f(214.0, 262.0), 3, 0.4 + 0.6 * dhov, t);
-    c = mix(c, da.rgb + c, da.a * 0.9);
+    // an arrow over the dome — ONLY once the dome has actually breached the sea
+    // (uni(26)=vault); by day there's no dome, so no orphaned chevron over water.
+    if (uni(26) > 0.03) {
+      let dm = vec2f(214.0, 318.0);
+      let dhov = smoothstep(92.0, 28.0, length(mm - dm));
+      let da = mod_tg_chev(px, vec2f(214.0, 262.0), 3, 0.4 + 0.6 * dhov, t);
+      c = mix(c, da.rgb + c, da.a * 0.9 * min(uni(26) * 3.0, 1.0));
+    }
     // the observatory building answers the cursor too — its own door is the gate
     let bc = vec2f(440.0, 300.0);
     let bhov = smoothstep(82.0, 30.0, length(mm - bc));
@@ -1550,8 +1553,8 @@ try {
       // zone (440,300) overlap (64px apart), so a bare series fired BOTH: go(5)
       // then go(1), and the finale bounced view 1 back to the shore. else-if =
       // one hit wins, nearest-first.
-      if (hit(214, 318, 80)) go(5)                     // the dome breaching the sea → the constellation room
-      else if (hit(487, 256, 42)) go(5)                // the right chevron → the constellation room
+      if (G.vault > 0.03 && hit(214, 318, 80)) go(5)   // the RISEN dome → the constellation room (only once it's up)
+      else if (hit(487, 256, 42)) go(5)                // the right chevron → the constellation room (always)
       else if (hit(440, 300, 60)) go(1)                // the observatory building → the gate
     } else if (inView(5)) {
       if (hit(25, 256, 45)) go(0)                      // back down to the shore
