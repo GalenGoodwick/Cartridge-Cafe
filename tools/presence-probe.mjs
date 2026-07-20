@@ -81,10 +81,27 @@ try {
 
   await record('both on MAIN')                    // expect: both see each other
   await toPlayers(B); await record('B → PLAYER WORLDS')   // bleed if A still sees B
-  await toMain(B); await record('B → back to MAIN')       // MUST see each other again
-  await toSubs(B); await record('B → SUB-MAINS dir')
-  await toPlayers(A); await record('A → PLAYER WORLDS')   // A leaves main too
+  await toPlayers(A); await record('both in PLAYER WORLDS')   // MUST see each other (co-presence)
   await toMain(A); await toMain(B); await record('both back on MAIN')
+  await toSubs(A); await toSubs(B); await record('both in SUB-MAINS dir')  // MUST see each other
+  await toMain(A); await toMain(B); await record('both back on MAIN again')
+
+  // ── NESTING: A stays on main, B descends; A's /api/presence counts must carry
+  // B's path so main's parent bubble docks an orb (rollup happens in the shader).
+  const counts = (p) => p.evaluate(() => (window).__cafeCounts || {})
+  const nest = []
+  const nestStep = async (label, navB, wantPrefix) => {
+    await navB(B); await wiggle(B)
+    await A.waitForTimeout(8000)          // B beats immediately on nav; A polls every 6s
+    const c = await counts(A)
+    const hit = Object.keys(c).some(k => k === wantPrefix || k.startsWith(wantPrefix + '/'))
+    nest.push({ label, wantPrefix, hit, keys: Object.keys(c).filter(k => k.startsWith('main')) })
+    if (!asJson) console.log(`${label.padEnd(34)} A.counts has "${wantPrefix}"* : ${hit}`)
+  }
+  await nestStep('B in PLAYER WORLDS → main sees', toPlayers, 'main/players')
+  await toMain(B)
+  await nestStep('B in SUB-MAINS → main sees', toSubs, 'main/subs')
+  report.nest = nest
   report.ok = true
 } catch (e) {
   report.error = String(e && e.message || e)

@@ -1127,6 +1127,25 @@ try {
   // the shader (the shell fills window.__cafeCounts from /api/presence)
   const heads = (typeof window !== 'undefined' && window.__cafeCounts) || {}
   const visited = (typeof window !== 'undefined' && window.__cafeVisited) || {}
+  // STEP 3 NESTING dock-count: a bubble shows an orb for everyone AT or BELOW the
+  // child it leads to. Its launch → the child's canonical path; the count is the
+  // prefix-rollup of the heartbeat paths (window.__cafeCounts, keyed by location
+  // path). So descending into a sub-main shows on main's SUB-MAINS bubble AND on
+  // that sub-main's own bubble in the directory. Player worlds live under
+  // main/players so they nest regardless of which shelf opened them.
+  const countKeys = Object.keys(heads)
+  const childPathOf = (lz) => {
+    lz = lz || ''
+    if (lz === 'players:') return 'main/players'
+    if (lz === 'house:') return 'main/players/house'
+    if (lz === 'SUB-MAIN') return 'main/subs'
+    if (lz.startsWith('sub:')) return 'main/subs/sub:' + lz.slice(4)
+    if (lz.startsWith('space:')) return 'main/players/space:' + lz.slice(6)
+    if (lz.startsWith('maker:')) return null   // a profile page, not a presence node
+    if (lz && lz !== 'CAFE' && lz !== 'SUB-MAIN') return 'main/world:' + lz   // a core/house world bubble
+    return null
+  }
+  const rollup = (cp) => { if (!cp) return 0; let s = 0; for (const k of countKeys) if (k === cp || k.startsWith(cp + '/')) s += heads[k] || 0; return s }
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
@@ -1140,10 +1159,12 @@ try {
     // and CAFE/SUB-MAIN never count as unvisited worlds.
     const lz = B.launch || ''
     const unvis = !!lz && !lz.startsWith('sub:') && !lz.startsWith('maker:') && !lz.startsWith('players:') && !lz.startsWith('house:') && lz !== 'CAFE' && lz !== 'SUB-MAIN' && !visited[lz]
-    // docked presence orbs (headCount) belong ONLY to the main commons; on the
-    // directory / sub-mains, pack 0 so the shader draws no docked orbs (live DOM
-    // cursors show there instead).
-    const showHeads = (!MF && !SUB && !PL) ? (heads[n] || 0) : 0
+    // docked orbs = who's AT or BELOW the child this bubble leads to (nesting):
+    // main's PLAYER WORLDS/SUB-MAINS bubbles, a sub-main's bubble in the directory,
+    // a world's bubble on its shelf. Live DOM cursors still show peers standing at
+    // THIS level. NEST off → legacy (main only, keyed by bubble name).
+    const nestOff = typeof window !== 'undefined' && window.__ccNestOff
+    const showHeads = nestOff ? ((!MF && !SUB && !PL) ? (heads[n] || 0) : 0) : rollup(childPathOf(lz))
     u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by

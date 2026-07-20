@@ -77,7 +77,10 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
       localStorage.setItem('cc-pid', pid)
     } catch { pid = Math.random().toString(36).slice(2, 12) }
-    const key = (name || spaceSlug).toUpperCase()
+    // STEP 3 nesting: report the world's canonical location PATH so its viewers
+    // roll up onto the PLAYER WORLDS bubble on main AND onto this world's own
+    // bubble in the directory (web/docs/presence-nesting-spec.md).
+    const key = 'main/players/space:' + spaceSlug
     const beat = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       fetch('/api/presence', {

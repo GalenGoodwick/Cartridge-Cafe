@@ -320,6 +320,10 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // to its own room; main + sub-mains keep their existing rooms → presenceKey
   // stays undefined for them, so FieldEngine falls back to playScene as today.
   const [presenceRoom, setPresenceRoom] = useState<string | undefined>(undefined)
+  // STEP 3 nesting: the current view's full location path, reported to
+  // /api/presence so a person INSIDE a sub-main / player-world docks as an orb on
+  // the parent bubble on main AND on that child's bubble in the directory.
+  const heartPathRef = useRef<string>('main')
   const [dbgPresence, setDbgPresence] = useState(false)   // ⌥⇧P presence overlay
   const [dbgTick, setDbgTick] = useState(0)               // repaints the overlay live
   useEffect(() => { if (!dbgPresence) return; const iv = setInterval(() => setDbgTick(t => t + 1), 1000); return () => clearInterval(iv) }, [dbgPresence])
@@ -975,6 +979,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     const onSubMode = (e: Event) => setSubMode((e as CustomEvent).detail)
     const onPresence = (e: Event) => {
       const p = ((e as CustomEvent).detail as { path?: string } | null)?.path || 'main'
+      heartPathRef.current = p
       // STEP 1: only the players directory gets a distinct room; else undefined
       // (main → 'CAFE', sub-mains → 'SUB-MAIN' via playScene, all unchanged)
       setPresenceRoom(p.startsWith('main/players') ? 'CAFE/players' : undefined)
@@ -1078,9 +1083,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     } catch { pid = Math.random().toString(36).slice(2, 12) }
     const beat = () => {
       if (!activeTabRef.current) return   // blocked tabs are ghosts; they don't beat
+      // STEP 3: report the location PATH (nesting). A hub view uses the path the
+      // door cartridge handed us; a core/house world (/play) reports main/world:<name>.
+      const s = (sceneRef.current !== 'CAFE' && sceneRef.current !== 'SUB-MAIN')
+        ? 'main/world:' + sceneRef.current
+        : heartPathRef.current
       fetch('/api/presence', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene, id: pid }),
+        body: JSON.stringify({ scene: s, id: pid }),
       }).catch(() => {})
     }
     const poll = () => {
@@ -1105,8 +1115,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     const ci = setInterval(poll, 6000)
     window.addEventListener('pagehide', bye)
     return () => { clearInterval(bi); clearInterval(ci); clearTimeout(pt); window.removeEventListener('pagehide', bye) }
+  // presenceRoom in deps → immediate re-beat on hub view change so the dock count
+  // updates without waiting the interval
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene])
+  }, [scene, presenceRoom])
 
   const inGame = scene !== 'CAFE'
   // uv → screen for the contain-fit square (span = min(w,h), centered)
