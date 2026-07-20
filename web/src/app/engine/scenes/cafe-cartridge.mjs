@@ -542,16 +542,6 @@ try {
   // layout is saved the bubbles land settled; only a genuinely new world (the
   // newborn branch) wakes the field, so unchanged rosters never re-animate.
   if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.hintedEmpty = false; U.sharedAt = 0
-    // AUTHORITATIVE PRESENCE IDENTITY. mineKey uniquely names this view (and each
-    // sub-main), so the shell keys the live-cursor ROOM off it — cursors stay in
-    // their own view and never bleed to main. HOME is the parent bubble a viewer
-    // 'inside' this view docks on when seen from main (nesting): browse a sub-main
-    // and you show as an orb on the SUB-MAINS bubble, not as a stray cursor.
-    // Computed from the same flags the door draws with, so the room can't lag.
-    if (typeof window !== 'undefined') {
-      const home = SUB ? 'SUB-MAINS' : PL ? 'PLAYER WORLDS' : ''
-      window.dispatchEvent(new CustomEvent('cafe:presence', { detail: { room: 'cafe:' + (mineKey || 'main'), home } }))
-    }
     // SNAP: a mode flip re-centers the view on the new roster instantly. Without
     // this the camera keeps wherever main was panned/zoomed, so MY WORLDS opens
     // off in a corner and never "arrives".
