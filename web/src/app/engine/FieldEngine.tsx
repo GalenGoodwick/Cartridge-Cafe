@@ -5714,6 +5714,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const wgslHash = (s: string): string => { let h = 5381; for (let k = 0; k < s.length; k++) h = ((h * 33) ^ s.charCodeAt(k)) >>> 0; return h.toString(36) }
     let lastSig = ''
     const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
+    // STABLE atlas slots: world NAME → its fixed atlas cell, held for the life of
+    // this mount (seeded from the cache below). A surviving world NEVER changes
+    // cell, so when a new world appears the others don't shift — the old bug was
+    // slot=sort-position, so one arrival slid everyone down a cell and the
+    // retained-old-index then sampled a NEIGHBOUR's icon for the repaint window
+    // (icon flashes on the wrong bubble, then snaps to the right one on load).
+    const slotOf: Record<string, number> = {}
     // COMING BACK TO MAIN: the previous atlas is plain pixels — re-upload it and
     // restore the slot map instantly. No spinners, no re-render; the tick below
     // still refreshes the roster and only re-renders if something truly changed.
@@ -5766,15 +5773,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // now the sig only changes when a world's shader or the roster truly does.
       const worlds = [...players, ...scenes.filter(s => !seen.has(s.name))]
         .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 64)
+      // seed stable slots from the cache once, so a world keeps the very cell the
+      // cached atlas already painted it into (no first-tick reshuffle on return)
+      if (Object.keys(slotOf).length === 0 && cafeIconCache?.slots) Object.assign(slotOf, cafeIconCache.slots)
+      // free the cells of worlds that left the roster, then hand each surviving
+      // world its held cell and each NEW world the lowest free cell (0..63).
+      const liveNames = new Set(worlds.map(w => w.name))
+      for (const nm of Object.keys(slotOf)) if (!liveNames.has(nm)) delete slotOf[nm]
+      const usedSlots = new Set(Object.values(slotOf))
+      const freeSlot = () => { for (let i = 0; i < 64; i++) if (!usedSlots.has(i)) { usedSlots.add(i); return i } return 63 }
       const nameOfSlot: Record<number, string> = {}
       const next: typeof items = []
       for (const k of Object.keys(byName)) delete byName[k]
-      worlds.forEach((s, i) => {
+      for (const s of worlds) {
         const nm = s.name
-        nameOfSlot[i] = nm
-        const it = { slot: i, wgsl: s.iconWgsl, color: hsv(s.hue ?? 0.6) }
+        let sl = slotOf[nm]
+        if (sl == null) { sl = freeSlot(); slotOf[nm] = sl }
+        nameOfSlot[sl] = nm
+        const it = { slot: sl, wgsl: s.iconWgsl, color: hsv(s.hue ?? 0.6) }
         next.push(it); byName[nm] = it
-      })
+      }
       items = next
       // only re-render the atlas when the roster or a world's shader changed —
       // icons are cheap stills, not a per-frame GPU cost. (Scales to any count:
@@ -5806,15 +5824,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean }
       // Re-dressing the shelf must not undress it: a door that already wears a
       // face KEEPS it while the new atlas renders (its old pixels are still in
-      // the buffer at its old index; with name-sorted slots the index is stable
-      // for a surviving world). Only genuinely NEW worlds go through loading.
-      // Resetting slots to {} here while ready stayed true was the bug that
-      // flashed every door to its default emblem on every re-render.
+      // the buffer at its STABLE cell — slotOf never moves a surviving world).
+      // Only genuinely NEW worlds go through loading. Retain a face ONLY when the
+      // cached index matches the world's stable cell: a stale cache (old
+      // sort-position slots from before this fix) would otherwise point a door at
+      // a neighbour's cell — the very wrong-icon flash we're killing. Resetting
+      // slots to {} here while ready stayed true was the old flash-to-emblem bug.
       const prev = w.__cafeIconSlots || {}
       const slots: Record<string, number> = {}
       const loading: Record<string, boolean> = {}
       for (const nm of Object.values(nameOfSlot)) {
-        if (prev[nm] != null) slots[nm] = prev[nm]
+        const stable = byName[nm]?.slot
+        if (prev[nm] != null && prev[nm] === stable) slots[nm] = stable
         else loading[nm] = true
       }
       w.__cafeIconSlots = slots
