@@ -174,14 +174,12 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let st = ab % 200;
     let hue = fract(sv);
     let rawHead0 = uni(9 + i * 4);
-    let isBranch = rawHead0 > 1999.5;                // +2000 flags a BRANCH → draw it square, not round
+    let isBranch = rawHead0 > 1999.5;                // +2000 flags a BRANCH → a round bubble with a blue outline
     let rawHead = select(rawHead0, rawHead0 - 2000.0, isBranch);
     let unvisited = rawHead > 900.5;                 // +1000 offset flags a world this browser hasn't entered
     let headCount = i32(select(rawHead, rawHead - 1000.0, unvisited) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
-    // a branch is a rounded SQUARE (chebyshev-ish), a world a round disc
-    let dv = uv - ctr;
-    let d = select(length(dv), max(abs(dv.x), abs(dv.y)) * 0.92, isBranch);
+    let d = length(uv - ctr);
     let R = 0.098 * zm * select(1.0, 1.25, big > 0);
     let hov = smoothstep(R * 1.9, R * 1.1, length(mp - ctr));
     let rr = R * (1.0 + hov * 0.12);
@@ -345,6 +343,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       else if (bigBand == 2) { rim = vec3f(0.45, 0.75, 1.55); rimBase = 0.45; }
       else if (bigBand == 3) { rim = vec3f(0.4, 1.45, 0.65); rimBase = 0.45; }
       else if (bigBand == 4) { rim = vec3f(1.4, 0.75, 0.35); rimBase = 0.45; }
+      if (isBranch) { rim = vec3f(0.30, 0.62, 1.75); rimBase = 0.6; }   // BRANCH — a blue outline on the round bubble
       col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
     } else {
       // halo when hovered
