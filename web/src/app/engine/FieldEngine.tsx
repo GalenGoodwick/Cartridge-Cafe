@@ -1466,6 +1466,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
+      // an explicit reset must return the world to its OPENING state, not just
+      // reload the fields: signal the hook to run its own reset block (the
+      // `if (wd.__fresh) { delete wd.__fresh; ...reset... }` convention every
+      // stateful cartridge follows). Reload restores geometry; __fresh restores logic.
+      if (fresh) { const s = simulationRef.current; if (s) s.worldData.__fresh = true }
       greetInstructions(`space:${spaceSlug}`)   // pop instructions on first entry to this space
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
