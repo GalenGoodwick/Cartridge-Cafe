@@ -173,10 +173,12 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
 
       {/* the version arena: LIVE vs this world's save points — every page votes.
           Was mounted by SpaceToolbar; now lives here so the engine dock is the
-          only visible chrome. */}
+          only visible chrome. Hidden while the world is still building — an
+          unfinished world (or one wiped for a rebuild) is not up for a vote,
+          even if it carries stale save points from a previous life. */}
       <TournamentBar
         slot={`tournament:space:${spaceSlug}`}
-        worlds={versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+        worlds={!building && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
         visible
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
