@@ -340,6 +340,12 @@ export class FieldRenderer {
   // Shader module registry (reusable WGSL utility functions)
   private moduleRegistry: Map<string, ModuleEntry> = new Map()
 
+  // GPU death latch: once the device is lost (a world hung/crashed the GPU),
+  // stop ALL rendering. Submitting to a dead device every frame is what makes
+  // the whole app — including main — flicker. isReady() reports false so the
+  // caller pauses, and one clean fault is bannered instead of a strobe.
+  private _lost = false
+
   // Render target registry (named intermediate buffers for RTT)
   private renderTargets: Map<string, { buffer: GPUBuffer; id: number }> = new Map()
   private nextRenderTargetId: number = 0
@@ -604,6 +610,9 @@ export class FieldRenderer {
     // ── fault surface: a dead GPU must SAY SO. Device loss and uncaptured
     // errors dispatch 'cc:fault' — FieldEngine shows them to the player. ──
     device.lost.then(info => {
+      // 'destroyed' is our own teardown (dispose/unmount) — not a crash, don't banner.
+      if (info.reason === 'destroyed') return
+      this._lost = true   // HARD STOP: no more draws on a dead device (that's the flicker)
       console.error('[GPU] device lost:', info.reason, info.message)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('cc:fault', {
@@ -1369,7 +1378,9 @@ export class FieldRenderer {
    *  new buffer is picked up. Cheap and rare — called when thumbnails change. */
   /** True once the async GPU device init has completed — uploads before this
    *  are silent no-ops, so restore paths must gate on it and retry. */
-  isReady(): boolean { return !!this.device }
+  isReady(): boolean { return !!this.device && !this._lost }
+  /** True once the GPU device has died — callers stop their render loop. */
+  isLost(): boolean { return this._lost }
 
   uploadIconAtlas(data: Uint32Array): void {
     if (!this.device) return
@@ -1396,7 +1407,7 @@ export class FieldRenderer {
    *  rebuild, no per-frame cost for the other bubbles. */
   async renderOneIcon(slot: number, wgsl: string, color: [number, number, number], time: number): Promise<void> {
     const device = this.device
-    if (!device || !this.iconBuffer || this._iconBusy) return
+    if (this._lost || !device || !this.iconBuffer || this._iconBusy) return
     const S = 64, cellBytes = S * S * 4
     if ((slot + 1) * cellBytes > this.iconBufferCapacity) return
     // claim the shared readback buffer BEFORE any await: two overlapping calls
@@ -1439,7 +1450,7 @@ export class FieldRenderer {
     onSlot?: (slot: number) => void,
   ): Promise<number[]> {
     const device = this.device
-    if (!device || items.length === 0) return []
+    if (this._lost || !device || items.length === 0) return []
     const rendered: number[] = []
     const S = 64
     const maxSlot = Math.max(...items.map(i => i.slot)) + 1
@@ -1976,7 +1987,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   ): void {
     const device = this.device
     const ctx = this.context
-    if (!device || !ctx || !this.basePipeline) return
+    if (this._lost || !device || !ctx || !this.basePipeline) return   // dead GPU: stop, don't strobe
 
     this.reapRetiredTextures()
     const canvas = ctx.canvas as HTMLCanvasElement

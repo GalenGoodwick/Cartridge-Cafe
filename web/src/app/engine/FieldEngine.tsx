@@ -5586,7 +5586,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {fault && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[13px] text-red-100 shadow-2xl">
               <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind} <span className="text-red-300/50">({ENGINE_BUILD})</span></div>
-              <div className="text-red-100/90 leading-relaxed break-words">{fault.message}</div>
+              {fault.kind === 'gpu-lost'
+                ? <div className="text-red-100/90 leading-relaxed">This world overloaded the GPU and crashed it — likely a shader too heavy for this device. Rendering is stopped so it can&rsquo;t keep flickering. Reload to recover; the rest of the cafe is fine.</div>
+                : <div className="text-red-100/90 leading-relaxed break-words">{fault.message}</div>}
               <div className="flex gap-2 mt-2">
                 {(fault.kind === 'gpu-lost' || fault.kind === 'frame-crash') && (
                   <button onClick={() => window.location.reload()}
