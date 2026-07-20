@@ -71,11 +71,14 @@ self.onmessage = function (ev) {
       getFieldByName(n) { for (const f of fields.values()) if (f.name === n) return f; return null; },
       getField(id) { return fields.get(id) || null; },
     };
+    const __now = () => (self.performance && self.performance.now) ? self.performance.now() : Date.now();
+    const __t0 = __now();
     let __runErr = null;
     for (const h of __hooks) {
       try { h.fn(sim, msg.dt); }
       catch (e) { __runErr = (h.id || '?') + ': ' + String((e && e.message) || e); }  // keep running the rest
     }
+    const __ms = __now() - __t0;   // host watches this for a runaway-cost kill-switch
     // only fields a hook actually changed — never hand the host a stale
     // transform for a field it manages itself (that fight reads as jitter).
     // Partial success still applies: a thrown hook doesn't void the others' work.
@@ -83,7 +86,7 @@ self.onmessage = function (ev) {
     for (const f of fields.values()) {
       if (JSON.stringify(f.transform) !== before.get(f.id)) fieldPatches.push({ id: f.id, transform: f.transform });
     }
-    self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events });
+    self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
 };
 `
@@ -94,7 +97,18 @@ interface SandboxReply {
   fieldPatches?: { id: string; transform: Record<string, number> }[]
   events?: { type: string; detail: unknown }[]
   error?: string
+  ms?: number
 }
+
+// ── runaway-cost kill-switch — deliberately LIBERAL ──
+// A sandboxed hook can't steal cookies or reach the network, but a hostile or
+// buggy one can still peg a core. These thresholds only ever catch a genuine
+// infinite loop or SUSTAINED heavy overrun — a normal hook runs in well under a
+// millisecond, so there is enormous headroom before anything trips.
+const perfNow = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()
+const HANG_MS = 5000        // no reply for 5s while a tick is in flight ⇒ looping
+const SLOW_MS = 150         // one tick over 150ms (a frame is ~16ms) counts as heavy
+const SLOW_STRIKE_LIMIT = 240   // ~240 sustained heavy ticks (several seconds) ⇒ quarantine
 
 export class WorldSandbox {
   private worker: Worker | null = null
@@ -104,6 +118,9 @@ export class WorldSandbox {
   private pending: SandboxReply | null = null
   private reportedError = false
   private lastSurfaced = ''
+  private quarantined = false
+  private lastPostAt = 0
+  private slowStrikes = 0
 
   /** Put a hook failure where players AND agents can see it: worldData
    *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay. */
@@ -118,9 +135,35 @@ export class WorldSandbox {
     }
   }
 
+  /** Stop the hooks for good and SAY WHY, on the same surfaces a fault uses.
+   *  Liberal by design — this only fires on a true runaway, so the message is
+   *  reassuring: the rest of the world keeps running. */
+  private quarantine(sim: FieldSimulation, reason: string, detail: string): void {
+    if (this.quarantined) return
+    this.quarantined = true
+    this.dispose()
+    const message = `this world's live code was paused — ${reason}. everything else still runs.`
+    ;(sim.worldData as Record<string, unknown>)['__hook_quarantined'] = { reason, detail, at: Date.now() }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cc:fault', { detail: { kind: 'quarantine', message } }))
+      try {
+        void fetch('/api/engine/quarantine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phase: 'hook-budget', url: window.location?.href, hazards: [{ name: 'step hook', reason: detail, phase: 'runtime' }] }),
+          keepalive: true,
+        }).catch(() => {})
+      } catch { /* telemetry must never throw into the render path */ }
+    }
+  }
+
   /** compile one or more hooks into a fresh sealed worker */
   load(hooks: string | { id: string; code: string }[]): void {
     this.dispose()
+    // a fresh install (e.g. the owner/AI just fixed the hook) gets a clean slate
+    this.quarantined = false
+    this.slowStrikes = 0
+    this.lastPostAt = 0
     const specs = typeof hooks === 'string' ? [{ id: 'hook', code: hooks }] : hooks
     try {
       const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }))
@@ -151,7 +194,15 @@ export class WorldSandbox {
   /** one frame: apply the worker's last reply, then post current sim state.
    *  Call this BEFORE sim.step so gpuUniforms/__play_sound land for this frame. */
   tick(sim: FieldSimulation, dt: number): void {
-    if (!this.worker || !this.ready) return
+    if (this.quarantined || !this.worker || !this.ready) return
+
+    // KILL-SWITCH ─ a tick posted but no reply for HANG_MS means a hook is
+    // looping. It can't hurt the page (sealed worker) but it pegs a core —
+    // terminate and say why. Very liberal: a real hook replies in <1 frame.
+    if (this.inFlight && this.lastPostAt && (perfNow() - this.lastPostAt > HANG_MS)) {
+      this.quarantine(sim, 'it stopped responding (a loop with no exit)', `no reply for ${Math.round((perfNow() - this.lastPostAt))}ms — hook is looping`)
+      return
+    }
 
     // a compile error means the hook will NEVER run — a world that looks dead
     // must say why, on the same surfaces a runtime failure uses
@@ -162,6 +213,19 @@ export class WorldSandbox {
 
     // 1 ─ apply the pending reply (from ~1 frame ago)
     if (this.pending) {
+      // SUSTAINED heavy cost ⇒ quarantine. Strikes accrue on a heavy tick and
+      // decay 2× as fast, so brief spikes never trip it — only a hook that is
+      // consistently over budget for seconds on end.
+      if (typeof this.pending.ms === 'number') {
+        if (this.pending.ms > SLOW_MS) {
+          if (++this.slowStrikes >= SLOW_STRIKE_LIMIT) {
+            this.quarantine(sim, 'it was using too much time every frame', `sustained ${Math.round(this.pending.ms)}ms/tick over ${SLOW_STRIKE_LIMIT} ticks (budget ${SLOW_MS}ms)`)
+            return
+          }
+        } else {
+          this.slowStrikes = Math.max(0, this.slowStrikes - 2)
+        }
+      }
       // an error means ONE hook threw — surface it, but still apply the reply:
       // the other hooks ran fine and their worldData/patches are valid.
       if (this.pending.error) {
@@ -212,6 +276,7 @@ export class WorldSandbox {
     try {
       this.worker.postMessage({ type: 'tick', worldData: cloneable(sim.worldData), dt: useDt, fields })
       this.inFlight = true
+      this.lastPostAt = perfNow()   // hang-detector baseline for this in-flight tick
     } catch (e) {
       // non-cloneable worldData (shouldn't happen — it's plain data)
       console.warn('[sandbox] tick post failed:', e)
