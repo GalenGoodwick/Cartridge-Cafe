@@ -57,15 +57,22 @@ if (NTICKS > 0 && Array.isArray(state.stepHooks) && state.stepHooks.length) {
     catch (e) { hookErrors.push({ hookId: h.id, phase: "compile", error: String(e?.message || e) }); }
   }
   const BUDGET_MS = 3000; const t0 = performance.now();
-  const seen = new Set();
+  // one runtime record per hook (a hook that throws every tick is ONE problem,
+  // not 45) — keep the first message + a count so the daemon sees signal not spam
+  const runtimeErrs = new Map();
   outer: for (let t = 0; t < NTICKS; t++) {
     worldData.input = ZERO_INPUT;
     for (const h of compiled) {
       try { h.fn(sim, DT); }
-      catch (e) { const k = h.id + ":" + String(e?.message || e); if (!seen.has(k)) { seen.add(k); hookErrors.push({ hookId: h.id, phase: "runtime", error: String(e?.message || e), tick: t }); } }
+      catch (e) {
+        let rec = runtimeErrs.get(h.id);
+        if (!rec) { rec = { hookId: h.id, phase: "runtime", error: String(e?.message || e), firstTick: t, count: 0 }; runtimeErrs.set(h.id, rec); }
+        rec.count++;
+      }
       if (performance.now() - t0 > BUDGET_MS) { hookErrors.push({ hookId: h.id, phase: "budget", error: `hook loop exceeded ${BUDGET_MS}ms — stopped at tick ${t}` }); break outer; }
     }
   }
+  for (const rec of runtimeErrs.values()) hookErrors.push(rec);
 }
 // evolved outputs
 const T = A.time !== undefined ? parseFloat(A.time) : +(NTICKS * DT).toFixed(4);
