@@ -760,10 +760,15 @@ try {
                   if (hi - lo > widest) { widest = hi - lo; a2 = lo + (hi - lo) / 2 }
                 }
               }
-              const rr = maxR + 78
+              // cap how far out a newborn spawns — an UNSAVED mode (a fresh maker
+              // deed) makes every world "newborn", and maxR+78-each spiralled them
+              // clear off-screen. Cap keeps the whole batch near the middle.
+              const rr = Math.min(maxR + 78, 165)
               U.bubbles[n] = { x: 256 + Math.cos(a2) * rr, y: 256 + Math.sin(a2) * rr * 0.74, vx: 0, vy: 0,
                 born: now, launch: want[n].launch, style: want[n].style, hue: (want[n].hue != null ? want[n].hue : hueOf(n)), score: 2 }
-              if (!calmBoot) U.wake = 10   // a birth perturbs the settled field — but never the loading one
+              // a birth perturbs the settled field — but not the loading one, UNLESS
+              // there's no saved layout to adopt (a fresh deed): then we must pack.
+              if (!calmBoot || !shared) U.wake = 10
             }
           }
           const B = U.bubbles[n]
