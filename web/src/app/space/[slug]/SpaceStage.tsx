@@ -154,7 +154,9 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       {/* nothing to share on a world that isn't real yet — hide SHARE while it's
           still blank-and-building */}
       {!building && <ShareWorld slug={spaceSlug} name={name} />}
-      <div className="fixed bottom-[52px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
+      {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
+          bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
+      <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}

@@ -229,6 +229,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // ── branches: every world can be branched by anyone signed in; versions are
   // cut by the EYE — a watcher that snapshots each settled burst of AI edits ──
   const [me, setMe] = useState<string | null>(null)
+  const [myName, setMyName] = useState('')   // display name (== chat `who`), so the world-chat door can exclude YOUR own posts
   const [aiPulse, setAiPulse] = useState(0)
   const [plugOpen, setPlugOpen] = useState(false)
   const [plugToken, setPlugToken] = useState<string | null>(null)
@@ -464,7 +465,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const eyeCheckRef = useRef(0)
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json())
-      .then(s => setMe(s?.user?.email || s?.user?.name || null)).catch(() => {})
+      .then(s => { setMe(s?.user?.email || s?.user?.name || null); setMyName(s?.user?.name || '') }).catch(() => {})
   }, [])
   // a freshly brewed (blank) world no longer pops the how-to box — while the
   // AI is building it, the owner just sees a working spinner (rendered below).
@@ -699,6 +700,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   // Designer sidebar state
   const [terminalOpen, setTerminalOpen] = useState(false)
+  // the floating BUILD CONSOLE — opened from the EDIT menu or auto during a build,
+  // closed with its ✕. buildConsoleClosedRef remembers a manual close so the
+  // auto-open doesn't fight it (the old auto-open-once latch was the buggy part).
+  const [buildConsoleOpen, setBuildConsoleOpen] = useState(false)
+  const buildConsoleClosedRef = useRef(false)
   // WebGPU unavailable or lost — show a human answer, not a black void
   const [gpuFailed, setGpuFailed] = useState(false)
 
@@ -5322,7 +5328,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   // watching a build: the first progress line auto-opens the terminal so the
   // player actually SEES it, then we never fight their toggle again.
-  const terminalAutoOpenedRef = useRef(false)
   const buildConsoleRef = useRef<HTMLDivElement>(null)
   // follow the newest line — but only while the reader is already near the bottom,
   // so scrolling up to read earlier steps isn't yanked back down every command.
@@ -5332,11 +5337,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
     if (nearBottom) el.scrollTop = el.scrollHeight
   }, [terminalLog.length])
+  // auto-open the build console once a build starts producing log lines — unless
+  // the reader manually closed it. When the log clears (a fresh build), re-arm.
   useEffect(() => {
-    if (terminalLog.length > 0 && !terminalAutoOpenedRef.current) {
-      terminalAutoOpenedRef.current = true
-      setTerminalOpen(true)
-    }
+    if (terminalLog.length === 0) { buildConsoleClosedRef.current = false; return }
+    if (!buildConsoleClosedRef.current) setBuildConsoleOpen(true)
   }, [terminalLog.length])
 
   // WORLD CHAT liveness — poll the world's shared chat so the ⌁ door shows if
@@ -5354,8 +5359,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + key)).then(r => r.json())
         const msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Array<{ at: number; ai?: boolean; who?: string }> : []
         const now = Date.now()
+        // exclude YOUR OWN recent post — otherwise the door lights up green "1"
+        // right after you comment on your own world (that 1 is you, not activity)
         if (!stop) setChatLive({
-          people: new Set(msgs.filter(m => !m.ai && now - m.at < 300_000).map(m => m.who)).size,
+          people: new Set(msgs.filter(m => !m.ai && now - m.at < 300_000 && m.who !== myName).map(m => m.who)).size,
           ai: new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)).size,
         })
       } catch { /* offline is fine */ }
@@ -5364,7 +5371,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const t = setInterval(poll, 12000)
     return () => { stop = true; clearInterval(t) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, spaceName, spaceSlug, playScene])
+  }, [spaceId, spaceName, spaceSlug, playScene, myName])
 
   // LIVE ADOPT — the fix for editing a world while someone stands in it.
   // A bridge write (an AI editing over HTTP) bumps the world's authored revision
@@ -6080,6 +6087,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
               </button>
             )}
+            {/* watch or review the AI's build log — open/close it by hand instead
+                of relying on the auto-pop (which was unreliable) */}
+            {!isHub && (
+              <button
+                onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
+                title="the AI build log — watch a build live or review the last one"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                {buildConsoleOpen ? '⌁ HIDE CONSOLE' : '⌁ BUILD CONSOLE'}{terminalLog.length ? ` · ${terminalLog.length}` : ''}
+              </button>
+            )}
             {/* (branch rule chips removed — YOUR OWN branch now gets the same
                 ⚙ WORLD TOOLS panel a space gets, persisting to the same
                 world-settings:<branch> slot. One toolbox, every tier.) */}
@@ -6447,20 +6465,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     )}
                   </div>
                 )}
-                {/* the live build console — the AI's coding progress, in a box */}
-                {building && (
-                  <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
-                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
-                      <span>⌁ BUILD CONSOLE</span>
-                      <span className="text-white/25">{terminalLog.length} steps</span>
-                    </div>
-                    <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
-                      {terminalLog.length === 0
-                        ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
-                        : <AgentTerminalPanel entries={terminalLog} header={false} />}
-                    </div>
-                  </div>
-                )}
+                {/* the build console itself is now a standalone, closable overlay
+                    (below, gated on buildConsoleOpen) — it auto-opens here while a
+                    build runs and can be reopened anytime from the EDIT menu. */}
                 {/* a stuck or unwanted build can be cancelled here — deletes the
                     world so it can't sit blank-and-building forever. Owner only. */}
                 {building && (isOwner || !spaceId) && (
@@ -6473,6 +6480,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </div>
             )
           })()}
+          {/* BUILD CONSOLE — standalone + closable. Auto-opens while a build runs
+              (see the terminalLog effect) and reopens anytime from ✎ EDIT. */}
+          {buildConsoleOpen && (
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
+                <span>⌁ BUILD CONSOLE</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-white/25">{terminalLog.length} steps</span>
+                  <button
+                    onClick={() => { setBuildConsoleOpen(false); buildConsoleClosedRef.current = true }}
+                    title="close the build console"
+                    className="text-white/40 hover:text-white text-[15px] leading-none">✕</button>
+                </div>
+              </div>
+              <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
+                {terminalLog.length === 0
+                  ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
+                  : <AgentTerminalPanel entries={terminalLog} header={false} />}
+              </div>
+            </div>
+          )}
           {instrOpen && (
             <div className={`absolute right-36 z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}>
               {/* anchored to the grid's top-right under its button — a reference
