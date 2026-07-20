@@ -23,6 +23,7 @@ import { GameAudio } from './audio'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
+import { NotifyMeButton } from '@/components/NotifyMeButton'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
 
 let fieldCounter = 0
@@ -1687,14 +1688,43 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   useEffect(() => {
     if (!playScene && !spaceId) return
     const fit = () => {
-      cameraRef.current.x = gridSize / 2
-      cameraRef.current.y = gridSize / 2
-      cameraRef.current.zoom = 1
+      // Default: center the 0..512 grid at zoom 1 — how worlds authored in that
+      // space expect to be framed.
+      let cx = gridSize / 2, cy = gridSize / 2, zoom = 1
+      // But an AI often builds in its OWN space — e.g. centered on (0,0) with
+      // negative coords. That world sits off in the corner / off-screen of the
+      // default view and reads as a BLACK SCREEN. So if the content clearly lives
+      // outside the default frame, FRAME IT: center on the content's bounding box
+      // and zoom to fit. Worlds already built for 0..512 are left exactly as-is.
+      const fields = simulationRef.current ? [...simulationRef.current.fields.values()] : []
+      if (fields.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const f of fields) {
+          const fx = Number(f.transform?.x) || 0, fy = Number(f.transform?.y) || 0
+          const sc = Number(f.transform?.scale) || 1
+          const hw = (Number(f.w) || 0) * sc / 2, hh = (Number(f.h) || 0) * sc / 2
+          minX = Math.min(minX, fx - hw); maxX = Math.max(maxX, fx + hw)
+          minY = Math.min(minY, fy - hh); maxY = Math.max(maxY, fy + hh)
+        }
+        const bw = maxX - minX, bh = maxY - minY
+        const bcx = (minX + maxX) / 2, bcy = (minY + maxY) / 2
+        const outside = minX < 0 || minY < 0 ||
+          bcx < gridSize * 0.25 || bcx > gridSize * 0.75 ||
+          bcy < gridSize * 0.25 || bcy > gridSize * 0.75
+        if (outside && bw > 0 && bh > 0) {
+          cx = bcx; cy = bcy
+          zoom = Math.max(0.5, Math.min(8, gridSize / (Math.max(bw, bh) * 1.25)))
+        }
+      }
+      cameraRef.current.x = cx
+      cameraRef.current.y = cy
+      cameraRef.current.zoom = zoom
     }
     fit()
-    const t = setTimeout(fit, 300)   // after the canvas settles
+    // re-run as the scene loads async (fields may not exist on the first tick)
+    const timers = [setTimeout(fit, 300), setTimeout(fit, 900), setTimeout(fit, 1800)]
     window.addEventListener('resize', fit)
-    return () => { clearTimeout(t); window.removeEventListener('resize', fit) }
+    return () => { timers.forEach(clearTimeout); window.removeEventListener('resize', fit) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
@@ -6307,12 +6337,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     out — build it yourself with the player key / CONNECT AI. */}
                 {building && !agentConnected && terminalLog.length === 0 && (
                   <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[12px] leading-relaxed text-amber-100/80 text-center">
-                    No builder has picked this up yet — <b>your world is saved</b>, and it&rsquo;ll build when one&rsquo;s free.
+                    In the queue — <b>your world is saved</b>, and it&rsquo;ll build when a builder is free. This can take a few minutes; you can close this tab.
                     {(isOwner || !spaceId) && (
                       <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>.</>
                     )}
                   </div>
                 )}
+                {/* leave & get pinged when it's done — the whole point of the queue */}
+                {building && (isOwner || !spaceId) && <NotifyMeButton />}
                 {/* the live build console — the AI's coding progress, in a box */}
                 {building && (
                   <div className="pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/80 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
