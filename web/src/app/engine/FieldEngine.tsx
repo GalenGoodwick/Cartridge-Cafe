@@ -684,7 +684,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     verPropRef.current = versionView
     if (spaceSlug) hotLoadSpaceVersionRef.current?.(versionView)
   }, [versionView, spaceSlug])
-  const hotLoadSpaceVersionRef = useRef<((v: number | undefined, fresh?: boolean) => Promise<void>) | null>(null)
+  const hotLoadSpaceVersionRef = useRef<((v: number | undefined) => Promise<void>) | null>(null)
 
   // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
   // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
@@ -1446,7 +1446,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  (and thus the read-only gates) follow. Owner-only — the owner's own hooks
    *  are trusted; a visitor keeps the server-rendered reload path so an
    *  untrusted version's JS never auto-installs. */
-  const hotLoadSpaceVersion = useCallback(async (v: number | undefined, fresh = false) => {
+  const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
     if (!spaceSlug) return
     try {
       const q = v === undefined ? '' : `?version=${v}`
@@ -1458,7 +1458,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // hook persisted — so vote previews resumed someone's half-finished run.
       // Engine state (__chapters/__trig) always resets; a world lists its own
       // game-state keys in worldData.__resets (e.g. TIDEGLASS resets '__tg').
-      if (v !== undefined || fresh) {
+      if (v !== undefined) {
         const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
         if (wd) {
           const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
@@ -1466,11 +1466,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
-      // an explicit reset must return the world to its OPENING state, not just
-      // reload the fields: signal the hook to run its own reset block (the
-      // `if (wd.__fresh) { delete wd.__fresh; ...reset... }` convention every
-      // stateful cartridge follows). Reload restores geometry; __fresh restores logic.
-      if (fresh) { const s = simulationRef.current; if (s) s.worldData.__fresh = true }
       greetInstructions(`space:${spaceSlug}`)   // pop instructions on first entry to this space
       setSpaceVer(v)
       window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
@@ -1685,14 +1680,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       const sim = simulationRef.current
       if (!sim || !sim.worldData.rResetKey) return
-      // reset: forget this session's run state + saved stash, then reload fresh
-      for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
       const saveKey = playScene || spaceSlug
       if (saveKey) { try { localStorage.removeItem(`cc-save-${saveKey}`) } catch { /* fine */ } }
       if (spaceId) {
-        // space world: no playScene load effect — reload the current version fresh
-        hotLoadSpaceVersionRef.current?.(spaceVer, true)
+        // space world: the only reliable restart is a real page reload. Every
+        // in-tab reload (hotLoadSpaceVersion) MERGES the snapshot onto live
+        // worldData (Object.assign) while the sim keeps ticking, so run-state
+        // survived the "reset" (and a __fresh poke blanked some hooks). A hard
+        // refresh boots the world clean from an empty worldData and always lands
+        // at the beginning — so that's what we do. spaceVer is preserved in the
+        // URL, so a save-point view reloads that same version fresh.
+        window.location.reload()
       } else {
+        // reset: forget this session's run state + saved stash, then reload fresh
+        for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
         playLoadedRef.current = null   // force the load effect to re-run this scene
         setReloadTick(v => v + 1)
       }
