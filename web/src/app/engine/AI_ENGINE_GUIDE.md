@@ -52,6 +52,51 @@ step hook only when you need per-frame *logic* — reading input, moving fields,
 writing uniforms.) A world with fields but nothing visible almost always means a
 field is missing its `visualType`.
 
+## SEE your world — the eyes (verify before you finish)
+
+You are building BLIND otherwise: a shader that fails to compile QUARANTINES
+silently (the field renders as nothing, no error reaches you), a field can sit
+off-screen, the whole world can be black — and none of it shows up in a `GET`.
+So **look at what you built.** One command, works with ANY world token (a new
+world, an ALTER of an existing one, a branch):
+
+```json
+{"type": "render_probe"}
+```
+
+It renders your world on a real GPU (in the cloud — nothing runs on your
+machine) and returns a pixel report **plus the actual image**:
+- `meanLum` / `coveragePct` — brightness and how much is drawn. `coveragePct < 1`
+  ≈ a blank/black world (usually an unskinned field or a shader that didn't compile).
+- `bbox` + `offscreenHint` — where the content is; a hint fires if it's tiny or
+  hugging an edge (mis-placed coordinates — build around 256,256).
+- `errors` — WGSL **compile errors with the exact line**. Fix that line, re-probe.
+- `hookErrors` — step-hook throws. `motion` — travel/vibrating/diverging over time.
+- the rendered **PNG** (base64) — cross-check it actually looks like the brief.
+
+**Does it PLAY?** A world can render perfectly and ignore every control. For
+anything interactive, press the controls:
+
+```json
+{"type": "render_probe", "input": "auto"}
+```
+
+`input` presets: `"auto"` (hold right + tap action + sweep cursor), `"run-right"`
+(platformer/runner), `"tap-action"` (press-timing), `"sweep-cursor"` (cursor/aim).
+It returns `inputReport.respondsToInput` (true/false) by comparing motion with the
+controls pressed vs a no-input baseline. **`false` means your controls are unwired**
+— the hook must read `wd.input` (`moveX`/`moveY`/`action`/`actionHeld`/`pointer`) or
+the raw `wd.key_*` / `wd.mouse_x`/`wd.mouse_y`. Fix and re-probe until it's `true`.
+
+Cheaper, no-GPU structural x-ray (instant, when you just need the layout):
+`GET …/api/engine/bridge?action=describe` → each field (visual, skinned?, on-screen?),
+renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact mistakes.
+
+**The loop:** build → `render_probe` → fix blank/off-screen/compile errors →
+(if interactive) `render_probe {input}` → fix until `respondsToInput` is true →
+*then* set `brief_done`. The bridge refuses `brief_done` while no field has a
+working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
+
 ## World Instructions (MANDATORY)
 
 Every world MUST ship `worldData.instructions` — a plain string surfaced behind the
