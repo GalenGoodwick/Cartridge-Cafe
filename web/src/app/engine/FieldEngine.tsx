@@ -5532,7 +5532,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // known (a build in progress must not flicker off on one bad read).
         const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
         if (stop || !d) return
-        if (d.active) {
+        // Show the build window only when an AI is ACTUALLY on it — `live` (a
+        // heartbeat in the last 2 min) — or a job is genuinely QUEUED (`pending`,
+        // a builder will pick it up). A `leased`/`building`/`needs_review` job with
+        // NO recent heartbeat is an ORPHAN (the builder died / the job is parked)
+        // — `active` was true for it, so the window popped up with no AI building.
+        const reallyBuilding = d.live === true || d.status === 'pending'
+        if (reallyBuilding) {
           falseStreak = 0
           setBuildJobActive(true); buildJobActiveRef.current = true
         } else {
