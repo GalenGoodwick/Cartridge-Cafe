@@ -283,9 +283,19 @@ Send a single command or an array:
 
 ### Field Lifecycle
 
+**⚠ COORDINATE SPACE — read this or your world renders off-screen.** The world
+is a **512 × 512** grid. `(0,0)` is the **TOP-LEFT corner**; the camera is fixed
+looking at the **center, `(256, 256)`**, showing roughly `x,y ∈ [0, 512]`. So:
+- Build your world **around `(256, 256)`**, not around `(0,0)`.
+- **Never use negative coordinates** — anything at `x<0` or `y<0` is off-screen.
+- A field's `x,y` is its **center**; `w,h` are its full width/height in grid units.
+- A world ~300–450 units wide, centered on 256, fills the view nicely. (A stadium
+  built around `(0,0)` spanning ±65 renders as a tiny cluster in the corner — the
+  classic "it's dark" mistake. Center it: pitch at `x:256,y:256,w:300,h:190`, etc.)
+
 | Command | Parameters | Description |
 |---------|-----------|-------------|
-| `create_field` | `name?, color?, shape?, shapeType?, radius?, w?, h?, x?, y?, parentFieldId?, fieldId?, visualType?` | Create a new field. Shape: `"circle"` or `"rect"`. Returns assigned `fieldId`. |
+| `create_field` | `name?, color?, shape?, shapeType?, radius?, w?, h?, x?, y?, parentFieldId?, fieldId?, visualType?` | Create a new field. Shape: `"circle"` or `"rect"`. `x,y` = field CENTER in the 512-grid (build around 256,256; no negatives). Returns assigned `fieldId`. |
 | `delete_field` | `fieldId` | Remove field and its effects |
 | `clone_field` | `fieldId, name?, color?, offsetX?, offsetY?` | Duplicate a field |
 | `list_fields` | — | List all fields |
