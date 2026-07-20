@@ -24,7 +24,7 @@
 import { prisma } from '@/lib/prisma'
 import { getSpaceSnapshot, applyCommandToSnapshot } from '@/app/api/engine/space-store'
 import { deleteGameSlot } from '@/app/api/engine/store'
-import { GAME_STATE_KEYS, PRESERVED_KEYS } from '@/lib/gameStateKeys'
+import { GAME_STATE_KEYS, PRESERVED_KEYS, resetPatch, captureOriginal, progressKeysOf } from '@/lib/gameStateKeys'
 
 export { GAME_STATE_KEYS, PRESERVED_KEYS }
 
@@ -36,33 +36,28 @@ export interface ResetOpts {
 export interface ResetResult {
   ok: boolean
   error?: string
-  cleared: string[]       // worldData keys wiped
-  social: string[]        // engineSlots wiped
-  rev: number             // the new __bridge_rev (so callers know open tabs must reload)
+  cleared: string[]              // worldData keys wiped or restored
+  restoredFromOriginal?: boolean // true if a captured __original was restored (vs cleared)
+  social: string[]               // engineSlots wiped
+  rev: number                    // the new __bridge_rev (so callers know open tabs must reload)
 }
 
-/** THE reset. Clears a world's GAME state (and optionally player + social) in
- *  one coherent pass, preserving CONTENT/CONFIG. Applied through the snapshot
- *  mutator so __bridge_rev bumps — open tabs then reload instead of syncing the
- *  old state back over the reset. */
+/** THE reset. Returns a world's GAME state to its ORIGINAL (restores from
+ *  worldData.__original if the world captured one, else clears so the hook
+ *  re-inits its defaults), clearing DERIVED keys, preserving CONTENT/CONFIG.
+ *  Optionally wipes per-player + social. Applied through the snapshot mutator so
+ *  __bridge_rev bumps — open tabs reload instead of syncing old state back. */
 export async function resetWorld(spaceId: string, opts: ResetOpts = {}): Promise<ResetResult> {
   const snap = await getSpaceSnapshot(spaceId, true)
   if (!snap) return { ok: false, error: 'no snapshot', cleared: [], social: [], rev: 0 }
   const wd = (snap.worldData ?? {}) as Record<string, unknown>
 
-  // the world may declare extra reset keys (worldData.__resets); honor them, but
-  // never let a declaration wipe a preserved CONFIG key.
-  const declared = (Array.isArray(wd.__resets) ? (wd.__resets as string[]) : [])
-  const targets = new Set<string>([...GAME_STATE_KEYS, ...declared])
-  if (opts.clearPlayer) targets.add('save')
-  const dataNull: Record<string, unknown> = {}
-  for (const k of targets) {
-    if (PRESERVED_KEYS.has(k)) continue
-    if (k in wd) dataNull[k] = null   // set_world_data null = delete (documented contract)
-  }
+  // one patch: restore-from-original where defined, delete otherwise (see
+  // gameStateKeys.resetPatch — shared verbatim with the client R-key path).
+  const patch = resetPatch(wd, { clearPlayer: opts.clearPlayer })
 
   // apply through the bridge mutator (bumps __bridge_rev, persists, invalidates cache)
-  await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: dataNull })
+  await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: patch })
 
   const social: string[] = []
   if (opts.clearSocial) {
@@ -77,7 +72,20 @@ export async function resetWorld(spaceId: string, opts: ResetOpts = {}): Promise
 
   const after = await getSpaceSnapshot(spaceId, true)
   const rev = Number((after?.worldData as Record<string, unknown> | undefined)?.__bridge_rev) || 0
-  return { ok: true, cleared: Object.keys(dataNull), social, rev }
+  const restored = wd.__original && typeof wd.__original === 'object'
+  return { ok: true, cleared: Object.keys(patch), restoredFromOriginal: !!restored, social, rev }
+}
+
+/** Capture the world's CURRENT progress state as its canonical ORIGINAL, so a
+ *  later reset returns to exactly this (not just an empty re-init). The owner
+ *  calls this once the world is in its intended starting state. */
+export async function setOriginal(spaceId: string): Promise<{ ok: boolean; error?: string; captured: string[] }> {
+  const snap = await getSpaceSnapshot(spaceId, true)
+  if (!snap) return { ok: false, error: 'no snapshot', captured: [] }
+  const wd = (snap.worldData ?? {}) as Record<string, unknown>
+  const original = captureOriginal(wd)
+  await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: { __original: original } })
+  return { ok: true, captured: Object.keys(original) }
 }
 
 /** A MANIFEST of every store a world touches — so a reset (or a human) is never
@@ -88,10 +96,11 @@ export async function worldStores(spaceId: string): Promise<Record<string, unkno
   const sp = await prisma.playerSpace.findUnique({ where: { id: spaceId }, select: { slug: true, name: true } })
   const up = (sp?.name || '').toUpperCase()
   const keys = Object.keys(wd)
-  const gameKeys = keys.filter(k => (GAME_STATE_KEYS as readonly string[]).includes(k) || (Array.isArray(wd.__resets) && (wd.__resets as string[]).includes(k)))
+  const gameKeys = progressKeysOf(wd)
   const versions = sp ? await prisma.spaceVersion.count({ where: { spaceId } }).catch(() => 0) : 0
   return {
     snapshot: {
+      hasOriginal: '__original' in wd,
       content: { fields: (snap?.fields ?? []).length, visualTypes: (snap?.visualTypes ?? []).length, stepHooks: (snap?.stepHooks ?? []).length, modules: (snap?.modules ?? []).length },
       configKeys: keys.filter(k => PRESERVED_KEYS.has(k)),
       gameKeys,

@@ -6,7 +6,7 @@ import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
-import { GAME_STATE_KEYS } from '@/lib/gameStateKeys'
+import { resetPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
@@ -1638,13 +1638,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (v !== undefined || resetFlag) {
         const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
         if (wd) {
-          const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
-          // RESTART (R) is a FULL reset — strip EVERY game/runtime key (the whole
-          // GAME_STATE_KEYS set, not just __chapters/__trig — that left __edge,
-          // gpuUniforms, __budget etc. behind = a half-reset). A version VIEW only
-          // clears transient engine progress so the saved state still shows.
-          const keys = resetFlag ? [...GAME_STATE_KEYS, ...extra] : ['__chapters', '__trig', ...extra]
-          for (const k of keys) delete wd[k]
+          if (resetFlag) {
+            // RESTART (R): return to ORIGINAL — restore from wd.__original where the
+            // world captured one, else delete so the hook re-inits. Same resetPatch
+            // the server reset uses, so R and reset_world behave identically.
+            const patch = resetPatch(wd)
+            for (const [k, val] of Object.entries(patch)) { if (val === null) delete wd[k]; else wd[k] = val }
+          } else {
+            // a version VIEW only clears transient engine progress so the saved state shows
+            const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
+            for (const k of ['__chapters', '__trig', ...extra]) delete wd[k]
+          }
         }
       }
       await handleLoadScene(`space:${spaceSlug}`, data)
@@ -2251,11 +2255,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (snapshot.worldData) {
           let reset = false
           try { if (sessionStorage.getItem('cc-reset:' + spaceSlug)) { reset = true; sessionStorage.removeItem('cc-reset:' + spaceSlug) } } catch { /* private mode */ }
-          if (reset || versionView) {
+          if (reset) {
+            // R = return to ORIGINAL (restore from __original, else clear) — shared resetPatch
+            const patch = resetPatch(snapshot.worldData as Record<string, unknown>)
+            for (const [k, val] of Object.entries(patch)) { if (val === null) delete snapshot.worldData[k]; else (snapshot.worldData as Record<string, unknown>)[k] = val }
+          } else if (versionView) {
             const extra = Array.isArray(snapshot.worldData.__resets) ? snapshot.worldData.__resets : []
-            // R = FULL reset (every GAME_STATE_KEY); version view = engine state only
-            const keys = reset ? [...GAME_STATE_KEYS, ...extra] : ['__chapters', '__trig', ...extra]
-            for (const k of keys) delete snapshot.worldData[k]
+            for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
           }
           Object.assign(sim.worldData, snapshot.worldData)
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches

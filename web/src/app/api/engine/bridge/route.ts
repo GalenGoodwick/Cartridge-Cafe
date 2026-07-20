@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
-import { resetWorld, worldStores } from '@/lib/worldSave'
+import { resetWorld, setOriginal, worldStores } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
@@ -627,6 +627,13 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'reset_world' && isSpaceScoped) {
         const out = await resetWorld(auth.spaceId!, { clearPlayer: cmd.player === true, clearSocial: cmd.social === true })
         results.push({ type: 'reset_world', ...out, next: 'open tabs must HARD-REFRESH to pick up the reset (a running tab would otherwise sync its old state back).' })
+        continue
+      }
+      // capture the world's CURRENT progress state as its canonical ORIGINAL —
+      // then reset_world / R return to exactly this. Do it when the world is in
+      // its intended starting state.
+      if (cmd.type === 'set_original' && isSpaceScoped) {
+        results.push({ type: 'set_original', ...(await setOriginal(auth.spaceId!)), next: 'reset_world (and the R key) now RESTORE to this captured state instead of clearing to nothing.' })
         continue
       }
       // manifest of every store this world touches (read-only)
