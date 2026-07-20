@@ -321,14 +321,14 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   /** Optimistic write loop: stamp the doc, write, read back. If someone else
    *  wrote in between (their stamp shows instead), replay our mutation on
    *  THEIR state — concurrent pins/joins merge instead of erasing each other. */
-  const mutateSubs = async (fn: (subs: Record<string, SubEntry>) => string | null): Promise<boolean> => {
+  const mutateSubs = async (fn: (subs: Record<string, SubEntry>) => string | null, onErr: (m: string) => void = (m) => window.alert(m)): Promise<boolean> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('submains:index')).then(r => r.json()).catch(() => null)
       const d = (j?.data && j.data.v === 1 && j.data.subs)
         ? j.data as { v: 1; subs: Record<string, SubEntry>; stamp?: string }
         : { v: 1 as const, subs: {} as Record<string, SubEntry>, stamp: undefined as string | undefined }
       const err = fn(d.subs)
-      if (err) { window.alert(err); return false }
+      if (err) { onErr(err); return false }
       const stamp = Math.random().toString(36).slice(2)
       d.stamp = stamp
       await fetch('/api/engine/save', {
@@ -343,24 +343,35 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
         return true
       }
     }
-    window.alert('the shelf is busy — try once more')
+    onErr('the shelf is busy — try once more')
     return false
   }
 
-  /** FOUND YOURS — one sub-main per person, named at birth */
-  const foundSub = async () => {
+  /** FOUND YOURS — one sub-main per person, named at birth. In-app modal, not a
+   *  browser prompt (the site's own dialog). */
+  const [foundOpen, setFoundOpen] = useState(false)
+  const [foundName, setFoundName] = useState('')
+  const [foundErr, setFoundErr] = useState('')
+  const [foundBusy, setFoundBusy] = useState(false)
+  const foundSub = () => {
     if (!who) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/hub/SUB-MAIN'); return }
-    const name = window.prompt('Name your sub-main:')
-    if (!name?.trim()) return
-    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    if (!slug) return
+    setFoundName(''); setFoundErr(''); setFoundOpen(true)
+  }
+  const submitFound = async () => {
+    if (!who || foundBusy) return
+    const name = foundName.trim()
+    if (!name) { setFoundErr('name it first'); return }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    if (!slug) { setFoundErr('use some letters or numbers') ; return }
+    setFoundErr(''); setFoundBusy(true)
     const ok = await mutateSubs(subs => {
       if (Object.values(subs).some(s => s.ownerId === who.id)) return 'you already founded a sub-main — one per person'
       if (subs[slug]) return 'that name is taken'
-      subs[slug] = { name: name.trim(), ownerId: who.id, ownerName: who.name, founded: Date.now(), members: { [who.id]: who.name }, shelf: {} }
+      subs[slug] = { name, ownerId: who.id, ownerName: who.name, founded: Date.now(), members: { [who.id]: who.name }, shelf: {} }
       return null
-    })
-    if (ok) (window as unknown as { __cafeSub?: string | null }).__cafeSub = slug   // step inside
+    }, setFoundErr)
+    setFoundBusy(false)
+    if (ok) { (window as unknown as { __cafeSub?: string | null }).__cafeSub = slug; setFoundOpen(false) }   // step inside
   }
 
   const joinSub = async () => {
@@ -1312,6 +1323,29 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {chatWorld && (scene === 'CAFE' || scene === 'SUB-MAIN') && <ChatWorld channel={chatWorld.channel} title={chatWorld.title} subtitle={chatWorld.subtitle} onExit={() => setChatWorld(null)} />}
 
       {/* PIN A WORLD — live search box in the cafe's own colors (was a browser prompt) */}
+      {foundOpen && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-void/70 backdrop-blur-sm" onClick={() => setFoundOpen(false)}>
+          <div className="w-[92%] max-w-md rounded-xl border border-brass/40 bg-void/95 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="cafe-sign text-lg">found your sub-main</div>
+              <button onClick={() => setFoundOpen(false)} aria-label="close" className="font-mono text-glow/50 hover:text-glow text-sm px-1">×</button>
+            </div>
+            <div className="font-mono text-[13px] text-steamer/70 mb-3 leading-relaxed">a named gathering that&rsquo;s yours — a shelf where members pin worlds. one per person.</div>
+            <input autoFocus value={foundName} onChange={e => { setFoundName(e.target.value); setFoundErr('') }}
+              onKeyDown={e => { if (e.key === 'Enter') submitFound() }}
+              placeholder="name your sub-main…" maxLength={40}
+              className="w-full rounded-lg border border-brass/40 bg-void/60 px-3 py-2 font-mono text-[17px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-1" />
+            {foundErr && <div className="font-mono text-[13px] text-flame/80 mb-1">{foundErr}</div>}
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setFoundOpen(false)} className="font-mono text-[14px] tracking-[0.15em] text-steamer/70 hover:text-glow px-3 py-1.5">CANCEL</button>
+              <button onClick={submitFound} disabled={foundBusy || !foundName.trim()}
+                className="font-mono text-[14px] tracking-[0.15em] rounded-lg bg-flame/90 hover:bg-glow text-void px-4 py-1.5 disabled:opacity-40 transition-colors">
+                {foundBusy ? 'FOUNDING…' : '⌂ FOUND IT'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {pinOpen && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-void/70 backdrop-blur-sm" onClick={() => setPinOpen(false)}>
           <div className="w-[92%] max-w-md rounded-xl border border-brass/40 bg-void/95 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
