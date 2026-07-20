@@ -5183,7 +5183,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         } else {
           // require TWO confirmed "not building" reads (~12s) before closing —
           // one authoritative-but-transient false shouldn't vanish the window.
-          if (++falseStreak >= 2) { setBuildJobActive(false); buildJobActiveRef.current = false }
+          if (++falseStreak >= 2) {
+            const wasActive = buildJobActiveRef.current
+            setBuildJobActive(false); buildJobActiveRef.current = false
+            // The build just ENDED — the tab held its adopts through the build, so
+            // it still shows the pre-build (blank) world and an open console. Pull
+            // the finished world ONCE so brief_done lands and the console closes
+            // itself; no manual hard-reload.
+            if (wasActive && !document.hidden) hotLoadSpaceVersionRef.current?.(undefined)
+          }
         }
       } catch { /* offline is fine — hold last known */ }
     }
