@@ -173,7 +173,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let ab = stRaw % 400;
     let st = ab % 200;
     let hue = fract(sv);
-    let headCount = i32(uni(9 + i * 4) + 0.5);
+    let rawHead = uni(9 + i * 4);
+    let unvisited = rawHead > 900.5;                 // +1000 offset flags a world this browser hasn't entered
+    let headCount = i32(select(rawHead, rawHead - 1000.0, unvisited) + 0.5);
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let d = length(uv - ctr);
     let R = 0.098 * zm * select(1.0, 1.25, big > 0);
@@ -359,6 +361,15 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
         let ph = t * 1.5 + f32(k) * 1.3 + f32(i) * 0.7;      // each dances on its own beat
         col += cf_player(plocal, orb, ph, 0, hueK * 1.6) * 1.8; // hold the seat, dance in place
       }
+    }
+    // NEW-WORLD PIP — a small bright dot on the upper-right rim of any world this
+    // browser has not entered yet (unvisited, decoded above). It clears the moment
+    // you visit. Drawn outside the face mask so it rides ON the rim, like the crown.
+    if (unvisited) {
+      let dotC = ctr + vec2f(R * 0.60, -R * 0.60);
+      let dd = length(uv - dotC);
+      let pulse = 0.75 + 0.25 * sin(t * 3.0 + f32(i));
+      col += vec3f(0.55, 1.0, 0.82) * (smoothstep(R * 0.16, R * 0.09, dd) * 1.7 + exp(-pow(dd / (R * 0.20), 2.0)) * 0.45) * pulse;
     }
   }
 
@@ -1085,6 +1096,7 @@ try {
   // stride 4 now — the 4th value is the live head-count, drawn IN the bubble by
   // the shader (the shell fills window.__cafeCounts from /api/presence)
   const heads = (typeof window !== 'undefined' && window.__cafeCounts) || {}
+  const visited = (typeof window !== 'undefined' && window.__cafeVisited) || {}
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
   for (const n of U.order) {
     const B = U.bubbles[n]
@@ -1093,7 +1105,12 @@ try {
     const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
     const band = B.cat ? B.cat * 400 : (B.big ? 400 : 0)   // 800 sub-mains · 1200 player-worlds · 400 champion-big · 0 normal
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0))
+    // a world bubble the browser hasn't entered gets a +1000 flag on its head
+    // float → the shader draws a "new" pip. Nav bubbles (sub/maker/players/house)
+    // and CAFE/SUB-MAIN never count as unvisited worlds.
+    const lz = B.launch || ''
+    const unvis = !!lz && !lz.startsWith('sub:') && !lz.startsWith('maker:') && !lz.startsWith('players:') && !lz.startsWith('house:') && lz !== 'CAFE' && lz !== 'SUB-MAIN' && !visited[lz]
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, heads[n] || 0) + (unvis ? 1000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride

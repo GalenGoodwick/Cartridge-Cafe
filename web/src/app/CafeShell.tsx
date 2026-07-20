@@ -36,7 +36,7 @@ const ADS_ENABLED = false
  *  and a name that appears at your cursor when a window notices you. */
 // ONE hub-button style — both the cafe dock and the sub-main hub use it, so the
 // two hubs read as the same layer (surface:'hub'), not two different UIs.
-const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[12px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
+const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
 
 export default function CafeShell({ initialScene = 'CAFE', initialMine = false }: { initialScene?: string; initialMine?: boolean }) {
   const [scene, setScene] = useState(initialScene)
@@ -567,7 +567,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
   // itself: when it logs in with a ready name+brief, we deliver the whole brief,
   // open the world, and the panel closes (enterWorld redirects).
   const briefLen = brewBrief.trim().length
-  const connectReady = nameValid && briefLen >= 100 && briefLen <= 500
+  const connectReady = nameValid && briefLen >= 50 && briefLen <= 500
   useEffect(() => {
     if (brewAi && connectReady) finalizeBrief()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -692,12 +692,35 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     }
   }
 
+  // VISITED WORLDS — a device-local set (keyed by a bubble's `launch` string) so
+  // the door shader can pip worlds you haven't entered. Guests too (localStorage,
+  // like cc-pid). Published to window.__cafeVisited; markVisited mutates the SAME
+  // object, so the pip clears live without republishing.
+  const visitedRef = useRef<Record<string, 1>>({})
+  const markVisited = (launch: string) => {
+    if (!launch || visitedRef.current[launch]) return
+    visitedRef.current[launch] = 1
+    try { localStorage.setItem('cc-visited', JSON.stringify(Object.keys(visitedRef.current))) } catch { /* full/blocked */ }
+  }
+  useEffect(() => {
+    try {
+      const arr = JSON.parse(localStorage.getItem('cc-visited') || '[]')
+      if (Array.isArray(arr)) for (const k of arr) if (typeof k === 'string') visitedRef.current[k] = 1
+    } catch { /* fresh browser */ }
+    ;(window as unknown as { __cafeVisited?: Record<string, 1> }).__cafeVisited = visitedRef.current
+  }, [])
+
   useEffect(() => {
     startCafeAudio(initialScene)
     setMute(isMuted())
     const onLaunch = async (e: Event) => {
       const name = (e as CustomEvent).detail
       if (typeof name !== 'string' || !name) return
+      // remember we've been here — clears the "new" pip on this world's bubble.
+      // Real worlds only (space:<slug> or a bare scene name), not nav bubbles.
+      if (name.startsWith('space:') || (!name.startsWith('sub:') && !name.startsWith('maker:') && name !== 'players:' && name !== 'house:' && name !== 'CAFE' && name !== 'SUB-MAIN')) {
+        markVisited(name)
+      }
       if (name.startsWith('space:')) { window.location.href = '/space/' + name.slice(6); return }
       if (name.startsWith('sub:')) {
         // entering a group is an in-scene morph, not a departure — the
@@ -1007,7 +1030,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <div className="fixed inset-0 z-30 pointer-events-none flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
             <div className="w-10 h-10 rounded-full border-2 border-brass/20 border-t-flame/70 animate-spin" />
-            <div className="font-mono text-[12px] tracking-[0.3em] text-crema/40 uppercase">the shelf is waking</div>
+            <div className="font-mono text-[14px] tracking-[0.3em] text-crema/40 uppercase">the shelf is waking</div>
           </div>
         </div>
       )}
@@ -1069,7 +1092,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           style={{ left: Math.min(mouse.x + 30, Math.max(0, vp.w - 250)), top: Math.max(8, mouse.y - 8) }}
         >
           <div className="cafe-sign text-xl leading-none">{hover.toLowerCase()}</div>
-          <div className="font-mono text-[12px] tracking-[0.25em] text-crema/60 uppercase mt-1.5">
+          <div className="font-mono text-[14px] tracking-[0.25em] text-crema/60 uppercase mt-1.5">
             {BLURBS[hover] || ''} · click to enter
           </div>
         </div>
@@ -1114,7 +1137,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <button onClick={openPin} className={hubBtn}>+ PIN A WORLD</button>
             )}
             {who && subMode.member && !subMode.owner && subMode.pinsLocked && (
-              <span className="self-center font-mono text-[12px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
+              <span className="self-center font-mono text-[14px] tracking-[0.2em] text-white/35 px-1">SHELF CLOSED</span>
             )}
             {who && (subMode.owner || (subMode.admins || []).includes(who.id)) && (
               <button onClick={() => setSubTools(o => !o)} className={hubBtn}>⚙ TOOLS</button>
@@ -1139,7 +1162,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       {/* the sub-chant moderation desk: members, kick/ban, pins, shelf rule.
           Open to the founder AND admins (co-devs). Founder-only controls stay gated. */}
       {scene === 'SUB-MAIN' && !modalUp && !voting && subTools && subMode?.mode === 'group' && (subMode.owner || (subMode.admins || []).includes(who?.id || '')) && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[90vw] max-h-[55vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3 font-mono text-[12px] tracking-[0.15em]">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[90vw] max-h-[55vh] overflow-y-auto rounded-xl bg-[#171009]/90 backdrop-blur border border-[#b97a2a]/25 p-3 space-y-3 font-mono text-[14px] tracking-[0.15em]">
           {subMode.owner && (
             <div className="flex items-center justify-between">
               <span className="text-brass">SHELF RULE</span>
@@ -1243,17 +1266,17 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             </div>
             <input autoFocus value={pinQuery} onChange={e => setPinQuery(e.target.value)}
               placeholder="search worlds on main…" maxLength={64}
-              className="w-full rounded-lg border border-brass/40 bg-void/60 px-3 py-2 font-mono text-[14px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-3" />
+              className="w-full rounded-lg border border-brass/40 bg-void/60 px-3 py-2 font-mono text-[17px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-3" />
             <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
               {pinWorldList.length === 0 ? (
-                <div className="font-mono text-[12px] text-glow/30 px-2 py-4">loading worlds…</div>
+                <div className="font-mono text-[14px] text-glow/30 px-2 py-4">loading worlds…</div>
               ) : (() => {
                 const q = pinQuery.trim().toUpperCase()
                 const hits = pinWorldList.filter(w => w.name.includes(q)).slice(0, 40)
-                if (hits.length === 0) return <div className="font-mono text-[12px] text-glow/30 px-2 py-4">no world by that name on main</div>
+                if (hits.length === 0) return <div className="font-mono text-[14px] text-glow/30 px-2 py-4">no world by that name on main</div>
                 return hits.map(w => (
                   <button key={w.launch} onClick={() => doPin(w.name, w.launch)}
-                    className="text-left rounded-lg border border-brass/20 hover:border-flame/60 hover:bg-flame/10 px-3 py-2 font-mono text-[13px] tracking-[0.1em] text-steamer/90 hover:text-glow transition-colors">
+                    className="text-left rounded-lg border border-brass/20 hover:border-flame/60 hover:bg-flame/10 px-3 py-2 font-mono text-[16px] tracking-[0.1em] text-steamer/90 hover:text-glow transition-colors">
                     {w.name.toLowerCase()}
                   </button>
                 ))
@@ -1268,7 +1291,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         onClick={() => { setMuted(!mute); setMute(!mute) }}
         aria-label={mute ? 'Unmute' : 'Mute'}
         style={{ display: voting ? 'none' : undefined }}
-        className="fixed bottom-4 right-4 z-50 w-8 h-8 rounded-full border border-brass/40 bg-void/60 backdrop-blur-sm text-glow/60 hover:text-glow font-mono text-[13px] transition-colors"
+        className="fixed bottom-4 right-4 z-50 w-8 h-8 rounded-full border border-brass/40 bg-void/60 backdrop-blur-sm text-glow/60 hover:text-glow font-mono text-[16px] transition-colors"
       >
         {mute ? '∅' : '♪'}
       </button>
@@ -1281,72 +1304,72 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           <div className="relative w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
             onClick={e => e.stopPropagation()}>
             <button onClick={brewCancel} aria-label="back out"
-              className="absolute top-2.5 right-3.5 font-mono text-sm text-crema/40 hover:text-glow transition-colors">✕</button>
-            <div className="flex gap-3 mb-4 font-mono text-[12px] tracking-[0.2em]">
-              <span className={nameValid ? 'text-glow' : 'text-crema/40'}>{nameValid ? '✓' : '1'} NAME</span>
-              <span className={briefLen >= 100 && briefLen <= 500 ? 'text-glow' : 'text-crema/40'}>{briefLen >= 100 && briefLen <= 500 ? '✓' : '2'} BRIEF</span>
-              <span className={brewAi && connectReady ? 'text-glow' : 'text-crema/40'}>{brewAi && connectReady ? '⚒' : '3'} CONNECT AI</span>
+              className="absolute top-2.5 right-3.5 font-mono text-sm text-crema/70 hover:text-glow transition-colors">✕</button>
+            <div className="flex gap-3 mb-4 font-mono text-[14px] tracking-[0.2em]">
+              <span className={nameValid ? 'text-glow' : 'text-crema/70'}>{nameValid ? '✓' : '1'} NAME</span>
+              <span className={briefLen >= 50 && briefLen <= 500 ? 'text-glow' : 'text-crema/70'}>{briefLen >= 50 && briefLen <= 500 ? '✓' : '2'} BRIEF</span>
+              <span className={brewAi && connectReady ? 'text-glow' : 'text-crema/70'}>{brewAi && connectReady ? '⚒' : '3'} CONNECT AI</span>
             </div>
             <div className="flex items-baseline justify-between mb-4">
               <div className="cafe-sign text-2xl">brew your world</div>
               {(brewName || brewBrief) && (
                 <button onClick={clearDraft}
-                  className="font-mono text-[12px] tracking-[0.15em] text-crema/40 hover:text-flame transition-colors">
+                  className="font-mono text-[14px] tracking-[0.15em] text-crema/70 hover:text-flame transition-colors">
                   clear draft
                 </button>
               )}
             </div>
 
             {/* GATE 1 — NAME (5–20 chars, unique) */}
-            <div className="mb-1 font-mono text-[12px] tracking-[0.2em] text-crema/50">1 · NAME IT</div>
+            <div className="mb-1 font-mono text-[14px] tracking-[0.2em] text-crema/80">1 · NAME IT</div>
             <input autoFocus value={brewName} maxLength={20}
               onChange={e => setBrewName(e.target.value)}
               placeholder="e.g. Tidepool Abbey"
-              className={'w-full rounded-lg bg-black/50 border px-3 py-2.5 font-mono text-sm text-glow outline-none mb-1 focus:border-brass '
+              className={'w-full rounded-lg bg-black/50 border px-3 py-2.5 font-mono text-lg text-glow outline-none mb-1 focus:border-brass '
                 + (nameValid ? 'border-glow/60' : 'border-brass/30')} />
-            <div className="font-mono text-[12px] tracking-[0.15em] mb-4 min-h-[13px]">
+            <div className="font-mono text-[14px] tracking-[0.15em] mb-4 min-h-[13px]">
               {nameTrim.length === 0
-                ? <span className="text-crema/40">5–20 characters, must be unique</span>
+                ? <span className="text-crema/70">5–20 characters, must be unique</span>
                 : !nameLenOk
-                  ? <span className="text-crema/50">{nameTrim.length}/20 — need 5–20 characters</span>
+                  ? <span className="text-crema/80">{nameTrim.length}/20 — need 5–20 characters</span>
                   : brewChecking
-                    ? <span className="text-crema/50">checking…</span>
+                    ? <span className="text-crema/80">checking…</span>
                     : brewNameOk === true
                       ? <span className="text-glow">✓ available</span>
                       : brewNameOk === false
                         ? <span className="text-red-400">that name is already taken</span>
-                        : <span className="text-crema/40">&nbsp;</span>}
+                        : <span className="text-crema/70">&nbsp;</span>}
             </div>
 
             {/* GATE 2 — BRIEF (100–500 chars), locked until the name is valid */}
             <div className={'transition-opacity ' + (nameValid ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-              <div className="mb-1 font-mono text-[12px] tracking-[0.2em] text-crema/50">
-                2 · TELL IT WHAT TO BUILD {!nameValid && <span className="text-crema/40">· name it first</span>}
+              <div className="mb-1 font-mono text-[14px] tracking-[0.2em] text-crema/80">
+                2 · TELL IT WHAT TO BUILD {!nameValid && <span className="text-crema/70">· name it first</span>}
               </div>
               <textarea value={brewBrief} maxLength={500} disabled={!nameValid}
                 onChange={e => setBrewBrief(e.target.value)}
                 placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
                 rows={4}
-                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-xs text-glow outline-none focus:border-brass mb-1 resize-none" />
-              <div className="font-mono text-[12px] tracking-[0.15em] mb-4">
-                <span className={briefLen >= 100 && briefLen <= 500 ? 'text-glow' : 'text-crema/50'}>{briefLen}/500</span>
-                <span className="text-crema/40"> · min 100 to unlock connect</span>
+                className="w-full rounded-lg bg-black/50 border border-brass/30 px-3 py-2.5 font-mono text-lg text-glow outline-none focus:border-brass mb-1 resize-none" />
+              <div className="font-mono text-[14px] tracking-[0.15em] mb-4">
+                <span className={briefLen >= 50 && briefLen <= 500 ? 'text-glow' : 'text-crema/80'}>{briefLen}/500</span>
+                <span className="text-crema/70"> · min 50 to unlock connect</span>
               </div>
             </div>
 
             {/* GATE 3 — CONNECT AI: the copy text, disabled until name + brief are ready.
                 the AI logging in delivers the brief, opens the world, and closes this. */}
             <div className={'transition-opacity ' + (connectReady ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-              <div className="mb-1 font-mono text-[12px] tracking-[0.2em] text-crema/50">
-                3 · BRING YOUR OWN AI {!connectReady && <span className="text-crema/40">· finish name + brief first</span>}
+              <div className="mb-1 font-mono text-[14px] tracking-[0.2em] text-crema/80">
+                3 · BRING YOUR OWN AI {!connectReady && <span className="text-crema/70">· finish name + brief first</span>}
               </div>
               {connectReady ? (
-                <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[12px] leading-relaxed text-glow/90 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto mb-3">
+                <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[14px] leading-relaxed text-glow/90 whitespace-pre-wrap break-all select-all max-h-40 overflow-y-auto mb-3">
                   {connectPrompt(brewToken)}
                 </div>
               ) : (
-                <div className="rounded-lg bg-black/40 border border-brass/20 px-3 py-4 font-mono text-[12px] text-crema/40 text-center mb-3">
-                  locked — the connection prompt appears once the name and a 100-character brief are set
+                <div className="rounded-lg bg-black/40 border border-brass/20 px-3 py-4 font-mono text-[14px] text-crema/70 text-center mb-3">
+                  locked — the connection prompt appears once the name and a 50-character brief are set
                 </div>
               )}
               <button disabled={!connectReady}
@@ -1366,26 +1389,26 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                   }
                   window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: ok ? 'prompt copied — paste it to your AI' : 'copy blocked — open preview and copy by hand', kind: ok ? 'tuned' : 'hint' } }))
                 }}
-                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[12px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 COPY CONNECTION PROMPT
               </button>
-              <div className="font-mono text-[12px] tracking-[0.2em] text-crema/40 text-center my-2">— or —</div>
+              <div className="font-mono text-[14px] tracking-[0.2em] text-crema/70 text-center my-2">— or —</div>
               <button disabled={!connectReady} onClick={finalizeBrief}
-                className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[12px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
+                className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 ☕ HAVE THE HOUSE AI BUILD IT
               </button>
-              <div className="font-mono text-[12px] tracking-[0.15em] mt-2 text-crema/40">
+              <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
                 {houseAiUp
                   ? <span className="text-glow/70">a resident AI is online — it builds your brief live while you watch.</span>
                   : 'no AI of your own? leave it to the house — your brief queues and an AI builds it as soon as one is free.'}
               </div>
-              <div className="font-mono text-[12px] tracking-[0.15em] mt-2 text-crema/40">
+              <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
                 {brewAi && connectReady
                   ? <span className="text-glow animate-pulse">your AI connected — delivering the brief and opening your world…</span>
                   : 'paste it into an AI that can call APIs — Claude Code, Cursor, ChatGPT agent mode. plain chat windows can read it but can\u2019t build. the moment your AI logs in, your world opens'}
               </div>
             </div>
-            {brewErr && <div className="font-mono text-[12px] text-red-400 mt-3">{brewErr}</div>}
+            {brewErr && <div className="font-mono text-[14px] text-red-400 mt-3">{brewErr}</div>}
           </div>
         </div>
       )}
@@ -1396,11 +1419,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <div className="fixed inset-0 z-[85] flex items-center justify-center bg-void/90 backdrop-blur-sm">
           <div className="border border-brass/40 rounded-xl px-8 py-7 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)] max-w-sm">
             <div className="cafe-sign text-2xl mb-1">this world has left the shelf</div>
-            <div className="font-mono text-[12px] tracking-[0.15em] text-crema/50 mb-5 lowercase">
+            <div className="font-mono text-[14px] tracking-[0.15em] text-crema/50 mb-5 lowercase">
               &ldquo;{goneScene.toLowerCase()}&rdquo; isn&rsquo;t here anymore — but the cafe is full of others.
             </div>
             <button onClick={() => { setGoneScene(null); go('CAFE') }}
-              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[13px] tracking-[0.15em] text-void transition-colors">
+              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[16px] tracking-[0.15em] text-void transition-colors">
               ⟵ BACK TO THE CAFE
             </button>
           </div>
@@ -1411,11 +1434,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-void/85 backdrop-blur-sm">
           <div className="border border-brass/40 rounded-xl px-8 py-6 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]">
             <div className="cafe-sign text-2xl mb-1">you&rsquo;re seated elsewhere</div>
-            <div className="font-mono text-[12px] tracking-[0.2em] text-crema/50 uppercase mb-5">
+            <div className="font-mono text-[14px] tracking-[0.2em] text-crema/50 uppercase mb-5">
               the cafe allows one table at a time · this tab is paused
             </div>
             <button onClick={() => claimRef.current()}
-              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[13px] tracking-[0.15em] text-void transition-colors">
+              className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[16px] tracking-[0.15em] text-void transition-colors">
               PLAY HERE
             </button>
           </div>
@@ -1431,12 +1454,12 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           <div className="border border-brass/40 rounded-xl px-8 py-6 text-center bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
             onClick={e => e.stopPropagation()}>
             <div className="cafe-sign text-2xl mb-1">leave this world?</div>
-            <div className="font-mono text-[12px] tracking-[0.2em] text-crema/50 uppercase mb-5">
+            <div className="font-mono text-[14px] tracking-[0.2em] text-crema/50 uppercase mb-5">
               the world is paused · your save keeps
             </div>
             <div className="flex gap-3 justify-center">
               <button onClick={stay}
-                className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[13px] tracking-[0.15em] text-void transition-colors">
+                className="rounded-lg bg-flame/90 hover:bg-glow px-5 py-2 font-mono text-[16px] tracking-[0.15em] text-void transition-colors">
                 STAY
               </button>
               <button onClick={() => {
@@ -1446,7 +1469,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 const c = crumbRef.current.pop()
                 go(c === 'CAFE' || c === 'SUB-MAIN' ? c : 'CAFE')
               }}
-                className="brass-tab px-5 py-2 text-[13px]">
+                className="brass-tab px-5 py-2 text-[16px]">
                 LEAVE
               </button>
             </div>
@@ -1456,7 +1479,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
 
       {/* in a game: nothing but a hint that leaves */}
       {inGame && hint && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 font-mono text-[12px] tracking-[0.3em] text-glow/40 pointer-events-none select-none">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 font-mono text-[14px] tracking-[0.3em] text-glow/40 pointer-events-none select-none">
           ESC → CAFE
         </div>
       )}
@@ -1472,7 +1495,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               <div className="cafe-sign text-2xl">
                 cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
               </div>
-              <div className="font-mono text-[12px] tracking-[0.18em] text-glow/50 mt-1">
+              <div className="font-mono text-[14px] tracking-[0.18em] text-glow/50 mt-1">
                 Instant natural language to game world framework.
               </div>
             </div>
@@ -1490,8 +1513,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 <button onClick={strip.leave} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
                 <div className="pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10">
-                  <div className="text-[13px] tracking-[0.2em] text-white/85">{strip.name.toUpperCase()}</div>
-                  <div className="text-[12px] tracking-[0.15em] mt-0.5 text-white/45">{strip.sub}</div>
+                  <div className="text-[16px] tracking-[0.2em] text-white/85">{strip.name.toUpperCase()}</div>
+                  <div className="text-[14px] tracking-[0.15em] mt-0.5 text-white/45">{strip.sub}</div>
                 </div>
               </div>
             )
@@ -1515,9 +1538,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 </button>
                 {bellOpen && (
                   <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-2 z-[70]">
-                    {bell.items.length === 0 && <div className="px-3 py-4 font-mono text-[10px] text-crema/40 text-center">nothing yet — when someone comments on, follows, or branches your work, it lands here</div>}
+                    {bell.items.length === 0 && <div className="px-3 py-4 font-mono text-[12px] text-crema/40 text-center">nothing yet — when someone comments on, follows, or branches your work, it lands here</div>}
                     {bell.items.map(n => (
-                      <a key={n.id} href={n.link || '#'} className={`block px-3 py-2 rounded-lg font-mono text-[11px] leading-relaxed hover:bg-black/40 ${n.readAt ? 'text-crema/45' : 'text-glow'}`}>
+                      <a key={n.id} href={n.link || '#'} className={`block px-3 py-2 rounded-lg font-mono text-[13px] leading-relaxed hover:bg-black/40 ${n.readAt ? 'text-crema/45' : 'text-glow'}`}>
                         {n.text}
                       </a>
                     ))}
@@ -1535,7 +1558,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                   {(who.name || 'you').split(/[@ ]/)[0]} ▾
                 </button>
                 {acctOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-1.5 z-[70] font-mono text-[12px]">
+                  <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-1.5 z-[70] font-mono text-[14px]">
                     {[
                       { label: '◈ MY WORLDS', onClick: () => { setAcctOpen(false); myWorlds() } },
                       { label: '◆ BREW ICON', onClick: async () => {
@@ -1579,7 +1602,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               </div>
             )}
             <button onClick={brew}
-              className="rounded-lg bg-flame hover:bg-glow px-5 py-2.5 font-mono text-[13px] tracking-[0.2em] text-void font-bold transition-all shadow-[0_0_28px_rgba(245,176,76,0.45)] hover:shadow-[0_0_40px_rgba(245,176,76,0.65)] hover:scale-[1.03]">
+              className="rounded-lg bg-flame hover:bg-glow px-5 py-2.5 font-mono text-[16px] tracking-[0.2em] text-void font-bold transition-all shadow-[0_0_28px_rgba(245,176,76,0.45)] hover:shadow-[0_0_40px_rgba(245,176,76,0.65)] hover:scale-[1.03]">
               ☕ BREW YOUR WORLD
             </button>
           </div>
@@ -1599,7 +1622,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 <button onClick={() => setIconOpen(false)} aria-label="close"
                   className="font-mono text-glow/50 hover:text-glow text-sm leading-none -mt-0.5 px-1">×</button>
               </div>
-              <div className="font-mono text-[12px] text-glow/40 leading-relaxed mb-2">
+              <div className="font-mono text-[14px] text-glow/40 leading-relaxed mb-2">
                 describe your icon, then hand the prompt to your AI — it authors a
                 safe, gentle avatar for you and confirms.
               </div>
@@ -1609,10 +1632,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                 placeholder="a shy blue jellyfish that drifts…"
                 maxLength={200}
                 rows={3}
-                className="w-full resize-none rounded-md border border-brass/30 bg-void/60 px-2 py-1.5 font-mono text-[13px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-2"
+                className="w-full resize-none rounded-md border border-brass/30 bg-void/60 px-2 py-1.5 font-mono text-[16px] text-glow placeholder:text-steamer/40 focus:border-flame/60 outline-none mb-2"
               />
               <button onClick={copyIconPrompt} disabled={iconPrompt.trim().length < 3}
-                className="w-full rounded-md bg-flame/90 hover:bg-glow disabled:opacity-40 px-3 py-2 font-mono text-[12px] tracking-[0.15em] text-void transition-colors">
+                className="w-full rounded-md bg-flame/90 hover:bg-glow disabled:opacity-40 px-3 py-2 font-mono text-[14px] tracking-[0.15em] text-void transition-colors">
                 {iconCopied ? 'COPIED ✓' : 'COPY FOR YOUR AI'}
               </button>
             </div>
