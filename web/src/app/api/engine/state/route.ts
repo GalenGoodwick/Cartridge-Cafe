@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { setFieldSnapshots, getFieldSnapshot, getEngineState, claimWriter } from '../store'
-import { setSpaceSnapshot, validateSpaceToken } from '../space-store'
+import { setSpaceSnapshot, getSpaceSnapshot, validateSpaceToken } from '../space-store'
 import type { FieldSnapshot, SceneSnapshot } from '@/app/engine/types'
 
 /** Writing a world's snapshot (fields, HOOKS, everything) demands authority
@@ -117,6 +117,21 @@ export async function POST(req: NextRequest) {
         const lastBridge = gb.__spaceBridgeWrite?.get(body.spaceId) ?? 0
         if (Date.now() - lastBridge < 4000) {
           return NextResponse.json({ ok: true, deferred: 'bridge-write in flight', spaceId: body.spaceId })
+        }
+      }
+      // STALE-WRITE GUARD (rev-based — the authoritative one). Every bridge write
+      // bumps worldData.__bridge_rev. If this tab's snapshot is based on an OLDER
+      // rev than the server already holds, it never ingested that write — so its
+      // sync is stale and MUST NOT overwrite the newer state. Refuse it; the tab's
+      // watcher hot-reloads to the new rev, then syncs cleanly. Unlike the 4s time
+      // window above, this holds no matter how long the tab has been stale or
+      // whether its build-flag is stuck — the newer write always wins.
+      {
+        const current = await getSpaceSnapshot(body.spaceId, true)
+        const serverRev = Number((current?.worldData as Record<string, unknown> | undefined)?.__bridge_rev) || 0
+        const clientRev = Number((body.worldData as Record<string, unknown> | undefined)?.__bridge_rev) || 0
+        if (clientRev < serverRev) {
+          return NextResponse.json({ ok: true, deferred: 'stale-rev', serverRev, clientRev, spaceId: body.spaceId })
         }
       }
       const snapshot: SceneSnapshot = {
