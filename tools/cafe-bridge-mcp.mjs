@@ -42,6 +42,11 @@ const TOOLS = [
     description: 'POST engine build commands to the bridge. Pass {"commands":[ ... ]} (an array of engine command OBJECTS like define_visual / create_field / set_world_data), or a single command object. Do NOT JSON-stringify the commands array — pass it as real JSON.',
     inputSchema: { type: 'object', properties: { commands: {} }, additionalProperties: true },
   },
+  {
+    name: 'cafe_probe',
+    description: 'SEE your world — render it headless on a real GPU and get back what you built. Returns a pixel-state report (meanLum, coveragePct, visible, bbox + centeredX/Y, offscreenHint, quadrantLum, dominantColors), any WGSL compile errors (exact line), hookErrors (step-hook throws), a motion profile (travel/vibrating/diverging/settling from ticking the hooks), AND the rendered IMAGE. This is your EYES: a headless build agent otherwise never knows if a shader compiled, a field is off-screen, or the world is just black. CALL IT after cafe_send and BEFORE brief_done — if it reports errors/blank/off-screen, fix and re-probe until it renders. Optional {name} picks which visual to render (default: the first field\'s), {ticks} how many hook steps to evolve (default 45; 0 = static).',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' }, ticks: { type: 'number' } } },
+  },
 ]
 
 /** Models sometimes JSON-stringify nested values. Coax a value back to JSON. */
@@ -95,6 +100,38 @@ async function callTool(name, args) {
     const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(body) })
     return await r.text()
   }
+  if (name === 'cafe_probe') {
+    // The eyes a headless agent lacks: pull the world state, render it on a real
+    // GPU via the Deno probe (co-located — this server runs on the GPU host), and
+    // hand back the struct + errors + motion + the IMAGE. Runs in the trusted
+    // SERVER (Node, full access); the agent still only sees tool results.
+    const a = args || {}
+    const os = await import('os'), fs = await import('fs'), path = await import('path'), cp = await import('child_process')
+    const state = await (await fetch(`${BASE}/api/engine/bridge`, { headers: H })).text()
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cafe-probe-'))
+    const stateFile = path.join(dir, 'state.json'), pngFile = path.join(dir, 'out.png')
+    fs.writeFileSync(stateFile, state)
+    const HERE = path.dirname(new URL(import.meta.url).pathname)
+    const DENO = process.env.DENO_BIN || '/opt/homebrew/bin/deno'
+    const cli = ['run', '-A', '--unstable-webgpu', path.join(HERE, 'render-probe.mjs'), '--state', stateFile, '--out', pngFile]
+    if (a.name) cli.push('--name', String(a.name))
+    if (a.ticks != null) cli.push('--ticks', String(a.ticks))
+    const run = cp.spawnSync(DENO, cli, { encoding: 'utf8', timeout: 45_000, maxBuffer: 16 * 1024 * 1024 })
+    const lastLine = (run.stdout || '').trim().split('\n').filter(Boolean).pop() || ''
+    let struct; try { struct = JSON.parse(lastLine) } catch { struct = { ok: false, error: 'probe produced no JSON', stderr: (run.stderr || '').slice(0, 600) } }
+    const content = [{ type: 'text', text: JSON.stringify(struct) }]
+    if (struct.ok && fs.existsSync(pngFile)) {
+      try {
+        const sharp = (await import('sharp')).default
+        const buf = await sharp(pngFile).resize(320, 320, { fit: 'inside' }).jpeg({ quality: 78 }).toBuffer()
+        content.push({ type: 'image', data: buf.toString('base64'), mimeType: 'image/jpeg' })
+      } catch {
+        content.push({ type: 'image', data: fs.readFileSync(pngFile).toString('base64'), mimeType: 'image/png' })
+      }
+    }
+    try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* temp */ }
+    return { __content: content }
+  }
   throw new Error(`unknown tool: ${name}`)
 }
 
@@ -116,8 +153,10 @@ rl.on('line', async (raw) => {
     ok(id, { tools: TOOLS })
   } else if (method === 'tools/call') {
     try {
-      const text = await callTool(params?.name, params?.arguments || {})
-      ok(id, { content: [{ type: 'text', text: String(text).slice(0, 200_000) }] })
+      const res = await callTool(params?.name, params?.arguments || {})
+      // a tool may return a ready content array (cafe_probe: text + image) or plain text
+      if (res && typeof res === 'object' && Array.isArray(res.__content)) ok(id, { content: res.__content })
+      else ok(id, { content: [{ type: 'text', text: String(res).slice(0, 200_000) }] })
     } catch (e) {
       ok(id, { content: [{ type: 'text', text: `error: ${e.message}` }], isError: true })
     }

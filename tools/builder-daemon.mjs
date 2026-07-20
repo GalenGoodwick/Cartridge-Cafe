@@ -138,11 +138,12 @@ async function tick() {
 
     const prompt = [
       `You are the HOUSE AI of cartridge.cafe — the resident builder. A player left a creation brief for their world "${slug}" and is counting on you; they cannot see this conversation, only the world changing live.`,
-      `You build ONLY through the four cafe tools (no shell, no editable files):`,
+      `You build ONLY through the cafe tools (no shell, no editable files):`,
       `  · cafe_guide  — the engine build guide (read it first).`,
       `  · cafe_source — SEARCH/read the engine source (read-only). PREFER {search:"opSmooth"} — it greps ALL source and returns file:line snippets in ONE call, so you find the exact function/param instead of reading whole files (that wastes your window). {path:...,from,to} reads a specific span. The bridge route is the authoritative command+param list; engine/scenes/*.wgsl are the real WGSL/3D interface.`,
       `  · cafe_state  — the current world state (fields, visuals, params).`,
       `  · cafe_send   — send engine commands, e.g. cafe_send({commands:[{type:"define_visual",...},{type:"create_field",...}]}). Pass commands as a REAL JSON array, never a stringified one.`,
+      `  · cafe_probe  — SEE your world: renders it on a real GPU and returns a pixel-state report (meanLum, coveragePct, visible, bbox+centered, offscreenHint), WGSL compile errors (exact line), hookErrors, a motion profile, AND the rendered image. THIS IS YOUR EYES — a headless build otherwise never knows if a shader compiled or the world is just black. Use it to VERIFY, never to guess.`,
       `You ALSO have WebSearch + WebFetch (read-only) to research shader techniques and game mechanics when genuinely stuck — but this engine is WGSL with the strict signature fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f, so LEARN the technique and ADAPT it (Shadertoy is GLSL — never paste it raw). Look up briefly, then build; do not spend your window researching. cafe_source (the engine's own ~40 built-in visuals + example cartridges) is usually the better reference.`,
       ``,
       `NEVER use ToolSearch, Monitor, or plan mode — act immediately with the tools above.`,
@@ -156,7 +157,8 @@ async function tick() {
       `   SHADER SHAPE: a visual is a PLAIN FUNCTION — fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f. NEVER a standalone @fragment/@vertex fn main shader (the bridge rejects those; they compile nowhere in this engine).`,
       `   COORDINATE SPACE: the world is a 512×512 grid, camera fixed at the CENTER (256,256). Build AROUND (256,256), never around (0,0), and NEVER use negative x/y — a world centered on origin renders off-screen in the corner (looks dark). A field's x,y is its center; size ~300-450 fills the view.`,
       `   PHYSICS: leave collisionForce at 0 (the default) for any world whose fields are stacked visual LAYERS (a full-screen backdrop with things on top). Overlapping fields with collisionForce>0 shove each other every frame and the whole world VIBRATES. Only set collisionForce for real physics worlds where separate bodies should bounce off each other.`,
-      `6. Only when the first pass is genuinely done, cafe_send set_world_data {"data":{"brief_done":true}}. The bridge runs a RENDER CHECK: brief_done is REFUSED while no field has a registered visualType — fix the skins and finish properly.`,
+      `6. VERIFY WITH YOUR EYES — you are building BLIND otherwise, and a shader that fails to compile QUARANTINES silently (the field renders as nothing, no error reaches you). After your fields + visuals are in, cafe_probe. If it reports compile errors, fix the EXACT line it names and re-probe. If it's blank/near-black (low meanLum + coveragePct) or the bbox hugs an edge / is tiny (offscreenHint), fix the coordinates/skins and re-probe. Iterate cafe_send → cafe_probe → fix until the image actually shows what the brief asked for.`,
+      `7. Only when cafe_probe confirms the world RENDERS the brief, cafe_send set_world_data {"data":{"brief_done":true}}. The bridge also refuses brief_done while no field has a registered visualType.`,
       ``,
       priorNotes ? `PRIOR NOTES (from your last session before it hit the limit — resume from here, do NOT restart or re-research):\n${priorNotes}\n` : ``,
       `THE BRIEF: ${next.job.brief}`,
