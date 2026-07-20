@@ -371,6 +371,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const autoSaveSerRef = useRef('')
   const autoSaveAtRef = useRef(0)
   const autoSaveReadyRef = useRef(false)   // gate: don't persist until the load resolves (else the default overwrites the real save)
+  const hookErrAtRef = useRef(0)           // last hook-error timestamp forwarded to the server (bridge-visible)
   useEffect(() => {
     if (!spaceSlug && !playScene) return
     let stopped = false
@@ -2889,6 +2890,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             body: JSON.stringify({ slot: `${cellBase()}:__autosave`, data: sim.worldData['save'], scope: 'user', anon: whoRef.current }),
           }).catch(() => {})
         }
+      }
+
+      // HOOK ERRORS → server (so the building AI can READ why a hook does nothing).
+      // The sandbox writes each DISTINCT failure into worldData.last_hook_error;
+      // forward every new one (deduped by timestamp) to a per-world buffer the
+      // bridge folds into cafe_state as `hookErrors`. Keyed by slug (space world)
+      // or scene name, matching how the bridge reads it back.
+      const hookErr = sim.worldData['last_hook_error'] as { hookId?: string; phase?: string; error?: string; at?: number } | undefined
+      if (hookErr && typeof hookErr.at === 'number' && hookErr.at !== hookErrAtRef.current) {
+        hookErrAtRef.current = hookErr.at
+        fetch('/api/engine/hook-errors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: spaceSlug || undefined, scene: spaceSlug ? undefined : cellBase(), error: hookErr }),
+        }).catch(() => {})
       }
 
       // Update HUD overlay from worldData (cached element lookups, no per-frame DOM queries)
