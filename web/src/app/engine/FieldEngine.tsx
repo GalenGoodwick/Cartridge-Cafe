@@ -133,6 +133,14 @@ interface FieldEngineProps {
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
   onDockRect?: (bottom: number) => void
   onBuilding?: (building: boolean) => void
+  /** Live-cursor presence ROOM override for the hub. On the cafe hub every
+   *  sub-view (main / player-worlds directory / a sub-main / MY WORLDS) is one
+   *  playScene='CAFE', so without this they'd all share the 'cursors:CAFE' room
+   *  and a person browsing a sub-main would show as a LIVE cursor on main.
+   *  CafeShell passes a per-sub-view key (e.g. 'CAFE/sub/<slug>') so cursors
+   *  stay docked inside their own view; nesting on main is the docked-orb count,
+   *  a separate system (/api/presence). Unset → the default spaceId||playScene. */
+  presenceKey?: string
 }
 
 /** Engine build marker — bump when engine-level fixes land, so a running tab
@@ -194,7 +202,7 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -854,7 +862,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       presenceIdRef.current = pid
     }
     const id = presenceIdRef.current
-    const world = spaceId || playScene || 'global'
+    // presenceKey scopes the LIVE-cursor room per hub sub-view so a person
+    // browsing a sub-main / player-worlds directory doesn't bleed onto main as a
+    // live cursor (they nest on main as a docked orb via /api/presence instead).
+    const world = spaceId || presenceKey || playScene || 'global'
     // entering a new world: drop the previous world's pips + snap-tracking, so no
     // cursor animates in from where it stood in the world you just left
     setPresenceOthers(prev => (prev.length ? [] : prev))
@@ -1026,7 +1037,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     return () => { clearInterval(iv); cancelAnimationFrame(raf); window.removeEventListener('cafe:icon', onIconChange)
       clearInterval(idleSweep); window.removeEventListener('pagehide', onPageHide); socket.disconnect() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, playScene])
+  }, [spaceId, playScene, presenceKey])
   const spaceHeld = useRef(false)
   const lastPointer = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 

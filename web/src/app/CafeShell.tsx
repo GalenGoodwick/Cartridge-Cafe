@@ -314,6 +314,13 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
+  // which hub sub-view am I in — so the presence heartbeat can DOCK me on the
+  // parent bubble on main (nesting): inside a sub-main I count on the SUB-MAINS
+  // bubble, in the player-worlds directory on the PLAYER WORLDS bubble.
+  const playersRef = useRef(players)
+  playersRef.current = players
+  const subModeRef = useRef(subMode)
+  subModeRef.current = subMode
   const confirmRef = useRef(confirmLeave)
   confirmRef.current = confirmLeave
   const crumbRef = useRef<{ scene: string; sub: string | null }[]>([])   // hubs we entered through (+ which sub-main), in order
@@ -1057,9 +1064,16 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     } catch { pid = Math.random().toString(36).slice(2, 12) }
     const beat = () => {
       if (!activeTabRef.current) return   // blocked tabs are ghosts; they don't beat
+      // NESTING: on the hub a sub-view heartbeats its PARENT bubble's name, so a
+      // person browsing a sub-main / player-worlds directory docks as an orb on
+      // that bubble on main (their live cursor stays in the sub-view's own room).
+      const s = sceneRef.current !== 'CAFE' ? sceneRef.current
+        : playersRef.current ? 'PLAYER WORLDS'
+        : subModeRef.current ? 'SUB-MAINS'
+        : 'CAFE'
       fetch('/api/presence', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene, id: pid }),
+        body: JSON.stringify({ scene: s, id: pid }),
       }).catch(() => {})
     }
     const poll = () => {
@@ -1084,8 +1098,10 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
     const ci = setInterval(poll, 6000)
     window.addEventListener('pagehide', bye)
     return () => { clearInterval(bi); clearInterval(ci); clearTimeout(pt); window.removeEventListener('pagehide', bye) }
+  // re-runs on sub-view change too → an immediate beat re-docks you on the right
+  // parent bubble (SUB-MAINS / PLAYER WORLDS) without waiting for the interval
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene])
+  }, [scene, players, subMode?.slug])
 
   const inGame = scene !== 'CAFE'
   // uv → screen for the contain-fit square (span = min(w,h), centered)
@@ -1171,6 +1187,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       )}
       <FieldEngine playScene={voting && previewScene ? previewScene : scene}
         onDockRect={setDockBottom}
+        presenceKey={scene !== 'CAFE' ? undefined
+          : mine ? 'CAFE/mine/' + mine
+          : subMode?.slug ? 'CAFE/sub/' + subMode.slug
+          : players ? 'CAFE/players'
+          : 'CAFE'}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
 
       {/* the rolling tournament — every page is its own arena.
