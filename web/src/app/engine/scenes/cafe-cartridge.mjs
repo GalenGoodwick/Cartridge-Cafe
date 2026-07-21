@@ -148,6 +148,16 @@ fn cf_player(local0: vec2f, dir: vec2f, phase: f32, fx: i32, tint: vec3f) -> vec
   return tint * g + vec3f(1.0, 0.98, 0.9) * pupil * 0.8;
 }
 
+// author-caption char: each bubble's maker handle is packed 12 chars (3 vec4f)
+// in the population buffer; return the c-th char code (0..11) of bubble i. 0 = end.
+fn cf_popc(i: i32, c: i32) -> i32 {
+  let pv = pop(i * 3 + c / 4);
+  let m = c % 4;
+  var v = pv.x;
+  if (m == 1) { v = pv.y; } else if (m == 2) { v = pv.z; } else if (m == 3) { v = pv.w; }
+  return i32(v + 0.5);
+}
+
 fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let t = time;
   let mp = vec2f(uni(4), uni(5));     // cursor (uv coords)
@@ -351,6 +361,35 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     } else {
       // halo when hovered
       col += vec3f(1.0, 0.7, 0.3) * exp(-pow((d - rr) * 22.0, 2.0)) * hov * 0.8;
+    }
+    // ── the maker's handle, curved along the bottom rim (white bitmap caption) ──
+    // chars packed 12/bubble in the population buffer; glyphs sit radially in a
+    // thin band just off the rim, upright (top toward centre), reading L→R across
+    // the bottom arc. System bubbles have no author → nlen 0 → nothing drawn.
+    {
+      let charH = R * 0.22;
+      let namR0 = rr + R * 0.05;
+      let namR1 = namR0 + charH;
+      if (d > namR0 && d < namR1) {
+        var nlen = 0;
+        for (var cc = 0; cc < 12; cc++) {
+          if (cf_popc(i, cc) == 0) { break; }
+          nlen = cc + 1;
+        }
+        if (nlen > 0) {
+          let dA = (charH * (5.0 / 7.0)) / namR0;      // arc angle per monospace char
+          let halfArc = f32(nlen) * dA * 0.5;
+          let ang = atan2(uv.x - ctr.x, uv.y - ctr.y);  // 0 = straight down, + toward right
+          if (abs(ang) < halfArc) {
+            let tg = (ang + halfArc) / dA;
+            let jc = i32(floor(tg));
+            let ul = fract(tg);
+            let vl = (d - namR0) / charH;
+            let cov = char5x7(vec2f(ul, vl), cf_popc(i, jc));
+            col = mix(col, vec3f(1.0, 1.0, 1.0), cov * (0.7 + hov * 0.3));
+          }
+        }
+      }
     }
     // presence players HOVER at the edge — half inside, half out — so they draw
     // in a band that spills BEYOND the disc, not clipped by the d<rr face mask.
@@ -672,7 +711,7 @@ try {
             if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
           }
           for (const base of Object.keys(best)) {
-            want[base] = { launch: best[base].scene, style: best[base].style, square: 1 }   // a BRANCH reads as a square, distinct from a round world
+            want[base] = { launch: best[base].scene, style: best[base].style, square: 1, author: (best[base].scene.split(' ⑂ ')[1] || '').split(' · ')[0].trim() }   // a BRANCH reads as a square, distinct from a round world
           }
           // canonical worlds ASSIGNED to me (scene-makers) belong on my deed too
           const mineAttr = (sp && sp.sceneMakers) || {}
@@ -690,7 +729,7 @@ try {
             // still carry the "YYYY-MM-DD HH:MM" stamp. Named or built worlds show.
             if (s.blank && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.name || '')) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
           }
         } else if (HOUSE) {
           // THE HOUSE — everything unassigned to a real maker: the canonical
@@ -707,7 +746,7 @@ try {
             const o = s.owner
             if (o && o.handle && !o.isGuest) continue   // a claimed world belongs to its maker, not the house
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
           }
         } else if (PL) {
           // PLAYER WORLDS — a MAKERS directory: one bubble per player who has
@@ -721,7 +760,7 @@ try {
             // fx 0-4 = a brewed preset avatar (rendered as the bubble face);
             // otherwise a living emblem in the player's own hue.
             const style = (typeof m.fx === 'number' && m.fx >= 0 && m.fx <= 4) ? (30 + m.fx) : 8
-            want[disp] = { launch: 'maker:' + m.handle, style, hue: m.hue != null ? m.hue : hueOf(m.handle) }
+            want[disp] = { launch: 'maker:' + m.handle, style, hue: m.hue != null ? m.hue : hueOf(m.handle), author: m.handle }
           }
           // THE HOUSE always stands — it holds the canonical AI-made worlds too
           want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
@@ -736,7 +775,7 @@ try {
           for (const s of (sp.spaces || [])) {
             if (s.blank || s.building || s.isPublic === false) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
           }
           // THREE big front-door bubbles. SUB-MAINS opens the group layer; PLAYER
           // WORLDS opens the player-made shelf (those worlds collapse behind it
@@ -792,6 +831,7 @@ try {
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.square = !!want[n].square   // a branch draws square, not round
+          B.author = want[n].author || ''   // maker/owner handle → the rim caption
           B.playerWorld = (B.launch || '').startsWith('space:')   // a player-made world → green rim (its own icon stays)
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
           if (want[n].fixed) {   // a locked seat — first pin wakes the field so neighbours clear out
@@ -1147,8 +1187,14 @@ try {
   }
   const rollup = (cp) => { if (!cp) return 0; let s = 0; for (const k of countKeys) if (k === cp || k.startsWith(cp + '/')) s += heads[k] || 0; return s }
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
+  // author captions: pack each bubble's maker handle (12 chars = 3 vec4f) into the
+  // population buffer, in U.order — the shader reads pop(i*3..) and draws it curved
+  // along the bubble's bottom rim (char5x7). System bubbles have no author → blank.
+  const pop = [0, 0, 0, 0]   // header vec4 (count filled after the loop)
   for (const n of U.order) {
     const B = U.bubbles[n]
+    const au = String(B.author || '').toUpperCase().slice(0, 12)
+    for (let c = 0; c < 12; c++) pop.push(c < au.length ? (au.charCodeAt(c) & 0xff) : 0)
     // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
     const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
@@ -1192,6 +1238,8 @@ try {
     u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360, sl)
   }
   wd.gpuUniforms = u
+  pop[0] = U.order.length * 3   // header count = name vec4f entries (3 per bubble)
+  wd.gpuPopulation = pop
 } catch (e) { /* keep the door open */ }
 `
 
