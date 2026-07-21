@@ -227,8 +227,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // greet a player entering a game with its instructions, once per world (not on
   // reloads/version-swaps of the same world, not on the CAFE/SUB-MAIN nav hubs)
   const greetedInstrRef = useRef<string | null>(null)
+  // VOTE MODE never auto-greets. A version-preview (versionView set — the space
+  // page's vote arena hot-swapping candidates) is for judging a world, not
+  // entering it; popping the instructions modal there fired cafe:modal and
+  // ducked the regular chrome (sidebar/footer) — the "wrong window" bug. Kept in
+  // a ref so a stale closure in the async load path still reads the live value.
+  const voteModeRef = useRef(false)
+  voteModeRef.current = versionView != null
   const greetInstructions = (worldId: string) => {
     if (!worldId || worldId === 'CAFE' || worldId === 'SUB-MAIN') return
+    if (voteModeRef.current) return
     if (greetedInstrRef.current === worldId) return
     const instr = String(simulationRef.current?.worldData?.instructions || '').trim()
     if (!instr) return
