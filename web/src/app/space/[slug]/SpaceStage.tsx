@@ -6,6 +6,7 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import TournamentBar from '@/app/TournamentBar'
 import ShareWorld from './ShareWorld'
 import FollowButton from './FollowButton'
+import SummonConsole from './SummonConsole'
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
  *  the space-only PLUMBING that lives invisibly here: the version arena and the
@@ -162,6 +163,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
           bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
       <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
+      {!building && <SummonConsole slug={spaceSlug} name={name} isOwner={isOwner} />}
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}

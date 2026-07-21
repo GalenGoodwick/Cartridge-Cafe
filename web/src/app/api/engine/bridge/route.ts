@@ -7,11 +7,12 @@ import { resetWorld, setOriginal, worldStores } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
-import { broadcastCommons } from '../commons-stream'
+import { broadcastCommons, commonsListenerCount } from '../commons-stream'
 import { prisma } from '@/lib/prisma'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
+import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
 
 export const maxDuration = 30
 
@@ -193,6 +194,15 @@ function summarizeConsole(cmd: Record<string, unknown>): { type: string; name: s
     default: summary = type
   }
   return { type, name, summary }
+}
+
+/** Where a placing command drops content, in 0..512 grid space (null if it
+ *  carries no position). Used for warn-mode region enforcement. */
+function cmdPoint(cmd: Record<string, unknown>): { x: number; y: number } | null {
+  const pos = (cmd.position ?? cmd.transform) as { x?: unknown; y?: unknown } | undefined
+  const x = Number(cmd.x ?? pos?.x)
+  const y = Number(cmd.y ?? pos?.y)
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
 }
 
 // Save experience directly to Shell DB (bypasses SSE queue)
@@ -657,6 +667,125 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // ---- SWARM COORDINATION ------------------------------------------------
+      // summon / watch / claim_region / resolve_region / regions_read /
+      // summons_read / wake_watcher. The many-AIs-one-world layer: carve the
+      // canvas into concept regions, negotiate overlaps peer-to-peer, and rally
+      // AIs to a place. All work with a space token (a world to belong to).
+
+      // summon: rally builders to THIS world. Space-scoped (the token names the
+      // world) — broadcasts on the commons, opens a muster, wakes companions.
+      if (cmd.type === 'summon') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'summon needs a space token (uc_st_…) — it rallies AIs to a specific world' }); continue }
+        const brief = String(cmd.brief ?? cmd.text ?? '').trim()
+        if (!brief) { results.push({ type: cmd.type, error: 'summon needs a `brief` — what should the AIs come build?' }); continue }
+        const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const out = await broadcastSummon({ world: auth.slug!, spaceId: auth.spaceId, name: auth.spaceName ?? auth.slug!, brief, from, origin: req.nextUrl.origin })
+        // the caller is a builder here too — dock it
+        await registerWatcher(auth.spaceId!, holderOf(req.headers.get('authorization')?.slice(7) || ''), from, 'builder').catch(() => {})
+        results.push({ type: 'summon', ok: true, summoned: auth.slug, live: out.live, wokeRegistered: out.woke,
+          next: 'AIs that answer will claim_region on this world. Read who came with {type:"regions_read"} and {type:"watch"}.' })
+        continue
+      }
+
+      // summons_read: what worlds are calling for builders right now (any token).
+      if (cmd.type === 'summons_read') {
+        results.push({ type: 'summons_read', ok: true, musters: await readSummons() })
+        continue
+      }
+
+      // watch: dock as a watcher/builder on this world — presence + eyes pointer
+      // + the current region map + who else is here. "reappearing watcher" re-docks.
+      if (cmd.type === 'watch') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'watch needs a space token (uc_st_…) — a world to watch' }); continue }
+        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const kind = cmd.build === true ? 'builder' : 'watcher'
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const watchers = await registerWatcher(auth.spaceId!, holder, who, kind)
+        results.push({ type: 'watch', ok: true, world: auth.slug, as: kind,
+          watchers: watchers.map(w => ({ who: w.who, kind: w.kind, since: w.at })),
+          regions: await readRegions(auth.spaceId!),
+          next: 'SEE the world with {type:"render_probe"}. Claim your ground with {type:"claim_region", concept:"…", box:{x,y,w,h}}. Talk to peers with roundtable_say.' })
+        continue
+      }
+
+      // wake_watcher: re-ping a specific (possibly dormant) AI by slug — the
+      // "ai to bridge call to reappearing watcher". Re-broadcasts + re-wakes.
+      if (cmd.type === 'wake_watcher') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'wake_watcher needs a space token (uc_st_…)' }); continue }
+        const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
+        const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
+        const msg = { who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
+          at: Date.now(), ai: true, slug: auth.slug, kind: 'wake' as const, target, world: auth.slug, viewUrl }
+        const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
+        const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
+        await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
+        broadcastCommons('commons:main', msg as never)
+        results.push({ type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') })
+        continue
+      }
+
+      // regions_read: the current claim map for this world (any scoped token).
+      if (cmd.type === 'regions_read') {
+        const sid = auth.spaceId
+        if (!sid) { results.push({ type: cmd.type, error: 'regions_read needs a space token (uc_st_…)' }); continue }
+        results.push({ type: 'regions_read', ok: true, world: auth.slug,
+          regions: await readRegions(sid), watchers: await readWatchers(sid) })
+        continue
+      }
+
+      // claim_region: stake a concept region (or a step-hook). Clean → accepted;
+      // overlaps a peer's ground → contested + the peer is pinged to rule on it.
+      if (cmd.type === 'claim_region') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'claim_region needs a space token (uc_st_…) — a world to carve' }); continue }
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const out = await claimRegion(auth.spaceId!, holder, who, { concept: cmd.concept, kind: cmd.kind, box: cmd.box as never, hookId: cmd.hookId })
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        // dock the claimant as a builder
+        await registerWatcher(auth.spaceId!, holder, who, 'builder').catch(() => {})
+        if (out.status === 'contested' && out.conflicts?.length) {
+          // bridge to the peers who hold the overlapping ground — they decide.
+          const family = await getSpaceFamily(auth.spaceId!).catch(() => null)
+          if (family) {
+            const slot = `roundtable:${family.rootSlug}`
+            const rtDoc = (await loadGameSlot(slot)) as { msgs?: unknown[] } | undefined
+            const rtMsgs = Array.isArray(rtDoc?.msgs) ? rtDoc!.msgs! : []
+            const names = out.conflicts.map(c => `"${c.concept}" (${c.who})`).join(', ')
+            const note = { who, slug: auth.slug, ownerId: auth.ownerId, ai: true,
+              text: `⚑ claims "${out.claim!.concept}" — overlaps ${names}. Peer, rule with resolve_region {claimId:"${out.claim!.id}", decision:"accept"|"reject"}.`,
+              at: Date.now(), kind: 'region-contest', claimId: out.claim!.id }
+            await saveGameSlot(slot, { msgs: [...rtMsgs, note].slice(-300) })
+          }
+        }
+        results.push({ type: 'claim_region', ok: true, status: out.status, claim: out.claim, conflicts: out.conflicts ?? [],
+          next: out.status === 'accepted'
+            ? 'the ground is yours — build INSIDE this box. Placements outside it are flagged.'
+            : 'CONTESTED — a peer holds overlapping ground. It was pinged on the roundtable to accept or reject. Read the verdict with regions_read; or pick clear ground and re-claim.' })
+        continue
+      }
+
+      // resolve_region: the contested peer rules accept/reject on a challenger.
+      if (cmd.type === 'resolve_region') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'resolve_region needs a space token (uc_st_…)' }); continue }
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const decision = cmd.decision === 'accept' ? 'accept' : cmd.decision === 'reject' ? 'reject' : null
+        if (!decision) { results.push({ type: cmd.type, error: 'resolve_region needs decision:"accept" or "reject"' }); continue }
+        const out = await resolveRegion(auth.spaceId!, holder, String(cmd.claimId ?? ''), decision, cmd.note as string | undefined)
+        results.push({ type: 'resolve_region', ...(out.ok ? { ok: true, resolved: out.claim } : { error: out.error }) })
+        continue
+      }
+
+      // withdraw_region: free your own ground.
+      if (cmd.type === 'withdraw_region') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'withdraw_region needs a space token (uc_st_…)' }); continue }
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const ok = await withdrawRegion(auth.spaceId!, holder, String(cmd.claimId ?? ''))
+        results.push({ type: 'withdraw_region', ok, ...(ok ? {} : { error: 'no such claim of yours' }) })
+        continue
+      }
+
       // reset: clear server-side store alongside browser reset. NEVER for a
       // branch token — resetStore() wipes the GLOBAL engine; a scoped 'reset'
       // clears only this scene's snapshot, handled by applyCommandToScene below.
@@ -1040,6 +1169,14 @@ export async function POST(req: NextRequest) {
         if (spaceResult.fieldId) {
           cmd.fieldId = spaceResult.fieldId
         }
+        // REGION WARN-MODE — if this AI claimed ground and just placed content
+        // OUTSIDE it, flag (don't block). Silent for solo builders (no claims).
+        const pt = cmdPoint(cmd)
+        if (pt) {
+          const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+          const w = await regionWarningForPoint(auth.spaceId!, holder, pt.x, pt.y).catch(() => null)
+          if (w) cmd.__regionWarning = w
+        }
       }
 
       const result = await pushToAgent(cmd, req, auth.spaceId) as Record<string, unknown>
@@ -1048,6 +1185,7 @@ export async function POST(req: NextRequest) {
         Object.assign(result, spaceResult)
       }
       if (cmd.__renderWarning) { result.renderWarning = cmd.__renderWarning; delete cmd.__renderWarning }
+      if (cmd.__regionWarning) { result.regionWarning = cmd.__regionWarning; delete cmd.__regionWarning }
       results.push(result)
 
       // Wait for the browser's compile result so the AI gets shader errors

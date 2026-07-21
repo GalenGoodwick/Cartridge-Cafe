@@ -18,6 +18,7 @@ import PromptPanel from './PromptPanel'
 import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
 import type { TerminalEntry } from './AgentTerminalPanel'
+import SummonPrompt from './SummonPrompt'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, InteractionEffect, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
@@ -6724,6 +6725,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
                   : <AgentTerminalPanel entries={terminalLog} header={false} />}
               </div>
+              {/* the PROMPT BOX — summon connected AIs to build this world. Owner
+                  of a real space only (the summons pushes to real humans). */}
+              {spaceSlug && spaceId && isOwner && (
+                <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
+              )}
             </div>
           )}
           {/* EDIT COACH — shown once, the first time the ✎ EDIT dock is opened,
