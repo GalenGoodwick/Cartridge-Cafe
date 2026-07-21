@@ -1190,7 +1190,7 @@ try {
   // author captions: pack each bubble's maker handle (12 chars = 3 vec4f) into the
   // population buffer, in U.order — the shader reads pop(i*3..) and draws it curved
   // along the bubble's bottom rim (char5x7). System bubbles have no author → blank.
-  const pop = [0, 0, 0, 0]   // header vec4 (count filled after the loop)
+  const pop = []   // flat entities only (4 floats each) — the renderer adds the count header
   for (const n of U.order) {
     const B = U.bubbles[n]
     const au = String(B.author || '').toUpperCase().slice(0, 12)
@@ -1238,8 +1238,7 @@ try {
     u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360, sl)
   }
   wd.gpuUniforms = u
-  pop[0] = U.order.length * 3   // header count = name vec4f entries (3 per bubble)
-  wd.gpuPopulation = pop
+  wd.gpuPopulation = pop   // U.order.length*3 entities (3 vec4f names per bubble)
 } catch (e) { /* keep the door open */ }
 `
 
