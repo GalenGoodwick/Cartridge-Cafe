@@ -33,6 +33,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/engine/bridge',
   '/api/companion/world',   // agent-facing: authed by uc_ck_ Bearer, no browser origin
   '/api/companion/me',      // agent-facing: the companion's own seat (icon, identity)
+  '/api/pay/webhook',       // Stripe server-to-server: no browser origin; authed by HMAC signature
 ]
 
 // Patterns that match via regex (for dynamic segments)
