@@ -2219,7 +2219,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const r = await fetch(`/cartridges/${encodeURIComponent(cur)}.json?ts=${Date.now()}`, { cache: 'no-store' })
           if (r.ok) { const d = await r.json(); stamp = String((d.scene || d).timestamp ?? '') }
         }
-        if (last && stamp && stamp !== last) {
+        // a reckoning owns the stage — hold every forced re-seed until it
+        // closes (leave `last` untouched so the change re-fires on the first
+        // poll AFTER the vote; nothing is lost, only deferred).
+        const voting = (window as unknown as { __ccReckoning?: boolean }).__ccReckoning === true
+        if (last && stamp && stamp !== last && !voting) {
           scenePreloadCache.delete(cur)       // the source changed — drop the stale download
           if (cur === playScene) {
             playLoadedRef.current = null      // let the load effect fire again
@@ -2228,14 +2232,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             handleLoadScene(cur)              // riding a branch — reload it in place
           }
         }
-        if (stamp) last = stamp
+        if (stamp && !voting) last = stamp
         // AI BUILD SHIFT: a bridge burst on a sibling branch publishes an
         // 'ai-building' beacon on the base world's channel — a tab standing in
         // the family rides to the branch being built, and this same stat poll
         // then live-reloads it burst by burst. One shift per beacon stamp and
         // a 30s cooldown, so a viewer can still walk away on purpose.
         shiftTick++
-        if (shiftTick % 4 === 0) {
+        if (shiftTick % 4 === 0 && !((window as unknown as { __ccReckoning?: boolean }).__ccReckoning === true)) {
           const base = cur.split(' ⑂ ')[0]
           const r2 = await fetch(`/api/engine/save?slot=${encodeURIComponent('ai-building:' + base)}`, { cache: 'no-store' })
           if (r2.ok) {

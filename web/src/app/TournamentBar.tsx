@@ -124,6 +124,15 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 }) {
   const [doc, setDoc] = useState<TDoc | null>(null)
   const [open, setOpen] = useState(false)
+  // the vote owns the stage: flag it globally so the engine's live-adopt
+  // stat-poll DEFERS scene re-seeds until the reckoning closes. (Galen, mid-vote
+  // on main: a hub republish force-reset the moving bubbles — "disable force
+  // refresh". Deferral keeps live-adopt without clobbering a vote in motion.)
+  useEffect(() => {
+    const g = window as unknown as { __ccReckoning?: boolean }
+    g.__ccReckoning = open
+    return () => { g.__ccReckoning = false }
+  }, [open])
   const [gate, setGate] = useState(false)   // THE VOTE gate — first-timers must read & accept the rules
   const [confirm, setConfirm] = useState(false)   // returning voters get a light enter/exit confirm, not the rules
   const [mounted, setMounted] = useState(false)   // drives the slide-in: false = panels at the edges, true = seated
