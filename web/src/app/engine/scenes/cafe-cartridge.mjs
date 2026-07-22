@@ -838,9 +838,13 @@ try {
             if (!B.pinned) U.wake = Math.max(U.wake, 5)
             B.x = want[n].fixed[0]; B.y = want[n].fixed[1]; B.vx = 0; B.vy = 0; B.anchored = 1; B.pinned = 1
           }
-          if (adopt && adopt.bubbles[n] && !want[n].big) {   // the shared arrangement wins — but the big three always float free by gravity
+          if (adopt && adopt.bubbles[n] && !want[n].big) {   // the shared arrangement seats bubbles AT REST — never force-refixes motion
             const sb2 = adopt.bubbles[n]
-            B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1
+            // Galen: 'I voted and the bubbles started moving, then were force
+            // refixed.' A local reflow (vote, wake, drag) owns the field until it
+            // settles; only a still bubble adopts the shared seat.
+            const moving = (U.wake > 0) || (Math.abs(B.vx) + Math.abs(B.vy) > 0.02)
+            if (!moving) { B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1 }
             if (sb2.born) B.born = sb2.born
           }
           // participation pressure: cell activity + birth heat
