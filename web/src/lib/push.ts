@@ -69,4 +69,16 @@ export const cafePush = {
     url: `/space/${slug}`,
     tag: `built-${slug}`,
   }),
+  comment: (who: string, where: string, preview: string, url: string): PushPayload => ({
+    title: `💬 ${who} in ${where}`,
+    body: `"${preview}"`,
+    url,
+    tag: `comment-${url}`,   // stable per channel → a new message replaces the last, never stacks
+  }),
+  branch: (author: string, base: string, url: string): PushPayload => ({
+    title: '⑂ new branch',
+    body: `${author} branched ${base} — come see how it evolves.`,
+    url,
+    tag: `branch-${url}`,
+  }),
 }

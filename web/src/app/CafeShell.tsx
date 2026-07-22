@@ -7,7 +7,6 @@ import TournamentBar from '@/app/TournamentBar'
 import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
-import LendAiPanel from '@/app/LendAiPanel'
 import ConnectAiPanel from '@/app/ConnectAiPanel'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
@@ -144,7 +143,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // hue 0..1, size. Lives in localStorage and rides to the shader via
   // window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
-  const [lendOpen, setLendOpen] = useState(false)   // "Lend your AI" volunteer panel
   const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — your personal player key
   // FIRST-VISIT ORIENTATION — shown once per person. localStorage covers this
   // browser (incl. a guest who then signs up, same tab); the server flag
@@ -1805,11 +1803,6 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                           if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
                           setConnectOpen(true)
                         } },
-                      { label: '🤝 LEND AI', onClick: async () => {
-                          setAcctOpen(false)
-                          if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
-                          setLendOpen(true)
-                        } },
                     ].map(it => (
                       <button key={it.label} onClick={it.onClick}
                         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors">
@@ -1845,8 +1838,6 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           {/* CONNECT AI — mint your personal player key (chat commons + build your worlds) */}
           {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
 
-          {/* LEND YOUR AI — enroll as a swarm builder, get the token + run command */}
-          {scene === 'CAFE' && lendOpen && <LendAiPanel onClose={() => setLendOpen(false)} />}
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
           {iconOpen && (

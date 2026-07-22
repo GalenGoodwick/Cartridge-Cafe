@@ -925,6 +925,28 @@ try {
     })()
   }
 
+  // VOTE NUDGE — a completed vote (window.__cafeVoteNudge, stamped by the
+  // tournament bar) briefly brings the whole field alive: un-anchor every
+  // floating icon and give each a small deterministic kick, then wake the sim.
+  // The settle block below re-anchors and re-saves the layout once everyone
+  // comes to rest — unfreeze a beat, physics takes over, refreeze when settled.
+  const voteNudge = (typeof window !== 'undefined' && window.__cafeVoteNudge) || 0
+  if (voteNudge > (U.nudgeAt || 0) && U.order && U.order.length) {
+    U.nudgeAt = voteNudge
+    for (const n of U.order) {
+      const B = U.bubbles[n]
+      if (!B || B.pinned) continue          // pinned seats (doors / champion) hold their place
+      B.anchored = 0
+      const h = Math.sin(B.x * 12.9898 + B.y * 78.233 + voteNudge * 0.001) * 43758.5453
+      const f = h - Math.floor(h)           // deterministic 0..1 (the file uses no Math.random)
+      const a = f * 6.2831853
+      const s = 9 + f * 6                    // ~9–15 impulse
+      B.vx += Math.cos(a) * s
+      B.vy += Math.sin(a) * s
+    }
+    U.wake = Math.max(U.wake, 1.4)           // ~1s of physics, then the settle block freezes + saves
+  }
+
   // ── gravity with friction: everyone falls toward the middle, packing
   // pressure sorts them — the strongest chant sinks deepest. The sim only
   // runs while perturbed (a birth, a score shift); then friction locks it. ──

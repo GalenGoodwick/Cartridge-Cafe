@@ -135,9 +135,14 @@ export async function POST(req: NextRequest) {
       if (target !== body.name && / ⑂ .+ · v1$/.test(target)) {
         void (async () => {
           const { adminUsers, notifyUser } = await import('@/lib/notify')
+          const { sendPushToUser, cafePush } = await import('@/lib/push')
           const base = target.split(' ⑂ ')[0]
           const author = target.match(/ ⑂ (.+?)(?: · .+)? · v1$/)?.[1] || 'someone'
-          for (const a of await adminUsers()) void notifyUser(a.id, 'branch', `${author} branched ${base}`, '/hub/' + encodeURIComponent(target))
+          const link = '/hub/' + encodeURIComponent(target)
+          for (const a of await adminUsers()) {
+            void notifyUser(a.id, 'branch', `${author} branched ${base}`, link)
+            void sendPushToUser(a.id, cafePush.branch(author, base, link)).catch(() => {})
+          }
         })().catch(() => {})
       }
       // first branch off a world stamps its lineage — the BASE is the immortal

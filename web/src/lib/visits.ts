@@ -29,7 +29,7 @@ export function visitorId(ip: string, ua: string): string {
   return createHash('sha256').update(`${day}|${salt}|${ip}|${ua}`).digest('hex').slice(0, 16)
 }
 
-export async function logVisit(v: { kind: 'page' | 'agent'; path: string; ref?: string | null; ua?: string | null; ip?: string | null }) {
+export async function logVisit(v: { kind: 'page' | 'agent' | 'mcp'; path: string; ref?: string | null; ua?: string | null; ip?: string | null }) {
   try {
     await ensureTable()
     const vid = visitorId(v.ip || '', v.ua || '')

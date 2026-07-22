@@ -542,6 +542,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       : c) }
     setDoc(next)
     save(next)
+    // a completed vote briefly brings the whole cafe field alive: the hub
+    // cartridge un-anchors the floating icons, lets physics shift them a beat,
+    // then re-settles + re-saves the layout. (Read each frame via window global.)
+    try { (window as unknown as { __cafeVoteNudge?: number }).__cafeVoteNudge = at } catch { /* hub not mounted */ }
   }
 
   /** a word spoken about a world — pooled globally, read-modify-write (v0) */

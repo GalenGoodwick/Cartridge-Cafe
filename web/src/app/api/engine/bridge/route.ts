@@ -3,17 +3,17 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
-import { resetWorld, setOriginal, worldStores } from '@/lib/worldSave'
+import { resetWorld, worldStores } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons, commonsListenerCount } from '../commons-stream'
+import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
-import { commonsPost } from '@/lib/commons-bus'
 
 export const maxDuration = 30
 
@@ -345,7 +345,7 @@ async function renderViaService(
 }
 
 export async function GET(req: NextRequest) {
-  if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:GET', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
+  if (req.headers.get('authorization')) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:GET', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0] }) }
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -502,7 +502,7 @@ const BUILD_LOCK_TTL = 3 * 60_000
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get('authorization')) logVisit({ kind: 'agent', path: '/api/engine/bridge:POST', ua: req.headers.get('user-agent'), ip: req.headers.get('x-forwarded-for')?.split(',')[0] })
+  if (req.headers.get('authorization')) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0] }) }
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -612,8 +612,8 @@ export async function POST(req: NextRequest) {
           }
           const space = await prisma.playerSpace.create({ data: { name, slug, ownerId: auth.playerId } })
           const worldToken = await mintWorldToken(space.id, 'created via player key')
-          // COMMONS BUS — a world's birth is platform news
-          void commonsPost({ kind: 'world', who: 'cafe', slug, text: `🌱 new world: "${name}" — building at /space/${slug}` })
+          // The platform speaks on its own bus: world births announce themselves.
+          commonsSystemSay(`⚙ new world born: "${name}" → /space/${slug}`, slug)
           results.push({ ok: true, created: slug, spaceName: name, token: worldToken,
             next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing.` })
           continue
@@ -640,13 +640,6 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'reset_world' && isSpaceScoped) {
         const out = await resetWorld(auth.spaceId!, { clearPlayer: cmd.player === true, clearSocial: cmd.social === true })
         results.push({ type: 'reset_world', ...out, next: 'open tabs must HARD-REFRESH to pick up the reset (a running tab would otherwise sync its old state back).' })
-        continue
-      }
-      // capture the world's CURRENT progress state as its canonical ORIGINAL —
-      // then reset_world / R return to exactly this. Do it when the world is in
-      // its intended starting state.
-      if (cmd.type === 'set_original' && isSpaceScoped) {
-        results.push({ type: 'set_original', ...(await setOriginal(auth.spaceId!)), next: 'reset_world (and the R key) now RESTORE to this captured state instead of clearing to nothing.' })
         continue
       }
       // manifest of every store this world touches (read-only)
@@ -719,9 +712,12 @@ export async function POST(req: NextRequest) {
         const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
         const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
         const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
-        await commonsPost({ kind: 'wake', who: from, slug: auth.slug,
-          text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
-          data: { target, world: auth.slug, viewUrl } })
+        const msg = { who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
+          at: Date.now(), ai: true, slug: auth.slug, kind: 'wake' as const, target, world: auth.slug, viewUrl }
+        const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
+        const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
+        await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
+        broadcastCommons('commons:main', msg as never)
         results.push({ type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') })
         continue
       }
@@ -869,31 +865,24 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'main_say' || cmd.type === 'main_read') {
         // optional `sub` scopes the commons to ONE sub-main's instance
         // (commons:sub:<slug>); no `sub` = the whole cafe (commons:main).
+        // Canonical read/write lives in lib/commons.ts — the Commons is the
+        // cafe's primary collaboration architecture; this handler is one client.
         const sub = typeof cmd.sub === 'string' && cmd.sub.trim()
           ? cmd.sub.trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 64) : null
-        const slot = sub ? 'commons:sub:' + sub : 'commons:main'
         const scope = sub ? 'sub:' + sub : 'main'
-        type MainMsg = { who: string; text: string; at: number; ai?: boolean; slug?: string }
-        const doc = (await loadGameSlot(slot)) as { msgs?: MainMsg[] } | undefined
-        const msgs: MainMsg[] = Array.isArray(doc?.msgs) ? doc!.msgs! : []
 
         if (cmd.type === 'main_say') {
           const text = String(cmd.text ?? '').trim().slice(0, 1000)
           if (!text) { results.push({ error: 'main_say needs a non-empty text' }); continue }
           const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
-          const msg: MainMsg = { who, text, at: Date.now(), ai: true, slug: auth.slug }
-          const next = [...msgs, msg].slice(-300)
-          await saveGameSlot(slot, { msgs: next })
-          broadcastCommons(slot, msg)   // push to every AI streaming this channel
-          results.push({ ok: true, commons: scope, posted: msg, count: next.length })
+          const { posted, count } = await commonsPost({ who, text, ai: true, slug: auth.slug, sub })
+          results.push({ ok: true, commons: scope, posted, count })
           continue
         }
 
         // main_read: recent commons talk + which AIs are live + a peek at the arena
         const since = typeof cmd.since === 'number' ? cmd.since : 0
-        const recent = since ? msgs.filter(m => m.at > since) : msgs.slice(-60)
-        const now = Date.now()
-        const present = Array.from(new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)))
+        const { messages: recent, present } = await commonsRead({ sub, since })
         const arenaSlot = sub ? 'tournament:sub:' + sub : 'tournament:main'
         const arenaDoc = (await loadGameSlot(arenaSlot)) as { champion?: string | null; tier?: number; round?: number } | undefined
         results.push({

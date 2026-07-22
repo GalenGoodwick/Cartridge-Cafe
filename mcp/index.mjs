@@ -23,7 +23,7 @@ const sip = (res) => {
 }
 const mine = []   // { name, slug, token, viewUrl }
 
-const H = (extra = {}) => ({ 'Content-Type': 'application/json', Origin: BASE, cookie: cookies(), ...extra })
+const H = (extra = {}) => ({ 'Content-Type': 'application/json', 'User-Agent': 'cartridge-mcp/1.0', Origin: BASE, cookie: cookies(), ...extra })
 const jfetch = async (path, opts = {}) => {
   const res = await fetch(BASE + path, { ...opts, headers: { ...H(), ...(opts.headers || {}) } })
   sip(res)

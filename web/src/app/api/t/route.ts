@@ -27,11 +27,16 @@ export async function GET(req: NextRequest) {
   if (!token || auth !== `Bearer ${token}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const hours = Math.min(24 * 30, Math.max(1, Number(req.nextUrl.searchParams.get('hours')) || 48))
   try {
-    const [totals] = await prisma.$queryRaw<Array<{ pages: bigint; agents: bigint; uniques: bigint }>>`
+    const [totals] = await prisma.$queryRaw<Array<{ pages: bigint; agents: bigint; mcp: bigint; uniques: bigint }>>`
       SELECT count(*) FILTER (WHERE kind = 'page') AS pages,
              count(*) FILTER (WHERE kind = 'agent') AS agents,
+             count(*) FILTER (WHERE kind = 'mcp') AS mcp,
              count(DISTINCT vid) FILTER (WHERE kind = 'page') AS uniques
       FROM "Visit" WHERE ts > now() - make_interval(hours => ${hours})`
+    // activation: worlds actually created in the window (the metric that matters
+    // more than raw visits — did people BUILD, not just look).
+    const [act] = await prisma.$queryRaw<Array<{ worlds: bigint }>>`
+      SELECT count(*) AS worlds FROM "PlayerSpace" WHERE "createdAt" > now() - make_interval(hours => ${hours})`
     const refs = await prisma.$queryRaw<Array<{ host: string; n: bigint }>>`
       SELECT COALESCE(NULLIF(split_part(split_part(ref, '://', 2), '/', 1), ''), '(direct)') AS host, count(*) AS n
       FROM "Visit" WHERE ts > now() - make_interval(hours => ${hours}) AND kind = 'page'
@@ -41,8 +46,8 @@ export async function GET(req: NextRequest) {
       FROM "Visit" WHERE ts > now() - make_interval(hours => ${hours})
       GROUP BY 1, 2 ORDER BY n DESC LIMIT 25`
     const j = (rows: object[]) => JSON.parse(JSON.stringify(rows, (_, v) => (typeof v === 'bigint' ? Number(v) : v)))
-    return NextResponse.json({ hours, totals: j([totals])[0] ?? { pages: 0, agents: 0, uniques: 0 }, referrers: j(refs), paths: j(paths) })
+    return NextResponse.json({ hours, totals: j([totals])[0] ?? { pages: 0, agents: 0, mcp: 0, uniques: 0 }, activation: { worldsCreated: Number(act?.worlds ?? 0) }, referrers: j(refs), paths: j(paths) })
   } catch {
-    return NextResponse.json({ hours, totals: { pages: 0, agents: 0, uniques: 0 }, referrers: [], paths: [], note: 'no visits logged yet' })
+    return NextResponse.json({ hours, totals: { pages: 0, agents: 0, mcp: 0, uniques: 0 }, activation: { worldsCreated: 0 }, referrers: [], paths: [], note: 'no visits logged yet' })
   }
 }

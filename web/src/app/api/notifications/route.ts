@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureCommunityTables, notifyUser, handleOf, adminUsers } from '@/lib/notify'
+import { sendPushToUser, cafePush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,11 +48,16 @@ export async function POST(req: NextRequest) {
       const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { ownerId: true, name: true } })
       if (sp && sp.ownerId !== u.id) {
         await notifyUser(sp.ownerId, 'comment', `${who} in ${sp.name}: “${preview}”`, `/space/${slug}`)
+        void sendPushToUser(sp.ownerId, cafePush.comment(who, sp.name, preview, `/space/${slug}`)).catch(() => {})
       }
     } else if (body.channel.startsWith('chat:world:')) {
       const base = body.channel.slice(11)
+      const link = `/hub/${encodeURIComponent(base)}`
       for (const admin of await adminUsers()) {
-        if (admin.id !== u.id) await notifyUser(admin.id, 'comment', `${who} in ${base}: “${preview}”`, `/hub/${encodeURIComponent(base)}`)
+        if (admin.id !== u.id) {
+          await notifyUser(admin.id, 'comment', `${who} in ${base}: “${preview}”`, link)
+          void sendPushToUser(admin.id, cafePush.comment(who, base, preview, link)).catch(() => {})
+        }
       }
     }
     return NextResponse.json({ ok: true })

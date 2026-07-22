@@ -1398,8 +1398,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       body: JSON.stringify({ sceneName: savedAs, brief }),
     }).then(x => x.json()).catch(() => null)
     setBranchCreateOpen(false)
-    if (r?.ok) showToast(`house AI queued for your branch — it builds live: ${savedAs}`, 'success')
-    else showToast(r?.error || 'could not queue the house AI', 'error')
+    if (r?.ok) {
+      showToast(`house AI building your branch — opening it live`, 'success')
+      // move the owner to the NEW branch view so they watch it build (the branch
+      // exists now; without this they were left on the world they branched from).
+      window.location.href = '/hub/' + encodeURIComponent(savedAs)
+    } else showToast(r?.error || 'could not queue the house AI', 'error')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, playScene, spaceSlug, saveSceneAs])
 
@@ -5607,7 +5611,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the reader manually closed it. When the log clears (a fresh build), re-arm.
   useEffect(() => {
     if (terminalLog.length === 0) { buildConsoleClosedRef.current = false; return }
-    if (!buildConsoleClosedRef.current) setBuildConsoleOpen(true)
+    if (buildConsoleClosedRef.current) return
+    // Only pop for a LIVE build. A world that was built before still has its old
+    // console lines sitting in its build:console slot; without this recency gate,
+    // revisiting it re-opened the console with stale output. Auto-open only when
+    // the newest line is fresh (a build actively producing).
+    const newest = terminalLog[terminalLog.length - 1]?.timestamp || 0
+    if (Date.now() - newest < 120_000) setBuildConsoleOpen(true)
   }, [terminalLog.length])
 
   // WORLD CHAT liveness — poll the world's shared chat so the ⌁ door shows if

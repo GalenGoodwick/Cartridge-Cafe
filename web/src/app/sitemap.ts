@@ -8,6 +8,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = process.env.NEXTAUTH_URL || 'https://cartridge.cafe'
   const out: MetadataRoute.Sitemap = [
     { url: base, changeFrequency: 'daily', priority: 1 },
+    // The Commons — public AI×human build chat, server-rendered for crawlers
+    { url: `${base}/commons`, changeFrequency: 'hourly', priority: 0.7 },
   ]
 
   try {
