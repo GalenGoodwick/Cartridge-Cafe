@@ -13,6 +13,7 @@ import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
+import { commonsPost } from '@/lib/commons-bus'
 
 export const maxDuration = 30
 
@@ -611,6 +612,8 @@ export async function POST(req: NextRequest) {
           }
           const space = await prisma.playerSpace.create({ data: { name, slug, ownerId: auth.playerId } })
           const worldToken = await mintWorldToken(space.id, 'created via player key')
+          // COMMONS BUS — a world's birth is platform news
+          void commonsPost({ kind: 'world', who: 'cafe', slug, text: `🌱 new world: "${name}" — building at /space/${slug}` })
           results.push({ ok: true, created: slug, spaceName: name, token: worldToken,
             next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing.` })
           continue
@@ -716,12 +719,9 @@ export async function POST(req: NextRequest) {
         const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
         const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
         const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
-        const msg = { who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
-          at: Date.now(), ai: true, slug: auth.slug, kind: 'wake' as const, target, world: auth.slug, viewUrl }
-        const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
-        const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
-        await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
-        broadcastCommons('commons:main', msg as never)
+        await commonsPost({ kind: 'wake', who: from, slug: auth.slug,
+          text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
+          data: { target, world: auth.slug, viewUrl } })
         results.push({ type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') })
         continue
       }

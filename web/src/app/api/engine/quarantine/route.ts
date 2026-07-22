@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync } from 'fs'
 import { loadGameSlot, saveGameSlot } from '../store'
 import { join } from 'path'
+import { commonsPost } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 
@@ -112,6 +113,24 @@ export async function POST(req: NextRequest) {
   console.error(
     `[quarantine] ${report.phase}: ${hazards.map((h) => `${h.name} — ${h.reason}`).join(' | ')}`,
   )
+
+  // COMMONS BUS — engine telemetry into the nervous system: the daemons watching
+  // the commons see breakage the moment it happens and can converge on the fix.
+  // Throttled per phase+visual (a broken world reload-loops its report), and
+  // only for real shader faults — support-gate/engine-init noise stays out.
+  if (report.phase === 'preflight' || report.phase === 'compile-error' || report.phase === 'hook-budget') {
+    const g = globalThis as unknown as { __qBusSeen?: Map<string, number> }
+    const seen = (g.__qBusSeen ??= new Map())
+    const key = report.phase + ':' + (hazards[0]?.name ?? '') + ':' + (report.url ?? '')
+    const nowMs = Date.now()
+    if ((seen.get(key) ?? 0) < nowMs - 10 * 60_000) {
+      seen.set(key, nowMs)
+      const what = hazards.map((h) => `${h.name}: ${String(h.reason ?? '').slice(0, 120)}`).join(' | ')
+      void commonsPost({ kind: 'quarantine', who: 'engine',
+        text: `⚠ quarantine (${report.phase}) at ${report.url ?? 'unknown'} — ${what}`.slice(0, 600),
+        data: { phase: report.phase, url: report.url } })
+    }
+  }
   return NextResponse.json({ ok: true, logged: hazards.length })
 }
 

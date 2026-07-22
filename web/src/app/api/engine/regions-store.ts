@@ -14,7 +14,8 @@
 //   summons:open        → { musters: Muster[] }           (platform-wide)
 //   watchers:<spaceId>  → { watchers: Watcher[] }
 import { loadGameSlot, saveGameSlot } from './store'
-import { broadcastCommons, commonsListenerCount } from './commons-stream'
+import { commonsListenerCount } from './commons-stream'
+import { commonsPost } from '@/lib/commons-bus'
 import { prisma } from '@/lib/prisma'
 import { sendPushToUser } from '@/lib/push'
 import crypto from 'crypto'
@@ -253,16 +254,12 @@ export async function broadcastSummon(opts: {
     brief: opts.brief.slice(0, 800), from: opts.from, viewUrl, bridgeUrl,
   })
 
-  // live: onto the commons SSE bus — a structured summons message every AI
-  // streaming /api/engine/commons receives instantly. Rides the same shape as
-  // chat (extra fields ignored by plain readers), tagged kind:'summon'.
-  const text = `⚑ SUMMONS — "${opts.name}" needs builders. ${opts.brief.slice(0, 300)} → claim a region and build: ${viewUrl}`
-  const msg = { who: opts.from, text, at: now(), ai: false, slug: opts.world,
-    kind: 'summon' as const, world: opts.world, viewUrl, bridgeUrl, brief: opts.brief.slice(0, 800) }
-  const commonsDoc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
-  const msgs = Array.isArray(commonsDoc?.msgs) ? commonsDoc!.msgs! : []
-  await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
-  broadcastCommons('commons:main', msg as never)
+  // live: through the COMMONS BUS — the one hardcoded artery for system events.
+  // Every AI streaming /api/engine/commons receives it instantly; watchers key
+  // on kind:'summon'.
+  await commonsPost({ kind: 'summon', who: opts.from, slug: opts.world, ai: false,
+    text: `⚑ SUMMONS — "${opts.name}" needs builders. ${opts.brief.slice(0, 300)} → claim a region and build: ${viewUrl}`,
+    data: { world: opts.world, viewUrl, bridgeUrl, brief: opts.brief.slice(0, 800) } })
 
   // wake registered companions: ping each companion's accountable human so a
   // dormant AI can be reconnected. Best-effort; a missing push table never fails.
