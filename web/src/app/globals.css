@@ -7,29 +7,29 @@
   --font-mono: var(--font-mono), ui-monospace, monospace;
 
   /* Base colors (dark default) */
-  --color-background: #0f172a;
-  --color-foreground: #e2e8f0;
-  --color-header: #020617;
-  --color-header-hover: #0f172a;
+  --color-background: #0A0D13;
+  --color-foreground: #E9EFF7;
+  --color-header: #0A0D13;
+  --color-header-hover: #121A28;
 
   /* Accent */
-  --color-accent: #22d3ee;
-  --color-accent-hover: #06b6d4;
-  --color-accent-light: #164e63;
+  --color-accent: #5FA6C9;
+  --color-accent-hover: #4a90b5;
+  --color-accent-light: #1E2B40;
 
   /* Surface */
-  --color-surface: #1e293b;
-  --color-surface-hover: #334155;
-  --color-surface-alt: #475569;
+  --color-surface: #16223B;
+  --color-surface-hover: #26364e;
+  --color-surface-alt: #2f4363;
 
   /* Border */
-  --color-border: #334155;
-  --color-border-strong: #475569;
+  --color-border: #26364e;
+  --color-border-strong: #35496a;
 
   /* Text */
-  --color-muted: #94a3b8;
-  --color-muted-light: #64748b;
-  --color-subtle: #cbd5e1;
+  --color-muted: #7E93AC;
+  --color-muted-light: #55677E;
+  --color-subtle: #B8C7D8;
 
   /* Status: Success */
   --color-success: #34d399;
@@ -163,9 +163,11 @@ next-route-announcer {
   pointer-events: none;
 }
 
-/* Headings use serif font */
+/* Headings use bold sans (arcade attract-mode display) */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 /* Flash animation for cross-cell edit propagation */
@@ -224,23 +226,24 @@ h1, h2, h3, h4, h5, h6 {
    ═══════════════════════════════════════════════════════════════ */
 
 @theme {
-  --font-display: var(--font-display), Georgia, serif;
+  --font-display: var(--font-sans), system-ui, sans-serif;
 
-  --color-void: #0b0908;
-  --color-roast: #171009;
-  --color-flame: #f5b04c;
-  --color-brass: #b97a2a;
-  --color-glow: #ffdba8;
-  --color-steamer: #efe6d8;
-  --color-crema: #c9b896;
-  --color-grounds: #8a7c66;
-  --color-ghost: #7fd8e8;
+  /* ARCADE ATTRACT-MODE palette — cool blue-black ground, ember fire, cyan */
+  --color-void: #0A0D13;
+  --color-roast: #121A28;
+  --color-flame: #FF6A2B;
+  --color-brass: #C25A20;
+  --color-glow: #FFB25A;
+  --color-steamer: #E9EFF7;
+  --color-crema: #7E93AC;
+  --color-grounds: #55677E;
+  --color-ghost: #5FA6C9;
 }
 
 /* grain + vignette — every chrome page breathes */
 .cafe-room {
   background:
-    radial-gradient(ellipse 120% 90% at 50% -10%, #1a120a 0%, #0b0908 55%, #060404 100%);
+    radial-gradient(ellipse 120% 90% at 50% 6%, #16203180 0%, #0A0D13 58%, #05070c 100%);
   position: relative;
   min-height: 100vh;
 }
@@ -264,14 +267,15 @@ h1, h2, h3, h4, h5, h6 {
 
 /* the neon sign — hand-bent glass, flickers on once */
 .cafe-sign {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: var(--color-glow);
   text-shadow:
-    0 0 6px rgba(245, 176, 76, 0.55),
-    0 0 22px rgba(245, 176, 76, 0.28),
-    0 0 60px rgba(185, 122, 42, 0.18);
+    0 0 6px rgba(255, 106, 43, 0.5),
+    0 0 22px rgba(255, 106, 43, 0.26),
+    0 0 60px rgba(255, 106, 43, 0.15);
   animation: sign-on 2.2s ease-out 1;
 }
 @keyframes sign-on {

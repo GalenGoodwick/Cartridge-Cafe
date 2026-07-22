@@ -1184,21 +1184,44 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         </div>
       )}
       {ad && <AdInterstitial ad={ad} onClose={() => setAd(null)} />}
-      {/* FIRST-VISIT ORIENTATION — one-time, on the hub. ✕ or GOT IT dismisses. */}
+      {/* FIRST-VISIT LANDING — ARCADE ATTRACT MODE. The live grid IS the cabinet
+          screen; scrim + scanlines give it the CRT feel; PRESS START → main. */}
       {orientOpen && scene === 'CAFE' && (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={dismissOrient}>
-          <div className="relative w-full max-w-md rounded-2xl border border-brass/30 bg-[#0d0906]/95 backdrop-blur p-6 font-mono text-crema/85 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <button onClick={dismissOrient} aria-label="close orientation"
-              className="absolute top-3 right-3 w-7 h-7 rounded text-crema/50 hover:text-crema hover:bg-white/10 text-lg leading-none transition-colors">✕</button>
-            <div className="cafe-sign text-2xl mb-3">welcome to cartridge.cafe</div>
-            <div className="text-[15px] leading-relaxed text-crema/75 space-y-2.5">
-              <p>a place of little worlds — all made by people and their AIs.</p>
-              <p><span className="text-flame">▶ play</span> — click any glowing bubble to step into a world.</p>
-              <p><span className="text-emerald-300">✎ build your own</span> — tap <b>BREW YOURS</b>, name it, then hand the briefing to an AI (Claude Code, Cursor…). It builds live over the web — no coding needed.</p>
-              <p><span className="text-amber-300">⚖ vote</span> — worlds and their <b>branches</b> (the variations people make) compete in <b>the reckoning</b>. Tap <b>⚔ VOTE</b>, witness the contenders, and back the one you like — votes crown the champions everyone sees first.</p>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-5 sm:p-8 select-none overflow-hidden"
+          onClick={dismissOrient} role="button" aria-label="press start"
+          style={{ background: 'radial-gradient(120% 90% at 50% 8%, rgba(22,32,49,0.45) 0%, #0A0D13 62%), #0A0D13' }}>
+          {/* cabinet scrim over the live grid */}
+          <div className="pointer-events-none absolute inset-0" style={{ backdropFilter: 'blur(1.5px)',
+            background: 'linear-gradient(180deg, rgba(10,13,19,0.80) 0%, rgba(10,13,19,0.30) 30%, rgba(10,13,19,0.30) 60%, rgba(10,13,19,0.94) 100%), radial-gradient(78% 58% at 50% 45%, rgba(10,13,19,0) 42%, rgba(10,13,19,0.55) 100%)' }} />
+          {/* CRT scanlines */}
+          <div className="pointer-events-none absolute inset-0" style={{ opacity: 0.5, mixBlendMode: 'overlay',
+            background: 'repeating-linear-gradient(180deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 3px)' }} />
+          {/* screen UI */}
+          <div className="relative w-full max-w-3xl flex flex-col items-center text-center gap-3.5" onClick={e => e.stopPropagation()}>
+            <div className="w-full flex justify-between items-center font-mono text-[10px] sm:text-xs uppercase tracking-[0.18em]" style={{ color: '#7E93AC' }}>
+              <span className="inline-flex items-center gap-2" style={{ color: '#FFB25A' }}>
+                <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#FF6A2B', boxShadow: '0 0 8px #FF6A2B, 0 0 14px #FF6A2B' }} />attract mode
+              </span>
+              <span style={{ color: '#E9EFF7' }}>insert coin&nbsp;·&nbsp;<b style={{ color: '#FFB25A', fontWeight: 600 }}>cartridge.cafe</b></span>
             </div>
-            <button onClick={dismissOrient}
-              className="mt-5 w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 text-[15px] tracking-[0.2em] text-void transition-colors">GOT IT</button>
+            <p className="font-mono uppercase tracking-[0.28em] text-[10px] sm:text-[13px] mt-7 sm:mt-9" style={{ color: '#5FA6C9' }}>worlds, imagined on contact</p>
+            <h1 className="font-sans font-extrabold leading-[0.94] tracking-[-0.03em] text-[clamp(2.1rem,7.2vw,4.7rem)]"
+              style={{ color: '#E9EFF7', textShadow: '0 2px 30px #0A0D13, 0 0 60px rgba(255,106,43,0.18)' }}>
+              Think it.<br /><span style={{ background: 'linear-gradient(180deg,#FFD79A 0%,#FFB25A 42%,#FF6A2B 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>It&apos;s already running.</span>
+            </h1>
+            <p className="max-w-[32ch] text-[clamp(0.95rem,2vw,1.2rem)] leading-snug" style={{ color: '#E9EFF7', opacity: 0.86 }}>
+              An AI imagines the thing in your head — and it compiles into a place other people can walk into.</p>
+            <p className="font-mono text-[12px] sm:text-[15px] mt-1" style={{ color: '#7E93AC' }}>
+              <span style={{ color: '#FF6A2B' }}>imagine&gt;</span> <span style={{ color: '#E9EFF7' }}>carried fire in a cold field</span>
+              <span className="inline-block w-[0.5em] h-[1em] ml-1 animate-pulse" style={{ background: '#FFB25A', verticalAlign: '-0.15em' }} />
+            </p>
+            <button onClick={e => { e.stopPropagation(); dismissOrient() }}
+              className="mt-8 font-sans font-extrabold text-[clamp(1.05rem,2.5vw,1.45rem)] tracking-[-0.01em] rounded-lg px-9 py-3 transition-transform duration-150 hover:-translate-y-0.5 outline-none focus-visible:ring-2"
+              style={{ color: '#140A04', background: 'linear-gradient(180deg,#FFB25A,#FF6A2B)', boxShadow: '0 12px 40px -12px #FF6A2B, inset 0 1px 0 #FFD9B0' }}>
+              ▶ PRESS START
+            </button>
+            <button onClick={e => { e.stopPropagation(); dismissOrient() }}
+              className="mt-4 font-mono text-[10px] uppercase tracking-[0.22em] transition-colors hover:brightness-150" style={{ color: '#55677E' }}>or just look around →</button>
           </div>
         </div>
       )}
