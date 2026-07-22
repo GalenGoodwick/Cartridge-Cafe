@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
-import { resetWorld, worldStores } from '@/lib/worldSave'
+import { resetWorld, worldStores, setOriginal } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
 import { loadScene, saveScene, hydrateScene } from '../store'
@@ -573,6 +573,7 @@ export async function POST(req: NextRequest) {
         ? (() => { const s = loadScene(auth.sceneName!); return s ? JSON.parse(JSON.stringify(s)) : null })()
         : null
     let batchAbort: { cmd: unknown; error: string } | null = null
+    let briefDoneAccepted = false
 
     // Provenance cross-check: stamp the User-Agent of the FIRST agent to post a
     // build command to this world (self-reported worldData.built_by is separate,
@@ -1143,6 +1144,9 @@ export async function POST(req: NextRequest) {
           }
         } catch { /* the check must never block a legitimate finish */ }
       }
+      // the world's DONE moment is its pristine state: remember it so reset can
+      // restore the original (Galen: 'does each world have an original state?').
+      if (isSpaceScoped && cmd.type === 'set_world_data' && (cmd.data as Record<string, unknown> | undefined)?.brief_done) { briefDoneAccepted = true }
 
       // Space-scoped: apply command to snapshot server-side (works without browser)
       let spaceResult: Record<string, unknown> | null = null
@@ -1289,6 +1293,8 @@ export async function POST(req: NextRequest) {
         if (d.warnings.length) health.next = 'Fix these, then {type:"render_probe"} to SEE the actual rendered pixels (struct + base64 PNG) before set_world_data brief_done.'
       } catch { /* health is a courtesy */ }
     }
+    // capture the ORIGINAL after brief_done lands: reset restores to this forever
+    if (briefDoneAccepted && auth.spaceId) { try { await setOriginal(auth.spaceId) } catch { /* capture is best-effort */ } }
     return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
   } catch (error) {
     console.error('[Engine Bridge] Error:', error)
