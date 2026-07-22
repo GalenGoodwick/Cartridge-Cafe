@@ -650,6 +650,16 @@ export async function POST(req: NextRequest) {
         results.push({ type: 'reset_world', ...out, next: 'open tabs must HARD-REFRESH to pick up the reset (a running tab would otherwise sync its old state back).' })
         continue
       }
+      // set_original — bake the world's CURRENT progress state as its canonical
+      // ORIGINAL (what R-reset / reset_world restores). Auto-capture fires at
+      // brief_done; this is the MANUAL bake the original-state ship advertised
+      // but never wired — it silently fell through to the relay queue.
+      if (cmd.type === 'set_original' && isSpaceScoped) {
+        const out = await setOriginal(auth.spaceId!)
+        results.push({ type: 'set_original', ...out,
+          next: out.ok ? 'baseline captured — reset_world / R now restore exactly this state. Re-run anytime to re-bake.' : undefined })
+        continue
+      }
       // manifest of every store this world touches (read-only)
       if (cmd.type === 'world_stores' && isSpaceScoped) {
         results.push({ type: 'world_stores', ...(await worldStores(auth.spaceId!)) })
