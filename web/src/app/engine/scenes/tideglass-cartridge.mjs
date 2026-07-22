@@ -606,6 +606,15 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
       vc += vec3f(0.30, 0.75, 0.85) * exp(-dot(vp, vp) * 1.6) * (0.5 + 0.3 * sin(t * 0.9)); // inner lamp
       vc += vec3f(1.15, 1.0, 0.62) * mod_tg_glyph(2, vp * 2.4) * (0.8 + 0.5 * sin(t * 1.7));
       vc *= 1.0 - 0.22 * step(0.42, abs(fract(vp.y * 3.0) - 0.5));             // latitude ribs
+      vc *= 1.0 - 0.16 * step(0.44, abs(fract(vp.x * 2.6 + 0.5) - 0.5));         // meridian ribs — a built vault, not a bubble
+      // crown beacon: a hot point at the apex, throwing a soft upward shaft
+      let crown = exp(-dot(vp - vec2f(0.0, -1.02), vp - vec2f(0.0, -1.02)) * 90.0);
+      vc += vec3f(0.85, 1.05, 1.10) * crown * (1.2 + 0.5 * sin(t * 2.3));
+      // water SHEETS down the emerged shell while it rises — thin bright runnels
+      let emerged = smoothstep(waterY + 0.01, waterY - 0.06, p.y);
+      let runnel = pow(0.5 + 0.5 * sin(vp.x * 34.0 + sin(vp.y * 7.0 + t * 0.8) * 2.0), 6.0);
+      let sheetFall = fract(vp.y * 2.2 + t * 1.3);
+      vc += vec3f(0.55, 0.85, 0.92) * runnel * emerged * smoothstep(1.0, 0.55, sheetFall) * (0.55 * (1.0 - vault) + 0.10);
       // below the waterline the shell dims, tints deep-teal, and its light wobbles
       let below = smoothstep(waterY - 0.004, waterY + 0.03, p.y);
       let caust2 = 0.5 + 0.5 * sin(vp.x * 8.0 + t * 2.0) * sin(vp.y * 6.0 - t * 1.5);
@@ -622,6 +631,15 @@ fn mod_tg_shore(p: vec2f, px: vec2f, t: f32) -> vec3f {
     let disp = ring * (vault * (1.0 - vault) * 5.0 + vault * 0.5);
     c += vec3f(0.46, 0.86, 0.96) * max(disp, 0.0) * seaMask;              // lifted crest
     c -= vec3f(0.13, 0.21, 0.23) * max(-disp, 0.0) * seaMask;             // trough behind it
+    // FOAM COLLAR — churning white right where the shell breaks the sea. This is
+    // what makes the displacement READ against a bright sea: hard, bright, alive.
+    let fxr = abs(p.x + 0.15);
+    let collarW = 0.075 + vault * 0.055;
+    let collar = exp(-pow((p.y - waterY) * 34.0, 2.0)) * smoothstep(collarW * 1.9, collarW * 0.4, fxr);
+    let churn = 0.55 + 0.45 * sin(p.x * 120.0 + t * 6.0) * sin(p.y * 90.0 - t * 4.2);
+    let boil = 0.5 + 0.5 * sin(fxr * 70.0 - t * 7.5);
+    c += vec3f(0.92, 1.0, 1.0) * collar * churn * (0.55 + 0.75 * vault * (1.0 - vault) * 4.0);
+    c += vec3f(0.55, 0.9, 0.95) * exp(-pow((p.y - waterY - 0.02) * 22.0, 2.0)) * smoothstep(collarW * 3.0, collarW, fxr) * boil * 0.35;
   }
   // ── the island observatory: raymarched against the same sky and sun ──
   if (p.x > 0.20 && p.y < 0.90 && rd.z > 0.0) {
