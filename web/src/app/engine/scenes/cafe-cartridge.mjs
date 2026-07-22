@@ -148,10 +148,10 @@ fn cf_player(local0: vec2f, dir: vec2f, phase: f32, fx: i32, tint: vec3f) -> vec
   return tint * g + vec3f(1.0, 0.98, 0.9) * pupil * 0.8;
 }
 
-// author-caption char: each bubble's maker handle is packed 12 chars (3 vec4f)
-// in the population buffer; return the c-th char code (0..11) of bubble i. 0 = end.
+// author-caption char: each bubble's maker handle is packed 16 chars (4 vec4f)
+// in the population buffer; return the c-th char code (0..15) of bubble i. 0 = end.
 fn cf_popc(i: i32, c: i32) -> i32 {
-  let pv = pop(i * 3 + c / 4);
+  let pv = pop(i * 4 + c / 4);
   let m = c % 4;
   var v = pv.x;
   if (m == 1) { v = pv.y; } else if (m == 2) { v = pv.z; } else if (m == 3) { v = pv.w; }
@@ -372,7 +372,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       let namR1 = namR0 + charH;
       if (d > namR0 && d < namR1) {
         var nlen = 0;
-        for (var cc = 0; cc < 12; cc++) {
+        for (var cc = 0; cc < 16; cc++) {
           if (cf_popc(i, cc) == 0) { break; }
           nlen = cc + 1;
         }
@@ -1209,14 +1209,14 @@ try {
   }
   const rollup = (cp) => { if (!cp) return 0; let s = 0; for (const k of countKeys) if (k === cp || k.startsWith(cp + '/')) s += heads[k] || 0; return s }
   const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
-  // author captions: pack each bubble's maker handle (12 chars = 3 vec4f) into the
+  // author captions: pack each bubble's maker handle (16 chars = 4 vec4f) into the
   // population buffer, in U.order — the shader reads pop(i*3..) and draws it curved
   // along the bubble's bottom rim (char5x7). System bubbles have no author → blank.
   const pop = []   // flat entities only (4 floats each) — the renderer adds the count header
   for (const n of U.order) {
     const B = U.bubbles[n]
-    const au = String(B.author || '').toUpperCase().slice(0, 12)
-    for (let c = 0; c < 12; c++) pop.push(c < au.length ? (au.charCodeAt(c) & 0xff) : 0)
+    const au = String(B.author || '').toUpperCase().slice(0, 16)
+    for (let c = 0; c < 16; c++) pop.push(c < au.length ? (au.charCodeAt(c) & 0xff) : 0)
     // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
     const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
@@ -1260,7 +1260,7 @@ try {
     u.push((Number(o.x) - 256) / 256, (Number(o.y) - 256) / 256, ((Number(o.hue) || 0) % 360) / 360, sl)
   }
   wd.gpuUniforms = u
-  wd.gpuPopulation = pop   // U.order.length*3 entities (3 vec4f names per bubble)
+  wd.gpuPopulation = pop   // U.order.length*4 entities (4 vec4f names per bubble)
 } catch (e) { /* keep the door open */ }
 `
 
