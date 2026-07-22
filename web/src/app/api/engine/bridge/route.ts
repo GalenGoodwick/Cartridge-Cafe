@@ -497,6 +497,11 @@ export async function GET(req: NextRequest) {
 // send a mutating command holds a short lock, refreshed by every write; others are
 // refused until it lapses. A stalled builder's lock auto-expires, so nothing wedges.
 const BUILD_LOCK_TTL = 3 * 60_000
+// SWARM TURNS: a builder holding an ACCEPTED region claim takes a SHORT lock
+// instead — the regions layer already carved the space, so the world lock only
+// needs to serialize each write burst, not a whole build session. Many region-
+// holders then interleave at seconds granularity ("the swarm is a queue" fix).
+const REGION_TURN_TTL = 12_000
 // a command changes the world if it's a build op (define_/create_/set_/… ), not a
 // read or roundtable-chat command — only those contend for the lock.
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
@@ -550,7 +555,9 @@ export async function POST(req: NextRequest) {
           buildLocked: true, until: cur.until,
         }, { status: 409 })
       }
-      await saveGameSlot(key, { holder, until: now + BUILD_LOCK_TTL, who: auth.slug || null }).catch(() => {})
+      // region-holders get a short TURN, everyone else the full session lock
+      const hasRegion = await readRegions(auth.spaceId).then(cs => cs.some(c => c.holder === holder && c.status === 'accepted')).catch(() => false)
+      await saveGameSlot(key, { holder, until: now + (hasRegion ? REGION_TURN_TTL : BUILD_LOCK_TTL), who: auth.slug || null }).catch(() => {})
     }
 
     const results: unknown[] = []
