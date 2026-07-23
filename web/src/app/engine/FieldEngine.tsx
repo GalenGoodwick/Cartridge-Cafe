@@ -270,7 +270,7 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
     void fetch('/api/notifications', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
   }
   return (
-    <div className="border-t border-white/10 flex flex-col h-[150px]">
+    <div className="border-t border-white/10 flex flex-col h-[280px]">
       <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
         <span>⌁ WORLD CHAT — the room hears you (chat is chat)</span>
         <div className="flex items-center gap-2">
@@ -6948,7 +6948,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[400px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
                 <span>⌁ BUILDERBOX</span>
                 <div className="flex items-center gap-2.5">
