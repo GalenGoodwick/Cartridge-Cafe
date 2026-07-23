@@ -1731,7 +1731,7 @@
    "vignetteStrength": 0.35,
    "vignetteRadius": 0.85
   },
-  "instructions": "ALEMBIC \\u2014 an alchemy of living matter.\\n\\nDRAG anything into anything \\u2014 some pairs become something new. No keys; a pointer is enough.\\n\\nFire spends itself down to CHAR \\u2014 a breath of GALE rekindles it. Water quenches what it touches. Like refuses like unless THROWN.\\n\\nA book of fusions hides in the vessel; every creation has a further use. Water the MOSS and it doubles \\u2014 left alone, life slowly greens the glass. Only the STAR is final \\u2014 and it must be provoked."
+  "instructions": "ALEMBIC \u2014 an alchemy of living matter.\n\nDRAG anything into anything \u2014 some pairs become something new. No keys; a pointer is enough.\n\nFire spends itself down to CHAR \u2014 a breath of GALE rekindles it. Water quenches what it touches. Like refuses like unless THROWN.\n\nA book of fusions hides in the vessel; every creation has a further use. Water the MOSS and it doubles \u2014 left alone, life slowly greens the glass. Only the STAR is final \u2014 and it must be provoked."
  },
  "stepHooks": [
   {
