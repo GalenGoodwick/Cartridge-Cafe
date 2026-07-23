@@ -1809,8 +1809,14 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <>
           {scene === 'CAFE' && !mine && !players && (
             <div className="fixed top-5 left-6 z-50 pointer-events-none select-none">
-              <div className="cafe-sign text-2xl">
-                cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
+              <div className="flex items-center gap-2.5">
+                {/* THE CARTRIDGE CUP — the mark (Galen-approved). Steam = the
+                    three bubble kinds; the label window holds a world. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/cartridge-cup.svg" alt="" width={34} height={34} className="-mt-1" />
+                <div className="cafe-sign text-2xl">
+                  cartridge<span className="not-italic font-mono text-base text-brass">.cafe</span>
+                </div>
               </div>
               <div className={`font-mono text-[14px] tracking-[0.18em] mt-1 transition-all duration-700 ${ticker.live ? 'text-glow' : 'text-glow/50'}`}
                 style={ticker.live ? { textShadow: '0 0 14px rgba(245,176,76,0.55)' } : undefined}>

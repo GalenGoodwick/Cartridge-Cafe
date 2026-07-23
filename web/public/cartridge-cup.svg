@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="ember" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD79A"/><stop offset=".45" stop-color="#FFB25A"/><stop offset="1" stop-color="#FF6A2B"/>
+    </linearGradient>
+  </defs>
+  <!-- steam: the three bubble types of the cafe — champion gold, player green, branch blue -->
+  <circle cx="98" cy="40" r="8" fill="none" stroke="#F0C060" stroke-width="4"/>
+  <circle cx="124" cy="24" r="6" fill="none" stroke="#66D98A" stroke-width="4"/>
+  <circle cx="142" cy="46" r="5" fill="none" stroke="#5FA6C9" stroke-width="4"/>
+  <!-- the cartridge-cup -->
+  <rect x="50" y="64" width="112" height="122" rx="16" fill="url(#ember)"/>
+  <!-- grip / lid ridges -->
+  <rect x="66" y="78" width="80" height="7" rx="3.5" fill="#0A0D13" opacity=".88"/>
+  <rect x="66" y="91" width="80" height="7" rx="3.5" fill="#0A0D13" opacity=".88"/>
+  <!-- label window: a real hub world-bubble lives in the cartridge -->
+  <rect x="66" y="108" width="80" height="62" rx="10" fill="#0A0D13"/>
+  <circle cx="106" cy="139" r="19" fill="#10141d"/>
+  <circle cx="106" cy="139" r="19" fill="none" stroke="#5FA6C9" stroke-width="4.5"/>
+  <path d="M99 131 a10 10 0 1 0 13 15 a13 13 0 0 1 -13 -15" fill="#7FB8D9"/>
+  <circle cx="115" cy="130" r="3.4" fill="#FFD79A"/>
+  <!-- the handle: thick, twice-anchored -->
+  <path d="M162 96 h12 a26 26 0 0 1 0 52 h-12" fill="none" stroke="url(#ember)" stroke-width="15" stroke-linecap="round"/>
+</svg>
