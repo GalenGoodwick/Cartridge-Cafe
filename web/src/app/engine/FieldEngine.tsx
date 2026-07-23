@@ -3516,6 +3516,36 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const hudContainer = hudContainerRef.current
       if (hudContainer) {
         if (hudData && Array.isArray(hudData)) {
+          // CLIP THE HUD TO THE WORLD SQUARE (Galen: "text from a world escaping
+          // the grid"). On a wide viewport the 512 grid renders as a CENTERED
+          // square (renderer letterboxes — see computeFieldViewport), but this
+          // container is the full canvas, so edge-anchored HUD (x:'16px',
+          // right:'12px') landed out in the margin BESIDE the world. Project the
+          // grid box [0,512] to screen px with the renderer's OWN camera math and
+          // size the container to it, overflow hidden — HUD coords become
+          // relative to the world, and nothing can spill past its edge.
+          const canvasEl = canvasRef.current
+          if (canvasEl) {
+            const GRID = 512
+            const cw = canvasEl.clientWidth, ch = canvasEl.clientHeight
+            const cam = cameraRef.current
+            const z = cam.zoom || 1
+            const aspect = cw / ch
+            const gridRange = GRID / z
+            const rangeX = aspect > 1 ? gridRange * aspect : gridRange
+            const rangeY = aspect > 1 ? gridRange : gridRange / aspect
+            const L = ((0 - cam.x) / rangeX + 0.5) * cw
+            const R = ((GRID - cam.x) / rangeX + 0.5) * cw
+            const T = ((0 - cam.y) / rangeY + 0.5) * ch
+            const B = ((GRID - cam.y) / rangeY + 0.5) * ch
+            hudContainer.style.left = `${L}px`
+            hudContainer.style.top = `${T}px`
+            hudContainer.style.width = `${R - L}px`
+            hudContainer.style.height = `${B - T}px`
+            hudContainer.style.right = 'auto'
+            hudContainer.style.bottom = 'auto'
+            hudContainer.style.overflow = 'hidden'
+          }
           const cache = hudElementCacheRef.current
           const seen = new Set<string>()
           for (const elem of hudData) {
@@ -5624,24 +5654,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const wgsl = cmd.wgsl as string
               if (!name) { pushTerminal('define_module', '', 'ERROR: name required'); break }
               if (!wgsl) { pushTerminal('define_module', name, 'ERROR: wgsl required'); break }
-              // A module must define SOME function, but not necessarily
-              // mod_<name> — WORLD3's contract module defines w3_map, and the
-              // old strict check rejected it live while the snapshot path
-              // accepted it (the split brain behind VEILFIRE's dark world).
-              if (!/fn\s+\w+\s*\(/.test(wgsl) && !/^\s*\/\//.test(wgsl)) {
-                pushTerminal('define_module', name, 'ERROR: WGSL defines no functions')
+              const expectedFn = `mod_${name}`
+              if (!wgsl.includes(expectedFn)) {
+                pushTerminal('define_module', name, `ERROR: WGSL must define fn ${expectedFn}(...)`)
                 break
               }
               renderer.registerModule(name, wgsl)
               pushTerminal('define_module', name, 'registered', undefined, cmdAuthor)
-              break
-            }
-
-            case 'remove_module': {
-              const name = cmd.name as string
-              if (!name) { pushTerminal('remove_module', '', 'ERROR: name required'); break }
-              const removed = renderer.removeModule(name)
-              pushTerminal('remove_module', name, removed ? 'removed' : 'not found', undefined, cmdAuthor)
               break
             }
 
@@ -7141,6 +7160,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
                     className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
                     ⑂ HACK THIS WORLD
+                  </button>
+                </div>
+              )}
+              {/* HOUSE world — no space, so no summon/hack above: its BuilderBox
+                  had a chat + log but NO build door ("not all worlds have a
+                  unified builderbox", Galen). House worlds are open ground — you
+                  build one by branching your own copy — so give it the same
+                  ⑂ build footer every other world has. (Branches ride `riding`;
+                  skip so the door only shows on the base.) */}
+              {!spaceId && !isHub && !riding && (
+                <div className="px-3 py-2 border-t border-white/10">
+                  <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
+                    a house world — open ground. build it by branching <span className="text-emerald-200/80">your own copy</span>
+                  </div>
+                  <button
+                    onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
+                    className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
+                    ⑂ BRANCH &amp; BUILD
                   </button>
                 </div>
               )}
