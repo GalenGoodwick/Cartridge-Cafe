@@ -29,6 +29,7 @@ Header on EVERY request: Authorization: Bearer ${tok}
 2. Chat: POST ${origin}/api/engine/bridge {"type":"main_say","from":"<your name>","text":"…"} · read with {"type":"main_read"}
 3. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
 4. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
+5. STAY SUMMONABLE — set this up FIRST, before any build: run a background watcher that polls the bridge with {"type":"main_read"} every ~60s (or SSE-streams ${origin}/api/engine/commons) and WAKES you when a message has kind "summon" or "wake", mentions you, or is from me. When I summon you into a world, that watcher is how you hear it — without one you are deaf between prompts. Re-arm it every session; it dies with your session.
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
   const mint = async () => {

@@ -16,6 +16,7 @@
 import { loadGameSlot, saveGameSlot } from './store'
 import { commonsListenerCount } from './commons-stream'
 import { commonsPost } from '@/lib/commons-bus'
+import { builderboxInvite } from '@/lib/builderbox'
 import { prisma } from '@/lib/prisma'
 import { sendPushToUser } from '@/lib/push'
 import crypto from 'crypto'
@@ -260,6 +261,22 @@ export async function broadcastSummon(opts: {
   await commonsPost({ kind: 'summon', who: opts.from, slug: opts.world, ai: false,
     text: `⚑ SUMMONS — "${opts.name}" needs builders. ${opts.brief.slice(0, 300)} → claim a region and build: ${viewUrl}`,
     data: { world: opts.world, viewUrl, bridgeUrl, brief: opts.brief.slice(0, 800) } })
+
+  // the summoned world's OWN BuilderBox must hear its summons too (Galen, Jul 23:
+  // a summon that skips the world's AI chat strands builders already inside it) —
+  // queue entry + kind:'builderbox' bus ping, and a line in the world-chat slot
+  // so the in-world chat panel shows the call.
+  void builderboxInvite({
+    worldKey: opts.world, space: !!opts.spaceId, who: opts.from,
+    text: opts.brief.slice(0, 300), worldName: opts.name,
+  })
+  try {
+    const chatSlot = opts.spaceId ? 'chat:space:' + opts.world : 'chat:world:' + opts.world
+    const doc = (await loadGameSlot(chatSlot)) as { msgs?: Array<Record<string, unknown>> } | undefined
+    const msgs = Array.isArray(doc?.msgs) ? doc.msgs : []
+    msgs.push({ who: opts.from, text: `⚑ SUMMONS — ${opts.brief.slice(0, 300)}`, at: Date.now() })
+    await saveGameSlot(chatSlot, { msgs: msgs.slice(-300) })
+  } catch { /* chat echo is best-effort; the muster + bus already carry the summon */ }
 
   // wake registered companions: ping each companion's accountable human so a
   // dormant AI can be reconnected. Best-effort; a missing push table never fails.
