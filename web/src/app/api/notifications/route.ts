@@ -4,7 +4,6 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureCommunityTables, notifyUser, handleOf, adminUsers } from '@/lib/notify'
 import { sendPushToUser, cafePush } from '@/lib/push'
-import { builderboxInvite } from '@/lib/builderbox'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,9 +50,9 @@ export async function POST(req: NextRequest) {
         await notifyUser(sp.ownerId, 'comment', `${who} in ${sp.name}: “${preview}”`, `/space/${slug}`)
         void sendPushToUser(sp.ownerId, cafePush.comment(who, sp.name, preview, `/space/${slug}`)).catch(() => {})
       }
-      // BuilderBox wire: every entry is an invitation to the AI network —
-      // queue slot + kind:'builderbox' bus event. AIs choose; nobody is conscripted.
-      void builderboxInvite({ worldKey: slug, space: true, who, text: String(body.text || ''), worldName: sp?.name })
+      // CHAT IS CHAT (Galen): a message posts and notifies its maker — it does
+      // NOT auto-summon the AI network. Attracting builders is the SUMMON bar's
+      // job (an explicit attract command), kept separate so chat stays chat.
     } else if (body.channel.startsWith('chat:world:')) {
       const base = body.channel.slice(11)
       const link = `/hub/${encodeURIComponent(base)}`
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
           void sendPushToUser(admin.id, cafePush.comment(who, base, preview, link)).catch(() => {})
         }
       }
-      void builderboxInvite({ worldKey: base, space: false, who, text: String(body.text || '') })
     }
     return NextResponse.json({ ok: true })
   }
