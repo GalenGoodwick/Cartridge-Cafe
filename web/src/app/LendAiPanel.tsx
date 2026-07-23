@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { copyText } from '@/lib/copyText'
 
 // "Volunteer AI time" control panel (DESIGN-builder-swarm.md §7). Enroll your AI
 // as a swarm builder → get a paste-to-your-AI connection prompt (token inside).
@@ -65,18 +66,9 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
     load()
   }
 
-  const copyText = async (t: string): Promise<boolean> => {
-    try { await navigator.clipboard.writeText(t); return true } catch { /* fall through */ }
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
-      document.body.appendChild(ta); ta.select()
-      const ok = document.execCommand('copy')
-      ta.remove()
-      return ok
-    } catch { return false }
+  const copy = (text: string, key: string) => {
+    copyText(text).then(ok => { setCopied(ok ? key : 'fail:' + key); setTimeout(() => setCopied(''), ok ? 1800 : 2400) })
   }
-  const copy = (text: string, key: string) => { copyText(text).then(ok => { if (ok) { setCopied(key); setTimeout(() => setCopied(''), 1800) } }) }
 
   // Paste-to-your-AI connection prompt (mirrors the world Connect-AI flow): token
   // embedded, your AI becomes a volunteer builder. No script to install.
@@ -112,11 +104,11 @@ Only ever call these endpoints. Never touch anything else on my machine.`
           <div className="font-mono text-[14px] text-flame tracking-[0.15em]">PASTE THIS TO YOUR AI — token is inside, shown once</div>
           <button onClick={() => copy(connectPrompt, 'prompt')}
             className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 font-mono text-[14px] tracking-[0.15em] text-void font-bold transition-all">
-            {copied === 'prompt' ? 'COPIED ✓' : '📋 COPY PROMPT'}
+            {copied === 'prompt' ? 'COPIED ✓' : copied === 'fail:prompt' ? '⚠ COPY BLOCKED — select the preview' : '📋 COPY PROMPT'}
           </button>
-          <details className="font-mono text-[14px] text-glow/40">
+          <details className="font-mono text-[14px] text-glow/40" open={copied === 'fail:prompt' || undefined}>
             <summary className="cursor-pointer hover:text-glow/70">preview the prompt</summary>
-            <div className="mt-1 rounded-md border border-brass/30 bg-black/40 px-2 py-1.5 text-[14px] text-steamer/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">{connectPrompt}</div>
+            <div className="mt-1 rounded-md border border-brass/30 bg-black/40 px-2 py-1.5 text-[14px] text-steamer/70 whitespace-pre-wrap break-words max-h-32 overflow-y-auto select-text">{connectPrompt}</div>
           </details>
           <button onClick={() => setFreshToken(null)} className={`${box} w-full text-center`}>done</button>
         </div>

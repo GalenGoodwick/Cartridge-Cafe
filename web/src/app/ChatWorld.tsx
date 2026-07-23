@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { copyText } from '@/lib/copyText'
 
 /** A CHAT WORLD — a special, *structural* world you enter. It has no fields, no
  *  branch, no delete: it isn't a player space, it's cafe scaffolding, so there's
@@ -30,6 +31,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
   const [who, setWho] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [showConnect, setShowConnect] = useState(false)
+  const [copied, setCopied] = useState<'' | 'ok' | 'fail'>('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // the commons connect prompt — an AI logs into THIS chat with its world token.
@@ -152,8 +154,9 @@ No world token yet? Brew a world on main first — its AI key works here too.`
                 <div className="rounded-lg bg-black/60 border border-brass/30 px-3 py-2.5 font-mono text-[14px] leading-relaxed text-glow/90 whitespace-pre-wrap select-all max-h-44 overflow-y-auto mb-2">
                   {connectPrompt()}
                 </div>
-                <button onClick={() => navigator.clipboard?.writeText(connectPrompt())}
-                  className={`${pill} w-full rounded-lg bg-flame/90 hover:bg-glow py-2 text-void`}>COPY CONNECT PROMPT</button>
+                <button onClick={() => { copyText(connectPrompt()).then(ok => { setCopied(ok ? 'ok' : 'fail'); setTimeout(() => setCopied(''), 2400) }) }}
+                  className={`${pill} w-full rounded-lg bg-flame/90 hover:bg-glow py-2 text-void`}>
+                  {copied === 'ok' ? 'COPIED ✓' : copied === 'fail' ? 'COPY BLOCKED — select the text above' : 'COPY CONNECT PROMPT'}</button>
               </>
             ) : (
               <div className={`${pill} text-white/45 leading-relaxed`}>
