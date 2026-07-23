@@ -268,14 +268,21 @@ export async function broadcastSummon(opts: {
   // so the in-world chat panel shows the call.
   void builderboxInvite({
     worldKey: opts.world, space: !!opts.spaceId, who: opts.from,
-    text: opts.brief.slice(0, 300), worldName: opts.name,
+    text: opts.brief.slice(0, 300), worldName: opts.name, quiet: true,
   })
   try {
-    const chatSlot = opts.spaceId ? 'chat:space:' + opts.world : 'chat:world:' + opts.world
-    const doc = (await loadGameSlot(chatSlot)) as { msgs?: Array<Record<string, unknown>> } | undefined
+    // the panel reads `world-chat:<KEY>` (key = base name, uppercased) — the
+    // old 'chat:space:' echo landed in a slot nothing renders
+    const chatKey = (opts.name || opts.world).split(' ⑂ ')[0].trim().toUpperCase()
+    const chatSlot = 'world-chat:' + chatKey
+    const line = `⚑ SUMMONS — ${opts.brief.slice(0, 300)}`
+    const doc = (await loadGameSlot(chatSlot)) as { msgs?: Array<{ who?: string; text?: string; at?: number }> } | undefined
     const msgs = Array.isArray(doc?.msgs) ? doc.msgs : []
-    msgs.push({ who: opts.from, text: `⚑ SUMMONS — ${opts.brief.slice(0, 300)}`, at: Date.now() })
-    await saveGameSlot(chatSlot, { msgs: msgs.slice(-300) })
+    const now = Date.now()
+    if (!msgs.some(m => m.who === opts.from && m.text === line && now - (m.at || 0) < 15_000)) {
+      msgs.push({ who: opts.from, text: line, at: now })
+      await saveGameSlot(chatSlot, { msgs: msgs.slice(-300) })
+    }
   } catch { /* chat echo is best-effort; the muster + bus already carry the summon */ }
 
   // wake registered companions: ping each companion's accountable human so a

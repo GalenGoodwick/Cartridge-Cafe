@@ -35,6 +35,10 @@ export async function builderboxInvite(opts: {
   who: string
   text: string
   worldName?: string
+  /** queue the invitation WITHOUT the commons bus post — for callers that
+   *  already announced (a summon posts its own ⚑ SUMMONS; a second ⚒ line
+   *  for the same call read as a double-post — Galen, Jul 23). */
+  quiet?: boolean
 }): Promise<void> {
   try {
     const task: BuilderBoxTask = {
@@ -58,6 +62,7 @@ export async function builderboxInvite(opts: {
     }
     await saveGameSlot(slot, { tasks: [...tasks, task].slice(-QUEUE_CAP) })
 
+    if (opts.quiet) return   // announced by the caller — queue only
     const where = opts.worldName || opts.worldKey
     await commonsPost({
       kind: 'builderbox',
