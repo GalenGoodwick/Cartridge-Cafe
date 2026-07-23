@@ -12,6 +12,7 @@
 // Backend-agnostic: no Deno.* here except navigator.gpu (present in Deno both as
 // CLI and as a server). PNG bytes are RETURNED (the caller writes/encodes them).
 import { encode } from "npm:fast-png@6";
+import { PRELUDE, HEADLESS_STUBS } from "./prelude.mjs";
 
 /** requestAdapter that works on a real GPU (Mac/Metal) AND on a headless
  *  software stack (Railway/lavapipe). Try the normal path, then a forced
@@ -177,6 +178,8 @@ export async function renderProbe(state, opts = {}) {
   }`;
   }).join("\n");
   const wgsl = `
+${PRELUDE}
+${HEADLESS_STUBS}
 ${modules.map(m => m.wgsl).join("\n")}
 ${usedVisuals.map(v => v.wgsl).join("\n")}
 struct Uni { data: array<vec4f, 64> };
