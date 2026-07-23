@@ -1332,8 +1332,12 @@ export async function POST(req: NextRequest) {
     if (briefDoneAccepted && auth.spaceId) {
       try { await setOriginal(auth.spaceId) } catch { /* capture is best-effort */ }
       // the AI writes its own world's shareable hook now that it's done (Galen).
-      // Fire-and-forget: it must never delay or fail the build's finish response.
-      void writeWorldBlurb(auth.spaceId).catch(() => {})
+      // AWAIT it, don't fire-and-forget: on serverless the lambda FREEZES the
+      // moment we return, killing an un-awaited async (the blurb's Claude call
+      // never ran). writeWorldBlurb has its own try/catch, so it can't throw or
+      // fail the finish — awaiting just guarantees it actually runs (~1-2s, fine
+      // for a one-time build-done, not a hot path).
+      await writeWorldBlurb(auth.spaceId)
     }
     return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
   } catch (error) {
