@@ -208,7 +208,7 @@ export async function DELETE(req: NextRequest) {
     }
     // authority: only your own branches, or admin. (Closes the old hole where the
     // DELETE path had NO auth check and any caller could remove any world.)
-    if (!(await mayWriteScene(req, body.name))) {
+    if (!(await mayWriteScene(req, body.name, 'delete'))) {
       return NextResponse.json({ error: 'Not authorized to delete this world' }, { status: 403 })
     }
     const deleted = deleteScene(body.name)

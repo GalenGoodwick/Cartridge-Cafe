@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   } catch { /* 400 below */ }
   if (!base) return NextResponse.json({ error: 'base required' }, { status: 400 })
 
-  if (!(await mayWriteScene(req, base))) {
+  if (!(await mayWriteScene(req, base, 'govern'))) {
     return NextResponse.json({ error: 'Only the world\'s owner can set this' }, { status: 403 })
   }
 

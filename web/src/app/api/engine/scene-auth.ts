@@ -12,7 +12,7 @@ import { authOptions } from '@/lib/auth'
  *     your own branches; you can't touch a canonical world or anyone else's branch
  *     — the tournament, not edit access, decides which wins.
  *  Dev keeps the frictionless local workflow. */
-export async function mayWriteScene(req: NextRequest, name: string): Promise<boolean> {
+export async function mayWriteScene(req: NextRequest, name: string, intent: 'write' | 'delete' | 'govern' = 'write'): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') return true
   const authHeader = req.headers.get('authorization')
   if (authHeader?.startsWith('Bearer ')) {
@@ -27,7 +27,18 @@ export async function mayWriteScene(req: NextRequest, name: string): Promise<boo
   const admins = (process.env.ADMIN_EMAILS || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean)
   if (admins.includes(email.toLowerCase())) return true
   const bi = name.indexOf(' ⑂ ')
-  if (bi < 0) return false                       // canonical/house world — admin only
+  if (bi < 0) {
+    // HOUSE WORLDS ARE OPEN GROUND (Galen, Jul 23): any signed-in user —
+    // guests included — may SAVE onto a canonical house world. Fork-on-
+    // overwrite turns the save into THEIR branch (the head only moves through
+    // deliberate flows), the original is immortal, and the arena decides what
+    // wins — so the grant is generous and still safe. DELETION and GOVERNANCE
+    // (lineage rules) are not editing: they stay admin-only, as do the
+    // STRUCTURAL scenes the cafe itself runs on.
+    if (intent !== 'write') return false
+    const STRUCTURAL = new Set(['CAFE', 'SUB-MAIN'])
+    return !STRUCTURAL.has(name.trim().toUpperCase())
+  }
   // The HANDLE is the first segment after ⑂. A branch may carry an optional label
   // and a version — `BASE ⑂ handle · label · vN` — so authority is the handle only,
   // taken up to the first ' · '. Without this, a labeled branch parses its author
