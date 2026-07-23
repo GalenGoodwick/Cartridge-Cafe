@@ -6973,8 +6973,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 return key ? <BuilderBoxChat slotKey={key} channel={channel} onFullChat={() => { setBuildConsoleOpen(false); setWorldChatOpen(true) }} /> : null
               })()}
               {/* the PROMPT BOX — summon connected AIs to build this world. Owner
-                  of a real space only (the summons pushes to real humans). */}
-              {spaceSlug && spaceId && isOwner && (
+                  of a real space only (the summons pushes to real humans). NOT on
+                  a branch (Galen): the summon rallies to the space's MAIN, so on a
+                  branch it's misleading — `riding` is the branch scene when set. */}
+              {spaceSlug && spaceId && isOwner && !riding && (
                 <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
               )}
             </div>
