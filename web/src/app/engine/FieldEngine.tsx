@@ -1490,11 +1490,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken])
+  // ONE CLICK (Galen): your clone exists FIRST, then the scoped key is offered.
+  // No naming/brief gate up front — createBranch('') opens `BASE ⑂ you · v1` and
+  // pops the CONNECT AI box with its key. Labeling a distinct challenger and the
+  // ☕ house-AI path live in the ＋ more panel (setBranchCreateOpen), so nothing
+  // is lost — they're just no longer in the way of simply owning a copy.
   const handleBranch = useCallback(() => {
     if (!me) { window.location.href = '/auth/signin'; return }
-    setBranchLabel(''); setBranchBrief('')
-    setBranchCreateOpen(v => !v)
-  }, [me])
+    setPlugBrief('')
+    createBranch('')
+  }, [me, createBranch])
 
   /** CREATE BRANCH + hand it to the house AI: fork the branch (so it exists and
    *  the owner can write it), then queue its brief for the swarm. Branches are
@@ -6815,10 +6820,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <button
                 onClick={handleBranch}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
-                title={me ? 'open your own branch of this world — name it, then connect your AI' : 'sign in to branch this world'}
+                title={me ? 'one click — open your own copy of this world; its AI key appears right away' : 'sign in to branch this world'}
               >
                 ⑂ CREATE BRANCH
               </button>
+              {/* one-click clones as BASE ⑂ you · v1. To name a distinct challenger
+                  or hand it to the house AI, open the methodical panel. */}
+              {me && (
+                <button
+                  onClick={() => { setBranchLabel(''); setBranchBrief(''); setBranchCreateOpen(v => !v) }}
+                  className="px-2.5 py-0.5 rounded-lg tracking-[0.15em] text-[13px] text-emerald-200/50 hover:text-emerald-200/90 transition-colors"
+                  title="name a distinct challenger, or have the house AI build it"
+                >
+                  ＋ name it · ☕ house AI
+                </button>
+              )}
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
@@ -6835,9 +6851,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   scoped key (the plug box opens itself the moment the branch exists) */}
               {branchCreateOpen && (
                 <div className="absolute right-full top-0 mr-2 z-50 w-72 max-h-[80vh] overflow-y-auto rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
-                  <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
-                  {/* the one thing people ask: branch vs remix. Say it right here. */}
-                  <div className="text-[14px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
+                  <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ NAME A CHALLENGER</div>
+                  {/* one-click ⑂ CREATE BRANCH already opens an unnamed copy; this
+                      panel is for a NAMED distinct challenger or the house-AI path. */}
+                  <div className="text-[14px] text-white/40 leading-snug mb-2">⑂ CREATE BRANCH opens a copy in one click. Name one here to field a <span className="text-emerald-200/80">distinct</span> challenger, or hand it to the house AI. A branch challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
                   <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input
@@ -6851,21 +6868,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     const briefLen = branchBrief.trim().length
                     const briefOk = briefLen >= 100 && briefLen <= 500
                     return (<>
-                      {/* GATE 2 — BRIEF (locked until name) */}
+                      {/* BRIEF — optional now (Galen): the AI connect only needs a
+                          name; only the house-AI build needs something to build. */}
                       <div className={'transition-opacity ' + (nameOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-                        <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/30">· name it first</span>}</div>
+                        <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">2 · BRIEF <span className="text-white/30">· optional — only the house AI needs it{!nameOk && ' · name it first'}</span></div>
                         <textarea value={branchBrief} onChange={e => setBranchBrief(e.target.value)} maxLength={500} rows={3} disabled={!nameOk}
                           placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
                           className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50 resize-none" />
-                        <div className="text-[14px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · min 100 to unlock</span></div>
+                        <div className="text-[14px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · 100–500 to hand the house AI</span></div>
                       </div>
-                      {/* GATE 3 — BUILD (locked until brief) */}
-                      <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-                        <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
+                      {/* ACTIONS — connect needs only a NAME; house AI needs the brief */}
+                      <div className={'transition-opacity ' + (nameOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
+                        <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!nameOk}
                           className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           OPEN + CONNECT AI
                         </button>
-                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
+                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!nameOk || !briefOk}
                           className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           ☕ HAVE THE HOUSE AI BUILD IT
                         </button>
