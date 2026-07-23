@@ -682,6 +682,30 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     for (const h of liveHooksRef.current.values()) if (!seen.has(h.id)) snaps.push({ ...h })
     return snaps
   }, [])
+  // ARENA FEED — sandboxed hooks have no network (world-sandbox seals fetch by
+  // design: that's the exfiltration wall, and it stays). Worlds that want the
+  // REAL tournament (THE CHAIR's chant-truth) read `wd.arena` instead: the host
+  // mirrors the public tournament:main doc into worldData here, the sandbox
+  // already forwards all of worldData each tick, and the result merge only
+  // writes back render keys + __state — so hooks can read it but never clobber
+  // it. Same seam as wd.players. 20s cadence: the arena moves in minutes.
+  useEffect(() => {
+    let dead = false
+    const pull = async () => {
+      const sim = simulationRef.current
+      if (!sim || !sandboxRef.current) return   // only sealed-hook worlds need the feed
+      try {
+        const r = await fetch('/api/engine/save?slot=tournament%3Amain', { cache: 'no-store' })
+        if (!r.ok) return
+        const j = await r.json().catch(() => null)
+        const d = j && (j as { data?: unknown }).data
+        if (!dead && d && typeof d === 'object') (sim.worldData as Record<string, unknown>)['arena'] = d
+      } catch { /* offline — hooks keep the last arena they saw */ }
+    }
+    pull()
+    const iv = setInterval(pull, 20_000)
+    return () => { dead = true; clearInterval(iv) }
+  }, [])
   const inputRef = useRef<FieldInput | null>(null)
   const animFrameRef = useRef<number>(0)
   const startTimeRef = useRef<number>(0)
