@@ -1184,6 +1184,8 @@ fn visual_myworld(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, b
 ```
 
 Primitives: `mod_w3_sphere/box/rbox/capsule/cyl/cone/torus/octa/plane` ·
+architecture: `mod_w3_arch(p,w,h,d)` (round arch opening) · `mod_w3_lancet(p,w,h,ph,d)`
+(Gothic pointed arch; `mod_w3_lancet2` is its 2D profile) ·
 ops: `mod_w3_rotX/rotY/rotZ/repeat/polar` · combine with the global
 `opSmoothUnion/opSubtract/…`. Budget guidance: ~96 march steps fullscreen is
 the ONE DAY class; bound secondary rays (shadows 24 steps, reflections ~22)

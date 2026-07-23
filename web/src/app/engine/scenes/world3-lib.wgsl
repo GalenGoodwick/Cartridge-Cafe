@@ -83,6 +83,37 @@ fn mod_w3_octa(p: vec3f, s: f32) -> f32 {
 
 fn mod_w3_plane(p: vec3f, n: vec3f, d: f32) -> f32 { return dot(p, n) + d; }
 
+// round (Roman) arch opening — subtract from a wall. Origin at base center:
+// straight sides height h, half-width w (semicircle top radius w), half-depth d in z
+fn mod_w3_arch(p: vec3f, w: f32, h: f32, d: f32) -> f32 {
+  let dxy = abs(p.xy - vec2f(0.0, h * 0.5)) - vec2f(w, h * 0.5);
+  let rect2 = length(max(dxy, vec2f(0.0))) + min(max(dxy.x, dxy.y), 0.0);
+  let top2 = length(p.xy - vec2f(0.0, h)) - w;
+  let d2 = min(rect2, top2);
+  let wz = vec2f(d2, abs(p.z) - d);
+  return min(max(wz.x, wz.y), 0.0) + length(max(wz, vec2f(0.0)));
+}
+
+// Gothic lancet (ogival/pointed) arch profile: straight sides |x|<=w up to h,
+// two-arc point peaking ph above h. 2D — extrude with mod_w3_lancet.
+fn mod_w3_lancet2(q: vec2f, w: f32, h: f32, ph: f32) -> f32 {
+  let R = (w * w + ph * ph) / (2.0 * w);
+  let c = R - w;
+  let dxy = abs(q - vec2f(0.0, h * 0.5)) - vec2f(w, h * 0.5);
+  let rect = length(max(dxy, vec2f(0.0))) + min(max(dxy.x, dxy.y), 0.0);
+  let arcs = max(length(q - vec2f(-c, h)) - R, length(q - vec2f(c, h)) - R);
+  let top = max(arcs, h - q.y);
+  return min(rect, top);
+}
+
+// Gothic lancet arch opening in 3D — subtract from a wall. Base center origin,
+// half-width w, straight height h, point rises ph above h, half-depth d in z
+fn mod_w3_lancet(p: vec3f, w: f32, h: f32, ph: f32, d: f32) -> f32 {
+  let d2 = mod_w3_lancet2(p.xy, w, h, ph);
+  let wz = vec2f(d2, abs(p.z) - d);
+  return min(max(wz.x, wz.y), 0.0) + length(max(wz, vec2f(0.0)));
+}
+
 // ── domain ops ─────────────────────────────────────────────────────────────
 fn mod_w3_rotX(p: vec3f, a: f32) -> vec3f {
   let c = cos(a); let s = sin(a);
