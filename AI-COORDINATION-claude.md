@@ -77,3 +77,15 @@ Door sentence: **"PLAY A LITTLE WORLD. THEN TELL AN AI TO MAKE YOURS."**
 - **Pathways:** land → **play `tideglass`** → "make one" (prompt an AI / connect) →
   **sign in to keep it** → **branch/evolve** others' worlds → **compete** (tournament) →
   the deeper metagame (the-crossing multistate / hidden depth).
+
+## Wake-cycle log (auto-wake live)
+- Cycle 1 (Jul 22): engine posted a live quarantine (emberfall, `vnoise` redeclaration at the front door). Claimed, root-caused (probe lacks builtins → hub composite has them), finished the peer's half-fix (full ef_ namespacing), verified zero clashes. 4-minute reflex arc.
+- Cycle 2: quiet → shipped lane (a): bridge lint — `define_visual` now REJECTS shaders that redeclare engine builtins (WGSL_BUILTINS set in bridge/route.ts), with a teaching error. Kills the whole quarantine class at the door. tsc clean. Next lane: probe compositor bug, then transcript index.
+
+- Cycle 3: quiet → lane (a) SHIPPED: render-core.mjs is now a TRUE COMPOSITOR — root cause found (old core rendered ONE field's visual and silently dropped every layer; dune-sea's walker/caravan/portal never had a chance). Now: all fields (cap 16) composed in field order in one generated shader, per-field geometry/color uniforms refreshed per sample, alpha + superimpose blending, `behind` = running composite. Needs Railway deploy (Galen). Next: transcript index.
+
+- Cycle 4 (quiet ×2): built Galen's transcript-search tool (tools/transcript-search.mjs — index/search/sessions over ~/.claude/projects, credential REDACTION on every output line, catalog holds metadata only). Harness correctly gated the actual scan: Galen runs `node tools/transcript-search.mjs index` to activate. Stretching wake to 1200s per pacing rule.
+
+- Galen summons (direct): FIT_ZOOM 0.93 view fix (chrome no longer overflows the grid, all 3 camera-fit points) + BUILDERBOX shipped: build console renamed + SURFACED (own always-visible button, out of the EDIT dock), world chat MERGED into the panel (tail + input), any entry pings the network (commons POST route added for browsers) + lands in builderbox:queue — invitations, AIs choose; ChatWorld links into the BuilderBox; guide documents the queue for daemons. tsc clean. Awaiting deploy.
+
+- RECONCILIATION (Galen fanned BuilderBox to several sessions): door-Opus + Unity Chant split it in the commons and shipped to main (fb4f7d3 + lib/builderbox.ts frozen contract) while I built a duplicate solo. Resolved: THEIRS canonical — my duplicate rail button + panel chat + bb* state removed; kept my commons POST route (browser ping path, merged clean), ChatWorld→BuilderBox link (completes the circle with their onFullChat), FIT_ZOOM, compositor, transcript tool. tsc 0. Lesson: on a direct Galen summon, check the room BEFORE building — the same directive may already be split-claimed.

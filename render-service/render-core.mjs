@@ -44,13 +44,26 @@ export async function renderProbe(state, opts = {}) {
   const modules = state.modules || [];
   const worldData = state.worldData || {};
 
-  // ── pick the field/visual ──
-  let field = null, vname = opts.name || null;
-  for (const f of fields) { const n = f.visualTypeName || (typeof f.visualType === "string" ? f.visualType : null); if (n && (!vname || n === vname)) { field = f; vname = n; break; } }
-  if (!field && fields.length) { field = fields[0]; vname = field.visualTypeName; }
-  if (!vname) return { ok: false, png: null, errors: [{ message: "no field with a visualType to render" }] };
-  const vis = visuals.find(v => v.name === vname);
-  if (!vis) return { ok: false, png: null, errors: [{ message: `visual "${vname}" not found` }] };
+  // ── the render roster: ALL fields with a visual, in field order (true
+  // compositing — the old core rendered ONE field's visual and silently
+  // dropped every layer above the backdrop, so a world could pass the probe
+  // while its portals/creatures/overlays never rendered at all). Cap 16
+  // (engine dispatch-cap parity). opts.name narrows to that visual's fields
+  // (or a synthetic full-screen field if nothing references it yet). ──
+  const visName = (f) => f.visualTypeName || (typeof f.visualType === "string" ? f.visualType : null);
+  let renderFields = fields.filter(f => { const n = visName(f); return n && visuals.some(v => v.name === n); });
+  if (opts.name) {
+    const named = renderFields.filter(f => visName(f) === opts.name);
+    if (named.length) renderFields = named;
+    else if (visuals.some(v => v.name === opts.name)) renderFields = [{ id: "__probe", visualTypeName: opts.name, transform: { x: 256, y: 256 }, shapeType: "screen", color: [1, 1, 1, 1] }];
+  }
+  renderFields = renderFields.slice(0, 16);
+  if (!renderFields.length) return { ok: false, png: null, errors: [{ message: "no field with a visualType to render" }] };
+  // primary field/visual — reporting + back-compat
+  const field = renderFields[0];
+  const vname = visName(field);
+  // each distinct visual's wgsl is included ONCE in the composed module
+  const usedVisuals = [...new Set(renderFields.map(visName))].map(n => visuals.find(v => v.name === n));
 
   // ── hooks: compile + sim shim (mirrors world-sandbox.ts) ──
   const hookErrors = [];
@@ -143,14 +156,35 @@ export async function renderProbe(state, opts = {}) {
     }
   }
 
-  // ── compose shader (only the target visual + shared modules) ──
+  // ── compose shader: every used visual + a generated per-field composite
+  // chain. Fields evaluate in field order; each sees the running composite as
+  // `behind` and blends onto it (alpha, or opaque last-write for superimpose)
+  // — mirroring the live hub's layering, so the probe's eyes finally match
+  // the world. Geometry+color per field ride a uniform array (2 vec4 each),
+  // rewritten every sample so hook-moved fields render where they ARE. ──
+  const fieldChain = renderFields.map((f, i) => {
+    const sup = !!(f.properties && f.properties.superimpose);
+    return `  {
+    let g = fr.data[${i * 2}];
+    let fmin = vec2f(g.x - g.z*0.5, g.y - g.w*0.5);
+    let fmax = vec2f(g.x + g.z*0.5, g.y + g.w*0.5);
+    if (grid.x >= fmin.x && grid.y >= fmin.y && grid.x <= fmax.x && grid.y <= fmax.y) {
+      let uv01 = (grid - fmin) / max(fmax - fmin, vec2f(0.001));
+      let uv = uv01 * 2.0 - 1.0;
+      let o = visual_${visName(f)}(uv, 0.0, fr.data[${i * 2 + 1}], u.time, vec4f(0.0), vec4f(colr, 1.0));
+      ${sup ? `if (o.a > 0.004) { colr = o.rgb; }` : `colr = mix(colr, o.rgb, clamp(o.a, 0.0, 1.0));`}
+    }
+  }`;
+  }).join("\n");
   const wgsl = `
 ${modules.map(m => m.wgsl).join("\n")}
-${vis.wgsl}
+${usedVisuals.map(v => v.wgsl).join("\n")}
 struct Uni { data: array<vec4f, 64> };
 @group(0) @binding(1) var<uniform> gu: Uni;
 fn uni(i: i32) -> f32 { let j = clamp(i, 0, 255); return gu.data[j / 4][j % 4]; }
 fn uni4(i: i32) -> vec4f { return gu.data[clamp(i, 0, 63)]; }
+struct FR { data: array<vec4f, 32> };
+@group(0) @binding(2) var<uniform> fr: FR;
 struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32, cg: f32, cb: f32, ca: f32, bgr: f32, bgg: f32, bgb: f32, p0: f32, p1: f32, p2: f32 };
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
@@ -159,15 +193,11 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
 }
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
   let grid = (fc.xy / vec2f(u.outSize, u.outSize)) * 512.0;
-  let fmin = vec2f(u.fx - u.fw*0.5, u.fy - u.fh*0.5);
-  let fmax = vec2f(u.fx + u.fw*0.5, u.fy + u.fh*0.5);
-  if (grid.x < fmin.x || grid.y < fmin.y || grid.x > fmax.x || grid.y > fmax.y) { return vec4f(u.bgr,u.bgg,u.bgb,1.0); }
-  let uv01 = (grid - fmin) / (fmax - fmin);
   // MATCH THE ENGINE: cellPos.y=0 is the top row (uv.y increases DOWNWARD). No flip.
-  let uv = vec2f(uv01.x*2.0 - 1.0, uv01.y*2.0 - 1.0);
-  let o = visual_${vname}(uv, 0.0, vec4f(u.cr,u.cg,u.cb,u.ca), u.time, vec4f(0.0), vec4f(0.0));
+  var colr = vec3f(u.bgr, u.bgg, u.bgb);
+${fieldChain}
   let keep = uni(0) * 0.0;
-  return vec4f(mix(vec3f(u.bgr,u.bgg,u.bgb), o.rgb, clamp(o.a,0.0,1.0)) + vec3f(keep), 1.0);
+  return vec4f(colr + vec3f(keep), 1.0);
 }`;
 
   const adapter = await getAdapter();
@@ -187,7 +217,8 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   const tex = device.createTexture({ size: [S, S], format: "rgba8unorm", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const ubuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const gbuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const bind = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: gbuf } }] });
+  const fbuf = device.createBuffer({ size: 512, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); // 16 fields × 2 vec4
+  const bind = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: gbuf } }, { binding: 2, resource: { buffer: fbuf } }] });
   const bpr = Math.ceil(S * 4 / 256) * 256;
   const rb = device.createBuffer({ size: bpr * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   const BG = [0.03, 0.02, 0.04]; const bgb = BG.map(v => Math.round(v * 255));
@@ -196,18 +227,23 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   async function sample(time) {
     const gpu = Array.isArray(worldData.gpuUniforms) ? worldData.gpuUniforms : [];
     const UARR = new Float32Array(256); for (let i = 0; i < Math.min(gpu.length, 256); i++) UARR[i] = +gpu[i] || 0;
-    const tr = simFields.get(field.id)?.transform || field.transform || {};
-    const fx = tr.x ?? 256, fy = tr.y ?? 256, col = field.color || [1, 1, 1, 1];
-    // Honor the field's SHAPE so the render is truthful about SIZE: a 20px circle
-    // must look like a 20px dot, not a full screen. (Framing every field to fill
-    // is how a dot-sized world — LATTICE — passed the probe.) screen = full grid,
-    // circle = 2·radius box, rect/other = w/h.
-    const shapeType = field.shapeType || (field.radius != null ? "circle" : (field.w != null ? "rect" : "screen"));
-    let fw, fh;
-    if (shapeType === "screen") { fw = 512; fh = 512; }
-    else if (shapeType === "circle") { const rad = field.radius ?? 20; fw = 2 * rad; fh = 2 * rad; }
-    else { fw = field.w ?? 512; fh = field.h ?? 512; }
-    device.queue.writeBuffer(ubuf, 0, new Float32Array([S, time, fx, fy, fw, fh, col[0], col[1], col[2], col[3] ?? 1, BG[0], BG[1], BG[2], 0, 0, 0]));
+    // Per-field geometry+color records, refreshed each sample so hook-moved
+    // fields render where they ARE. Honor each field's SHAPE so the render is
+    // truthful about SIZE: a 20px circle must look like a 20px dot, not a full
+    // screen. screen = full grid, circle = 2·radius box, rect/other = w/h.
+    const FREC = new Float32Array(128); // 16 fields × 2 vec4
+    renderFields.forEach((f, i) => {
+      const tr = simFields.get(f.id)?.transform || f.transform || {};
+      const shapeType = f.shapeType || (f.radius != null ? "circle" : (f.w != null ? "rect" : "screen"));
+      let fw, fh;
+      if (shapeType === "screen") { fw = 512; fh = 512; }
+      else if (shapeType === "circle") { const rad = f.radius ?? 20; fw = 2 * rad; fh = 2 * rad; }
+      else { fw = f.w ?? 512; fh = f.h ?? 512; }
+      const col = f.color || [1, 1, 1, 1];
+      FREC.set([tr.x ?? 256, tr.y ?? 256, fw, fh, col[0], col[1], col[2], col[3] ?? 1], i * 8);
+    });
+    device.queue.writeBuffer(fbuf, 0, FREC);
+    device.queue.writeBuffer(ubuf, 0, new Float32Array([S, time, 0, 0, 0, 0, 0, 0, 0, 0, BG[0], BG[1], BG[2], 0, 0, 0]));
     device.queue.writeBuffer(gbuf, 0, UARR);
     const enc = device.createCommandEncoder();
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: tex.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });

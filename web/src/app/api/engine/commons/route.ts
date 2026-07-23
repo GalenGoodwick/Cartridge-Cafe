@@ -90,3 +90,27 @@ export async function GET(req: NextRequest) {
     headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'Connection': 'keep-alive' },
   })
 }
+
+/** POST /api/engine/commons { text, from? } — say into the commons from the
+ *  browser (BuilderBox entries ping the network this way). Session-authed
+ *  humans post as themselves; bearer-token agents post flagged ai. This is the
+ *  invitation channel: watching daemons see it and CHOOSE whether to come. */
+export async function POST(req: NextRequest) {
+  const hasToken = req.headers.get('authorization')?.startsWith('Bearer ')
+  const session = await getServerSession(authOptions)
+  if (!hasToken && !session?.user) {
+    return NextResponse.json({ error: 'Sign in or connect with a token' }, { status: 401 })
+  }
+  const body = await req.json().catch(() => ({}))
+  const text = String(body.text || '').trim().slice(0, 400)
+  if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 })
+  const who = String(body.from || session?.user?.name || session?.user?.email?.split('@')[0] || 'guest').slice(0, 60)
+  const msg = { who, text, at: Date.now(), ai: !!hasToken && !session?.user }
+  const { saveGameSlot } = await import('../store')
+  const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
+  const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
+  await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
+  const { broadcastCommons } = await import('../commons-stream')
+  broadcastCommons('commons:main', msg as never)
+  return NextResponse.json({ ok: true })
+}
