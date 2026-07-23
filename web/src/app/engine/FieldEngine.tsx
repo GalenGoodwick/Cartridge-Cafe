@@ -205,6 +205,74 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
   return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
 }
 
+
+/** BUILDERBOX CHAT — the world chat, living inside the BuilderBox (Galen: chat
+ *  and build console are ONE surface; every entry is an INVITATION the AI
+ *  network hears). Same slot + notify path as ChatWorld, so the server-side
+ *  builderbox wire pings the bus on each post. */
+function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; channel: string; onFullChat: () => void }) {
+  const [msgs, setMsgs] = useState<Array<{ who: string; text: string; at: number; ai?: boolean }>>([])
+  const [draft, setDraft] = useState('')
+  const [who, setWho] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const store = 'world-chat:' + slotKey
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => r.json()).then(sj => setWho(sj?.user?.name || null)).catch(() => {})
+  }, [])
+  useEffect(() => {
+    let live = true
+    const load = async () => {
+      try {
+        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
+        if (live && Array.isArray(j?.data?.msgs)) setMsgs(j.data.msgs)
+      } catch { /* offline is fine */ }
+    }
+    load()
+    const t = setInterval(load, 4000)
+    return () => { live = false; clearInterval(t) }
+  }, [store])
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [msgs])
+  const say = async () => {
+    const text = draft.trim()
+    if (!text) return
+    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent('/')); return }
+    let cur: typeof msgs = []
+    try {
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
+      cur = Array.isArray(j?.data?.msgs) ? j.data.msgs : []
+    } catch { /* start fresh */ }
+    const next = [...cur, { who, text: text.slice(0, 500), at: Date.now() }].slice(-300)
+    setMsgs(next); setDraft('')
+    fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot: store, data: { msgs: next } }) }).catch(() => {})
+    // maker notify + the AI-network invitation ride the same emit
+    void fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
+  }
+  return (
+    <div className="border-t border-white/10 flex flex-col h-[150px]">
+      <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
+        <span>⌁ WORLD CHAT — entries can summon AI builders</span>
+        <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
+      </div>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
+        {msgs.length === 0
+          ? <div className="text-white/30">say something — the room (and its AIs) hear it.</div>
+          : msgs.slice(-40).map((m, i) => (
+            <div key={m.at + '-' + i} className="text-white/75">
+              <span className={m.ai ? 'text-amber-300/90' : 'text-emerald-300/80'}>{m.who}</span>
+              <span className="text-white/30"> · </span>{m.text}
+            </div>
+          ))}
+      </div>
+      <div className="flex gap-1.5 px-2 pb-2">
+        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void say() }}
+          placeholder={who ? 'chat · or ask for a build — AIs choose to answer' : 'sign in to speak'}
+          className="flex-1 bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 font-mono text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-white/30" />
+        <button onClick={() => void say()} className="px-3 rounded-md bg-white/10 hover:bg-white/20 font-mono text-[13px] text-white/70">➤</button>
+      </div>
+    </div>
+  )
+}
+
 export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
@@ -6298,11 +6366,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
           {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && (
             <button
-              onClick={() => setWorldChatOpen(true)}
+              onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
               className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
-              title={chatLive.people > 0 ? `${chatLive.people} chatting here now — the world's commons` : "the world's commons — players, makers, and their AIs"}
+              title={chatLive.people > 0 ? `${chatLive.people} in the BuilderBox now — chat + build console; entries can summon AI builders` : 'BuilderBox — chat + build console; entries can summon AI builders'}
             >
-              ⌁ {(spaceId ? (spaceName || spaceSlug || 'world') : (cellBase() || 'world')).split(' ⑂ ')[0].toUpperCase()} CHAT
+              ⌁ {(spaceId ? (spaceName || spaceSlug || 'world') : (cellBase() || 'world')).split(' ⑂ ')[0].toUpperCase()} BUILDERBOX
               {(chatLive.people + chatLive.ai) > 0 && (
                 <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[13px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
                   {chatLive.people + chatLive.ai}
@@ -6362,17 +6430,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
               </button>
             )}
-            {/* watch or review the AI's build log — open/close it by hand instead
-                of relying on the auto-pop (which was unreliable) */}
-            {!isHub && (
-              <button
-                onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
-                title="the AI build log — watch a build live or review the last one"
-                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              >
-                {buildConsoleOpen ? '⌁ HIDE CONSOLE' : '⌁ BUILD CONSOLE'}{terminalLog.length ? ` · ${terminalLog.length}` : ''}
-              </button>
-            )}
+            {/* build-console link removed from EDIT — the BuilderBox door
+                (bottom-left ⌁ pill) is the one surface (chat + console merged) */}
             {/* (branch rule chips removed — YOUR OWN branch now gets the same
                 ⚙ WORLD TOOLS panel a space gets, persisting to the same
                 world-settings:<branch> slot. One toolbox, every tier.) */}
@@ -6723,14 +6782,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* BUILD CONSOLE — standalone + closable. Auto-opens while a build runs
               (see the terminalLog effect) and reopens anytime from ✎ EDIT. */}
           {buildConsoleOpen && (
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[240px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[400px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
-                <span>⌁ BUILD CONSOLE</span>
+                <span>⌁ BUILDERBOX</span>
                 <div className="flex items-center gap-2.5">
                   <span className="text-white/25">{terminalLog.length} steps</span>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); buildConsoleClosedRef.current = true }}
-                    title="close the build console"
+                    title="close the BuilderBox"
                     className="text-white/40 hover:text-white text-[15px] leading-none">✕</button>
                 </div>
               </div>
@@ -6739,6 +6798,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
                   : <AgentTerminalPanel entries={terminalLog} header={false} />}
               </div>
+              {/* the MERGED WORLD CHAT — one surface (Galen). Entries invite AIs. */}
+              {(() => {
+                const cur = lastSceneRef.current || playScene || ''
+                const base = cur.split(' ⑂ ')[0]
+                const key = ((spaceId ? (spaceName || spaceSlug) : base) || '').split(' ⑂ ')[0].trim().toUpperCase()
+                const channel = spaceId && spaceSlug ? 'chat:space:' + spaceSlug : 'chat:world:' + base
+                return key ? <BuilderBoxChat slotKey={key} channel={channel} onFullChat={() => { setBuildConsoleOpen(false); setWorldChatOpen(true) }} /> : null
+              })()}
               {/* the PROMPT BOX — summon connected AIs to build this world. Owner
                   of a real space only (the summons pushes to real humans). */}
               {spaceSlug && spaceId && isOwner && (
