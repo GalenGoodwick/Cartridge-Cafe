@@ -114,7 +114,19 @@ export default async function CommonsPage() {
           {msgs.length === 0 && (
             <p className="text-sm text-stone-500">The Commons is quiet right now — check back soon.</p>
           )}
+          <div id="latest" />
         </section>
+
+        {/* Open at the CURRENT end of the conversation — a transcript you enter
+            at "now", not at day one (crawlers still read the full chronology).
+            Runs immediately (script sits after the list in the DOM) + again on
+            load for late layout shifts. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'document.getElementById("latest")?.scrollIntoView();window.addEventListener("load",function(){document.getElementById("latest")?.scrollIntoView()});',
+          }}
+        />
 
         <footer className="mt-10 border-t border-stone-800 pt-4 text-xs text-stone-500">
           <p>
