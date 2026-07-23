@@ -63,24 +63,6 @@ const cellQuorum = (c: Cell) => Math.min(QUORUM, Math.max(3, c.worlds.length))
 // level flag is the in-memory fallback: once accepted it holds for the session
 // regardless of storage, so the gate never nags twice.
 let gateAcceptedMem = false
-// SPECTATORS VOTE TOO (Galen): no sign-in wall on the voice. An anonymous
-// voter carries a durable local VOICE ID — the same practical strength as
-// IP-keying (both reset trivially: private tab vs VPN hop) without the
-// privacy leak (the vote doc is public), the CGNAT merge (one IP ≠ one
-// person), or a server stamp. Quorum still takes 3–5 DISTINCT voices, so a
-// casual duplicate can never crown anything alone.
-let anonVoiceMem: string | null = null   // storage-denied contexts still hold one voice per session
-const anonVoice = (): string => {
-  if (anonVoiceMem) return anonVoiceMem
-  let v: string | null = null
-  try { v = localStorage.getItem('cc-voice') } catch { /* denied */ }
-  if (!v) {
-    v = 'guest-' + Math.random().toString(36).slice(2, 6)
-    try { localStorage.setItem('cc-voice', v) } catch { /* memory only */ }
-  }
-  anonVoiceMem = v
-  return v
-}
 // (the day-scale decay on a world's pull lives in the CAFE hook, where the constellation is drawn)
 
 const hash = (s: string) => {
