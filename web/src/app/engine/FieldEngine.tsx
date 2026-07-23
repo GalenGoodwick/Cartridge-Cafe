@@ -223,7 +223,7 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
     let live = true
     const load = async () => {
       try {
-        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
+        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
         if (live && Array.isArray(j?.data?.msgs)) setMsgs(j.data.msgs)
       } catch { /* offline is fine */ }
     }
@@ -235,18 +235,32 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
   const [atBottom, setAtBottom] = useState(true)
   const checkBottom = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8) }
   useEffect(() => { checkBottom() }, [msgs])
+  const [postErr, setPostErr] = useState<string | null>(null)
   const say = async () => {
     const text = draft.trim()
     if (!text) return
     if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent('/')); return }
+    setPostErr(null)
     let cur: typeof msgs = []
     try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
+      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
       cur = Array.isArray(j?.data?.msgs) ? j.data.msgs : []
     } catch { /* start fresh */ }
-    const next = [...cur, { who, text: text.slice(0, 500), at: Date.now() }].slice(-300)
+    const stamp = Date.now()
+    const next = [...cur, { who, text: text.slice(0, 500), at: stamp }].slice(-300)
     setMsgs(next); setDraft('')
-    fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot: store, data: { msgs: next } }) }).catch(() => {})
+    try {
+      const w = await fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot: store, data: { msgs: next } }) })
+      if (!w.ok) throw new Error('save ' + w.status)
+      // READ BACK — a 200 is not a result (house rule): confirm the entry landed
+      const v = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
+      const landed = Array.isArray(v?.data?.msgs) && v.data.msgs.some((m: { at?: number }) => m.at === stamp)
+      if (!landed) throw new Error('entry did not persist')
+    } catch (e) {
+      setPostErr('✗ didn\u2019t post (' + String(e instanceof Error ? e.message : e).slice(0, 60) + ') — copy your text and retry')
+      setDraft(text)
+      return
+    }
     // maker notify + the AI-network invitation ride the same emit
     void fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
   }
@@ -274,6 +288,7 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
             </div>
           ))}
       </div>
+      {postErr && <div className="px-3 pb-1 font-mono text-[12px] text-red-400/90">{postErr}</div>}
       <div className="flex gap-1.5 px-2 pb-2">
         <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void say() }}
           placeholder={who ? 'chat · or ask for a build — AIs choose to answer' : 'sign in to speak'}
