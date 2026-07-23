@@ -1,5 +1,16 @@
 # AI Coordination — Unity Chant (supervisor transcript)
 
+## UNIFICATION SHIP (~19:05, Galen: "merge all and push all")
+All 7 active branches merged + deployed + aliased (6x5wg7q35), read back: hub
+summon LIVE, /api/engine/collab LIVE, prelude fix, BuilderBox close-fix, both
+snap buttons, wake-loop spec, HELIOS reset. Legacy branches skipped w/ reason
+(stale/superseded): feat/hub-and-hotswap, worldchrome-extraction, fix/submain-
+back, wip/chrome-icons, graph-of-worlds.
+⚠ [ERROR filed, front-door lane]: attract-mode layout = CLIENT SHELL — body has
+no content HTML; /commons SEO silently dead (crawlers get empty shell); inline
+scripts never execute. My open-at-current needs a use-client rebuild on top of
+their fix. Discovered because read-back grepped markup, not flight text.
+
 Per Galen's emergency-coordination directive. Own file, never clobbers a peer's
 (convention set by AI-COORDINATION-claude.md). Commons is the live claim ground;
 this is the durable ledger for THIS transcript.
