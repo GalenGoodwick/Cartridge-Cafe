@@ -39,7 +39,9 @@ async function getAdapter() {
 export async function renderProbe(state, opts = {}) {
   const S = parseInt(opts.size ?? 400);
   const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
-  const DT = 1 / 60;
+  // dt per tick — 1/60 for probes; a clip passes 1/fps so one tick renders one
+  // frame and sim time tracks video time (bells/animations run at real speed).
+  const DT = opts.dt ? parseFloat(opts.dt) : 1 / 60;
   const fields = state.fields || [];
   const visuals = state.visualTypes || [];
   const modules = state.modules || [];
@@ -70,7 +72,42 @@ export async function renderProbe(state, opts = {}) {
   const hookErrors = [];
   const simFields = new Map();
   for (const f of fields) simFields.set(f.id, { id: f.id, name: f.name, transform: { ...(f.transform || { x: 256, y: 256 }) }, properties: f.properties });
-  const sim = { worldData, fields: simFields, rand: Math.random, getFieldByName(n) { for (const f of simFields.values()) if (f.name === n) return f; return null; }, getField(id) { return simFields.get(id) || null; } };
+
+  // ── sim shim, at PARITY with the browser's world-sandbox (web/.../simulation)
+  // so interactive/puzzle worlds actually ADVANCE here — without trigger/edge/
+  // chapters, a hook like Tideglass throws the first frame and the clip is a
+  // dead ambient loop. State lives on worldData so it persists across ticks and
+  // serializes exactly like the live engine (__trig / __edge / __chapters). ──
+  let _rng = null;
+  if (worldData.__seed != null) {
+    let a = (parseInt(worldData.__seed) >>> 0) || 1;
+    _rng = () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  const trigState = (worldData.__trig ||= {});
+  const edgeState = (worldData.__edge ||= {});
+  const chapters = () => (worldData.__chapters ||= { names: [], act: 1, unlocked: { 1: true } });
+  const sim = {
+    worldData, fields: simFields,
+    rand: () => (_rng ? _rng() : Math.random()),
+    getFieldByName(n) { for (const f of simFields.values()) if (f.name === n) return f; return null; },
+    getField(id) { return simFields.get(id) || null; },
+    // triggers: latched one-shot — TRUE exactly once, the first frame cond is truthy
+    trigger(name, cond) { if (cond && !trigState[name]) { trigState[name] = 1; return true; } return false; },
+    resetTrigger(name) { trigState[name] = 0; },
+    // edge: TRUE on every false→true transition (re-arms on false)
+    edge(name, cond) { const c = !!cond; const was = !!edgeState[name]; edgeState[name] = c; return c && !was; },
+    // chapters
+    defineChapters(list) { const ch = chapters(); ch.names = Array.isArray(list) ? list.slice() : []; if (!ch.act) ch.act = 1; ch.unlocked ||= {}; ch.unlocked[1] = true; },
+    get act() { return chapters().act; },
+    chapterName(n) { const ch = chapters(); return ch.names[(n ?? ch.act) - 1] || ''; },
+    chapterCount() { return chapters().names.length; },
+    chapterUnlocked(n) { return !!chapters().unlocked[n]; },
+    unlockChapter(n) { chapters().unlocked[n] = true; },
+    goChapter(n) { const ch = chapters(); if (ch.unlocked[n]) { ch.act = n; return true; } return false; },
+    completeChapter() { const ch = chapters(); const next = ch.act + 1; if (next <= ch.names.length) { ch.unlocked[next] = true; ch.act = next; } return ch.act; },
+    // one-shot celebrations sometimes call these; harmless no-ops if unused
+    emit() {}, playSound() {},
+  };
   const compiled = [];
   if (Array.isArray(state.stepHooks)) for (const h of state.stepHooks) {
     try { compiled.push({ id: h.id, fn: new Function("sim", "dt", h.code) }); }
@@ -149,7 +186,18 @@ export async function renderProbe(state, opts = {}) {
   }
 
   const runtimeErrs = new Map();
-  const HOOK_BUDGET_MS = 3000; const hookT0 = performance.now();
+  // a clip ticks a whole world's hook once per frame — the 3s probe budget would
+  // guillotine it mid-render. Callers pass a generous budget for clips.
+  const HOOK_BUDGET_MS = opts.hookBudgetMs ? parseInt(opts.hookBudgetMs) : 3000; const hookT0 = performance.now();
+  // ── audio capture: the hook writes worldData.__play_sound / __play_music each
+  // frame (the browser consumes + clears them). We record them with the frame's
+  // time, then clear, so offline-audio can re-synthesize the exact soundtrack. ──
+  const audioEvents = [];
+  const captureAudio = (t) => {
+    const time = t * DT;
+    if (worldData.__play_sound != null) { audioEvents.push({ t: time, sound: worldData.__play_sound }); worldData.__play_sound = null; }
+    if (worldData.__play_music != null) { audioEvents.push({ t: time, music: worldData.__play_music }); worldData.__play_music = null; }
+  };
   function tickOnce(t) {
     if (!compiled.length || NTICKS <= 0) return;
     applyInput(t);
@@ -157,6 +205,7 @@ export async function renderProbe(state, opts = {}) {
       try { h.fn(sim, DT); }
       catch (e) { let rec = runtimeErrs.get(h.id); if (!rec) { rec = { hookId: h.id, phase: "runtime", error: String(e?.message || e), firstTick: t, count: 0 }; runtimeErrs.set(h.id, rec); } rec.count++; }
     }
+    captureAudio(t);
   }
 
   // ── compose shader: every used visual + a generated per-field composite
@@ -280,7 +329,7 @@ ${fieldChain}
   // ── run: tick, sampling the struct at several points across the loop ──
   // input mode wants more samples so BOTH phases (baseline / input-on) get ≥2 deltas
   // clip mode: render `frames` evenly across the loop, encode each → PNG sequence
-  const CLIP = opts.frames ? Math.max(2, Math.min(240, parseInt(opts.frames))) : 0;
+  const CLIP = opts.frames ? Math.max(2, Math.min(900, parseInt(opts.frames))) : 0;
   const NSAMPLES = CLIP || ((NTICKS > 0 && compiled.length) ? Math.max(2, parseInt(opts.samples ?? (opts.input ? 8 : 6))) : 1);
   const sampleTicks = NSAMPLES === 1 ? [NTICKS] : Array.from({ length: NSAMPLES }, (_, s) => Math.round(1 + s * (NTICKS - 1) / (NSAMPLES - 1)));
   const samples = [];
@@ -356,5 +405,6 @@ ${fieldChain}
     offscreenHint: last.bbox && (last.bbox.w < S * 0.15 || last.bbox.h < S * 0.15 || last.bbox.x > S * 0.7 || last.bbox.x + last.bbox.w < S * 0.3) ? "content tiny or hugging an edge — likely mis-placed" : null,
     quadrantLum: last.quadrantLum, dominantColors: last.dominantColors,
     motion, inputReport, png,
+    audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
   };
 }

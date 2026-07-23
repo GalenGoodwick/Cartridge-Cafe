@@ -17,6 +17,7 @@
 // endpoint can't be used as a free render farm. If unset, the server refuses
 // to start — an open renderer is a DoS foothold.
 import { renderProbe } from "./render-core.mjs";
+import { renderAudio, pcmToWav } from "./offline-audio.mjs";
 import { encodeBase64 } from "jsr:@std/encoding/base64";
 
 const PORT = parseInt(Deno.env.get("PORT") || "8080");
@@ -55,23 +56,43 @@ Deno.serve({ port: PORT }, async (req) => {
   }
 
   if (isClip) {
-    const frames = Math.max(2, Math.min(240, parseInt(body.frames ?? 150)));
+    // up to ~30s of clip (900 frames @ 30fps) — social cards inline-play well
+    // past that; the software-GPU render just takes proportionally longer.
+    const frames = Math.max(2, Math.min(900, parseInt(body.frames ?? 150)));
     const fps = Math.max(6, Math.min(60, parseInt(body.fps ?? 30)));
     const size = Math.max(64, Math.min(512, parseInt(body.size ?? 400)));
     // the HANDS — a showcase clip should show the world being PLAYED, not sitting
     // still. Default to 'auto' (holds right + sweeps the cursor across the grid)
     // and drive input from frame 1 (no baseline third). Pass input:null for a
     // hands-off ambient clip.
+    // input: null = ambient · a preset string ('auto'|'run-right'|…) · or a
+    // scripted timeline [{from,to,pointer:{x,y,down},keys}] for a real playthrough.
     const input = body.input === null ? null : (body.input ?? "auto");
+    // audio ON by default: the hook's __play_sound/__play_music are captured and
+    // re-synthesized into the track (offline-audio) — the clip sounds like the
+    // world. Pass audio:false for a silent clip.
+    const withAudio = body.audio !== false;
     try {
-      // one tick per frame so motion advances smoothly across the loop
-      const r = await renderProbe(state, { name: body.name, ticks: frames, frames, size, ...(input ? { input, inputStart: 1 } : {}) });
+      // one tick per frame at dt=1/fps so animation/bells run at real speed; a
+      // generous hook budget so a whole-world hook isn't guillotined mid-clip.
+      const r = await renderProbe(state, {
+        name: body.name, ticks: frames, frames, size, dt: 1 / fps, hookBudgetMs: 120000,
+        ...(input ? { input, inputStart: 1 } : {}),
+      });
       if (!r.ok || !Array.isArray(r.frames) || !r.frames.length) {
         return Response.json({ ok: false, error: "no frames rendered", errors: r.errors }, { status: 500 });
       }
-      const { frames: pngs, png: _png, ...struct } = r;
-      const mp4 = await encodeMp4(pngs, fps);
-      return Response.json({ ...struct, video: encodeBase64(mp4), videoMime: "video/mp4", frameCount: pngs.length, fps });
+      const { frames: pngs, png: _png, audioEvents, ...struct } = r;
+      let wav = null;
+      if (withAudio && Array.isArray(audioEvents) && audioEvents.length) {
+        const pcm = renderAudio(audioEvents, pngs.length / fps);
+        wav = pcmToWav(pcm);
+      }
+      const mp4 = await encodeMp4(pngs, fps, wav);
+      return Response.json({
+        ...struct, video: encodeBase64(mp4), videoMime: "video/mp4",
+        frameCount: pngs.length, fps, hasAudio: !!wav, audioEventCount: audioEvents?.length || 0,
+      });
     } catch (e) {
       return Response.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
     }
@@ -86,20 +107,27 @@ Deno.serve({ port: PORT }, async (req) => {
   }
 });
 
-// Stitch a PNG sequence into an h264 mp4 via ffmpeg. mp4 needs a seekable
-// output for the moov atom (+faststart), so we write to a temp file and read it
-// back rather than piping stdout.
-async function encodeMp4(pngs, fps) {
+// Stitch a PNG sequence into an h264 mp4 via ffmpeg, optionally muxing a WAV
+// track. H.264 + AAC + `+faststart` (moov atom up front) is the combination
+// that plays INLINE in a Bluesky / Telegram / Discord card — the point of a
+// clip. mp4 needs a seekable output for faststart, so we write to a temp file
+// and read it back rather than piping stdout. The frames pipe in on stdin; the
+// WAV (if any) is a second file input.
+async function encodeMp4(pngs, fps, wavBytes) {
   const tmp = await Deno.makeTempFile({ suffix: ".mp4" });
+  let wavPath = null;
   try {
-    const cmd = new Deno.Command("ffmpeg", {
-      args: [
-        "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "-",
-        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart", "-an", tmp,
-      ],
-      stdin: "piped", stdout: "null", stderr: "piped",
-    });
+    const args = ["-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "-"];
+    if (wavBytes) {
+      wavPath = await Deno.makeTempFile({ suffix: ".wav" });
+      await Deno.writeFile(wavPath, wavBytes);
+      args.push("-i", wavPath);
+    }
+    args.push("-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p");
+    if (wavBytes) args.push("-c:a", "aac", "-b:a", "128k", "-shortest");
+    else args.push("-an");
+    args.push("-movflags", "+faststart", tmp);
+    const cmd = new Deno.Command("ffmpeg", { args, stdin: "piped", stdout: "null", stderr: "piped" });
     const child = cmd.spawn();
     const w = child.stdin.getWriter();
     for (const f of pngs) await w.write(f);
@@ -109,6 +137,7 @@ async function encodeMp4(pngs, fps) {
     return await Deno.readFile(tmp);
   } finally {
     await Deno.remove(tmp).catch(() => {});
+    if (wavPath) await Deno.remove(wavPath).catch(() => {});
   }
 }
 
