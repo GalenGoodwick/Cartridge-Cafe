@@ -122,6 +122,24 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // (or a rework) glows in over it for a few seconds, then fades back. No toast,
   // no stack — one quiet line that proves the cafe is alive.
   const SLOGAN = 'Instant natural language to game world framework.'
+
+  // checkout return — Stripe sends players back to /?paid=<product> or
+  // /?paycancel=<product>; greet the result and clean the URL
+  const [payNote, setPayNote] = useState<string | null>(null)
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      const paid = q.get('paid'); const cancel = q.get('paycancel')
+      if (paid) setPayNote('🛡 payment received — ' + paid + ' is yours (test mode: no real charge)')
+      else if (cancel) setPayNote('checkout canceled — nothing charged')
+      if (paid || cancel) {
+        q.delete('paid'); q.delete('paycancel')
+        const rest = q.toString()
+        window.history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : ''))
+        setTimeout(() => setPayNote(null), 7000)
+      }
+    } catch { /* fine */ }
+  }, [])
   const [ticker, setTicker] = useState<{ text: string; live: boolean }>({ text: SLOGAN, live: false })
   useEffect(() => {
     const worlds = new Map<string, { t: number; building: boolean }>()
@@ -1820,6 +1838,11 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
             )
           })()}
           {scene === 'CAFE' && !voting && brewStep === 0 && <HubSearch />}
+          {payNote && (
+            <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg font-mono text-[14px] bg-black/80 backdrop-blur border border-flame/40 text-glow">
+              {payNote}
+            </div>
+          )}
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
             {/* signed-out gets the door said out loud — every AI prompt box

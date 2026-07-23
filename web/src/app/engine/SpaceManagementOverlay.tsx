@@ -58,6 +58,26 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
   // Share
   const [linkCopied, setLinkCopied] = useState(false)
 
+  // Pay — the OWN step of the funnel (renders only when the rail is configured)
+  const [pay, setPay] = useState<{ configured: boolean; products: Array<{ key: string; label: string }>; mine: Array<{ product: string; slug?: string; active: boolean }> } | null>(null)
+  const [payBusy, setPayBusy] = useState(false)
+  useEffect(() => {
+    fetch('/api/pay/checkout', { cache: 'no-store' }).then(r => r.json()).then(setPay).catch(() => {})
+  }, [])
+  const protectProduct = pay?.configured ? pay.products.find(pr => pr.key === 'protect') : undefined
+  const isProtected = !!pay?.mine.some(e => e.product === 'protect' && e.slug === spaceSlug && e.active)
+  const buyProtect = async () => {
+    if (payBusy) return
+    setPayBusy(true)
+    try {
+      const r = await fetch('/api/pay/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: 'protect', slug: spaceSlug }) })
+      const j = await r.json()
+      if (j?.url) { window.location.assign(j.url); return }
+      setError(j?.error || 'checkout unavailable')
+    } catch { setError('checkout unavailable') }
+    finally { setPayBusy(false) }
+  }
+
   const fetchAll = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -227,6 +247,29 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                   : 'yours alone — no one else can open, play, or branch it'}
               </div>
             </div>
+
+            {/* Protect — pay-to-protect, the world's shield (renders only when
+                the revenue rail is configured; test-mode keys = test checkout) */}
+            {protectProduct && (
+              <div className="px-3 py-2 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted">protection</span>
+                  {isProtected ? (
+                    <span className="px-2 py-0.5 rounded border bg-success/15 text-success border-success/30">🛡 protected</span>
+                  ) : (
+                    <button onClick={() => void buyProtect()} disabled={payBusy}
+                      className="px-2 py-0.5 rounded border bg-flame/15 text-glow border-flame/40 hover:bg-flame/25 transition-colors disabled:opacity-50">
+                      {payBusy ? 'opening checkout…' : '🛡 protect this world'}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1.5 text-[14px] leading-snug text-muted/70">
+                  {isProtected
+                    ? 'shielded — this world cannot be overturned or clobbered'
+                    : 'a small one-time shield: keeps challengers from overturning your main'}
+                </div>
+              </div>
+            )}
 
             {/* Share */}
             <div className="px-3 py-2 border-b border-border">
