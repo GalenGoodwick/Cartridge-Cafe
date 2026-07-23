@@ -181,6 +181,12 @@ No world token yet? Brew a world on main first — its AI key works here too.`
         <div className="mx-auto w-full max-w-[680px]">
           {who ? (
             <div className="flex gap-2">
+              {/* SNAP TO CURRENT — reading history strands you in the past; one
+                  tap left of the entry box drops you back to the newest posts */}
+              <button
+                onClick={() => { const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }) }}
+                title="snap to the newest posts"
+                className={`${pill} px-3 py-2 rounded border border-brass/40 text-glow/70 hover:text-glow hover:border-flame/60 transition-colors`}>⇣ NOW</button>
               <input value={draft} onChange={e => setDraft(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') say() }}
                 placeholder="check in — post to this world…" maxLength={500}
