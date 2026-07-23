@@ -937,6 +937,10 @@ try {
         // so a slow spaces fetch can't blink player worlds out and back
         const fullAnswer = Array.isArray(sc && sc.scenes) && Array.isArray(sp && sp.spaces)
         if (!firstFill && fullAnswer) for (const n of Object.keys(U.bubbles)) if (!want[n]) delete U.bubbles[n]
+        // arm the SINGLE BUMP (Galen) once the roster is COMPLETE — not on a
+        // degraded pass, or bubbles that arrive with the full poll would adopt
+        // the saved layout anchored and miss their bump. Fires once per visit.
+        if (fullAnswer && !U.bumpedOnce) { U.bumpedOnce = 1; U.doBump = 1 }
         // NOTHING renders without the roster's word — a stale shared-doc bubble
         // (a world hidden since it was saved) must never get even one frame.
         // On a degraded first pass it just waits in U.bubbles for the full poll.
@@ -974,6 +978,31 @@ try {
       B.vy += Math.sin(a) * s
     }
     U.wake = Math.max(U.wake, 1.4)           // ~1s of physics, then the settle block freezes + saves
+  }
+
+  // SINGLE BUMP (Galen: 'icons are not properly moving towards the center') —
+  // bubbles adopted from a saved layout arrive ANCHORED, and center-gravity
+  // only acts on un-anchored bubbles: a drifted saved arrangement holds its
+  // spread forever. Once per visit, when the full roster is in, un-anchor
+  // every floating icon, drop any stale seat-glide target (or the trickle
+  // would drag it right back to the old spot), and give each one small
+  // deterministic kick. Gravity re-packs the cluster toward the middle; the
+  // settle block re-anchors and SAVES, so the corrected layout is everyone's.
+  if (U.doBump && U.order && U.order.length) {
+    U.doBump = 0
+    for (const n of U.order) {
+      const B = U.bubbles[n]
+      if (!B || B.pinned) continue
+      B.anchored = 0
+      B.seatX = null; B.seatY = null
+      const h = Math.sin(B.x * 12.9898 + B.y * 78.233 + 4.669) * 43758.5453
+      const f = h - Math.floor(h)           // deterministic 0..1 (the file uses no Math.random)
+      const a = f * 6.2831853
+      const s = 9 + f * 6                    // ~9–15 impulse — enough to break static contact
+      B.vx += Math.cos(a) * s
+      B.vy += Math.sin(a) * s
+    }
+    U.wake = Math.max(U.wake, 2)             // packing a spread field takes a beat longer than a nudge
   }
 
   // ── gravity with friction: everyone falls toward the middle, packing
