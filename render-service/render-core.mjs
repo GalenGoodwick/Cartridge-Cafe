@@ -82,7 +82,9 @@ export async function renderProbe(state, opts = {}) {
   // (key_right, key_space, mouse_x/mouse_y/mouse_down — how KINDLE reads the
   // cursor) and the derived wd.input {held,pressed,released,moveX,moveY,action,
   // actionHeld,pointer} that world-sandbox.buildInput() computes. We drive BOTH.
-  const INPUT_START = Math.max(1, Math.floor(NTICKS / 3));   // phase A = baseline, no input
+  // baseline phase (no input) is 1/3 for the input-RESPONSE probe, but a clip
+  // wants the hands moving the whole time — opts.inputStart overrides it.
+  const INPUT_START = opts.inputStart != null ? Math.max(1, parseInt(opts.inputStart)) : Math.max(1, Math.floor(NTICKS / 3));
   function scriptAt(t) {
     // returns { keys: string[], pointer: {x,y,down}|null } for tick t, or null
     if (!opts.input || t < INPUT_START) return null;

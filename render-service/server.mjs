@@ -55,12 +55,17 @@ Deno.serve({ port: PORT }, async (req) => {
   }
 
   if (isClip) {
-    const frames = Math.max(2, Math.min(120, parseInt(body.frames ?? 90)));
+    const frames = Math.max(2, Math.min(240, parseInt(body.frames ?? 150)));
     const fps = Math.max(6, Math.min(60, parseInt(body.fps ?? 30)));
     const size = Math.max(64, Math.min(512, parseInt(body.size ?? 400)));
+    // the HANDS — a showcase clip should show the world being PLAYED, not sitting
+    // still. Default to 'auto' (holds right + sweeps the cursor across the grid)
+    // and drive input from frame 1 (no baseline third). Pass input:null for a
+    // hands-off ambient clip.
+    const input = body.input === null ? null : (body.input ?? "auto");
     try {
       // one tick per frame so motion advances smoothly across the loop
-      const r = await renderProbe(state, { name: body.name, ticks: frames, frames, size });
+      const r = await renderProbe(state, { name: body.name, ticks: frames, frames, size, ...(input ? { input, inputStart: 1 } : {}) });
       if (!r.ok || !Array.isArray(r.frames) || !r.frames.length) {
         return Response.json({ ok: false, error: "no frames rendered", errors: r.errors }, { status: 500 });
       }
