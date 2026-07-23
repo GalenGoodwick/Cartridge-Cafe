@@ -305,9 +305,44 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   const slotRef = useRef(slot)
   slotRef.current = slot
 
+  // WHO — the seat depends on it, so acquiring it must be robust. The old
+  // one-shot fetch raced a fresh sign-in (private tab: session cookie lands a
+  // beat after mount) and required user.name — a signed-in voter could stand
+  // unseated forever, seeing no + boxes and no witness timers. Now: read the
+  // shell's resolved __cafeWho when it's there, retry the session endpoint
+  // with backoff, re-check on tab focus, and fall back to the account id when
+  // the display name is empty.
   useEffect(() => {
-    fetch('/api/auth/session').then(r => r.json())
-      .then(s => setWho(s?.user?.name || null)).catch(() => {})
+    let stop = false
+    let tries = 0
+    const fromShell = (): string | null => {
+      const w = (window as unknown as { __cafeWho?: { id?: string; name?: string } | null }).__cafeWho
+      return w ? (w.name || w.id || null) : null
+    }
+    const grab = async (): Promise<boolean> => {
+      const shellWho = fromShell()
+      if (shellWho) { if (!stop) setWho(shellWho); return true }
+      try {
+        const s = await fetch('/api/auth/session').then(r => r.json())
+        const name = s?.user?.name || s?.user?.id || null
+        if (name) { if (!stop) setWho(String(name)); return true }
+      } catch { /* transient — the retry below keeps trying */ }
+      return false
+    }
+    const tick = async () => {
+      if (stop || await grab()) return
+      tries += 1
+      if (tries < 8) window.setTimeout(tick, tries < 3 ? 1500 : 5000)
+    }
+    void tick()
+    const onFocus = () => { void grab() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      stop = true
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
   }, [])
 
   // world pages find their own contestants: MAIN + each branch, newest version
@@ -469,7 +504,13 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     // deleted): it's ready with no deliberation, so a lone survivor can never
     // stall the tier waiting for votes it will never need.
     const cellReady = (c: Cell) => c.worlds.length <= 1 || new Set(Object.keys(c.votes)).size >= cellQuorum(c)
-    const quorate = d.cells.length > 0 && d.cells.every(cellReady)
+    // …but a tier NEVER resolves on byes alone: completing takes VOTES (Galen).
+    // A degraded roster fetch can prune cells down to ≤1 world — all byes —
+    // and the tier would roll with ZERO voices cast, re-dealing everyone into
+    // fresh cells mid-deliberation. At least one cast voice, tier-wide, is the
+    // floor; a voiceless tier simply waits for one.
+    const anyVoice = d.cells.some(c => Object.keys(c.votes).length > 0)
+    const quorate = d.cells.length > 0 && d.cells.every(cellReady) && anyVoice
     if (quorate) {
       const winners = d.cells.map(c => cellWinner(c, d.round)).filter(Boolean) as string[]
       const next: TDoc = { ...d, reachedAt: { ...(d.reachedAt || {}) } }
@@ -821,13 +862,15 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
         {/* the five candidates — a full-width bar along the bottom, centered in it */}
         <div className={`relative pointer-events-auto bg-[#0d0906]/95 backdrop-blur-sm border-t border-brass/25 px-4 pt-3 pb-4 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : 'translate-y-full'}`}>
           <div className="relative max-w-[1080px] mx-auto">
-          {/* the how-to — a tab at the TOP-RIGHT of the grid itself, clear of the vote tiles */}
+          {/* the how-to — a tab docked fully ABOVE the grid's top-right edge.
+              (-top-3 used to sink it ~16px INTO the 5th tile, covering that
+              tile's + vote box — the tab must never touch the tiles.) */}
           <button onClick={() => setShowInstr(v => !v)} title="how the reckoning works"
-            className={`${pill} absolute -top-3 right-0 z-10 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
+            className={`${pill} absolute bottom-full right-0 z-10 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
             ? INSTRUCTIONS
           </button>
           {showInstr && (
-            <div className={`${pill} absolute bottom-full right-0 mb-2 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl z-20`}>
+            <div className={`${pill} absolute bottom-full right-0 mb-9 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl z-20`}>
               <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
               {branchesOf ? (
                 <>this arena asks one thing: should a <span className="text-amber-300">branch</span> replace{' '}
