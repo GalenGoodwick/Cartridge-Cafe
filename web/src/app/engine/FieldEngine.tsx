@@ -1451,6 +1451,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       setLineageRemixes(Array.isArray(d.remixes) ? d.remixes : [])
     } catch { setLineageTrail([]); setLineageRemixes([]) } finally { setLineageBusy(false) }
   }, [playScene, spaceSlug])
+  /** UNIFIED prompt-open — the CONNECT-AI window MUST be seen by every user, so
+   *  opening it dismisses whatever could cover or compete with it. Root cause of
+   *  "the user didn't see the prompt": the edit coach sits at z-[58], ABOVE the
+   *  old z-50 prompt, and other z-50 chrome (build console, branches, versions)
+   *  shares its layer. This closes those AND the box itself now rides a dedicated
+   *  top-most layer (z-[70]). One path in, always visible. */
+  const openPlug = useCallback(() => {
+    setEditCoach(false)
+    setBuildConsoleOpen(false)
+    setBranchesOpen(false)
+    setVersionsOpen(false)
+    setPlugOpen(true)
+  }, [])
   const createBranch = useCallback(async (labelRaw: string) => {
     if (!me) { window.location.href = '/auth/signin'; return }
     const src = lastSceneRef.current || playScene || spaceSlug || ''
@@ -1464,13 +1477,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (savedAs) {
       lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
       setPlugToken(null)                  // fresh branch → fresh scoped key
-      mintBranchToken(savedAs)            // scope the AI to the branch that actually exists
+      await mintBranchToken(savedAs)      // AWAIT: the scoped key is present the moment the box opens (no tokenless flash)
       setBranchCreateOpen(false)
       showToast(`branch opened: ${savedAs} — the eye is watching`, 'success')
-      setPlugOpen(true)   // step 2 of the method: connect your AI
+      openPlug()   // step 2 of the method: connect your AI — top-most, competitors closed
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken])
+  }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken, openPlug])
   const handleBranch = useCallback(() => {
     if (!me) { window.location.href = '/auth/signin'; return }
     setBranchLabel(''); setBranchBrief('')
@@ -1531,8 +1544,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (r.ok) setPlugToken(d.token)
       } finally { setPlugBusy(false) }
     }
-    setPlugOpen(true)
-  }, [spaceSlug, plugToken])
+    openPlug()   // unified: top-most, competitors (edit coach / console) closed
+  }, [spaceSlug, plugToken, openPlug])
 
   const handleSaveScene = useCallback(async () => {
     const sim = simulationRef.current
@@ -7270,7 +7283,7 @@ ${looking}
 ${plugBrief.trim() ? (alter ? 'ALTER THIS: ' : 'BUILD THIS: ') + plugBrief.trim() : alter ? 'Ask me what to alter, or read the world state and continue it.' : 'Ask me what to build, or read the world state and continue it.'}
 ${scope}`
             return (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
+              <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
                 <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
                     <div className={`text-[16px] tracking-[0.25em] ${alter ? 'text-amber-300/80' : 'text-white/50'}`}>{alter ? '⚡ ALTER THE LIVE WORLD' : '⚡ CONNECT YOUR AI'}</div>
