@@ -89,3 +89,17 @@ Door sentence: **"PLAY A LITTLE WORLD. THEN TELL AN AI TO MAKE YOURS."**
 - Galen summons (direct): FIT_ZOOM 0.93 view fix (chrome no longer overflows the grid, all 3 camera-fit points) + BUILDERBOX shipped: build console renamed + SURFACED (own always-visible button, out of the EDIT dock), world chat MERGED into the panel (tail + input), any entry pings the network (commons POST route added for browsers) + lands in builderbox:queue — invitations, AIs choose; ChatWorld links into the BuilderBox; guide documents the queue for daemons. tsc clean. Awaiting deploy.
 
 - RECONCILIATION (Galen fanned BuilderBox to several sessions): door-Opus + Unity Chant split it in the commons and shipped to main (fb4f7d3 + lib/builderbox.ts frozen contract) while I built a duplicate solo. Resolved: THEIRS canonical — my duplicate rail button + panel chat + bb* state removed; kept my commons POST route (browser ping path, merged clean), ChatWorld→BuilderBox link (completes the circle with their onFullChat), FIT_ZOOM, compositor, transcript tool. tsc 0. Lesson: on a direct Galen summon, check the room BEFORE building — the same directive may already be split-claimed.
+
+## ⚠ LEDGER-DARK GAP CLOSED (Galen caught it: "are you following the persistent-state protocol?")
+Honest: I let the durable ledger lapse ~7 cycles while narrating only to the ephemeral commons. Catch-up (all read back / shipped, per "the record never goes dark"):
+
+- DOCKING protocol built + merged: tools/agent-dock.mjs + DOCKING.md (dock = commons claim + isolated worktree in one move; undock pushes dock/<agent>/<slug>; merge-to-main stays reviewed). Dogfooded every cycle since.
+- PRELUDE fix (dock branch): render-service/prelude.mjs = SHADER_UTILITIES verbatim (75 builtins) + headless stubs, wired into render-core. Probe semantics == browser semantics. THE EYES OPENED: dune-sea composited (caravan/oasis/moons/walker), walker + a new DOG both SEEN, my own superimpose bug self-caught on sight.
+- glasscrystal quarantine (engine ⚠): graph-travel resurrected a pre-lint vnoise-redeclaring shader; gc_-namespaced in dune-sea, handed off to claude-opus for the graph store; they swept it graph-wide.
+- the-crossing ARRIVAL boot-pin: first 8s of a session pin to Prism Hall so a portal arrival never lands on the biome you just left (Dune Sea summons).
+- Self-named: repo-Opus (engine/repo lane) / posts as "The Crossing" via world token per the embodied commons protocol.
+- builderbox-close-on-back-to-main (dock branch): reset buildConsoleOpen on scene→CAFE/SUB-MAIN + render gate on !isHub. It hung open over the hub bubbles.
+- commons snap-to-current ⇣ NOW (dock branch): WANTED (Galen sees it local, not yet merged) — in Unity's unification merge; dedup flagged vs UC's own ChatWorld snap.
+- collab guide: ceded to Unity's unified protocol-in-the-eye (guide served at the door); my /api/engine/collab branches drop if their canon carries the wake+docking spec.
+- LOOP HARDENING: root-caused a 30-min loop drop (ScheduleWakeup is one-shot; a conversation reply consumed it without rescheduling) → rule now: reschedule UNCONDITIONALLY on every turn type. Added cron fallback 27ecb105 (:07/:27/:47). Killed a duplicate watcher (kept single LaunchAgent instance). Protocol PING-TEST verified live (claim<30s → worker → DONE).
+- PERSISTENCE HONESTY: only the OS watcher + committed files survive this session ending; cron, in-session ScheduleWakeup, and the /tmp cursor are session/reboot-fragile. This ledger is the durable state — keeping it current from here, every cycle, not just on ships.
