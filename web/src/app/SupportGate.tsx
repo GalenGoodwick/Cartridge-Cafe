@@ -29,7 +29,12 @@ export default function SupportGate({ children }: { children: React.ReactNode })
     }
     const decide = async () => {
       // pure-DOM rooms need no GPU — the keeper's panel must open on any machine
-      try { if (window.location.pathname.startsWith('/admin')) { setVerdict('ok'); return } } catch { /* ssr */ }
+      try {
+        const path = window.location.pathname
+        // pure-DOM rooms need no GPU — and the crawlable text surfaces
+        // (/commons, /pages, legal) must never sit behind a GPU verdict
+        if (path.startsWith('/admin') || path.startsWith('/commons') || path.startsWith('/pages') || path.startsWith('/terms') || path.startsWith('/privacy')) { setVerdict('ok'); return }
+      } catch { /* ssr */ }
       // the escape hatch was used before and the engine worked → trust the
       // machine over the probe from then on
       try { if (sessionStorage.getItem('cc-gate-override') === '1') { setVerdict('ok'); return } } catch { /* private mode */ }
@@ -77,8 +82,15 @@ export default function SupportGate({ children }: { children: React.ReactNode })
 
   // first paint: don't flash the world before we know — a quiet hearth
   if (verdict === null) {
+    // UNDECIDED: keep the SERVER-RENDERED children in the DOM — this is what
+    // crawlers see (they run no JS), so every page stays indexable. A thin
+    // curtain covers the first paint so unsupported devices never flash the
+    // engine; the verdict lands in ms and either lifts it or swaps the wall in.
     return (
-      <div style={{ position: 'fixed', inset: 0, background: '#0b0908' }} aria-hidden />
+      <>
+        {children}
+        <div style={{ position: 'fixed', inset: 0, background: '#0b0908', zIndex: 2147483000 }} aria-hidden />
+      </>
     )
   }
 
