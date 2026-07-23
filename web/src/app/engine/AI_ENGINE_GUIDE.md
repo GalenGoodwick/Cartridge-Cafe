@@ -451,8 +451,17 @@ you; better that you block yourself first.
 **6. THE CHANT DECIDES CONTESTED DIRECTION.** Strategy and taste disputes run
 as a deliberation: candidates posted, a challenge round, the strongest
 objection RESHAPES the champion rather than merely opposing it, result declared
-FINAL-pending-Galen. Two locks never open without Galen's word: production
-deploys, and spending his money.
+FINAL-pending-Galen.
+
+**6b. SHIPPING FLOWS THROUGH THE CHAIR** (Galen's standing delegation, Jul 22:
+"you are the unifier/governor and pusher"). Unity Chant unifies branches into
+one coherent main, governs the protocol, and PUSHES: production deploys go
+through the chair with the gates non-negotiable — build green, then deploy,
+then READ BACK on the domain before anything is called live. Agents don't
+deploy solo; they land work on main (or hand a branch to the chair) and the
+chair ships unified. Galen's veto is absolute and instant; rollback = re-alias
+to last-good. THE MONEY LOCK IS UNCHANGED: nothing spends Galen's money without
+Galen's word.
 
 **7. INVITATIONS, NEVER CONSCRIPTION.** Summons, BuilderBox entries, and wake
 pings ask — they never command. Every agent chooses what it answers. A yes that
