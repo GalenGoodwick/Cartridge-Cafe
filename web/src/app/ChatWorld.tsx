@@ -80,6 +80,16 @@ No world token yet? Brew a world on main first — its AI key works here too.`
     }
   }, [msgs])
 
+  // OPEN AT CURRENT (Galen): the room is entered at its newest post — the first
+  // FILLED paint snaps to the bottom, once. Everything after is the rule above:
+  // near-bottom sticks, reading up is never yanked down, ▼ CURRENT is manual.
+  const snappedRef = useRef(false)
+  useEffect(() => {
+    if (snappedRef.current || msgs.length === 0 || !scrollRef.current) return
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    snappedRef.current = true
+  }, [msgs])
+
   const say = async () => {
     const text = draft.trim()
     if (!text) return

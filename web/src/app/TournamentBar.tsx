@@ -63,6 +63,24 @@ const cellQuorum = (c: Cell) => Math.min(QUORUM, Math.max(3, c.worlds.length))
 // level flag is the in-memory fallback: once accepted it holds for the session
 // regardless of storage, so the gate never nags twice.
 let gateAcceptedMem = false
+// SPECTATORS VOTE TOO (Galen): no sign-in wall on the voice. An anonymous
+// voter carries a durable local VOICE ID — the same practical strength as
+// IP-keying (both reset trivially: private tab vs VPN hop) without the
+// privacy leak (the vote doc is public), the CGNAT merge (one IP ≠ one
+// person), or a server stamp. Quorum still takes 3–5 DISTINCT voices, so a
+// casual duplicate can never crown anything alone.
+let anonVoiceMem: string | null = null   // storage-denied contexts still hold one voice per session
+const anonVoice = (): string => {
+  if (anonVoiceMem) return anonVoiceMem
+  let v: string | null = null
+  try { v = localStorage.getItem('cc-voice') } catch { /* denied */ }
+  if (!v) {
+    v = 'guest-' + Math.random().toString(36).slice(2, 6)
+    try { localStorage.setItem('cc-voice', v) } catch { /* memory only */ }
+  }
+  anonVoiceMem = v
+  return v
+}
 // (the day-scale decay on a world's pull lives in the CAFE hook, where the constellation is drawn)
 
 const hash = (s: string) => {
@@ -145,6 +163,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     return () => clearInterval(t)
   }, [open])
   const [who, setWho] = useState<string | null>(null)
+  const [anon, setAnon] = useState(false)   // seated as a spectator (IP handle): votes yes, speaks no
   const [draft, setDraft] = useState('')
   // deliberation gate: the worlds you have witnessed this cell. You cannot
   // vote until you've reviewed all five — UC's rule, made spatial.
@@ -310,8 +329,11 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   // beat after mount) and required user.name — a signed-in voter could stand
   // unseated forever, seeing no + boxes and no witness timers. Now: read the
   // shell's resolved __cafeWho when it's there, retry the session endpoint
-  // with backoff, re-check on tab focus, and fall back to the account id when
-  // the display name is empty.
+  // with backoff, re-check on tab focus, fall back to the account id when the
+  // display name is empty — and SPECTATORS VOTE TOO (Galen): a resolved
+  // signed-out visitor is seated under a stable anonymous IP-hash handle
+  // (`v-…`, from /api/voter-id — one IP, one voice). Anon seats vote but
+  // don't speak: the talk still asks for a sign-in.
   useEffect(() => {
     let stop = false
     let tries = 0
@@ -321,11 +343,14 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     }
     const grab = async (): Promise<boolean> => {
       const shellWho = fromShell()
-      if (shellWho) { if (!stop) setWho(shellWho); return true }
+      if (shellWho) { if (!stop) { setWho(shellWho); setAnon(false) } return true }
       try {
         const s = await fetch('/api/auth/session').then(r => r.json())
         const name = s?.user?.name || s?.user?.id || null
-        if (name) { if (!stop) setWho(String(name)); return true }
+        if (name) { if (!stop) { setWho(String(name)); setAnon(false) } return true }
+        // session RESOLVED signed-out → the IP seat
+        const v = await fetch('/api/voter-id').then(r => r.json())
+        if (v?.id) { if (!stop) { setWho(String(v.id)); setAnon(true) } return true }
       } catch { /* transient — the retry below keeps trying */ }
       return false
     }
@@ -579,7 +604,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
   }
 
   const vote = (cellIdx: number, world: string) => {
-    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
+    if (!who) return   // the seat resolves on its own (spectators get an IP handle) — no sign-in wall
     if (!doc) return
     if (cellIdx !== myCellIdx(doc)) return   // not your cell — watching is free
     const cell0 = doc.cells[cellIdx]
@@ -600,7 +625,9 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 
   /** a word spoken about a world — pooled globally, read-modify-write (v0) */
   const postChat = async (w: string, text: string) => {
-    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
+    // the talk stays signed-in: an anon IP seat votes, but a voice in the
+    // record needs a name behind it
+    if (!who || anon) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname)); return }
     const t = text.trim(); if (!t) return
     let cur: Msg[] = []
     try {
@@ -842,7 +869,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
             </div>
             {focus && (
               <div className="p-2.5 border-t border-white/10">
-                {who ? (
+                {who && !anon ? (
                   <div className="flex gap-1.5">
                     <input value={draft} onChange={e => setDraft(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') postChat(focus, draft) }}
@@ -947,7 +974,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           <div className={`${pill} text-center mt-2 ${
             !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
           }`}>
-            {!seated ? 'sign in to take a seat — loading and reading are free'
+            {!seated ? 'taking your seat…'   // everyone seats now (spectators get an IP handle) — this is just the resolve beat
               : myVote ? (() => {
                   const voters = new Set(Object.keys(cell.votes)).size
                   const cq = cellQuorum(cell)
