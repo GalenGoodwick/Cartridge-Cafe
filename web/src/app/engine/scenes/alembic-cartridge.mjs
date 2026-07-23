@@ -628,6 +628,23 @@ try {
     'magma+rain': 'stone',    'glass+wildfire': 'magma',
     'dew+moss': 'moss',       'ash+rain': 'loam',       'ember+rain': 'mist',
     'magma+mist': 'stone',
+    // ── the book grows (Galen: all combos should make something) ──
+    // weather writes on the land
+    'gale+rain': 'storm',     'loam+rain': 'moss',      'loam+mist': 'moss',
+    'rain+stone': 'loam',     'gale+stone': 'ash',      'dew+stone': 'moss',
+    'mist+rain': 'rain',      'dew+mist': 'rain',       'moss+rain': 'moss',
+    // fire meets water, water wins slowly
+    'dew+wildfire': 'mist',   'rain+wildfire': 'mist',  'mist+wildfire': 'gale',
+    'ember+mist': 'gale',     'gale+magma': 'wildfire',     // the burnt world
+    'ash+ember': 'char',      'ash+wildfire': 'char',   'loam+wildfire': 'char',
+    'magma+moss': 'ash',      'ash+moss': 'loam',       'char+rain': 'loam',
+    'char+stone': 'stone',    'ash+glass': 'stone',     'moss+stone': 'loam',
+    // glass sweats, magma breathes
+    'glass+mist': 'dew',      'ember+glass': 'magma',
+    // the star ascends what it touches (light is generous, not final after all)
+    'ember+star': 'wildfire', 'dew+star': 'mist',       'gale+star': 'storm',
+    'loam+star': 'glass',     'star+stone': 'magma',    'mist+star': 'rain',
+    'moss+star': 'loam',      'star+wildfire': 'star',
   }
   const NAMES = { mist:'MIST', rain:'RAIN', magma:'MAGMA', moss:'MOSS', wildfire:'WILDFIRE',
                   storm:'STORM', ash:'ASH', glass:'GLASS', stone:'STONE', star:'STAR',
@@ -781,10 +798,28 @@ try {
         if (rvx * rvx + rvy * rvy < 90 * 90) child = null
       }
       if (!child) {
-        // no reaction — matter politely refuses (gentle mutual repulsion)
+        // no reaction — but NOTHING is mute (Galen: all combos make something).
+        // Matter that refuses still ANSWERS: on a real bump (not a graze) it
+        // throws a brief spark, sounds the two tones together, and kicks apart.
         const d = Math.max(6, Math.hypot(dx, dy)), push = 60 * dtc
         a.vx -= dx / d * push; a.vy -= dy / d * push
         b.vx += dx / d * push; b.vy += dy / d * push
+        const rvx2 = a.vx - b.vx, rvy2 = a.vy - b.vy
+        A.fzT = Math.max(0, (A.fzT || 0) - dtc)
+        if (A.fzT <= 0 && rvx2 * rvx2 + rvy2 * rvy2 > 55 * 55) {
+          A.fzT = 0.25
+          const fid2 = slots.find(k => A.s[k].sp === 'flare' && !A.s[k].on)
+          if (fid2) {
+            const fs2 = A.s[fid2]
+            fs2.on = 1; fs2.x = (a.x + b.x) / 2; fs2.y = (a.y + b.y) / 2
+            fs2.age = 0; fs2.style = 2; fs2.tint = [1.0, 0.88, 0.55]; fs2.pa = 0; fs2.pb = 0
+          }
+          tone(SP[a.sp].tone, 0.05, 0.12)
+          tone(SP[b.sp].tone * 1.06, 0.05, 0.12)   // a near-miss interval — the sound of refusal
+          const kick = 40
+          a.vx -= dx / d * kick * 0.5; a.vy -= dy / d * kick * 0.5
+          b.vx += dx / d * kick * 0.5; b.vy += dy / d * kick * 0.5
+        }
         continue
       }
       const cxp = (a.x + b.x) / 2, cyp = (a.y + b.y) / 2
