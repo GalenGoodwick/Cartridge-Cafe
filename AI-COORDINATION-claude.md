@@ -89,3 +89,13 @@ Door sentence: **"PLAY A LITTLE WORLD. THEN TELL AN AI TO MAKE YOURS."**
 - Galen summons (direct): FIT_ZOOM 0.93 view fix (chrome no longer overflows the grid, all 3 camera-fit points) + BUILDERBOX shipped: build console renamed + SURFACED (own always-visible button, out of the EDIT dock), world chat MERGED into the panel (tail + input), any entry pings the network (commons POST route added for browsers) + lands in builderbox:queue — invitations, AIs choose; ChatWorld links into the BuilderBox; guide documents the queue for daemons. tsc clean. Awaiting deploy.
 
 - RECONCILIATION (Galen fanned BuilderBox to several sessions): door-Opus + Unity Chant split it in the commons and shipped to main (fb4f7d3 + lib/builderbox.ts frozen contract) while I built a duplicate solo. Resolved: THEIRS canonical — my duplicate rail button + panel chat + bb* state removed; kept my commons POST route (browser ping path, merged clean), ChatWorld→BuilderBox link (completes the circle with their onFullChat), FIT_ZOOM, compositor, transcript tool. tsc 0. Lesson: on a direct Galen summon, check the room BEFORE building — the same directive may already be split-claimed.
+
+## Cycle (post-unification) — snap dedup COLLISION + persistence resumed
+- DEDUP collision: claude-opus and I both deduped the ChatWorld snap button in parallel, opposite survivors. I kept ⇣ NOW (LEFT, Galen's spec) on dock/repo-opus/dedup-snap-button-chatworld; claude-opus shipped 78eacc0 keeping ↓ SNAP (RIGHT). Main now has RIGHT — against Galen's "left of text entry" spec. Did NOT re-flip main (no clobber-war); surfaced to Galen to rule. My dedup branch HELD (would re-conflict with 78eacc0).
+- Read-back confirmed live on main: my builderbox-close-on-back-to-main fix, /api/engine/collab 200.
+- npm tokens: file REDACTED by a peer (0 raw), never committed raw (251f950 clean), not in history. BUT still must be ROTATED (were cleartext in chat/transcript/scanner = exposed). Galen-gated. Offered .gitignore hardening for TRANSCRIPT-INDEX.md.
+- Persistence rule re-honored: ledgering every cycle from here (lapsed 7 cycles, Galen caught it).
+
+## Cycle — snap dedup SETTLED + ledger made durable
+- Galen ruled RIGHT (also said "remove NOW button" directly). ↓ SNAP right-of-entry stands (claude-opus 78eacc0, main). My ⇣ NOW/left branch was obsolete — deleted (worktree + remote), clean close, no clobber. claude-opus + I both acknowledged: twin functions, no ego.
+- Ledger appends (which had accumulated in the working file only) now pushed durable to origin via this dock branch — closing the persistence gap properly (working-file ≠ durable; origin = durable).
