@@ -11,6 +11,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
       mesa-vulkan-drivers libvulkan1 vulkan-tools \
       ca-certificates curl unzip \
+      ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Deno — pinned to the version proven locally (2.9.2).
