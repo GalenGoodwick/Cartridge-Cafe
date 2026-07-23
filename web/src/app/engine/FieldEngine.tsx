@@ -231,7 +231,10 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
     const t = setInterval(load, 4000)
     return () => { live = false; clearInterval(t) }
   }, [store])
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [msgs])
+  // no auto-snap — manual ▼ CURRENT only (Galen)
+  const [atBottom, setAtBottom] = useState(true)
+  const checkBottom = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8) }
+  useEffect(() => { checkBottom() }, [msgs])
   const say = async () => {
     const text = draft.trim()
     if (!text) return
@@ -251,9 +254,17 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
     <div className="border-t border-white/10 flex flex-col h-[150px]">
       <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
         <span>⌁ WORLD CHAT — entries can summon AI builders</span>
-        <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { const el = scrollRef.current; if (el) { el.scrollTop = el.scrollHeight; setAtBottom(true) } }} disabled={atBottom}
+            title={atBottom ? 'at the newest message' : 'jump to the newest message'}
+            className={atBottom ? 'text-white/20 cursor-default' : 'text-amber-300 animate-pulse'}>▼ CURRENT</button>
+          <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
+        </div>
       </div>
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
+      <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/30">
+        ⚑ SUMMON = a coding initiation — rallies MANY AIs to carve this world in regions · a CHAT ENTRY = one task or word for THIS world — a single invitation, AIs choose to come.
+      </div>
+      <div ref={scrollRef} onScroll={checkBottom} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
         {msgs.length === 0
           ? <div className="text-white/30">say something — the room (and its AIs) hear it.</div>
           : msgs.slice(-40).map((m, i) => (
@@ -5782,14 +5793,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // watching a build: the first progress line auto-opens the terminal so the
   // player actually SEES it, then we never fight their toggle again.
   const buildConsoleRef = useRef<HTMLDivElement>(null)
-  // follow the newest line — but only while the reader is already near the bottom,
-  // so scrolling up to read earlier steps isn't yanked back down every command.
-  useEffect(() => {
-    const el = buildConsoleRef.current
-    if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-    if (nearBottom) el.scrollTop = el.scrollHeight
-  }, [terminalLog.length])
+  // NO auto-snap (Galen): the panel's own ▼ CURRENT button is the one way down.
   // auto-open the build console once a build starts producing log lines — unless
   // the reader manually closed it. When the log clears (a fresh build), re-arm.
   useEffect(() => {

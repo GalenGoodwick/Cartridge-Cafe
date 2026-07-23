@@ -37,6 +37,54 @@ const ADS_ENABLED = false
 // two hubs read as the same layer (surface:'hub'), not two different UIs.
 const hubBtn = 'rounded-lg border border-brass/40 hover:border-flame/60 px-3 py-1.5 font-mono text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-all'
 
+
+/** SEARCH-DOCK (Galen): find any world from the top of main. Picking one glides
+ *  the grid camera to its bubble and DOCKS you there (⚓ ring). A world living on
+ *  another shelf stores a pending goto (cc-goto) the destination shelf resolves. */
+function HubSearch() {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [spaces, setSpaces] = useState<Array<{ slug: string; name: string }>>([])
+  useEffect(() => {
+    if (!open || spaces.length) return
+    fetch('/api/spaces/browse').then(r => r.json()).then(j => {
+      if (Array.isArray(j?.spaces)) setSpaces(j.spaces.map((sp: { slug: string; name?: string }) => ({ slug: sp.slug, name: (sp.name || sp.slug).toUpperCase() })))
+    }).catch(() => {})
+  }, [open, spaces.length])
+  const grid: Array<{ name: string; launch?: string }> = ((window as unknown as { __cafeBubbles?: Array<{ name: string; launch?: string }> }).__cafeBubbles) || []
+  const qq = q.trim().toUpperCase()
+  const here = qq ? grid.filter(b => b.name.toUpperCase().includes(qq)).slice(0, 6) : []
+  const hereNames = new Set(here.map(h => h.name.toUpperCase()))
+  const elsewhere = qq ? spaces.filter(sp => sp.name.includes(qq) && !hereNames.has(sp.name)).slice(0, 4) : []
+  const go = (name: string, launch?: string) => {
+    ;(window as unknown as { __cafeGoto?: unknown }).__cafeGoto = { name, launch, at: Date.now() }
+    if (launch && !hereNames.has(name.toUpperCase())) {
+      try { sessionStorage.setItem('cc-goto', JSON.stringify({ name, launch, at: Date.now() })) } catch { /* fine */ }
+    }
+    setQ(''); setOpen(false)
+  }
+  return (
+    <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[300px]">
+      <input value={q} onChange={e => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        placeholder="⌕ find a world…"
+        className="w-full px-3 py-1.5 rounded-lg font-mono text-[14px] tracking-[0.08em] bg-black/60 backdrop-blur border border-white/10 text-white/85 placeholder:text-white/30 outline-none focus:border-flame/50" />
+      {open && qq && (here.length > 0 || elsewhere.length > 0) && (
+        <div className="mt-1 rounded-lg bg-black/85 backdrop-blur border border-white/10 overflow-hidden font-mono text-[13px]">
+          {here.map(b => (
+            <button key={b.name} onMouseDown={() => go(b.name, b.launch)}
+              className="block w-full text-left px-3 py-1.5 text-white/80 hover:bg-white/10">⚓ {b.name}</button>
+          ))}
+          {elsewhere.map(sp => (
+            <button key={sp.slug} onMouseDown={() => go(sp.name, 'space:' + sp.slug)}
+              className="block w-full text-left px-3 py-1.5 text-emerald-300/70 hover:bg-white/10">↗ {sp.name} <span className="text-white/30">· player worlds</span></button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CafeShell({ initialScene = 'CAFE', initialMine = false, initialMineHandle }: { initialScene?: string; initialMine?: boolean; initialMineHandle?: string }) {
   const [scene, setScene] = useState(initialScene)
 
@@ -1751,6 +1799,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               </div>
             )
           })()}
+          {scene === 'CAFE' && !voting && brewStep === 0 && <HubSearch />}
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
             {/* signed-out gets the door said out loud — every AI prompt box

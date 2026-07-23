@@ -183,7 +183,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let ab = stRaw % 400;
     let st = ab % 200;
     let hue = fract(sv);
-    let rawHead0 = uni(9 + i * 4);
+    let rawHead00 = uni(9 + i * 4);
+    let isDocked = rawHead00 > 7999.5;               // +8000 flags THE DOCK — where the player is moored
+    let rawHead0 = select(rawHead00, rawHead00 - 8000.0, isDocked);
     let isPlayerWorld = rawHead0 > 3999.5;           // +4000 flags a PLAYER WORLD (a space) → green rim
     let r1 = select(rawHead0, rawHead0 - 4000.0, isPlayerWorld);
     let isBranch = r1 > 1999.5;                       // +2000 flags a BRANCH → blue rim
@@ -358,6 +360,12 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       if (isBranch) { rim = vec3f(0.30, 0.62, 1.75); rimBase = 0.6; }        // BRANCH — a blue outline on the round bubble
       if (isPlayerWorld) { rim = vec3f(0.40, 1.45, 0.65); rimBase = 0.5; }   // PLAYER WORLD — a green rim (matches the PLAYER WORLDS door)
       col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
+      // THE DOCK ⚓ — a slow-breathing double ring outside the rim: you are moored here
+      if (isDocked) {
+        let breathe = 0.6 + 0.4 * sin(t * 1.6);
+        col += vec3f(0.55, 0.95, 1.05) * exp(-pow((length(q) - 1.12) * 24.0, 2.0)) * breathe * 0.9;
+        col += vec3f(0.35, 0.80, 0.95) * exp(-pow((length(q) - 1.24) * 30.0, 2.0)) * breathe * 0.5;
+      }
     } else {
       // halo when hovered
       col += vec3f(1.0, 0.7, 0.3) * exp(-pow((d - rr) * 22.0, 2.0)) * hov * 0.8;
@@ -1082,6 +1090,44 @@ try {
   const mgx = wd.mouse_x ?? 256, mgy = wd.mouse_y ?? 256
   const down = !!wd.mouse_down
   // cursor in universe coords
+  // SEARCH-DOCK (Galen): the shell's search bar sets window.__cafeGoto; the hook
+  // glides the camera to that bubble and DOCKS the player there (⚓ ring, packed
+  // +8000). Dock survives reloads via sessionStorage; cross-shelf goto is picked
+  // up on the destination shelf's next boot (cc-goto).
+  if (typeof window !== 'undefined') {
+    const goto2 = window.__cafeGoto
+    if (goto2 && goto2.at !== U.gotoAt) {
+      U.gotoAt = goto2.at
+      const found = U.order.find(n => n === goto2.name || (U.bubbles[n] && U.bubbles[n].launch === goto2.launch))
+      if (found) {
+        U.gotoName = found; U.dockName = found
+        try { sessionStorage.setItem('cc-dock', found) } catch { /* private mode */ }
+      } else if (goto2.launch) {
+        try { sessionStorage.setItem('cc-goto', JSON.stringify(goto2)) } catch { /* fine */ }
+      }
+    }
+    if (!U.dockBooted) {
+      U.dockBooted = 1
+      try {
+        const pend = JSON.parse(sessionStorage.getItem('cc-goto') || 'null')
+        if (pend) {
+          const found = U.order.find(n => n === pend.name || (U.bubbles[n] && U.bubbles[n].launch === pend.launch))
+          if (found) { U.gotoName = found; U.dockName = found; sessionStorage.removeItem('cc-goto'); sessionStorage.setItem('cc-dock', found) }
+        }
+        if (!U.dockName) { const d = sessionStorage.getItem('cc-dock'); if (d && U.bubbles[d]) U.dockName = d }
+      } catch { /* fine */ }
+    }
+  }
+  // glide toward the searched bubble, zooming in as we arrive
+  if (U.gotoName) {
+    const GB = U.bubbles[U.gotoName]
+    if (GB) {
+      U.cam.x += (GB.x - U.cam.x) * Math.min(1, dt * 4)
+      U.cam.y += (GB.y - U.cam.y) * Math.min(1, dt * 4)
+      U.cam.z += (1.7 - U.cam.z) * Math.min(1, dt * 3)
+      if (Math.hypot(GB.x - U.cam.x, GB.y - U.cam.y) < 2 && Math.abs(U.cam.z - 1.7) < 0.06) U.gotoName = null
+    } else U.gotoName = null
+  }
   const cux = U.cam.x + (mgx - 256) / U.cam.z
   const cuy = U.cam.y + (mgy - 256) / U.cam.z
   // NEAREST door within reach wins. The old test ("< 30" with a self-cancelling
@@ -1237,7 +1283,7 @@ try {
     // THIS level. NEST off → legacy (main only, keyed by bubble name).
     const nestOff = typeof window !== 'undefined' && window.__ccNestOff
     const showHeads = nestOff ? ((!MF && !SUB && !PL) ? (heads[n] || 0) : 0) : rollup(childPathOf(lz))
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0))
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0) + (n === U.dockName ? 8000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride

@@ -74,7 +74,10 @@ No world token yet? Brew a world on main first — its AI key works here too.`
   }, [load])
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    // no auto-snap (Galen): reading up must never be yanked down; ▼ CURRENT is manual
+    if (scrollRef.current && scrollRef.current.scrollHeight - scrollRef.current.scrollTop - scrollRef.current.clientHeight < 8) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
   }, [msgs])
 
   const say = async () => {

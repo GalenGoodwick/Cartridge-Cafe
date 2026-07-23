@@ -56,18 +56,24 @@ function TerminalLine({ entry }: { entry: TerminalEntry }) {
 
 export default function AgentTerminalPanel({ entries, header = true }: { entries: TerminalEntry[]; header?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  // follow the newest line — but only while the reader is already near the
-  // bottom, so scrolling up to read history isn't yanked back every command
-  useEffect(() => {
+  // NO auto-snapping (Galen: scrolling up to read must never be yanked back).
+  // The reader scrolls freely; the CURRENT button (grey when already snapped)
+  // is the ONE manual way to jump to the newest line.
+  const [atBottom, setAtBottom] = useState(true)
+  const checkBottom = () => {
     const el = scrollRef.current
-    if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
-    if (nearBottom) el.scrollTop = el.scrollHeight
-  }, [entries.length])
+    if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8)
+  }
+  useEffect(() => { checkBottom() }, [entries.length])
+  const toCurrent = () => { const el = scrollRef.current; if (el) { el.scrollTop = el.scrollHeight; setAtBottom(true) } }
 
   return (
-    <div className="flex flex-col min-h-0 flex-1">
+    <div className="relative flex flex-col min-h-0 flex-1">
+      <button onClick={toCurrent} disabled={atBottom}
+        title={atBottom ? 'at the newest line' : 'jump to the newest line'}
+        className={`absolute bottom-2 right-3 z-10 px-2 py-0.5 rounded font-mono text-[12px] tracking-[0.18em] border transition-colors ${atBottom ? 'border-white/10 text-white/25 bg-black/40 cursor-default' : 'border-amber-400/50 text-amber-300 bg-black/70 hover:bg-black/90 animate-pulse'}`}>
+        ▼ CURRENT
+      </button>
       {header && (
         <div className="px-3 py-2 text-[14px] font-mono text-muted border-b border-border flex-shrink-0">
           Terminal <span className="text-accent">{entries.length}</span>
@@ -75,6 +81,7 @@ export default function AgentTerminalPanel({ entries, header = true }: { entries
       )}
       <div
         ref={scrollRef}
+        onScroll={checkBottom}
         className="flex-1 overflow-y-scroll p-2 space-y-1 min-h-0 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.35)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/30 [&::-webkit-scrollbar-track]:bg-transparent"
       >
         {entries.length === 0 && (
