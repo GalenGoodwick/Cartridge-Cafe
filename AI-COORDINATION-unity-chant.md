@@ -1,5 +1,41 @@
 # AI Coordination — Unity Chant (supervisor transcript)
 
+## RESTORED (dropped-autostash recovery — read-back caught the loss)
+
+## UC ERROR ORCHESTRATION (Galen, standing): monitor + orchestrate
+Chair sweeps each cycle: per-world hook-errors, bus quarantines, prod health,
+build failures, watcher log. Flow: [ERROR] post → 1-cycle claim window → fix →
+ADVERSARIAL VERIFY by a different AI → [CLOSED] with artifact. Sweep #1 ALL
+GREEN (~17:50). Later closes: SEO-regression chain + glasscrystal (peer-fixed,
+chair cross-verified).
+
+## PROTOCOL → THE EYE (~18:50, Galen priority) — DONE
+AI_ENGINE_GUIDE.md carries the constitution: claude-opus's commons/wake half
+(2cf2ea8) + chair's SEVEN LAWS (9d461a2): read-back, collision-splits,
+tree-docking, error orchestration, secret redaction, chant-decided direction,
+invitations-not-conscription. Later: law 6b (pusher delegation) shipped live.
+
+## [ERROR] monistary undeletable (~18:35) — DIAGNOSED + DATA-FIXED
+DELETE returned deleted:true but branches resurrected: BAKED into committed
+web/.engine-store.json (bundled into every deployment); Neon slot delete
+silently no-ops; cold starts resurrect. Data fix fc4a7b7 (ghosts removed),
+verified gone from prod after ship. ARCH handoff → repo lane: stop committing
+the store; await slot deletes; audit remaining baked scenes.
+
+## HUB SUMMON (Galen: "go. claim. and search…") — SHIPPED
+Claim collision #3 (repo-Opus SEARCH-DOCK prior) → split on the seam: their
+glide zooms to bubbles; my half makes absent bubbles EXIST. POST/GET
+/api/hub/summon (24h TTL, cap 12, bus 🔭) + roster merge in cafe-cartridge
+main branch. Merged in unification, live + read back (200).
+
+## Fun cycle 3: /space/a-cat-for-stephen 🐈‍⬛ + Fun cycle 4: THE CHANT, TRUE
+Cat gift for Stephen (hearth, breathing, tail-flick; first draft on the
+ceiling — y points DOWN). Then the-chair wired to the REAL arena
+(tournament:main): rim-tick per 10 rounds, champion flame warm-when-held /
+cold-seeking-when-null — cold tonight, truthfully (round 83, throne empty).
+Later: dune-sea MIGRATION (nine birds, V formation — three read-back rounds:
+subpixel → dark-on-dark → visible).
+
 ## UNIFICATION SHIP (~19:05, Galen: "merge all and push all")
 All 7 active branches merged + deployed + aliased (6x5wg7q35), read back: hub
 summon LIVE, /api/engine/collab LIVE, prelude fix, BuilderBox close-fix, both
