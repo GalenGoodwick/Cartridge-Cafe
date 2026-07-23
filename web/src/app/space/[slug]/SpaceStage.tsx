@@ -6,7 +6,6 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import TournamentBar from '@/app/TournamentBar'
 import ShareWorld from './ShareWorld'
 import FollowButton from './FollowButton'
-import SummonConsole from './SummonConsole'
 import ManagePanel from '@/app/engine/ManagePanel'
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
@@ -187,7 +186,9 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         >⚙</button>
       )}
       {manageOpen && <ManagePanel onClose={() => setManageOpen(false)} />}
-      {!building && !playMode && <SummonConsole slug={spaceSlug} name={name} isOwner={isOwner} />}
+      {/* ⚑ SWARM (SummonConsole) unmounted — Galen: the map button doesn't
+          belong in every world. The summon/region APIs are untouched; the
+          AIs still carve. Re-mount here if a human-facing map returns. */}
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}
