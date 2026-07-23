@@ -1817,6 +1817,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // haven't loaded a snapshot yet — wait for the mount load to seed it.
     const iv = setInterval(async () => {
       if (document.hidden) return
+      if (visitingRef.current) return              // visiting a hubworld member — hold home's adopts
       if (spaceVer !== undefined) return           // pinned to a save point — stay put
       if (renderedRevRef.current < 0) return       // not loaded yet — nothing rendered to compare against
       try {
@@ -2334,6 +2335,63 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
+  // ── HUBWORLD (Galen, Jul 22): a hub's portals form a WORLD GRAPH; travel
+  // inside it is IN-PLACE — like chapters, but across worlds. portalType:'swap'
+  // swaps the running engine's CONTENT to the target world's snapshot while the
+  // page, URL identity and presence stay on the hub ("not front facing").
+  // visitingRef holds the member slug while away from home; every owner-write
+  // loop (state sync, rev poll) is gated on it so a visit can NEVER write
+  // member content over the hub's snapshot (the one catastrophic failure mode).
+  const visitingRef = useRef<string | null>(null)
+  const hotSwapSpace = useCallback(async (targetSlug: string) => {
+    const sim = simulationRef.current
+    const renderer = rendererRef.current
+    if (!sim || !renderer || !targetSlug) return
+    try {
+      const resp = await fetch(`/api/spaces/${encodeURIComponent(targetSlug)}/snapshot`, { cache: 'no-store' })
+      if (!resp.ok) return
+      const { snapshot } = await resp.json()
+      if (!snapshot) return
+      // a member world boots CLEAN — chapter semantics, no hub-state bleed
+      for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
+      if (snapshot.visualTypes) for (const vt of snapshot.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
+      if (snapshot.modules) for (const m of snapshot.modules) renderer.registerModule(m.name, m.wgsl)
+      sim.restoreFromSnapshots(snapshot.fields || [])
+      for (const field of sim.fields.values()) {
+        if (field.visualTypeName) {
+          const runtimeId = renderer.resolveVisualType(field.visualTypeName)
+          if (runtimeId !== undefined) field.visualType = runtimeId
+        }
+      }
+      if (snapshot.worldParams) sim.setWorldParams(snapshot.worldParams)
+      if (snapshot.worldData) Object.assign(sim.worldData, snapshot.worldData)
+      for (const k of Object.keys(sim.worldData)) {
+        if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
+      }
+      if (snapshot.interactionRules) sim.interactionRules = snapshot.interactionRules
+      if (snapshot.interactionEffects) for (const ie of snapshot.interactionEffects) sim.addInteractionEffect(ie)
+      installHooks(sim, snapshot.stepHooks, snapshot.worldData as Record<string, unknown> | undefined)
+      {
+        const hasContent = (snapshot.stepHooks?.length ?? 0) > 0 || (snapshot.fields || []).some((f: { visualTypeName?: string }) => f.visualTypeName)
+        if (hasContent && !sim.running) sim.running = true
+      }
+      for (const field of sim.fields.values()) {
+        for (const effect of field.effects) {
+          await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
+        }
+      }
+      visitingRef.current = targetSlug === spaceSlug ? null : targetSlug
+      // deep-linkable but never a page nav: ?at=<member> rides the hub URL
+      try {
+        const u = new URL(window.location.href)
+        if (visitingRef.current) u.searchParams.set('at', targetSlug); else u.searchParams.delete('at')
+        history.replaceState(null, '', u.toString())
+      } catch { /* URL cosmetics only */ }
+    } catch { /* offline / missing member — stay where we are */ }
+  }, [spaceSlug, installHooks, getModCode])
+  const hotSwapSpaceRef = useRef(hotSwapSpace)
+  hotSwapSpaceRef.current = hotSwapSpace
+
   // Load space snapshot on mount (for space mode)
   const spaceLoadedRef = useRef(false)
   useEffect(() => {
@@ -2760,7 +2818,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const fPP = simPP?.fields.get(pp.fieldId)
           const targetPP = fPP?.properties.get('portalTarget') as string | undefined
           const typePP = fPP?.properties.get('portalType') as string | undefined
-          if (targetPP && (typePP === 'space' || typePP === 'swap')) {
+          if (targetPP && typePP === 'swap') {
+            void hotSwapSpaceRef.current?.(targetPP)   // HUBWORLD: in-place travel
+            return
+          }
+          if (targetPP && typePP === 'space') {
             window.location.href = `/space/${targetPP}`
             return
           }
@@ -5567,6 +5629,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // held-down key becomes a stuck ghost key in every restored session.
         // gpuPopulation is per-frame render output (up to 16K floats) — the hook
         // rebuilds it every frame, so persisting it only bloats the snapshot.
+        // HUBWORLD visit: NEVER sync member content over the hub's snapshot
+        if (visitingRef.current) return
         const syncWorldData = Object.fromEntries(
           Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation')
         )
