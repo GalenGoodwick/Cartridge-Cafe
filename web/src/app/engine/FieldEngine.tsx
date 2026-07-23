@@ -850,9 +850,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   // Designer sidebar state
   const [terminalOpen, setTerminalOpen] = useState(false)
-  // the floating BUILD CONSOLE — opened from the EDIT menu or auto during a build,
-  // closed with its ✕. buildConsoleClosedRef remembers a manual close so the
-  // auto-open doesn't fight it (the old auto-open-once latch was the buggy part).
+  // the floating BUILDERBOX (né build console) — surfaced on every world, auto-
+  // opens during a live build, closed with its ✕. buildConsoleClosedRef remembers
+  // a manual close so the auto-open doesn't fight it. The box merges the AI build
+  // log with the world's chat: ANY entry posted here also lands on the network
+  // (commons ping + builderbox:queue) as an INVITATION — watching AIs choose.
   const [buildConsoleOpen, setBuildConsoleOpen] = useState(false)
   const buildConsoleClosedRef = useRef(false)
   // WebGPU unavailable or lost — show a human answer, not a black void
@@ -2038,12 +2040,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // resolution-independent — contain is zoom = 1 on every screen; the old
   // Math.min(w,h)/gridSize treated zoom as pixels-per-cell and cropped ~40%
   // on any viewport taller than the grid.
+  // FIT_ZOOM backs the view out a touch from exact-contain so the chrome
+  // (top bars, tool rail, VOTE, instructions) breathes AROUND the grid
+  // instead of overflowing onto in-world content at the edges.
+  const FIT_ZOOM = 0.93
   useEffect(() => {
     if (!playScene && !spaceId) return
     const fit = () => {
       cameraRef.current.x = gridSize / 2
       cameraRef.current.y = gridSize / 2
-      cameraRef.current.zoom = 1
+      cameraRef.current.zoom = FIT_ZOOM
     }
     fit()
     const t = setTimeout(fit, 300)   // after the canvas settles
@@ -2125,7 +2131,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // scene must not follow the player through the door. CONTAIN, not cover:
         // the whole world at max size in the viewport; letterbox is honest,
         // cropping is not (a wide monitor was losing 40% of every scene).
-        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
+        // (Backed out a touch — FIT_ZOOM — so the chrome doesn't overflow the grid.)
+        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: FIT_ZOOM }
 
         // three sources, in order of specificity:
         //  · a 'space:slug' descriptor → a DB-backed player space's live
@@ -5058,9 +5065,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 cachedOverlapMasksRef.current = new Map()
 
                 // a loaded scene starts framed whole, not wherever the camera
-                // was. CONTAIN, not cover: zoom = 1 shows the full grid on the
-                // short axis at any resolution (see the fit effect above).
-                cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: 1 }
+                // was. CONTAIN, not cover — backed out a touch (FIT_ZOOM) so
+                // the chrome doesn't overflow the grid (see the fit effect above).
+                cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: FIT_ZOOM }
 
                 // Restore modules FIRST, visuals second (a visual compiled
                 // before its modules land gets falsely quarantined)
@@ -6419,6 +6426,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 ★ ORIGINAL
               </button>
             )}
+            {/* (duplicate rail button removed — door-Opus's bottom-left ⌁ pill
+                is the ONE BuilderBox surface, per the negotiated split) */}
             {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
             {/* WORLD TOOLS — folded into the EDIT dropdown so it's not a stray
                 corner button. Opens the same panel (name/visibility/keys/mgmt). */}
@@ -6779,8 +6788,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </div>
             )
           })()}
-          {/* BUILD CONSOLE — standalone + closable. Auto-opens while a build runs
-              (see the terminalLog effect) and reopens anytime from ✎ EDIT. */}
+          {/* ⌁ BUILDERBOX — the merged panel: AI build log + this world's chat.
+              Auto-opens while a build runs (see the terminalLog effect). ANY chat
+              entry here also pings the network (commons + builderbox:queue) as an
+              invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && (
             <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[400px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
@@ -6795,7 +6806,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </div>
               <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                 {terminalLog.length === 0
-                  ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">waiting for the first command from your AI…<br/>each shader, field, and rule it writes lands here, live.</div>
+                  ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
                   : <AgentTerminalPanel entries={terminalLog} header={false} />}
               </div>
               {/* the MERGED WORLD CHAT — one surface (Galen). Entries invite AIs. */}
@@ -6823,7 +6834,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <div className="text-[15px] tracking-[0.2em] text-white/50 mb-3">THE EDIT MENU</div>
                 <div className="text-[14px] leading-relaxed text-white/70 space-y-1.5">
                   <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
-                  <div><span className="text-white/90">⌁ BUILD CONSOLE</span> — watch your AI build, live.</div>
+                  <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
                   <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
                   <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI to build or alter it.</div>
@@ -7349,7 +7360,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
             // vantage: where this speaker stands — riding a branch, or main
             const bi = cur.indexOf(' ⑂ ')
             const vantage = bi < 0 ? 'main' : '⑂ ' + (cur.slice(bi + 3).split(' · ')[0] || 'branch')
-            return <ChatWorld channel={channel} slot={key ? 'world-chat:' + key : undefined} vantage={vantage} title={title} subtitle="the world's commons — players, makers, and their AIs" onExit={() => setWorldChatOpen(false)} />
+            return <ChatWorld channel={channel} slot={key ? 'world-chat:' + key : undefined} vantage={vantage} title={title} subtitle="the world's commons — players, makers, and their AIs" onExit={() => setWorldChatOpen(false)} onBuilderBox={() => { setWorldChatOpen(false); setBuildConsoleOpen(true); buildConsoleClosedRef.current = false }} />
           })()}
           {/* Info overlay */}
           {chromeVisible && !spaceId && !playScene && (

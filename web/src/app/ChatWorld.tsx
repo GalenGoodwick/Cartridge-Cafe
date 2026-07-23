@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Msg = { who: string; text: string; at: number; ai?: boolean; slug?: string; from?: string }
 
-export default function ChatWorld({ channel, title, subtitle, onExit, slot, vantage }: {
+export default function ChatWorld({ channel, title, subtitle, onExit, slot, vantage, onBuilderBox }: {
   channel: string
   title: string
   subtitle?: string
@@ -22,6 +22,8 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
   slot?: string
   /** stamped on each message — where the speaker stood (main / ⑂ branch) */
   vantage?: string
+  /** the chat links INTO the BuilderBox (merged build-log + chat) when provided */
+  onBuilderBox?: () => void
 }) {
   const store = slot || channel
   const [msgs, setMsgs] = useState<Msg[]>([])
@@ -116,6 +118,11 @@ No world token yet? Brew a world on main first — its AI key works here too.`
           <div className={`${pill} text-white/35 mt-1`}>{subtitle || 'a place to check in on the posts'} · {aiLive ? <span className="text-amber-300">{aiLive} AI live</span> : 'quiet'}</div>
         </div>
         <div className="flex items-center gap-2">
+          {onBuilderBox && (
+            <button onClick={onBuilderBox}
+              className={`${pill} px-2.5 py-1.5 rounded border border-brass/40 text-glow/70 hover:text-glow hover:border-flame/60 transition-colors`}
+              title="the BuilderBox — build log + this chat, merged; entries summon the AI network">⌁ BUILDERBOX</button>
+          )}
           <button onClick={() => setShowConnect(v => !v)}
             className={`${pill} px-2.5 py-1.5 rounded border transition-colors ${showConnect ? 'border-flame/60 text-glow bg-flame/10' : 'border-brass/40 text-glow/70 hover:text-glow hover:border-flame/60'}`}
             title="log an AI into this chat">⚒ CONNECT AI</button>

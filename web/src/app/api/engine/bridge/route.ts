@@ -127,8 +127,32 @@ function visualSignatureError(name: string, wgsl: string): string | null {
   if (!/fn\s+visual_\w+\s*\(/.test(wgsl)) {
     return `no visual_* function found — the engine looks for fn visual_<name>(...) and found nothing to call, so this field would render as NOTHING. Define: ${sig}`
   }
+  // BUILTIN REDECLARATION — the quarantine class that broke the front door
+  // (Jul 22: a world visual inlined `fn vnoise`/`fn fbm`; the headless probe has
+  // no builtin library so it compiled there, but the hub composites player
+  // visuals into its uber-shader WHERE THE BUILTINS EXIST → redeclaration →
+  // the visual quarantined live). Catch it at the door and teach the fix.
+  const redeclared = [...wgsl.matchAll(/fn\s+(\w+)\s*\(/g)].map(m => m[1]).filter(f => WGSL_BUILTINS.has(f))
+  if (redeclared.length) {
+    return `"${redeclared.join('", "')}" ${redeclared.length > 1 ? 'are' : 'is a'} built-in engine function${redeclared.length > 1 ? 's' : ''} — redeclaring ${redeclared.length > 1 ? 'them' : 'it'} breaks the composed uber-shader (it compiles in a headless probe but QUARANTINES in the live hub). Rename with a unique prefix, e.g. fn ${name.slice(0, 4)}_${redeclared[0]}(...). Builtins are already available — you may simply call ${redeclared[0]}() without defining it.`
+  }
   return null
 }
+
+/** Every function the engine's shader prelude already provides — a visual that
+ *  re-defines one of these names duplicates it in the composed module. */
+const WGSL_BUILTINS = new Set([
+  'hash11', 'hash21', 'hash22', 'hash31', 'hash33',
+  'vnoise', 'vnoise3', 'gnoise', 'simplex2d',
+  'fbm', 'fbm3', 'fbm4', 'fbm5', 'fbm6', 'fbm3d', 'fbm3v', 'fbm4v', 'fbm5v', 'fbm6v', 'warp',
+  'voronoi', 'voronoiEdge',
+  'sdCircle', 'sdBox', 'sdRoundedBox', 'sdSegment', 'sdEquilateralTriangle', 'sdStar',
+  'opUnion', 'opSubtract', 'opIntersect', 'opSmoothUnion', 'opSmoothSubtract',
+  'hsv2rgb', 'palette', 'colorRamp', 'rot2', 'rotate', 'polar', 'glsl_mod', 'glsl_mod2',
+  'circleMask', 'softGlow', 'ring', 'glow', 'diffuseLight',
+  'char5x7', 'printInt', 'regionUV', 'regionUVCentered', 'regionUVAspect',
+  'pop', 'popCount', 'prevHere', 'prevAt', 'pix', 'sampleTarget', 'sampleTargetUV', 'uni', 'uni4',
+])
 
 /** Mint a fresh uc_st_ world token for a space (raw shown once, SHA-256 stored). */
 async function mintWorldToken(spaceId: string, name: string): Promise<string> {
