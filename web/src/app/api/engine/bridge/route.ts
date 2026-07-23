@@ -10,6 +10,7 @@ import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons, commonsListenerCount } from '../commons-stream'
 import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
+import { writeWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
@@ -1328,7 +1329,12 @@ export async function POST(req: NextRequest) {
       } catch { /* health is a courtesy */ }
     }
     // capture the ORIGINAL after brief_done lands: reset restores to this forever
-    if (briefDoneAccepted && auth.spaceId) { try { await setOriginal(auth.spaceId) } catch { /* capture is best-effort */ } }
+    if (briefDoneAccepted && auth.spaceId) {
+      try { await setOriginal(auth.spaceId) } catch { /* capture is best-effort */ }
+      // the AI writes its own world's shareable hook now that it's done (Galen).
+      // Fire-and-forget: it must never delay or fail the build's finish response.
+      void writeWorldBlurb(auth.spaceId).catch(() => {})
+    }
     return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
   } catch (error) {
     console.error('[Engine Bridge] Error:', error)
