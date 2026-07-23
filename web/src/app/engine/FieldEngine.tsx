@@ -2072,11 +2072,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // only the sub-main space link. Other worlds declare hubness via portals.
     setIsHub(playScene === 'CAFE')
     // grace: the departing hub's hook can dispatch a frame or two past the
-    // scene change — a stale portals event must not brand the NEW world a hub
+    // scene change — a stale portals event must not brand the NEW world a hub.
+    // And hub-ness DECAYS (Galen: "no EDIT in alembic/house worlds"): entering
+    // a world FROM the cafe could catch one stray re-announce past the grace
+    // and hide the whole edit surface forever. Real hubs re-announce every 2s
+    // on a timer — so if no portals arrive for 6s, this world is not a hub.
     const bornAt = Date.now()
-    const onPortals = () => { if (Date.now() - bornAt > 600) setIsHub(true) }
+    let lastPortals = 0
+    const onPortals = () => { if (Date.now() - bornAt > 600) { lastPortals = Date.now(); setIsHub(true) } }
     window.addEventListener('cafe:portals', onPortals)
-    return () => window.removeEventListener('cafe:portals', onPortals)
+    const decay = setInterval(() => {
+      if (playScene !== 'CAFE' && lastPortals && Date.now() - lastPortals > 6000) { lastPortals = 0; setIsHub(false) }
+    }, 2000)
+    return () => { window.removeEventListener('cafe:portals', onPortals); clearInterval(decay) }
   }, [playScene])
 
   // Follow the throne for the world we're in: who holds MAIN, and the immortal
