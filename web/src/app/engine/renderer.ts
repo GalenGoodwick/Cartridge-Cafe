@@ -4050,6 +4050,22 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     return [...this.moduleRegistry.values()]
   }
 
+  /** Remove a shader module and trigger recompilation. Returns whether it existed.
+   *  (Without this, a poisoned module could only be neutered by redefining it
+   *  as an empty comment — there was no way to actually delete one.) */
+  removeModule(name: string): boolean {
+    const existed = this.moduleRegistry.delete(name)
+    if (existed) {
+      this.superCompilationId++
+      this.superPipelineReady = false
+      this.superPipeline = null
+      this.super3DPipelineReady = false
+      this.super3DPipeline = null
+      console.log(`[Module] Removed '${name}', triggering recompilation`)
+    }
+    return existed
+  }
+
   // ─── Render Targets ───
 
   /** Create a named render target buffer. Returns the assigned ID (0-5).

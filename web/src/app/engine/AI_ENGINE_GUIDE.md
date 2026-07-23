@@ -1192,7 +1192,8 @@ the ONE DAY class; bound secondary rays (shadows 24 steps, reflections ~22)
 and gate them by region. Check `worldData.__budget.frameMs` after building.
 
 **Load-order law (engine-enforced since Jul 19 2026, but respect it anyway):**
-register modules BEFORE the visuals that call them, and send a world's full
+remove a module with `{"type":"remove_module","name":"..."}` (it deletes from
+the snapshot too). Register modules BEFORE the visuals that call them, and send a world's full
 shader set as ONE bridge batch (a `commands` array). Visuals compiled while
 their modules are mid-flight are no longer quarantined for it — the sweep
 recognizes `unresolved call target 'mod_*'` as modules-in-flight — but an

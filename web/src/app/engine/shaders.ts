@@ -584,12 +584,24 @@ fn printInt(p: vec2f, value: f32, digits: i32) -> f32 {
 // --- End Utility Library ---
 `
 
+/** Replace comment contents with spaces, PRESERVING string length/indices, so
+ *  function-name scans can't be fooled by `fn name(...)` appearing in docs.
+ *  (WORLD3's header documents its `fn w3_map` contract in a comment — the raw
+ *  scan claimed the name for the wrong module and dedupe then stripped the real
+ *  definition, killing the whole uber-shader. Jul 23.) */
+function maskComments(code: string): string {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
+}
+
 // Extract function names defined in the base SHADER_UTILITIES
 const BASE_FUNC_NAMES: Set<string> = new Set()
 {
   const funcDefRegex = /fn\s+(\w+)\s*\(/g
   let m: RegExpExecArray | null
-  while ((m = funcDefRegex.exec(SHADER_UTILITIES)) !== null) {
+  const masked = maskComments(SHADER_UTILITIES)
+  while ((m = funcDefRegex.exec(masked)) !== null) {
     BASE_FUNC_NAMES.add(m[1])
   }
 }
@@ -618,19 +630,23 @@ function autoFixVec3Calls(code: string): string {
  * and cross-mod conflicts are handled.
  */
 function deduplicateModCode(code: string, seen: Set<string>): string {
-  const funcStartRegex = /fn\s+(\w+)\s*\([^)]*\)\s*(?:-> [^{]+)?\{/g
+  // Scan a comment-MASKED copy (same length, so indices line up) and slice the
+  // ORIGINAL — a `fn name(...)` in a doc comment must neither claim a name nor
+  // let the return-type matcher run across lines to a distant brace.
+  const masked = maskComments(code)
+  const funcStartRegex = /fn\s+(\w+)\s*\([^)]*\)\s*(?:->[^{\n]+)?\{/g
   let result = ''
   let lastEnd = 0
 
   let match: RegExpExecArray | null
-  while ((match = funcStartRegex.exec(code)) !== null) {
+  while ((match = funcStartRegex.exec(masked)) !== null) {
     const funcName = match[1]
     const braceStart = match.index + match[0].length - 1
     let depth = 1
     let pos = braceStart + 1
-    while (pos < code.length && depth > 0) {
-      if (code[pos] === '{') depth++
-      else if (code[pos] === '}') depth--
+    while (pos < masked.length && depth > 0) {
+      if (masked[pos] === '{') depth++
+      else if (masked[pos] === '}') depth--
       pos++
     }
 

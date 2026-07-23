@@ -5624,13 +5624,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const wgsl = cmd.wgsl as string
               if (!name) { pushTerminal('define_module', '', 'ERROR: name required'); break }
               if (!wgsl) { pushTerminal('define_module', name, 'ERROR: wgsl required'); break }
-              const expectedFn = `mod_${name}`
-              if (!wgsl.includes(expectedFn)) {
-                pushTerminal('define_module', name, `ERROR: WGSL must define fn ${expectedFn}(...)`)
+              // A module must define SOME function, but not necessarily
+              // mod_<name> — WORLD3's contract module defines w3_map, and the
+              // old strict check rejected it live while the snapshot path
+              // accepted it (the split brain behind VEILFIRE's dark world).
+              if (!/fn\s+\w+\s*\(/.test(wgsl) && !/^\s*\/\//.test(wgsl)) {
+                pushTerminal('define_module', name, 'ERROR: WGSL defines no functions')
                 break
               }
               renderer.registerModule(name, wgsl)
               pushTerminal('define_module', name, 'registered', undefined, cmdAuthor)
+              break
+            }
+
+            case 'remove_module': {
+              const name = cmd.name as string
+              if (!name) { pushTerminal('remove_module', '', 'ERROR: name required'); break }
+              const removed = renderer.removeModule(name)
+              pushTerminal('remove_module', name, removed ? 'removed' : 'not found', undefined, cmdAuthor)
               break
             }
 

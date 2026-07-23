@@ -208,6 +208,7 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   set_world_data: new Set(['type', 'data']),
   define_visual: new Set(['type', 'name', 'wgsl']),
   define_module: new Set(['type', 'name', 'wgsl']),
+  remove_module: new Set(['type', 'name']),
   clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
   delete_field: new Set(['type', 'fieldId']),
 }
@@ -392,6 +393,11 @@ export function applyCommandToSnapshotObject(
       } else {
         snap.visualTypes.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
       }
+      break
+    }
+
+    case 'remove_module': {
+      if (snap.modules) snap.modules = snap.modules.filter(m => m.name !== cmd.name)
       break
     }
 
