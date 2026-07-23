@@ -70,6 +70,14 @@ function HubSearch() {
     ;(window as unknown as { __cafeGoto?: unknown }).__cafeGoto = { name, launch, at: Date.now() }
     if (launch && !hereNames.has(name.toUpperCase())) {
       try { sessionStorage.setItem('cc-goto', JSON.stringify({ name, launch, at: Date.now() })) } catch { /* fine */ }
+      // the bubble lives on ANOTHER shelf — GO THERE (Galen: clicking a result
+      // must move the view, not silently park a pending goto). A player world
+      // lives on the PLAYER WORLDS shelf; anything else (orphanage:, players:,
+      // sub:…) is already a view launch in its own right. The destination
+      // shelf resolves cc-goto as its roster lands and docks the bubble.
+      window.dispatchEvent(new CustomEvent('cafe:launch', {
+        detail: launch.startsWith('space:') ? 'players:' : launch,
+      }))
     }
     setQ(''); setOpen(false)
   }

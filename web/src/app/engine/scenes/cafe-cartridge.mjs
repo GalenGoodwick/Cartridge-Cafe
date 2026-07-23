@@ -1175,15 +1175,26 @@ try {
         try { sessionStorage.setItem('cc-goto', JSON.stringify(goto2)) } catch { /* fine */ }
       }
     }
-    if (!U.dockBooted) {
-      U.dockBooted = 1
+    // pending cross-shelf goto: RETRY until the destination roster lands, not
+    // just once at boot — a view switch (players:, a sub-main) morphs in-scene,
+    // so "the next boot" never comes (Galen: clicking a search result for a
+    // bubble on another shelf moved nothing). Every 0.5s: resolve the pending
+    // goto against the CURRENT roster; a pending older than 15s is stale (the
+    // player went elsewhere) and stops hunting.
+    U.gotoPoll = (U.gotoPoll || 0) - dt2
+    if (U.gotoPoll <= 0) {
+      U.gotoPoll = 0.5
       try {
         const pend = JSON.parse(sessionStorage.getItem('cc-goto') || 'null')
         if (pend) {
           const found = U.order.find(n => n === pend.name || (U.bubbles[n] && U.bubbles[n].launch === pend.launch))
           if (found) { U.gotoName = found; U.dockName = found; sessionStorage.removeItem('cc-goto'); sessionStorage.setItem('cc-dock', found) }
+          else if (Date.now() - pend.at > 15000) sessionStorage.removeItem('cc-goto')
         }
-        if (!U.dockName) { const d = sessionStorage.getItem('cc-dock'); if (d && U.bubbles[d]) U.dockName = d }
+        if (!U.dockBooted) {
+          U.dockBooted = 1
+          if (!U.dockName) { const d = sessionStorage.getItem('cc-dock'); if (d && U.bubbles[d]) U.dockName = d }
+        }
       } catch { /* fine */ }
     }
   }
