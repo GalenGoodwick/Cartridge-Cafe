@@ -16,10 +16,12 @@ const SYS = `You write the one-line HOOK for a little AI-built game world — th
 /** Best-effort: generate + store the world's shareable hook. Never throws. */
 export async function writeWorldBlurb(spaceId: string): Promise<void> {
   try {
+    const dbg = (m: string) => applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: { __blurb_dbg: m } }).catch(() => {})
     const snap = await getSpaceSnapshot(spaceId)
-    if (!snap) return
+    if (!snap) { await dbg('no-snapshot'); return }
     const wd = (snap.worldData ?? {}) as Record<string, unknown>
     if (typeof wd.blurb === 'string' && (wd.blurb as string).trim()) return   // already written
+    await dbg('reached-callClaude')
 
     const sp = await prisma.playerSpace.findUnique({ where: { id: spaceId }, select: { name: true, description: true } })
     const brief = (wd.creation_brief as { prompt?: string } | undefined)?.prompt
@@ -36,15 +38,18 @@ export async function writeWorldBlurb(spaceId: string): Promise<void> {
       elements.length ? `Things in it: ${elements.join(', ')}` : null,
     ].filter(Boolean).join('\n')
 
-    const raw = await callClaude(SYS, [{ role: 'user', content: context }], 'haiku', 80)
+    let raw = ''
+    try { raw = await callClaude(SYS, [{ role: 'user', content: context }], 'haiku', 80) }
+    catch (e) { await dbg('callClaude-threw: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120)); return }
     const blurb = raw.trim().replace(/^["'\s]+|["'\s]+$/g, '').replace(/\s+/g, ' ').slice(0, 180)
-    if (!blurb) return
+    if (!blurb) { await dbg('empty-blurb'); return }
+    await dbg('got-blurb: ' + blurb.slice(0, 60))
 
     await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: { blurb } })
     if (!sp?.description) {
       await prisma.playerSpace.updateMany({ where: { id: spaceId, description: null }, data: { description: blurb } }).catch(() => {})
     }
-  } catch {
-    // the hook is a courtesy — a failed blurb must never fail a build's finish
+  } catch (e) {
+    await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: { __blurb_dbg: 'outer-threw: ' + (e instanceof Error ? e.message : String(e)).slice(0, 120) } }).catch(() => {})
   }
 }
