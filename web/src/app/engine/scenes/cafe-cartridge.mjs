@@ -848,11 +848,12 @@ try {
           }
           if (adopt && adopt.bubbles[n] && !want[n].big) {   // the shared arrangement seats bubbles AT REST — never force-refixes motion
             const sb2 = adopt.bubbles[n]
-            // Galen: 'I voted and the bubbles started moving, then were force
-            // refixed.' A local reflow (vote, wake, drag) owns the field until it
-            // settles; only a still bubble adopts the shared seat.
-            const moving = (U.wake > 0) || (Math.abs(B.vx) + Math.abs(B.vy) > 0.02)
-            if (!moving) { B.x = sb2.x; B.y = sb2.y; B.vx = 0; B.vy = 0; B.anchored = 1 }
+            // Galen round 2 ('bubbles do not trickle into place live'): never
+            // TELEPORT to the seat either — assign it as a TARGET and the
+            // per-frame ease below glides the bubble in visibly. Hysteresis at
+            // 0.5 so micro-jitter can't hold the motion-guard forever.
+            const moving = (U.wake > 0) || (Math.abs(B.vx) + Math.abs(B.vy) > 0.5)
+            if (!moving && Math.hypot(sb2.x - B.x, sb2.y - B.y) > 0.6) { B.seatX = sb2.x; B.seatY = sb2.y }
             if (sb2.born) B.born = sb2.born
           }
           // participation pressure: cell activity + birth heat
@@ -1060,6 +1061,29 @@ try {
     // the field reaches rest (a big crowd like THE HOUSE needs time to pack in).
     // Cap the reprieve so a pathological jitter can't run forever.
     if (maxV > 3 && U.wake <= 0 && (U.settleGuard = (U.settleGuard || 0) + dt2) < 12) U.wake = 0.2
+    // BUMP GUARD (Galen): a frozen field must never hold two bubbles overlapped —
+    // scan occasionally while asleep; a real overlap un-anchors the pair and wakes
+    // the sim so they trickle apart LIVE. Uses hard radii (not the wide berth) so
+    // only true bumps re-wake, and settleGuard still caps pathological loops.
+    U.bumpT = (U.bumpT || 0) + dt2
+    if (U.wake <= 0 && U.bumpT > 0.8) {
+      U.bumpT = 0
+      outer2: for (let i2 = 0; i2 < U.order.length; i2++) {
+        const B2 = U.bubbles[U.order[i2]]
+        if (!B2) continue
+        for (let j2 = i2 + 1; j2 < U.order.length; j2++) {
+          const C2 = U.bubbles[U.order[j2]]
+          if (!C2) continue
+          const rs = (B2.big ? 31 : 25) + (C2.big ? 31 : 25)
+          if (Math.hypot(B2.x - C2.x, B2.y - C2.y) < rs - 2) {
+            if (!B2.pinned) B2.anchored = 0
+            if (!C2.pinned) C2.anchored = 0
+            U.wake = Math.max(U.wake, 1.2)
+            break outer2
+          }
+        }
+      }
+    }
     if (U.wake <= 0) {
       U.settleGuard = 0   // friction locks them in place — and the whole field is
       // now the saved layout, so everything anchors: a later newborn moves alone.
@@ -1127,6 +1151,18 @@ try {
       U.cam.z += (1.7 - U.cam.z) * Math.min(1, dt * 3)
       if (Math.hypot(GB.x - U.cam.x, GB.y - U.cam.y) < 2 && Math.abs(U.cam.z - 1.7) < 0.06) U.gotoName = null
     } else U.gotoName = null
+  }
+  // TRICKLE-TO-SEAT: bubbles with an assigned shared seat ease in live (never
+  // snap), every frame, independent of the physics wake. Dragging pauses it.
+  if (!(down && U.drag)) {
+    for (const n2 of U.order) {
+      const SB = U.bubbles[n2]
+      if (!SB || SB.seatX == null) continue
+      const dx2 = SB.seatX - SB.x, dy2 = SB.seatY - SB.y
+      const dd2 = Math.hypot(dx2, dy2)
+      if (dd2 < 0.6) { SB.x = SB.seatX; SB.y = SB.seatY; SB.vx = 0; SB.vy = 0; SB.anchored = 1; SB.seatX = null; SB.seatY = null }
+      else { SB.x += dx2 * Math.min(1, dt * 2.5); SB.y += dy2 * Math.min(1, dt * 2.5) }
+    }
   }
   const cux = U.cam.x + (mgx - 256) / U.cam.z
   const cuy = U.cam.y + (mgy - 256) / U.cam.z
