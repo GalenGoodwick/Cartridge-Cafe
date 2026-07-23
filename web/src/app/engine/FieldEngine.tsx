@@ -369,6 +369,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
   const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
+  // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
+  // full-screen, uncovered. Only a back arrow + a reopen button remain.
+  const [playMode, setPlayMode] = useState(false)
+  const enterPlayMode = () => {
+    setUiDockOpen(false); setChromeVisible(false); setWorldChatOpen(false)
+    setInstrOpen(false); setBuildConsoleOpen(false)
+    setPlayMode(true)
+    window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: true }))
+  }
+  const exitPlayMode = () => {
+    setPlayMode(false)
+    window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: false }))
+  }
   useEffect(() => {
     if (!uiDockOpen) return
     try { if (localStorage.getItem('cc-edit-coached')) return } catch { return }
@@ -6525,8 +6538,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             style={{ fontFamily: 'monospace' }}
           />
 
+          {/* GAMEPLAY MODE overlay — total-UI-close: the world plays clean, only
+              a way out (◂ back) + a way back to the UI (▣ reopen) remain. */}
+          {playMode && (
+            <>
+              <button onClick={() => { window.location.href = '/' }} title="leave the world"
+                className="absolute left-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[18px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">◂</button>
+              <button onClick={exitPlayMode} title="show the UI again"
+                className="absolute right-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[16px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">▣</button>
+            </>
+          )}
+
           {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
-          {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && (
+          {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && !playMode && (
             <button
               onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
               className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
@@ -6546,7 +6570,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* items-stretch → every control in the dock takes the SAME width (the
               widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
               one clean column instead of ragged-right buttons */}
-          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport || playMode ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+            {/* GAMEPLAY MODE — one tap strips ALL chrome so the world plays clean.
+                Game worlds only; hubs are navigation surfaces. */}
+            {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+              <button
+                onClick={enterPlayMode}
+                title="gameplay mode — hide all UI and just play"
+                className="px-2.5 py-1.5 rounded-lg text-[16px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ⛶ PLAY
+              </button>
+            )}
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"

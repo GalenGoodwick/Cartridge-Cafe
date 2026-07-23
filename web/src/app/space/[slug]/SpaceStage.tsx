@@ -155,15 +155,25 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
 
   const btn = 'text-[14px] tracking-[0.15em] border rounded px-3 py-1.5 transition-colors'
 
+  // GAMEPLAY MODE (Galen): the engine's ⛶ PLAY strips its own chrome; this
+  // wrapper's corner controls (share / follow / swarm / version arena) must
+  // vanish too, so the world truly plays uncovered. Restored on ▣ reopen.
+  const [playMode, setPlayMode] = useState(false)
+  useEffect(() => {
+    const on = (e: Event) => setPlayMode(!!(e as CustomEvent).detail)
+    window.addEventListener('cafe:playmode', on)
+    return () => window.removeEventListener('cafe:playmode', on)
+  }, [])
+
   return (
     <>
       {/* nothing to share on a world that isn't real yet — hide SHARE while it's
           still blank-and-building */}
-      {!building && <ShareWorld slug={spaceSlug} name={name} />}
+      {!building && !playMode && <ShareWorld slug={spaceSlug} name={name} />}
       {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
           bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
-      <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>
-      {!building && <SummonConsole slug={spaceSlug} name={name} isOwner={isOwner} />}
+      {!playMode && <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}
+      {!building && !playMode && <SummonConsole slug={spaceSlug} name={name} isOwner={isOwner} />}
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}
@@ -187,8 +197,8 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
           even if it carries stale save points from a previous life. */}
       <TournamentBar
         slot={`tournament:space:${spaceSlug}`}
-        worlds={!building && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
-        visible
+        worlds={!building && !playMode && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+        visible={!playMode}
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
         onReckoning={(on) => { setVoting(on); if (!on) { setPreviewVersion(null); setStageRect(null) } }}
