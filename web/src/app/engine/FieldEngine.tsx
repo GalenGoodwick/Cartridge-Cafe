@@ -761,17 +761,42 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // ── fault surface: when the world goes down, SAY WHY on screen ──
   const [fault, setFault] = useState<{ kind: string; message: string } | null>(null)
   const frameCrashRef = useRef(false)
+  const faultReportedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const onFault = (e: Event) => {
       const det = (e as CustomEvent).detail as { kind: string; message: string }
       // FIRST fault wins the banner — later faults are usually echoes of it
       setFault(prev => prev ?? det)
+      const sceneName = lastSceneRef.current || playScene || spaceSlug || 'unknown'
       try {
         const log = JSON.parse(localStorage.getItem('cc-fault-log') || '[]')
-        log.unshift({ ...det, scene: lastSceneRef.current || playScene || spaceSlug || 'unknown', at: new Date().toISOString() })
+        log.unshift({ ...det, scene: sceneName, at: new Date().toISOString() })
         localStorage.setItem('cc-fault-log', JSON.stringify(log.slice(0, 8)))
         localStorage.setItem('cc-last-fault', JSON.stringify(log[0]))
       } catch { /* fine */ }
+      // Bridge feedback: a GPU/uber-shader fault only the player's console can
+      // see is invisible to the AI that built the world (a broken module took
+      // VEILFIRE fully dark with zero telemetry, Jul 23). Land every distinct
+      // fault in worldData (bridge GET) + the quarantine log (durable).
+      const key = det.kind + '|' + det.message.slice(0, 120)
+      if (faultReportedRef.current.has(key)) return
+      faultReportedRef.current.add(key)
+      const sim = simulationRef.current
+      if (sim) {
+        sim.worldData['last_compile_error'] = {
+          type: 'gpu-fault', kind: det.kind, error: det.message.slice(0, 800),
+          scene: sceneName, engine: ENGINE_BUILD, timestamp: Date.now(),
+        }
+      }
+      void fetch('/api/engine/quarantine', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: typeof location !== 'undefined' ? location.href : '',
+          phase: 'cc-fault:' + det.kind,
+          scene: sceneName,
+          hazards: [{ name: det.kind, reason: (det.message + ' · ' + ENGINE_BUILD + ' · ' + (typeof navigator !== 'undefined' ? navigator.userAgent : '')).slice(0, 800) }],
+        }),
+      }).catch(() => { /* telemetry must never break the world */ })
     }
     window.addEventListener('cc:fault', onFault)
     return () => window.removeEventListener('cc:fault', onFault)
