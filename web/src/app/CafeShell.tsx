@@ -944,7 +944,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       }
       if (name === 'players:') { enterPlayers(undefined, true); return }   // PLAYER WORLDS (makers directory) — /?players
       if (name === 'house:') { enterPlayers('house', true); return }       // THE HOUSE — /?house
-      if (name === 'orphanage:') { enterPlayers('orphanage', true); return }  // THE ORPHANAGE — in-scene morph to the hidden-worlds shelf (shown, not enterable)
+      if (name === 'orphanage:') { enterPlayers('orphanage', true); return }  // THE ORPHANAGE — in-scene morph to the hidden-worlds shelf, same as THE HOUSE
       if (name.startsWith('maker:')) {
         // a maker bubble opens that player's space (their profile shelf)
         window.location.href = '/u/' + name.slice(6)
@@ -1856,7 +1856,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                     const plv = (window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers
                     const leave = () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) }
                     if (plv === 'house') return { name: 'the house', sub: 'unclaimed worlds', leave }
-                    if (plv === 'orphanage') return { name: 'the orphanage', sub: 'hidden — shown, not enterable', leave }
+                    if (plv === 'orphanage') return { name: 'the orphanage', sub: 'hidden worlds', leave }
                     return { name: 'player worlds', sub: 'the commons', leave }
                   })()
             return (

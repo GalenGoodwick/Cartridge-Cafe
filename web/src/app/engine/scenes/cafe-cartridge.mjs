@@ -567,7 +567,7 @@ try {
   // PLAYER WORLDS — a big front-door bubble opens a filter of just the player-made
   // worlds (the same scene, spaces only). window.__cafePlayers carries the flag.
   // PLAYER WORLDS filter: 0 off · 1 makers directory · 'house' the house shelf
-  //  · 'orphanage' the hidden-worlds shelf (shown, never enterable)
+  //  · 'orphanage' the hidden-worlds shelf (building/blank/your-own-private)
   const PLv = (typeof window !== 'undefined' && window.__cafePlayers) || 0
   const PL = PLv ? 1 : 0
   const HOUSE = PLv === 'house'
@@ -631,7 +631,7 @@ try {
         const patience = (pr, fb) => firstFill
           ? Promise.race([pr, new Promise(res => setTimeout(() => res(fb), 700))])
           : pr
-        const [sc, sp, sl, uvr, tvr, smr, snr, orr] = await Promise.all([
+        const [sc, sp, sl, uvr, tvr, smr, snr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: null })), { spaces: null }),
           patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
@@ -641,9 +641,6 @@ try {
           // SUMMONED bubbles (main only): time-boxed visibility overrides —
           // POST /api/hub/summon writes them; the roster honors them below
           (MF || SUB || PL) ? Promise.resolve(null) : fetch('/api/hub/summon').then(r => r.json()).catch(() => null),
-          // THE ORPHANAGE shelf: the privacy-correct hidden-worlds list (building
-          // /blank/unlisted + the caller's own private). Only fetched in that mode.
-          ORPHAN ? fetch('/api/hub/orphanage').then(r => r.json()).catch(() => null) : Promise.resolve(null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
@@ -765,16 +762,15 @@ try {
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
           }
         } else if (ORPHAN) {
-          // THE ORPHANAGE — the hidden worlds, gathered on their own shelf just
-          // like THE HOUSE, but SHUT: each bubble is marked locked so a click
-          // only nudges ("you can see it, you can't enter"), never travels. Fed
-          // by /api/hub/orphanage, which is privacy-correct (others' private
-          // worlds are never listed). Violet, to read as "elsewhere".
-          const orphans = (orr && Array.isArray(orr.orphans)) ? orr.orphans : []
-          for (const o of orphans) {
-            if (!o || !o.slug) continue
-            const disp = String(o.name || o.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'orphan:' + o.slug, style: 8, hue: 0.72, locked: 1 }
+          // THE ORPHANAGE — the hidden worlds, on their own shelf. Same shape as
+          // THE HOUSE above, but the INVERSE filter: the worlds the house/main
+          // hide — still-building, blank drafts, or private. browse already scopes
+          // private worlds to their owner (isPublic OR ownerId==me), so filtering
+          // for isPublic===false only ever surfaces the caller's OWN private ones.
+          for (const s of (sp.spaces || [])) {
+            if (!(s.blank || s.building || s.isPublic === false)) continue
+            const disp = (s.name || s.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
           }
         } else if (PL) {
           // PLAYER WORLDS — a MAKERS directory: one bubble per player who has
@@ -792,9 +788,9 @@ try {
           }
           // THE HOUSE always stands — it holds the canonical AI-made worlds too
           want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
-          // THE ORPHANAGE — a home for the hidden (building/blank/unlisted/your
-          // own private). A destination bubble; opening it lists the orphans,
-          // which are shown but never enterable. Violet to read as "elsewhere".
+          // THE ORPHANAGE — a home for the hidden (building/blank/your own
+          // private). Opening it morphs to the orphanage shelf, same as THE
+          // HOUSE. Violet, to read as "elsewhere".
           want['THE ORPHANAGE'] = { launch: 'orphanage:', style: 8, hue: 0.72, big: 1 }
         } else {
           for (const n of (sc.scenes || [])) {
@@ -872,7 +868,6 @@ try {
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.square = !!want[n].square   // a branch draws square, not round
-          B.locked = !!want[n].locked   // an orphan: shown on the shelf, never enterable
           B.author = want[n].author || ''   // maker/owner handle → the rim caption
           B.playerWorld = (B.launch || '').startsWith('space:')   // a player-made world → green rim (its own icon stays)
           B.cat = want[n].cat || 0   // 2 = sub-mains glyph · 3 = player-worlds glyph (own render band, never an icon slot)
@@ -1282,21 +1277,15 @@ try {
     if (hovered >= 0 && U.moved < 8 && typeof window !== 'undefined') {
       const B = U.bubbles[U.order[hovered]]
       if (B) {
-        if (B.locked) {
-          // an ORPHAN — shown, never opened. A shut-door nudge, no travel, so the
-          // field stays awake and speaking (never mute/latch on a locked bubble).
-          window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: 'hidden — you can see it, but you can’t enter', kind: 'hint' } }))
-        } else {
-          // stepping into a WORLD goes quiet (a late portals dispatch would
-          // follow the player in) — but entering a sub-main morphs this same
-          // scene, so the doors keep speaking
-          // sub: · players: · house: · orphanage: are IN-SCENE morphs — the
-          // universe keeps speaking; only a real departure (loading a
-          // world/profile) goes quiet
-          const lm = String(B.launch)
-          if (lm.slice(0, 4) !== 'sub:' && lm !== 'players:' && lm !== 'house:' && lm !== 'orphanage:') { U.launched = 1; U.launchT = 0 }
-          window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
-        }
+        // stepping into a WORLD goes quiet (a late portals dispatch would
+        // follow the player in) — but entering a sub-main morphs this same
+        // scene, so the doors keep speaking
+        // sub: · players: · house: · orphanage: are IN-SCENE morphs — the
+        // universe keeps speaking; only a real departure (loading a
+        // world/profile) goes quiet
+        const lm = String(B.launch)
+        if (lm.slice(0, 4) !== 'sub:' && lm !== 'players:' && lm !== 'house:' && lm !== 'orphanage:') { U.launched = 1; U.launchT = 0 }
+        window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
       }
     }
     U.drag = 0
