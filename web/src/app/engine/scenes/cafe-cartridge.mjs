@@ -1231,13 +1231,21 @@ try {
         // sub: · players: · house: are IN-SCENE morphs — the universe keeps
         // speaking; only a real departure (loading a world/profile) goes quiet
         const lm = String(B.launch)
-        if (lm.slice(0, 4) !== 'sub:' && lm !== 'players:' && lm !== 'house:') U.launched = 1
+        if (lm.slice(0, 4) !== 'sub:' && lm !== 'players:' && lm !== 'house:') { U.launched = 1; U.launchT = 0 }
         window.dispatchEvent(new CustomEvent('cafe:launch', { detail: B.launch }))
       }
     }
     U.drag = 0
   }
   U.prevDown = down
+  // the launch latch mutes hover/search during the travel-out fade — but it must
+  // NEVER survive the return (Galen: backing out to my player space kills
+  // tooltips). If this hook is RUNNING, we're on a hub: after ~2.5s of real hub
+  // time the launch is long over — clear the latch, wake the tooltips.
+  if (U.launched) {
+    U.launchT = (U.launchT || 0) + dtc
+    if (U.launchT > 2.5) { U.launched = 0; U.launchT = 0; U.lastHover = -1 }
+  }
   if (!U.launched && hovered !== U.lastHover && typeof window !== 'undefined') {
     U.lastHover = hovered
     window.dispatchEvent(new CustomEvent('cafe:hover', { detail: hovered >= 0 ? U.order[hovered] : null }))
