@@ -1301,7 +1301,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
           onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
-          rail={scene !== 'CAFE'} railTop={dockBottom ? dockBottom + 8 : undefined}
+          rail railTop={dockBottom ? dockBottom + 8 : undefined}   /* Galen: vote on MAIN seats under the AI-unplugged pill too — rail everywhere */
           docked={docked} onDock={setDocked} onTravel={travelTo} sceneKey={scene}
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
