@@ -8,7 +8,6 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import ConnectAiPanel from '@/app/ConnectAiPanel'
-import OrphanageView from '@/app/OrphanageView'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -474,12 +473,13 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   /** PLAYER WORLDS / THE HOUSE as real, back-navigable URLs. They were in-memory
    *  filters with no URL, so entering a /space world and backing out lost them
    *  and dumped you on main. `/?players` and `/?house` survive the round-trip. */
-  const enterPlayers = (mode?: 'house', push = true) => {
+  const enterPlayers = (mode?: 'house' | 'orphanage', push = true) => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
-    ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = mode === 'house' ? 'house' : true
+    ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = mode === 'house' ? 'house' : mode === 'orphanage' ? 'orphanage' : true
     setMine(null); setPlayers(true)
     if (push && typeof window !== 'undefined') {
-      window.history.pushState({ players: mode || true }, '', mode === 'house' ? '/?house' : '/?players')
+      const url = mode === 'house' ? '/?house' : mode === 'orphanage' ? '/?orphanage' : '/?players'
+      window.history.pushState({ players: mode || true }, '', url)
     }
   }
 
@@ -560,7 +560,6 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // PIN A WORLD — a live search box (site colors), not a browser prompt. Open it,
   // it loads every pinnable world on main, and you filter as you type.
   const [pinOpen, setPinOpen] = useState(false)
-  const [orphanageOpen, setOrphanageOpen] = useState(false)
   const [pinQuery, setPinQuery] = useState('')
   const [pinWorldList, setPinWorldList] = useState<{ name: string; launch: string }[]>([])
   const openPin = async () => {
@@ -933,7 +932,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       if (typeof name !== 'string' || !name) return
       // remember we've been here — clears the "new" pip on this world's bubble.
       // Real worlds only (space:<slug> or a bare scene name), not nav bubbles.
-      if (name.startsWith('space:') || (!name.startsWith('sub:') && !name.startsWith('maker:') && name !== 'players:' && name !== 'house:' && name !== 'CAFE' && name !== 'SUB-MAIN')) {
+      if (name.startsWith('space:') || (!name.startsWith('sub:') && !name.startsWith('maker:') && name !== 'players:' && name !== 'house:' && name !== 'orphanage:' && name !== 'CAFE' && name !== 'SUB-MAIN')) {
         markVisited(name)
       }
       if (name.startsWith('space:')) { window.location.href = '/space/' + name.slice(6); return }
@@ -945,7 +944,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       }
       if (name === 'players:') { enterPlayers(undefined, true); return }   // PLAYER WORLDS (makers directory) — /?players
       if (name === 'house:') { enterPlayers('house', true); return }       // THE HOUSE — /?house
-      if (name === 'orphanage:') { setOrphanageOpen(true); return }        // THE ORPHANAGE — hidden worlds, shown-not-enterable
+      if (name === 'orphanage:') { enterPlayers('orphanage', true); return }  // THE ORPHANAGE — in-scene morph to the hidden-worlds shelf (shown, not enterable)
       if (name.startsWith('maker:')) {
         // a maker bubble opens that player's space (their profile shelf)
         window.location.href = '/u/' + name.slice(6)
@@ -986,6 +985,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       setMine(initialMineHandle)
     } else if (/[?&]house\b/.test(window.location.search)) {
       enterPlayers('house', false)   // landed on /?house (e.g. back from a world)
+    } else if (/[?&]orphanage\b/.test(window.location.search)) {
+      enterPlayers('orphanage', false) // landed on /?orphanage
     } else if (/[?&]players\b/.test(window.location.search)) {
       enterPlayers(undefined, false) // landed on /?players
     } else if (new URLSearchParams(window.location.search).get('commons')) {
@@ -1050,6 +1051,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       if (sceneRef.current !== 'CAFE') go('CAFE', false)
       const search = window.location.search
       if (/[?&]house\b/.test(search)) { enterPlayers('house', false); return }     // back → THE HOUSE
+      if (/[?&]orphanage\b/.test(search)) { enterPlayers('orphanage', false); return }  // back → THE ORPHANAGE
       if (/[?&]players\b/.test(search)) { enterPlayers(undefined, false); return }  // back → PLAYER WORLDS
       if (path === '/mine' || /^\/u\//.test(path)) myWorlds(false); else commons(false)
     }
@@ -1060,9 +1062,19 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       const ps = ((e as CustomEvent).detail || []) as { name: string; launch?: string; x: number; y: number; r: number }[]
       setPortals(ps)
       for (const p of ps) if (p.launch) launchMapRef.current[p.name] = p.launch
-      // the MAIN arena's roster freezes from main's own doors only
-      if (sceneRef.current === 'CAFE' && ps.length > 1 && !(window as unknown as { __cafeMine?: { on?: boolean } }).__cafeMine?.on) {
-        setMainRoster(ps.map(p => p.name))
+      // the MAIN arena's roster freezes from main's own doors only. Two leaks
+      // closed here (Galen: "player worlds appearing in the vote"): the
+      // STRUCTURAL doors (PLAYER WORLDS / THE HOUSE — directories, not
+      // contenders) were dealt into the reckoning with the real worlds; and the
+      // players/house directory is an IN-SCENE morph (scene stays CAFE), so its
+      // maker/space doors were overwriting the roster too — same bleed the
+      // __cafeMine guard already stops for MY WORLDS. TournamentBar's
+      // PRUNE-THE-DEAD flushes any already-seated stragglers from live docs.
+      const flags = window as unknown as { __cafeMine?: { on?: boolean }; __cafePlayers?: boolean | string }
+      if (sceneRef.current === 'CAFE' && !flags.__cafeMine?.on && !flags.__cafePlayers) {
+        const structural = (lm: string) => lm === 'players:' || lm === 'house:' || lm === 'orphanage:' || lm.startsWith('sub:') || lm.startsWith('maker:')
+        const contenders = ps.filter(p => !structural(p.launch || ''))
+        if (contenders.length > 1) setMainRoster(contenders.map(p => p.name))
       }
     }
     const onModal = (e: Event) => setModalUp(!!(e as CustomEvent).detail)
@@ -1573,7 +1585,6 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           </div>
         </div>
       )}
-      {orphanageOpen && <OrphanageView onClose={() => setOrphanageOpen(false)} />}
 
       {pinOpen && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-void/70 backdrop-blur-sm" onClick={() => setPinOpen(false)}>
@@ -1839,7 +1850,15 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
                   : { name: 'SUB-MAINS', sub: 'group shelves', leave: () => go('CAFE') })
               : mine
                 ? { name: `${mine}'s worlds`, sub: 'my worlds', leave: () => commons() }
-                : { name: 'player worlds', sub: 'the commons', leave: () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) } }
+                : (() => {
+                    // house / orphanage / players share the players strip — the
+                    // __cafePlayers flag names which shelf we're on.
+                    const plv = (window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers
+                    const leave = () => { (window as unknown as { __cafePlayers?: boolean }).__cafePlayers = false; setPlayers(false) }
+                    if (plv === 'house') return { name: 'the house', sub: 'unclaimed worlds', leave }
+                    if (plv === 'orphanage') return { name: 'the orphanage', sub: 'hidden — shown, not enterable', leave }
+                    return { name: 'player worlds', sub: 'the commons', leave }
+                  })()
             return (
               <div className="fixed top-3 left-3 z-50 flex items-stretch gap-1.5">
                 <button onClick={strip.leave} title="back"
