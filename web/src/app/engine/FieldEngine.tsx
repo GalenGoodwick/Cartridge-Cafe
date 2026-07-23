@@ -1960,6 +1960,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Hubs (main and sub-mains) are navigation, not worlds: no branching there.
   // A world that publishes portals declares itself a hub.
   const [isHub, setIsHub] = useState(false)
+  // BuilderBox is a per-world surface — going back to main/a hub must CLOSE it
+  // (it was staying open on the cafe, hanging over the bubbles). Reset on the
+  // scene change, not just hide via the render gate, so its state is clean.
+  useEffect(() => {
+    if (playScene === 'CAFE' || playScene === 'SUB-MAIN') {
+      setBuildConsoleOpen(false)
+      buildConsoleClosedRef.current = false
+    }
+  }, [playScene])
   useEffect(() => {
     // the main door is ALWAYS a hub — no branch or version chrome there,
     // only the sub-main space link. Other worlds declare hubness via portals.
@@ -6920,7 +6929,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               Auto-opens while a build runs (see the terminalLog effect). ANY chat
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
-          {buildConsoleOpen && (
+          {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
             <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[400px] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
                 <span>⌁ BUILDERBOX</span>
