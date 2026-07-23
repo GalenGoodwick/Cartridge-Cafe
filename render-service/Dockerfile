@@ -23,7 +23,7 @@ ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
 ENV LIBGL_ALWAYS_SOFTWARE=1
 
 WORKDIR /app
-COPY render-core.mjs server.mjs ./
+COPY render-core.mjs server.mjs prelude.mjs ./
 
 # Pre-cache npm:/jsr: deps into the image so cold starts don't fetch them.
 RUN deno cache server.mjs
