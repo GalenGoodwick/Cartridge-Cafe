@@ -8,6 +8,7 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import ConnectAiPanel from '@/app/ConnectAiPanel'
+import OrphanageView from '@/app/OrphanageView'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -45,10 +46,16 @@ function HubSearch() {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [spaces, setSpaces] = useState<Array<{ slug: string; name: string }>>([])
+  const [orphans, setOrphans] = useState<Array<{ slug: string; name: string }>>([])
   useEffect(() => {
     if (!open || spaces.length) return
     fetch('/api/spaces/browse').then(r => r.json()).then(j => {
       if (Array.isArray(j?.spaces)) setSpaces(j.spaces.map((sp: { slug: string; name?: string }) => ({ slug: sp.slug, name: (sp.name || sp.slug).toUpperCase() })))
+    }).catch(() => {})
+    // hidden worlds: they come up in search but are NOT enterable — picking one
+    // routes to THE ORPHANAGE, never into the world (Galen).
+    fetch('/api/hub/orphanage').then(r => r.json()).then(j => {
+      if (Array.isArray(j?.orphans)) setOrphans(j.orphans.map((o: { slug: string; name?: string }) => ({ slug: o.slug, name: (o.name || o.slug).toUpperCase() })))
     }).catch(() => {})
   }, [open, spaces.length])
   // SSR-safe: this body runs during prerender too — window must be guarded
@@ -57,6 +64,8 @@ function HubSearch() {
   const here = qq ? grid.filter(b => b.name.toUpperCase().includes(qq)).slice(0, 6) : []
   const hereNames = new Set(here.map(h => h.name.toUpperCase()))
   const elsewhere = qq ? spaces.filter(sp => sp.name.includes(qq) && !hereNames.has(sp.name)).slice(0, 4) : []
+  const elsewhereNames = new Set(elsewhere.map(e => e.name))
+  const hidden = qq ? orphans.filter(o => o.name.includes(qq) && !hereNames.has(o.name) && !elsewhereNames.has(o.name)).slice(0, 4) : []
   const go = (name: string, launch?: string) => {
     ;(window as unknown as { __cafeGoto?: unknown }).__cafeGoto = { name, launch, at: Date.now() }
     if (launch && !hereNames.has(name.toUpperCase())) {
@@ -70,7 +79,7 @@ function HubSearch() {
         onBlur={() => setTimeout(() => setOpen(false), 200)}
         placeholder="⌕ find a world…"
         className="w-full px-3 py-1.5 rounded-lg font-mono text-[14px] tracking-[0.08em] bg-black/60 backdrop-blur border border-white/10 text-white/85 placeholder:text-white/30 outline-none focus:border-flame/50" />
-      {open && qq && (here.length > 0 || elsewhere.length > 0) && (
+      {open && qq && (here.length > 0 || elsewhere.length > 0 || hidden.length > 0) && (
         <div className="mt-1 rounded-lg bg-black/85 backdrop-blur border border-white/10 overflow-hidden font-mono text-[13px]">
           {here.map(b => (
             <button key={b.name} onMouseDown={() => go(b.name, b.launch)}
@@ -79,6 +88,12 @@ function HubSearch() {
           {elsewhere.map(sp => (
             <button key={sp.slug} onMouseDown={() => go(sp.name, 'space:' + sp.slug)}
               className="block w-full text-left px-3 py-1.5 text-emerald-300/70 hover:bg-white/10">↗ {sp.name} <span className="text-white/30">· player worlds</span></button>
+          ))}
+          {hidden.map(o => (
+            // a hidden world: it comes up, but is NOT enterable — the row routes
+            // to THE ORPHANAGE (where it's shown, still shut), never to the world.
+            <button key={'orphan:' + o.slug} onMouseDown={() => go('THE ORPHANAGE', 'orphanage:')}
+              className="block w-full text-left px-3 py-1.5 text-[#b48cff]/70 hover:bg-white/10">🔒 {o.name} <span className="text-white/30">· the orphanage</span></button>
           ))}
         </div>
       )}
@@ -519,6 +534,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // PIN A WORLD — a live search box (site colors), not a browser prompt. Open it,
   // it loads every pinnable world on main, and you filter as you type.
   const [pinOpen, setPinOpen] = useState(false)
+  const [orphanageOpen, setOrphanageOpen] = useState(false)
   const [pinQuery, setPinQuery] = useState('')
   const [pinWorldList, setPinWorldList] = useState<{ name: string; launch: string }[]>([])
   const openPin = async () => {
@@ -903,6 +919,7 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
       }
       if (name === 'players:') { enterPlayers(undefined, true); return }   // PLAYER WORLDS (makers directory) — /?players
       if (name === 'house:') { enterPlayers('house', true); return }       // THE HOUSE — /?house
+      if (name === 'orphanage:') { setOrphanageOpen(true); return }        // THE ORPHANAGE — hidden worlds, shown-not-enterable
       if (name.startsWith('maker:')) {
         // a maker bubble opens that player's space (their profile shelf)
         window.location.href = '/u/' + name.slice(6)
@@ -1530,6 +1547,8 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
           </div>
         </div>
       )}
+      {orphanageOpen && <OrphanageView onClose={() => setOrphanageOpen(false)} />}
+
       {pinOpen && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center pt-24 bg-void/70 backdrop-blur-sm" onClick={() => setPinOpen(false)}>
           <div className="w-[92%] max-w-md rounded-xl border border-brass/40 bg-void/95 p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
