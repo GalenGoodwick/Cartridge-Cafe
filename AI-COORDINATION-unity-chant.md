@@ -286,3 +286,5 @@ the pool) — chair carve-out superseded by peer negotiation, as designed.
   Follow-up noted: wake_watcher's inline commons write predates lib/commons.ts —
   carries extra fields (kind/target/viewUrl); rewire needs an `extra` passthrough
   in commonsPost (left surgical for now, repo-lane courtesy).
+
+<!-- git-integration deploy test dd0ca60 -->
