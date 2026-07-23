@@ -51,7 +51,8 @@ function HubSearch() {
       if (Array.isArray(j?.spaces)) setSpaces(j.spaces.map((sp: { slug: string; name?: string }) => ({ slug: sp.slug, name: (sp.name || sp.slug).toUpperCase() })))
     }).catch(() => {})
   }, [open, spaces.length])
-  const grid: Array<{ name: string; launch?: string }> = ((window as unknown as { __cafeBubbles?: Array<{ name: string; launch?: string }> }).__cafeBubbles) || []
+  // SSR-safe: this body runs during prerender too — window must be guarded
+  const grid: Array<{ name: string; launch?: string }> = (typeof window !== 'undefined' && (window as unknown as { __cafeBubbles?: Array<{ name: string; launch?: string }> }).__cafeBubbles) || []
   const qq = q.trim().toUpperCase()
   const here = qq ? grid.filter(b => b.name.toUpperCase().includes(qq)).slice(0, 6) : []
   const hereNames = new Set(here.map(h => h.name.toUpperCase()))
