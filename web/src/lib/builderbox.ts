@@ -47,6 +47,15 @@ export async function builderboxInvite(opts: {
     const slot = builderboxQueueSlot(opts.worldKey)
     const doc = (await loadGameSlot(slot)) as { tasks?: BuilderBoxTask[] } | undefined
     const tasks = Array.isArray(doc?.tasks) ? doc.tasks : []
+    // Idempotent: collapse a duplicate invite — a double-submit (Stephen's
+    // "nice :)" landed twice) or the surface's read-back RETRY (the keepalive
+    // fix re-fires when it can't confirm the first landed). Same who+text within
+    // a short window is one invitation, so a retry after a lagging read-back
+    // adds nothing, and the queue + bus stay clean.
+    const DEDUPE_WINDOW_MS = 15_000
+    if (tasks.some(t => t.who === task.who && t.text === task.text && (task.at - (t.at || 0)) < DEDUPE_WINDOW_MS)) {
+      return
+    }
     await saveGameSlot(slot, { tasks: [...tasks, task].slice(-QUEUE_CAP) })
 
     const where = opts.worldName || opts.worldKey
