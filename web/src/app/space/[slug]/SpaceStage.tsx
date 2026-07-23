@@ -195,10 +195,10 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
           only visible chrome. Hidden while the world is still building — an
           unfinished world (or one wiped for a rebuild) is not up for a vote,
           even if it carries stale save points from a previous life. */}
-      <TournamentBar
+      {!playMode && <TournamentBar
         slot={`tournament:space:${spaceSlug}`}
-        worlds={!building && !playMode && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
-        visible={!playMode}
+        worlds={!building && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+        visible
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
         onReckoning={(on) => { setVoting(on); if (!on) { setPreviewVersion(null); setStageRect(null) } }}
@@ -208,7 +208,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
           setPreviewVersion(Number.isFinite(n) && n >= 1 ? n : null)
         }}
         onStageRect={setStageRect}
-      />
+      />}
 
       {/* a world's OSD — captions/hints, restored from SpaceToolbar */}
       {caption && (caption.text || caption.kind === 'typing') && (

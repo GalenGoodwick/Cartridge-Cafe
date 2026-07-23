@@ -6538,15 +6538,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             style={{ fontFamily: 'monospace' }}
           />
 
-          {/* GAMEPLAY MODE overlay — total-UI-close: the world plays clean, only
-              a way out (◂ back) + a way back to the UI (▣ reopen) remain. */}
+          {/* GAMEPLAY MODE overlay — total-UI-close. The engine's OWN back button
+              (top-left, below) stays; here we add only the ▣ reopen so play is
+              clean with exactly one way out + one way back to the UI. */}
           {playMode && (
-            <>
-              <button onClick={() => { window.location.href = '/' }} title="leave the world"
-                className="absolute left-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[18px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">◂</button>
-              <button onClick={exitPlayMode} title="show the UI again"
-                className="absolute right-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[16px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">▣</button>
-            </>
+            <button onClick={exitPlayMode} title="show the UI again"
+              className="absolute right-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[16px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">▣</button>
           )}
 
           {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
@@ -7514,8 +7511,9 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
               <div className="absolute left-3 top-3 z-40 flex items-stretch gap-1.5">
                 <button onClick={back} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
-                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} inline />
-                {branchy && playScene && (
+                {/* the title (world name) hides in gameplay mode — the back arrow stays */}
+                {!playMode && <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} inline />}
+                {branchy && playScene && !playMode && (
                   <button
                     title="players joining this world see the version you're looking at"
                     onClick={async () => {
