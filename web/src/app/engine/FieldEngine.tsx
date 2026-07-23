@@ -333,7 +333,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // ducked the regular chrome (sidebar/footer) — the "wrong window" bug. Kept in
   // a ref so a stale closure in the async load path still reads the live value.
   const voteModeRef = useRef(false)
-  voteModeRef.current = versionView != null
+  // BOTH vote doors: versionView = a space page's vote-preview; viewport = the
+  // hub's vote arena embedding this engine as a candidate stage. In either,
+  // instructions NEVER auto-greet — not even a first-time viewer (Galen: the
+  // open box hid the vote UI until manually closed).
+  voteModeRef.current = versionView != null || viewport != null
   const greetInstructions = (worldId: string) => {
     if (!worldId || worldId === 'CAFE' || worldId === 'SUB-MAIN') return
     if (voteModeRef.current) return
