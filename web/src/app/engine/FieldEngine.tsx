@@ -2718,6 +2718,36 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // a portal press caught in PLAY mode (chrome closed) — resolved on pointer-up
   const pendingPortalRef = useRef<{ fieldId: string; x: number; y: number } | null>(null)
 
+  // THE RELEASE IS UNMISSABLE — a pointer-up that lands on an overlay above
+  // the canvas (THE ORPHANAGE, any panel) never reaches the canvas handler,
+  // so wd.mouse_down stayed true and the hub hook believed the button was
+  // held forever: backing out of the orphanage into PLAYER WORLDS froze the
+  // shelf in a phantom drag (Galen, live). A window-level release clears the
+  // latch no matter where the up lands; blur covers alt-tab mid-press. It
+  // runs AFTER the canvas's own React pointer-up (window is past the root),
+  // so normal clicks are untouched — this only heals the missed ones.
+  useEffect(() => {
+    const release = () => {
+      pointerDown.current = false
+      isPanning.current = false
+      isOrbiting.current = false
+      draggingFieldId.current = null
+      pendingPortalRef.current = null
+      const sim = simulationRef.current
+      if (sim) sim.worldData['mouse_down'] = false
+      const canvas = canvasRef.current
+      if (canvas) canvas.style.cursor = hubCursorRef.current ? 'none' : 'grab'
+    }
+    window.addEventListener('pointerup', release)
+    window.addEventListener('pointercancel', release)
+    window.addEventListener('blur', release)
+    return () => {
+      window.removeEventListener('pointerup', release)
+      window.removeEventListener('pointercancel', release)
+      window.removeEventListener('blur', release)
+    }
+  }, [])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current

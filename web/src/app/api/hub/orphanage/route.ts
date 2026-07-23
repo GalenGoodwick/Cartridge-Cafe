@@ -11,7 +11,6 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { hydrateAllScenes, listScenes, loadScene } from '../../engine/store'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,20 +51,12 @@ export async function GET() {
     orphans.push({ name: s.name, slug: s.slug, why, mine })
   }
 
-  // Canonical worlds ADMIN-HIDDEN via /admin (worldData.__private = true) — the
-  // "things hidden in /admin" (Galen). Unlisted everywhere, direct /hub link
-  // still works, so surfacing their existence here is consistent. Branches
-  // (⑂) are versions, not worlds — keep them out.
-  try {
-    await hydrateAllScenes()
-    for (const name of listScenes()) {
-      if (name === 'CAFE' || name === 'SUB-MAIN' || name.includes(' ⑂ ')) continue
-      const sc = loadScene(name) as { worldData?: { __private?: boolean } } | undefined
-      if (sc?.worldData?.__private) {
-        orphans.push({ name, slug: encodeURIComponent(name), why: 'unlisted', mine: false })
-      }
-    }
-  } catch { /* scene store unavailable — the player-space orphans still stand */ }
+  // NOT HERE: canonical worlds ADMIN-HIDDEN via /admin (worldData.__private).
+  // Those are DELISTED on purpose — the junk drawer, not orphans — and their
+  // sweep filled the whole view with them (Galen: "the orphanage is not a
+  // world showing delisted/junk games"). The orphanage is for worlds still
+  // being born or kept close: building, blank drafts, your own private.
+  // Delisted canon stays delisted, everywhere.
 
   return NextResponse.json({
     ok: true,
