@@ -24,7 +24,6 @@ interface TokenData {
   createdAt: string
 }
 
-const PROD_URL = 'https://unionchant.vercel.app'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -54,9 +53,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
   const [tokenName, setTokenName] = useState('')
   const [newToken, setNewToken] = useState<string | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
-
-  // Share
-  const [linkCopied, setLinkCopied] = useState(false)
 
   // Pay — the OWN step of the funnel (renders only when the rail is configured)
   const [pay, setPay] = useState<{ configured: boolean; products: Array<{ key: string; label: string }>; mine: Array<{ product: string; slug?: string; active: boolean }> } | null>(null)
@@ -270,20 +266,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                 </div>
               </div>
             )}
-
-            {/* Share */}
-            <div className="px-3 py-2 border-b border-border">
-              <div className="text-muted mb-1.5">share</div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted truncate flex-1">/space/{spaceSlug}</span>
-                <button
-                  onClick={() => copyToClipboard(`${PROD_URL}/space/${spaceSlug}`, setLinkCopied)}
-                  className="px-2 py-0.5 bg-accent/15 text-accent border border-accent/30 rounded hover:bg-accent/30 transition-colors flex-shrink-0"
-                >
-                  {linkCopied ? 'copied' : 'copy link'}
-                </button>
-              </div>
-            </div>
 
             {/* Tokens */}
             <div className="px-3 py-2 border-b border-border">
