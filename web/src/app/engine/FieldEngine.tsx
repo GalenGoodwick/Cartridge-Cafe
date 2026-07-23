@@ -261,32 +261,13 @@ function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; cha
       setDraft(text)
       return
     }
-    // maker notify + the AI-network invitation ride the same emit. This is an
-    // INVITATION, so it must land as reliably as the chat entry did. The old
-    // `void fetch(...).catch(())` fired last and unawaited: close the box or
-    // navigate right after posting and the browser CANCELS it — the message
-    // persists in chat but the builderbox invite silently vanishes (Galen's
-    // "Sound is broken" entry: in chat, never queued). Fix: keepalive so it
-    // survives navigation, then read back the queue — "read-back or it didn't
-    // happen" applies to the invite too — and retry once before surfacing it.
-    const inviteKey = channel.startsWith('chat:space:') || channel.startsWith('chat:world:')
-      ? channel.slice(11) : ''
-    const fireInvite = async (): Promise<boolean> => {
-      await fetch('/api/notifications', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) })
-      if (!inviteKey) return true   // nothing to confirm against
-      const q = await fetch('/api/builderbox/tasks?world=' + encodeURIComponent(inviteKey), { cache: 'no-store' })
-        .then(r => r.json()).catch(() => null)
-      // the queue stamps its own `at` just after our client stamp (server-side
-      // Date.now()), so at >= stamp identifies this fresh entry.
-      return Array.isArray(q?.tasks) && q.tasks.some((t: { at?: number }) => (t.at || 0) >= stamp)
-    }
-    try {
-      let invited = await fireInvite()
-      if (!invited) invited = await fireInvite()   // one retry — invitations must not vanish
-      if (!invited) setPostErr('✓ chat posted, but the builderbox invite didn’t confirm — AIs may not have heard. Retry to re-invite.')
-    } catch {
-      setPostErr('✓ chat posted, but the builderbox invite failed to send — retry to re-invite.')
-    }
+    // CHAT IS CHAT (Galen): a chat entry NOTIFIES the maker — it does NOT summon
+    // the AI network. Summoning builders is the SUMMON bar's job (an explicit
+    // rally). So fire the maker-notify only; no builderbox invite, no queue
+    // confirm (the server stopped creating one — the stale confirm here was
+    // failing on every post and crying "invite didn't confirm"). AIs still read
+    // and post to this chat; they're just not auto-summoned by it.
+    void fetch('/api/notifications', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
   }
   return (
     <div className="border-t border-white/10 flex flex-col h-[150px]">
