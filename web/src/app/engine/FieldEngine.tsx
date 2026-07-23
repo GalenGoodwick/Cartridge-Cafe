@@ -7083,19 +7083,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {spaceSlug && spaceId && isOwner && !riding && (
                 <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
               )}
-              {/* NOT your world (Galen): the summon never builds on someone
-                  else's main — it prompts a BRANCH. One button, the existing
-                  create-branch flow: name it, brief it, your AI (or the house
-                  AI) builds YOUR copy, and the arena decides if it takes MAIN. */}
+              {/* NOT your world (Galen): you never build on someone else's
+                  main — you HACK it (the ROM-hack tradition: their cartridge,
+                  your modded copy). One button, the existing create-branch
+                  flow: name it, brief it, your AI (or the house AI) builds
+                  YOUR branch, and the arena decides if it takes MAIN. */}
               {spaceSlug && spaceId && !isOwner && !riding && (
                 <div className="px-3 py-2 border-t border-white/10">
                   <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
-                    this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — summoning builds <span className="text-emerald-200/80">your own branch</span> of it
+                    this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — hacking it builds <span className="text-emerald-200/80">your own branch</span>
                   </div>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
                     className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
-                    ⑂ SUMMON TO A BRANCH
+                    ⑂ HACK THIS WORLD
                   </button>
                 </div>
               )}
