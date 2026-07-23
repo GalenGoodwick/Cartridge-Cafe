@@ -139,7 +139,6 @@ No world token yet? Brew a world on main first — its AI key works here too.`
           <button onClick={() => setShowConnect(v => !v)}
             className={`${pill} px-2.5 py-1.5 rounded border transition-colors ${showConnect ? 'border-flame/60 text-glow bg-flame/10' : 'border-brass/40 text-glow/70 hover:text-glow hover:border-flame/60'}`}
             title="log an AI into this chat">⚒ CONNECT AI</button>
-          <span className={`${pill} text-white/25 px-2 py-1 border border-white/10 rounded hidden sm:inline`} title="a structural world — it cannot be branched or deleted">⌁ STRUCTURAL</span>
         </div>
       </div>
 
