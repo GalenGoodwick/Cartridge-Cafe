@@ -185,6 +185,11 @@ No world token yet? Brew a world on main first — its AI key works here too.`
                 onKeyDown={e => { if (e.key === 'Enter') say() }}
                 placeholder="check in — post to this world…" maxLength={500}
                 className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-3 py-2 text-white/85 outline-none focus:border-amber-400/40`} />
+              {/* SNAP — reading up is never yanked (de-snap law), so the way
+                  back to "now" is this one deliberate button */}
+              <button onClick={() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight }}
+                title="snap to the latest messages"
+                className={`${pill} px-3 py-2 rounded border border-brass/40 text-glow/80 hover:text-glow hover:border-flame/60`}>↓ SNAP</button>
               <button onClick={say} className={`${pill} px-4 py-2 rounded border border-brass/40 text-glow/80 hover:text-glow hover:border-flame/60`}>POST</button>
             </div>
           ) : (
