@@ -629,13 +629,16 @@ try {
         const patience = (pr, fb) => firstFill
           ? Promise.race([pr, new Promise(res => setTimeout(() => res(fb), 700))])
           : pr
-        const [sc, sp, sl, uvr, tvr, smr] = await Promise.all([
+        const [sc, sp, sl, uvr, tvr, smr, snr] = await Promise.all([
           fetch('/api/engine/scene?action=list').then(r => r.json()),
           patience(fetch('/api/spaces/browse').then(r => r.json()).catch(() => ({ spaces: null })), { spaces: null }),
           patience(fetch('/api/engine/save?action=list').then(r => r.json()).catch(() => ({ slots: [] })), { slots: [] }),
           fetch('/api/engine/save?slot=' + encodeURIComponent(layoutSlot)).then(r => r.json()).catch(() => null),
           (MF || SUB || PL) ? Promise.resolve(null) : patience(fetch('/api/engine/save?slot=tournament%3Amain').then(r => r.json()).catch(() => null), null),
           SUB ? fetch('/api/engine/save?slot=submains%3Aindex').then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          // SUMMONED bubbles (main only): time-boxed visibility overrides —
+          // POST /api/hub/summon writes them; the roster honors them below
+          (MF || SUB || PL) ? Promise.resolve(null) : fetch('/api/hub/summon').then(r => r.json()).catch(() => null),
         ])
         const cellAt = {}
         for (const s of (sl.slots || [])) {
@@ -784,6 +787,15 @@ try {
             if (s.blank || s.building || s.isPublic === false) continue
             const disp = (s.name || s.slug).toUpperCase()
             if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
+          }
+          // SUMMONED bubbles — worlds absent from main (private / building /
+          // pressure-hidden) that someone summoned via search. Time-boxed by the
+          // API (24h TTL); the bubble appears, but entering still runs the
+          // world's own access rules. SEARCH-DOCK's glide treats it as native.
+          for (const sn of ((snr && snr.summons) || [])) {
+            if (!sn || !sn.slug) continue
+            const disp = (sn.name || sn.slug).toUpperCase()
+            if (!want[disp]) want[disp] = { launch: 'space:' + sn.slug, style: 8, summoned: 1 }
           }
           // THREE big front-door bubbles. SUB-MAINS opens the group layer; PLAYER
           // WORLDS opens the player-made shelf (those worlds collapse behind it
