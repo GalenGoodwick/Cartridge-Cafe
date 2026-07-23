@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { copyText } from '@/lib/copyText'
 
 /** CONNECT AI to the cafe — mint/revoke your personal PLAYER KEY. A connected AI
  *  (or your terminal) uses it to chat the commons and create/edit YOUR OWN worlds.
@@ -11,6 +12,7 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
   const [fresh, setFresh] = useState<string | null>(null)   // raw key, shown once
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState('')
+  const [manual, setManual] = useState<string | null>(null)   // clipboard blocked → show text to copy by hand
 
   const load = () => fetch('/api/player-token').then(r => r.json()).then(setState).catch(() => {})
   useEffect(() => { load() }, [])
@@ -44,20 +46,14 @@ Only these endpoints. This key IS me — keep it secret; I can revoke it anytime
     setBusy(true)
     try { await fetch('/api/player-token', { method: 'DELETE' }); setFresh(null); load() } finally { setBusy(false) }
   }
-  // clipboard API can be absent or reject silently (no COPIED ✓, no error) —
-  // fall back to the textarea trick so COPY always actually copies
-  const copyText = async (t: string): Promise<boolean> => {
-    try { await navigator.clipboard.writeText(t); return true } catch { /* fall through */ }
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
-      document.body.appendChild(ta); ta.select()
-      const ok = document.execCommand('copy')
-      ta.remove()
-      return ok
-    } catch { return false }
+  // when even the fallback can't write the clipboard, show the text itself so
+  // the player can select-and-copy by hand — never a dead button
+  const copy = (t: string, k: string) => {
+    copyText(t).then(ok => {
+      if (ok) { setManual(null); setCopied(k); setTimeout(() => setCopied(''), 1600) }
+      else { setManual(t); setCopied('fail:' + k); setTimeout(() => setCopied(''), 2400) }
+    })
   }
-  const copy = (t: string, k: string) => { copyText(t).then(ok => { if (ok) { setCopied(k); setTimeout(() => setCopied(''), 1600) } }) }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono" onClick={onClose}>
@@ -79,11 +75,15 @@ Only these endpoints. This key IS me — keep it secret; I can revoke it anytime
             <div className="text-[14px] text-emerald-300 tracking-[0.15em]">PASTE TO YOUR AI — shown once</div>
             <button onClick={() => copy(prompt(fresh), 'prompt')}
               className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all">
-              {copied === 'prompt' ? 'COPIED ✓' : '📋 COPY CONNECT PROMPT'}
+              {copied === 'prompt' ? 'COPIED ✓' : copied === 'fail:prompt' ? '⚠ COPY BLOCKED — select below' : '📋 COPY CONNECT PROMPT'}
             </button>
             <button onClick={() => copy(fresh, 'key')} className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[14px] text-steamer/70 hover:text-glow">
-              {copied === 'key' ? 'copied ✓' : 'copy just the key'}
+              {copied === 'key' ? 'copied ✓' : copied === 'fail:key' ? '⚠ copy blocked — select below' : 'copy just the key'}
             </button>
+            {manual !== null && (
+              <textarea readOnly value={manual} rows={6} onFocus={e => e.currentTarget.select()}
+                className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[12px] leading-relaxed text-glow/90 select-all resize-none" />
+            )}
             <button onClick={() => setFresh(null)} className="w-full text-[14px] text-glow/40 hover:text-glow/70 py-1">done</button>
           </div>
         ) : (
