@@ -2363,7 +2363,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (!resp.ok) return
       const { snapshot } = await resp.json()
       if (!snapshot) return
-      // a member world boots CLEAN — chapter semantics, no hub-state bleed
+      // a member world boots CLEAN — chapter semantics, no hub-state bleed.
+      // restoreFromSnapshots MERGES (it never clears), so the previous world's
+      // fields must be removed first or both worlds render stacked ("dunesea
+      // overwrite onto hub" — Galen's first hubworld click).
+      for (const id of Array.from(sim.fields.keys())) sim.removeField(id)
+      sim.interactionRules = []
       for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
       if (snapshot.visualTypes) for (const vt of snapshot.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
       if (snapshot.modules) for (const m of snapshot.modules) renderer.registerModule(m.name, m.wgsl)
