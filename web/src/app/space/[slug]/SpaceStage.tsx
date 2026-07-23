@@ -7,6 +7,7 @@ import TournamentBar from '@/app/TournamentBar'
 import ShareWorld from './ShareWorld'
 import FollowButton from './FollowButton'
 import SummonConsole from './SummonConsole'
+import ManagePanel from '@/app/engine/ManagePanel'
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
  *  the space-only PLUMBING that lives invisibly here: the version arena and the
@@ -25,6 +26,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   ownerHandle?: string | null
 }) {
   const router = useRouter()
+  const [manageOpen, setManageOpen] = useState(false)
   const [dockBottom, setDockBottom] = useState(0)
   const [building, setBuilding] = useState(false)   // world is still blank-and-building → hide SHARE
   const [versions, setVersions] = useState<{ version: number }[]>([])
@@ -173,6 +175,18 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
           bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
       {!playMode && <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}
+      {/* ⚙ MANAGE — owner-only (Galen): a settings button on your own world that
+          opens the list of ALL your worlds + branches to open/rename/delete.
+          Chrome, so it hides in gameplay mode like the rest. */}
+      {isOwner && !playMode && (
+        <button
+          onClick={() => setManageOpen(true)}
+          className="fixed bottom-[104px] right-4 z-[60] w-9 h-9 rounded-full border border-white/15 bg-black/70 backdrop-blur text-white/55 hover:text-white hover:border-white/35 text-[16px] leading-none flex items-center justify-center shadow-lg transition-colors"
+          title="manage your worlds & branches"
+          aria-label="manage your worlds and branches"
+        >⚙</button>
+      )}
+      {manageOpen && <ManagePanel onClose={() => setManageOpen(false)} />}
       {!building && !playMode && <SummonConsole slug={spaceSlug} name={name} isOwner={isOwner} />}
       <FieldEngine
         spaceId={spaceId}

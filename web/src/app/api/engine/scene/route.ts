@@ -156,6 +156,36 @@ export async function POST(req: NextRequest) {
       if (!ok) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
       return NextResponse.json({ ok: true, reverted: body.name, to: Number(body.timestamp) })
     }
+    // RENAME — the MANAGE list re-labels a branch. Re-keys the durable scene slot
+    // (scene:<from> → scene:<to>); auth already checked mayWriteScene(from) above.
+    // The immortal original can never be renamed; a name collision is refused.
+    if (body.action === 'rename' && typeof body.to === 'string' && body.to.trim()) {
+      const from = body.name
+      const to = body.to.trim()
+      if (to === from) return NextResponse.json({ ok: true, renamedTo: to })
+      // rename only relabels: `to` MUST keep the same `BASE ⑂ handle` as `from`
+      // (else a caller could re-home their branch under another base/handle —
+      // mayWriteScene(from) authorized the source, not an arbitrary destination).
+      const prefix = (n: string): string | null => {
+        const i = n.indexOf(' ⑂ ')
+        if (i < 0) return null
+        return n.slice(0, i) + ' ⑂ ' + n.slice(i + 3).split(' · ')[0]   // BASE ⑂ handle
+      }
+      const fp = prefix(from), tp = prefix(to)
+      if (!fp || !tp || fp !== tp) {
+        return NextResponse.json({ error: 'Rename only changes the label (same world, same author)' }, { status: 400 })
+      }
+      const originalGuard = await getLineage(from.split(' ⑂ ')[0])
+      if (originalGuard && originalGuard.original === from) {
+        return NextResponse.json({ error: 'This is the original — it can never be renamed' }, { status: 409 })
+      }
+      const scene = loadScene(from)
+      if (!scene) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
+      if (loadScene(to)) return NextResponse.json({ error: 'A world with that name already exists' }, { status: 409 })
+      saveScene(to, { ...(scene as object), name: to } as typeof scene)
+      deleteScene(from)
+      return NextResponse.json({ ok: true, renamedFrom: from, renamedTo: to })
+    }
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
