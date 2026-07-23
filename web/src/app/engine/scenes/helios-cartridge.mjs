@@ -209,6 +209,7 @@ const scene = {
   worldParams: { gravity: 0, friction: 1.0, collisionForce: 0, boundaryMode: 'open', bounciness: 0, gravitationalConstant: 0 },
   worldData: {
     noPixelSampling: true,
+    rResetKey: true,   // Galen: R must reset HELIOS (the stubborn-tree escape hatch)
     instructions: 'MOVE — the sun follows your cursor; all of its light comes with it.\nTime passes on its own — the sun slowly ages to moonlight and back.\nCLICK & HOLD — time races.\n\nThe point: there is no goal. The valley is yours to light — stars and fireflies come with the moon.',
     postProcess: { bloomIntensity: 0.5, bloomThreshold: 0.6, exposure: 1.0, vignetteStrength: 0.3, vignetteRadius: 0.8 },
   },
