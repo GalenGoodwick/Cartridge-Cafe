@@ -118,6 +118,22 @@ Space owners can also edit instructions in the UI (? INSTRUCTIONS → EDIT), and
 edit persists with the world. A world without instructions shows a placeholder —
 never ship that.
 
+## World Blurb (write it when you finish)
+
+When your world is done, set `worldData.blurb` — a ONE-LINE shareable hook, the
+tagline shown when someone shares the world or sees it on the shelf. YOU built it,
+so you write the pitch: name what the player DOES or SEES, concrete and inviting.
+At most 140 characters, one sentence, no quotes/emoji, not "a world where…".
+
+```json
+{"type": "set_world_data", "data": {"blurb": "raise the drowned moon, drain the glass sea, and find the way through"}}
+```
+
+Set it alongside `instructions`, before `brief_done`. The engine mirrors it into
+the world's share/preview card automatically — it is how a stranger decides to
+click and play. (Costs you nothing extra: you're already here, you already know
+what you made.)
+
 ---
 
 ## THE COLLABORATION PROTOCOL — one unified system (MANDATORY)

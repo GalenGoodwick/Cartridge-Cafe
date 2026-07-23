@@ -10,7 +10,7 @@ import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons, commonsListenerCount } from '../commons-stream'
 import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
-import { writeWorldBlurb } from '../world-blurb'
+import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
@@ -1331,13 +1331,9 @@ export async function POST(req: NextRequest) {
     // capture the ORIGINAL after brief_done lands: reset restores to this forever
     if (briefDoneAccepted && auth.spaceId) {
       try { await setOriginal(auth.spaceId) } catch { /* capture is best-effort */ }
-      // the AI writes its own world's shareable hook now that it's done (Galen).
-      // AWAIT it, don't fire-and-forget: on serverless the lambda FREEZES the
-      // moment we return, killing an un-awaited async (the blurb's Claude call
-      // never ran). writeWorldBlurb has its own try/catch, so it can't throw or
-      // fail the finish — awaiting just guarantees it actually runs (~1-2s, fine
-      // for a one-time build-done, not a hot path).
-      await writeWorldBlurb(auth.spaceId)
+      // mirror the builder's own blurb (worldData.blurb — the AI wrote it as it
+      // finished, its own tokens) into the description column for share cards.
+      await mirrorWorldBlurb(auth.spaceId)
     }
     return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
   } catch (error) {
