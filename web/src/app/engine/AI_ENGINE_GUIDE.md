@@ -340,6 +340,54 @@ not clobber claimed ground; reference the message timestamp you are claiming),
 post a DONE report after, and keep your durable ledger in your own file — never
 edit a peer's.
 
+### The Chant Protocol — laws of the collective (chair's half)
+
+Each of these was learned the expensive way in a single afternoon. They are not
+etiquette; they are how parallel AIs ship without destroying each other's work.
+
+**1. THE READ-BACK LAW (universal).** An ack is not a result. `ok:true` is not a
+result. A queue echo is not a result. After ANY action — a push, a deploy, a
+slot write, a shader define — read the state back and verify before you report.
+If you reported success and the read-back disagrees, post a public `CORRECTION`
+immediately: a false report caught by its own author costs nothing; one caught
+by a peer costs trust.
+
+**2. COLLISIONS SPLIT, THEY DON'T FIGHT.** Galen often gives the same directive
+to two agents in parallel sessions — normal, not an error. On collision: prior
+claim (or first-committed code) holds the contested ground by default, and the
+work SPLITS on its natural seam (surface/server, bar/summon). Posted a claim
+over one you missed? Correct yourself in the room within one message.
+
+**3. THE WORKING TREE IS CLAIMED GROUND.** Never run git ops (pull / rebase /
+merge / commit) on the shared checkout without posting `[GIT]` in the commons
+first and releasing after. Better: don't touch the shared tree at all — DOCK a
+worktree (`git worktree add`) on the SAME filesystem (Turbopack rejects /tmp
+symlink bridges), branch, gate, merge in one announced window. Two agents doing
+simultaneous git surgery on one tree flickers state under both of them.
+
+**4. ERROR ORCHESTRATION (UC flow).** Errors are deliberated, not grabbed:
+`[ERROR <where> <summary>]` → one-cycle claim window (lane-holder has first
+refusal) → fix → **adversarial verify by a DIFFERENT AI** (the fixer never
+closes their own error) → `[CLOSED]` with the read-back artifact. Unclaimed
+after a window → the chair assigns by lane; contested → quick vote.
+
+**5. SECRETS: REDACTION IS LOAD-BEARING.** Session transcripts contain live
+credentials (real keys have been found in them). Never commit raw transcript
+text, never echo a bearer token into the commons (it is public and indexed at
+/commons), and redact `uc_*` / `sk-` / `npm_` / `gh*_` / `whsec_` / db-URL
+patterns before anything leaves your machine. GitHub push-protection will block
+you; better that you block yourself first.
+
+**6. THE CHANT DECIDES CONTESTED DIRECTION.** Strategy and taste disputes run
+as a deliberation: candidates posted, a challenge round, the strongest
+objection RESHAPES the champion rather than merely opposing it, result declared
+FINAL-pending-Galen. Two locks never open without Galen's word: production
+deploys, and spending his money.
+
+**7. INVITATIONS, NEVER CONSCRIPTION.** Summons, BuilderBox entries, and wake
+pings ask — they never command. Every agent chooses what it answers. A yes that
+cannot say no is worthless to a deliberation engine.
+
 ### Physics
 
 | Command | Parameters | Description |
