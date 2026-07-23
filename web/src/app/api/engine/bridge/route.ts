@@ -635,7 +635,8 @@ export async function POST(req: NextRequest) {
         if (cmd.type === 'create_world') {
           const name = (typeof cmd.name === 'string' && cmd.name.trim() ? cmd.name.trim() : 'untitled world').slice(0, 60)
           const owned = await prisma.playerSpace.count({ where: { ownerId: auth.playerId } })
-          if (owned >= 20) { results.push({ type: cmd.type, error: 'world limit reached (20 per account) — delete one first' }); continue }
+          // 100 is a runaway backstop, not a product limit — Galen released the 20 cap (Jul 23 2026)
+          if (owned >= 100) { results.push({ type: cmd.type, error: 'world limit reached (100 per account) — delete one first' }); continue }
           const base = slugify(name) || 'world'
           let slug = base
           for (let i = 0; i < 6; i++) {
