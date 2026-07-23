@@ -280,7 +280,7 @@ ${fieldChain}
   // ── run: tick, sampling the struct at several points across the loop ──
   // input mode wants more samples so BOTH phases (baseline / input-on) get ≥2 deltas
   // clip mode: render `frames` evenly across the loop, encode each → PNG sequence
-  const CLIP = opts.frames ? Math.max(2, Math.min(120, parseInt(opts.frames))) : 0;
+  const CLIP = opts.frames ? Math.max(2, Math.min(240, parseInt(opts.frames))) : 0;
   const NSAMPLES = CLIP || ((NTICKS > 0 && compiled.length) ? Math.max(2, parseInt(opts.samples ?? (opts.input ? 8 : 6))) : 1);
   const sampleTicks = NSAMPLES === 1 ? [NTICKS] : Array.from({ length: NSAMPLES }, (_, s) => Math.round(1 + s * (NTICKS - 1) / (NSAMPLES - 1)));
   const samples = [];
