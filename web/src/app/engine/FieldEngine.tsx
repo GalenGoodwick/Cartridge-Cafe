@@ -2558,6 +2558,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [selection.selectedFieldId, syncFields])
 
   // Pointer handlers — canvas is view-only (agents do the painting)
+  // a portal press caught in PLAY mode (chrome closed) — resolved on pointer-up
+  const pendingPortalRef = useRef<{ fieldId: string; x: number; y: number } | null>(null)
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current
@@ -2601,7 +2604,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
     // Player worlds play like worlds too: fields only move by hand
     // while the workshop is open (⚙ tools) — never during plain play.
-    if (spaceId && !chromeVisible) return
+    // EXCEPT doors: a field that declares portalTarget is a PORTAL and must
+    // work for every visitor — clicks used to die at this gate ("Portal
+    // Failure", the first BuilderBox task). Only portal fields catch the
+    // pointer here; everything else still belongs to the game's hooks.
+    if (spaceId && !chromeVisible) {
+      const simP = simulationRef.current
+      const canvasP = canvasRef.current
+      if (simP && canvasP) {
+        const rectP = canvasP.getBoundingClientRect()
+        const camP = cameraRef.current
+        const gridP = screenToGrid(e.clientX, e.clientY, rectP, camP, camP.zoom)
+        const hf = simP.getFieldAtPoint(gridP.x, gridP.y)
+        if (hf && hf.properties.get('portalTarget')) {
+          pendingPortalRef.current = { fieldId: hf.id, x: e.clientX, y: e.clientY }
+        }
+      }
+      return
+    }
 
     // Hit-test: check if pointer is over a field
     if (sim) {
@@ -2727,6 +2747,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     // release must be visible to hooks even without a final move event
     { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
+    // PLAY-mode portal: pressed on a door with the chrome closed — travel on a
+    // clean click (not a drag). Both types page-nav for now; 'swap' becomes the
+    // in-place hubworld travel when that lands.
+    {
+      const pp = pendingPortalRef.current
+      if (pp) {
+        pendingPortalRef.current = null
+        const dxP = e.clientX - pp.x, dyP = e.clientY - pp.y
+        if (dxP * dxP + dyP * dyP < 25) {
+          const simPP = simulationRef.current
+          const fPP = simPP?.fields.get(pp.fieldId)
+          const targetPP = fPP?.properties.get('portalTarget') as string | undefined
+          const typePP = fPP?.properties.get('portalType') as string | undefined
+          if (targetPP && (typePP === 'space' || typePP === 'swap')) {
+            window.location.href = `/space/${targetPP}`
+            return
+          }
+        }
+      }
+    }
     if (draggingFieldId.current) {
       const sim = simulationRef.current
       const fieldId = draggingFieldId.current
