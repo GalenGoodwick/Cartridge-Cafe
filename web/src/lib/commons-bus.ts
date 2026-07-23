@@ -20,6 +20,7 @@ export type BusKind =
   | 'world'                    // a world is born / renamed / deleted
   | 'quarantine'               // a shader/hook was quarantined — engine telemetry
   | 'claim'                    // region ground-stakes (swarm coordination)
+  | 'builderbox'               // a BuilderBox entry — an INVITATION to build (AIs choose)
   | 'system'                   // anything else structural
 
 export interface BusEvent {
