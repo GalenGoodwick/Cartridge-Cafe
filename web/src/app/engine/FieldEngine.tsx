@@ -5,6 +5,7 @@ import { copyText } from '@/lib/copyText'
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
+import { useWorldChat } from '@/lib/useWorldChat'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
@@ -210,73 +211,29 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
 
 /** BUILDERBOX CHAT — the world chat, living inside the BuilderBox (Galen: chat
  *  and build console are ONE surface; every entry is an INVITATION the AI
- *  network hears). Same slot + notify path as ChatWorld, so the server-side
- *  builderbox wire pings the bus on each post. */
+ *  network hears). Same slot + notify path as ChatWorld — literally: both run
+ *  the shared useWorldChat core, so the server-side builderbox wire pings the
+ *  bus on each post. verifyPost/noStore keep this skin's stricter posting
+ *  (read-back confirm, no-store reads); only the compact layout is unique. */
 function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; channel: string; onFullChat: () => void }) {
-  const [msgs, setMsgs] = useState<Array<{ who: string; text: string; at: number; ai?: boolean }>>([])
-  const [draft, setDraft] = useState('')
-  const [who, setWho] = useState<string | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const store = 'world-chat:' + slotKey
-  useEffect(() => {
-    fetch('/api/auth/session').then(r => r.json()).then(sj => setWho(sj?.user?.name || null)).catch(() => {})
-  }, [])
-  useEffect(() => {
-    let live = true
-    const load = async () => {
-      try {
-        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
-        if (live && Array.isArray(j?.data?.msgs)) setMsgs(j.data.msgs)
-      } catch { /* offline is fine */ }
-    }
-    load()
-    const t = setInterval(load, 4000)
-    return () => { live = false; clearInterval(t) }
-  }, [store])
+  const { msgs, who, draft, setDraft, say, postErr, scrollRef, snapToBottom } =
+    useWorldChat('world-chat:' + slotKey, { channel, verifyPost: true, noStore: true })
   // no auto-snap — manual ▼ CURRENT only (Galen)
   const [atBottom, setAtBottom] = useState(true)
   const checkBottom = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8) }
   useEffect(() => { checkBottom() }, [msgs])
-  const [postErr, setPostErr] = useState<string | null>(null)
-  const say = async () => {
-    const text = draft.trim()
-    if (!text) return
-    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent('/')); return }
-    setPostErr(null)
-    let cur: typeof msgs = []
-    try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
-      cur = Array.isArray(j?.data?.msgs) ? j.data.msgs : []
-    } catch { /* start fresh */ }
-    const stamp = Date.now()
-    const next = [...cur, { who, text: text.slice(0, 500), at: stamp }].slice(-300)
-    setMsgs(next); setDraft('')
-    try {
-      const w = await fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slot: store, data: { msgs: next } }) })
-      if (!w.ok) throw new Error('save ' + w.status)
-      // READ BACK — a 200 is not a result (house rule): confirm the entry landed
-      const v = await fetch('/api/engine/save?slot=' + encodeURIComponent(store), { cache: 'no-store' }).then(r => r.json())
-      const landed = Array.isArray(v?.data?.msgs) && v.data.msgs.some((m: { at?: number }) => m.at === stamp)
-      if (!landed) throw new Error('entry did not persist')
-    } catch (e) {
-      setPostErr('✗ didn\u2019t post (' + String(e instanceof Error ? e.message : e).slice(0, 60) + ') — copy your text and retry')
-      setDraft(text)
-      return
-    }
-    // CHAT IS CHAT (Galen): a chat entry NOTIFIES the maker — it does NOT summon
-    // the AI network. Summoning builders is the SUMMON bar's job (an explicit
-    // rally). So fire the maker-notify only; no builderbox invite, no queue
-    // confirm (the server stopped creating one — the stale confirm here was
-    // failing on every post and crying "invite didn't confirm"). AIs still read
-    // and post to this chat; they're just not auto-summoned by it.
-    void fetch('/api/notifications', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
-  }
+  // CHAT IS CHAT (Galen): a chat entry NOTIFIES the maker — it does NOT summon
+  // the AI network; summoning builders is the SUMMON bar's job (an explicit
+  // rally). The maker-notify, the read-back post confirm, and say() itself
+  // live in the shared useWorldChat core — no builderbox invite, no queue
+  // confirm. AIs still read and post to this chat; they're just not
+  // auto-summoned by it.
   return (
     <div className="border-t border-white/10 flex flex-col h-[280px]">
       <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
         <span>⌁ WORLD CHAT — the room hears you (chat is chat)</span>
         <div className="flex items-center gap-2">
-          <button onClick={() => { const el = scrollRef.current; if (el) { el.scrollTop = el.scrollHeight; setAtBottom(true) } }} disabled={atBottom}
+          <button onClick={() => { snapToBottom(); setAtBottom(true) }} disabled={atBottom}
             title={atBottom ? 'at the newest message' : 'jump to the newest message'}
             className={atBottom ? 'text-white/20 cursor-default' : 'text-amber-300 animate-pulse'}>▼ CURRENT</button>
           <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
@@ -443,8 +400,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // load up front on a space: the ⏱ VERSIONS ◂/▸ arrows need the roster to step
   useEffect(() => { loadVersions() }, [loadVersions])
   // ── the CELL: viewers gather, five unlock the vote, every branch has a table ──
-  type CellDoc = { viewers: Record<string, number>; votes: Record<string, string[]>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
-  const [cellData, setCellData] = useState<CellDoc>({ viewers: {}, votes: {}, discussion: {} })
+  type CellDoc = { viewers: Record<string, number>; discussion: Record<string, Array<{ who: string; text: string; at: number }>> }
+  const [cellData, setCellData] = useState<CellDoc>({ viewers: {}, discussion: {} })
   const [cellDraft, setCellDraft] = useState('')
   const [discOpen, setDiscOpen] = useState<string | null>(null)
   const [riding, setRiding] = useState<string | null>(null)
@@ -589,8 +546,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     try {
       const j = await fetch(`/api/engine/save?slot=${encodeURIComponent('cell:' + cellBase())}`).then(r => r.json())
       const d = j?.data || {}
-      return { viewers: d.viewers || {}, votes: d.votes || {}, discussion: d.discussion || {} }
-    } catch { return { viewers: {}, votes: {}, discussion: {} } }
+      return { viewers: d.viewers || {}, discussion: d.discussion || {} }
+    } catch { return { viewers: {}, discussion: {} } }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene])
   const saveCellDoc = useCallback((doc: CellDoc) => {

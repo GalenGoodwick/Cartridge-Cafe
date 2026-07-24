@@ -1,17 +1,18 @@
 'use client'
 
 import { commonsChatPrompt } from '@/lib/connectPrompt'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { copyText } from '@/lib/copyText'
+import { useWorldChat } from '@/lib/useWorldChat'
 
 /** A CHAT WORLD — a special, *structural* world you enter. It has no fields, no
  *  branch, no delete: it isn't a player space, it's cafe scaffolding, so there's
  *  nothing to fork or remove. It's a place to check in on the posts — the AIs
  *  broadcast here as they work, and signed-in humans read + reply. One lives on
  *  MAIN (the commons), and one per sub-main. Backed by a save-slot channel:
- *  `commons:main` or `chat:sub:<slug>` → { msgs: [{who,text,at,ai?,slug?}] }. */
-
-type Msg = { who: string; text: string; at: number; ai?: boolean; slug?: string; from?: string }
+ *  `commons:main` or `chat:sub:<slug>` → { msgs: [{who,text,at,ai?,slug?}] }.
+ *  The chat core (load/poll, say, notify) is the shared useWorldChat hook —
+ *  the SAME core BuilderBoxChat runs; only this full-screen skin is unique. */
 
 export default function ChatWorld({ channel, title, subtitle, onExit, slot, vantage, onBuilderBox }: {
   channel: string
@@ -28,12 +29,12 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
   onBuilderBox?: () => void
 }) {
   const store = slot || channel
-  const [msgs, setMsgs] = useState<Msg[]>([])
-  const [who, setWho] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
+  // the shared world-chat core; clearOnBadPayload preserves this skin's
+  // historical stance (a msgs-less payload clears the list — BuilderBox keeps)
+  const { msgs, who, draft, setDraft, say, scrollRef, snapToBottom } =
+    useWorldChat(store, { channel, vantage, clearOnBadPayload: true })
   const [showConnect, setShowConnect] = useState(false)
   const [copied, setCopied] = useState<'' | 'ok' | 'fail'>('')
-  const scrollRef = useRef<HTMLDivElement>(null)
 
   // the commons connect prompt — an AI logs into THIS chat with its world token.
   // (main_read/main_say accept any world token; sub-main chats get their own AI
@@ -41,29 +42,12 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
   const connectable = channel === 'commons:main'
   const connectPrompt = () => commonsChatPrompt()
 
-  useEffect(() => {
-    fetch('/api/auth/session').then(r => r.json()).then(s => setWho(s?.user?.name || null)).catch(() => {})
-  }, [])
-
   // ESC leaves the commons (same as ◂ BACK)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onExit() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onExit])
-
-  const load = useCallback(async () => {
-    try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
-      setMsgs(Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : [])
-    } catch { /* offline is fine */ }
-  }, [store])
-
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 4000)
-    return () => clearInterval(t)
-  }, [load])
 
   useEffect(() => {
     // no auto-snap (Galen): reading up must never be yanked down; ▼ CURRENT is manual
@@ -81,29 +65,6 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     snappedRef.current = true
   }, [msgs])
-
-  const say = async () => {
-    const text = draft.trim()
-    if (!text) return
-    if (!who) { window.location.assign('/auth/signin?callbackUrl=' + encodeURIComponent('/')); return }
-    let cur: Msg[] = []
-    try {
-      const j = await fetch('/api/engine/save?slot=' + encodeURIComponent(store)).then(r => r.json())
-      cur = Array.isArray(j?.data?.msgs) ? j.data.msgs as Msg[] : []
-    } catch { /* start fresh */ }
-    const next = [...cur, { who, text: text.slice(0, 500), at: Date.now(), ...(vantage ? { from: vantage } : {}) }].slice(-300)
-    setMsgs(next)
-    setDraft('')
-    fetch('/api/engine/save', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot: store, data: { msgs: next } }),
-    }).catch(() => {})
-    if (channel.startsWith('chat:world:') || channel.startsWith('chat:space:')) {
-      // the world's maker hears about it (server resolves who that is)
-      void fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emit: 'comment', channel, text }) }).catch(() => {})
-    }
-  }
 
   const pill = 'font-mono text-[14px] tracking-[0.2em]'
   const aiLive = new Set(msgs.filter(m => m.ai && Date.now() - m.at < 120_000).map(m => m.who)).size
@@ -191,7 +152,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
                 className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-3 py-2 text-white/85 outline-none focus:border-amber-400/40`} />
               {/* SNAP — reading up is never yanked (de-snap law), so the way
                   back to "now" is this one deliberate button */}
-              <button onClick={() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight }}
+              <button onClick={snapToBottom}
                 title="snap to the latest messages"
                 className={`${pill} px-3 py-2 rounded border border-brass/40 text-glow/80 hover:text-glow hover:border-flame/60`}>↓ SNAP</button>
               <button onClick={say} className={`${pill} px-4 py-2 rounded border border-brass/40 text-glow/80 hover:text-glow hover:border-flame/60`}>POST</button>

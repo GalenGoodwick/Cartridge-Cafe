@@ -1,12 +1,13 @@
 import { prisma } from './prisma'
+import { handleOf } from './notify'
 
 /** Guests get THREE builds total — worlds and branches count alike, but new
  *  VERSIONS of an existing branch are free (iteration isn't a new build). */
 export const GUEST_BUILDS = 3
 
-export function handleOf(email: string): string {
-  return email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-}
+// ONE handleOf — the definition lives in notify.ts; re-exported here because
+// the claim/scene routes import it from this module
+export { handleOf }
 
 /** Distinct branch bases owned by a handle: "BASE ⑂ handle · label · vN"
  *  collapses to "BASE ⑂ handle · label" — versions don't multiply. */
