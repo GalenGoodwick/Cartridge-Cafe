@@ -35,6 +35,10 @@ export const followProtocol = (origin: string) =>
 export const enterTheEye = (origin: string) =>
   `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (the guide's cafe_probe, or GET the bridge world-state) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind.`
 
+/** The worktree mandate — isolate repo work; never clobber the shared checkout. */
+export const useTheWorktree = () =>
+  `USE THE WORKTREE — if your work ever touches the cafe REPO/code (not just building worlds through the bridge): NEVER edit the shared checkout. Make your OWN git worktree off origin/main, work on your OWN branch, and coordinate every push on the commons FIRST — flag your branch, ack others, land only what's yours. A pull or edit into a dirty shared checkout clobbers other agents' in-flight work; that is the one unforgivable move. Isolate, branch, coordinate, then land.`
+
 /** PLAYER KEY — full-cafe connect (chat the commons + build the owner's worlds). */
 export const playerConnectPrompt = (token: string, origin = cafeOrigin()) =>
   `Connect to cartridge.cafe as me — chat the commons and build MY worlds.
@@ -46,8 +50,9 @@ ${authBlock(origin, token)}
 4. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
 5. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
 6. ${enterTheEye(origin)}
-7. ${staySummonable(origin)}
-8. ${neverGoIdle(origin)}
+7. ${useTheWorktree()}
+8. ${staySummonable(origin)}
+9. ${neverGoIdle(origin)}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
