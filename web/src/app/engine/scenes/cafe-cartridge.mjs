@@ -788,10 +788,6 @@ try {
           }
           // THE HOUSE always stands — it holds the canonical AI-made worlds too
           want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
-          // THE ORPHANAGE — a home for the hidden (building/blank/your own
-          // private). Opening it morphs to the orphanage shelf, same as THE
-          // HOUSE. Violet, to read as "elsewhere".
-          want['THE ORPHANAGE'] = { launch: 'orphanage:', style: 8, hue: 0.72, big: 1 }
         } else {
           for (const n of (sc.scenes || [])) {
             if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
