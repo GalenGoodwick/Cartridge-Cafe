@@ -97,6 +97,33 @@ renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact m
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
+## COMPONENTS — a vocabulary that executes
+
+Reusable, parameterized, superimposable parts, shared PLATFORM-WIDE. A
+component is a field recipe: its drawn alpha is its pixel-perfect zone and
+collider; its tags wire intersections automatically. Your vision speaks in
+objects ("a brazier here, fog rolling there") — place those objects.
+
+```json
+{"type":"components_read"}
+{"type":"place_component","name":"<name>","x":256,"y":300,"w":96,"h":96,"params":[1,0,0,0],"color":[1,0.7,0.3,1]}
+{"type":"define_component","name":"my-part","tags":["fire"],"description":"…","defaults":{"w":96,"h":96},"wgsl":"fn visual_c_my_part(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f { … }"}
+{"type":"define_tag_rule","a":"fire","b":"flammable","spread":8,"description":"charring","wgsl":"fn interactionEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f { … }"}
+```
+
+- The visual function MUST be named `visual_c_<name>` (dashes → underscores).
+  It receives the placed field's `color` and `params` — parameterize everything;
+  a component prescribes technique, never taste (build YOUR look via params).
+- `place_component` stamps a field, registers the visual if the world lacks it,
+  and auto-wires overlap shaders against every placed component a tag rule
+  binds (fire × flammable → the rule's interactionEffect runs at the exact
+  overlap pixels, with `spread` px of reach). Intersections by vocabulary — no
+  pairwise bespoke code.
+- Instances are cheap (one compile per component); distinct components are not
+  — a world wants dozens of components, not hundreds.
+- Leave parts behind: when your world invents something good (a lantern, a
+  storm, a door), `define_component` it — every future builder inherits it.
+
 ## THE VISION (MANDATORY, before your first field)
 
 Beautiful worlds start as a picture held in the head — never as a struct. The

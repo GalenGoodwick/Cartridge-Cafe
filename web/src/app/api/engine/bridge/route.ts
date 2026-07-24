@@ -10,6 +10,7 @@ import { loadScene, saveScene, hydrateScene } from '../store'
 import { broadcastCommons, commonsListenerCount } from '../commons-stream'
 import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
+import { loadComponents, saveComponent, loadTagRules, saveTagRule, matchTagRules, componentVisualName, COMPONENT_NAME_RE } from '@/lib/world-components'
 import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
@@ -726,6 +727,96 @@ export async function POST(req: NextRequest) {
       // summons_read: what worlds are calling for builders right now (any token).
       if (cmd.type === 'summons_read') {
         results.push({ type: 'summons_read', ok: true, musters: await readSummons() })
+        continue
+      }
+
+      // ── WORLD COMPONENTS — a platform vocabulary of reusable superimposable
+      // parts. define_component / components_read / define_tag_rule work with
+      // any token; place_component stamps into the CURRENT world (space token).
+      if (cmd.type === 'define_component') {
+        const name = String(cmd.name ?? '')
+        const wgsl = String(cmd.wgsl ?? '')
+        if (!COMPONENT_NAME_RE.test(name)) { results.push({ type: cmd.type, error: 'name must be kebab-case (a-z, 0-9, -), 2-40 chars' }); continue }
+        if (!wgsl) { results.push({ type: cmd.type, error: 'wgsl required — fn visual_' + componentVisualName(name) + '(...)' }); continue }
+        const tags = Array.isArray(cmd.tags) ? (cmd.tags as unknown[]).map(t => String(t).toLowerCase()).slice(0, 8) : []
+        const author = String(cmd.author ?? auth.slug ?? 'anonymous').slice(0, 80)
+        const r = await saveComponent({ name, wgsl, tags, description: cmd.description ? String(cmd.description).slice(0, 300) : undefined, defaults: cmd.defaults as { w?: number; h?: number } | undefined, author, at: Date.now() })
+        if (r.error) { results.push({ type: cmd.type, error: r.error }); continue }
+        results.push({ type: cmd.type, ok: true, component: name, visual: componentVisualName(name), tags })
+        continue
+      }
+      if (cmd.type === 'components_read') {
+        const all = await loadComponents()
+        const rules = await loadTagRules()
+        results.push({ type: cmd.type, ok: true,
+          components: all.map(c => ({ name: c.name, tags: c.tags, description: c.description, author: c.author, defaults: c.defaults })),
+          tagRules: rules.map(r => ({ a: r.a, b: r.b, description: r.description, author: r.author })) })
+        continue
+      }
+      if (cmd.type === 'define_tag_rule') {
+        const a = String(cmd.a ?? '').toLowerCase()
+        const b = String(cmd.b ?? '').toLowerCase()
+        if (!a || !b) { results.push({ type: cmd.type, error: 'a and b tags required' }); continue }
+        const author = String(cmd.author ?? auth.slug ?? 'anonymous').slice(0, 80)
+        const r = await saveTagRule({ id: 'tr_' + Date.now().toString(36), a, b,
+          wgsl: cmd.wgsl ? String(cmd.wgsl) : undefined, spread: typeof cmd.spread === 'number' ? cmd.spread : undefined,
+          hooks: Array.isArray(cmd.hooks) ? (cmd.hooks as unknown[]) : undefined,
+          description: cmd.description ? String(cmd.description).slice(0, 300) : undefined, author, at: Date.now() })
+        if (r.error) { results.push({ type: cmd.type, error: r.error }); continue }
+        results.push({ type: cmd.type, ok: true, rule: a + ' × ' + b })
+        continue
+      }
+      if (cmd.type === 'place_component') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'place_component needs a space token (uc_st_…) — a world to place into' }); continue }
+        const name = String(cmd.name ?? '')
+        const comp = (await loadComponents()).find(c => c.name === name)
+        if (!comp) { results.push({ type: cmd.type, error: `no component "${name}" — discover with components_read, define with define_component` }); continue }
+        const visualName = componentVisualName(comp.name)
+        const sub: Record<string, unknown>[] = []
+        try {
+          const snap = await getSpaceSnapshot(auth.spaceId!, true)
+          const haveVisual = ((snap?.visualTypes ?? []) as Array<{ name?: string }>).some(v => v.name === visualName)
+          if (!haveVisual) sub.push({ type: 'define_visual', name: visualName, wgsl: comp.wgsl })
+          const d = comp.defaults ?? {}
+          sub.push({ type: 'create_field',
+            name: String(cmd.fieldName ?? comp.name), x: Number(cmd.x ?? 256), y: Number(cmd.y ?? 256),
+            width: Number(cmd.w ?? d.w ?? 96), height: Number(cmd.h ?? d.h ?? 96),
+            visualType: visualName,
+            color: (cmd.color as number[] | undefined) ?? d.color ?? [1, 1, 1, 1],
+            visualParams: (cmd.params as number[] | undefined) ?? d.params,
+            tags: comp.tags,
+            properties: { component: comp.name, componentTags: comp.tags } })
+          let newFieldId: string | undefined
+          for (const sc of sub) {
+            const sr = await applyCommandToSnapshot(auth.spaceId!, sc)
+            if (sc.type === 'create_field' && sr.fieldId) { newFieldId = String(sr.fieldId); sc.fieldId = sr.fieldId }
+            await pushToAgent(sc, req, auth.spaceId)
+          }
+          // tag wiring: overlap shaders between this component and every placed
+          // component whose tags a rule binds — intersections by vocabulary
+          const wired: string[] = []
+          if (newFieldId && comp.tags.length > 0) {
+            const rules = await loadTagRules()
+            const snap2 = await getSpaceSnapshot(auth.spaceId!, true)
+            const others = ((snap2?.fields ?? []) as Array<{ id?: string; properties?: Record<string, unknown> }>)
+              .filter(f => f.id && f.id !== newFieldId && Array.isArray(f.properties?.componentTags))
+            for (const other of others) {
+              for (const rule of matchTagRules(rules, comp.tags, other.properties!.componentTags as string[])) {
+                if (!rule.wgsl) continue
+                const ix = { type: 'add_interaction_effect', fieldA: newFieldId, fieldB: other.id,
+                  wgsl: rule.wgsl, spread: rule.spread ?? 6, hooks: rule.hooks,
+                  description: `${rule.a} × ${rule.b}${rule.description ? ' — ' + rule.description : ''}`, author: 'tag-rule' }
+                await applyCommandToSnapshot(auth.spaceId!, ix)
+                await pushToAgent(ix, req, auth.spaceId)
+                wired.push(`${rule.a}×${rule.b} with ${String((other as { id?: string }).id)}`)
+              }
+            }
+          }
+          bumpWorldRev(spaceKey(auth.spaceId!))
+          results.push({ type: cmd.type, ok: true, placed: comp.name, fieldId: newFieldId, visual: visualName, tags: comp.tags, wired })
+        } catch (e) {
+          results.push({ type: cmd.type, error: (e as Error)?.message || String(e) })
+        }
         continue
       }
 

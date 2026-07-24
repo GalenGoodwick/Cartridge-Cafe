@@ -219,6 +219,7 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   define_visual: new Set(['type', 'name', 'wgsl']),
   define_module: new Set(['type', 'name', 'wgsl']),
   remove_module: new Set(['type', 'name']),
+  add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
   clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
   delete_field: new Set(['type', 'fieldId']),
 }
@@ -510,6 +511,25 @@ export function applyCommandToSnapshotObject(
           effectParams: (rule.effectParams as Record<string, unknown>) ?? {},
           description: rule.description as string | undefined,
         })
+      }
+      break
+    }
+
+    case 'add_interaction_effect': {
+      if (cmd.wgsl) {
+        snap.interactionEffects.push({
+          id: `ix_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          wgsl: cmd.wgsl as string,
+          fieldA: cmd.fieldA as string | undefined,
+          fieldB: cmd.fieldB as string | undefined,
+          blend: (cmd.blend as string) ?? 'alpha',
+          spread: (cmd.spread as number) ?? 0,
+          precedence: (cmd.precedence as boolean) ?? false,
+          hooks: cmd.hooks as unknown[] | undefined,
+          author: (cmd.author as string) ?? 'bridge',
+          description: cmd.description as string | undefined,
+          order: (cmd.order as number) ?? 0,
+        } as (typeof snap.interactionEffects)[number])
       }
       break
     }
