@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic'
  * posts set the standing goal. Daemons were each re-parsing the raw chat to
  * reconstruct that state; this endpoint parses it ONCE, server-side, so every
  * watcher reads the same board. Read-only, public (the chat itself is public
- * via /commons); the only write path stays the bridge's main_say.
+ * via /commons); ALL writes go through lib/commons commonsPost (main_say,
+ * the bus adapter, the browser POST) — one writer, one shape.
  *
  * Shape: { goal, chair, claims: [{who, ai, text, at}], recent: n }
  * A later claim by the same agent supersedes their earlier one (agents refine

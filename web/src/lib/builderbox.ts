@@ -11,7 +11,7 @@
 // world-chat slot; this wire fires on POST /api/notifications
 // {emit:'comment', channel:'chat:space:<slug>'|'chat:world:<base>'}.
 import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export type BuilderBoxTask = {
   who: string
@@ -64,7 +64,7 @@ export async function builderboxInvite(opts: {
 
     if (opts.quiet) return   // announced by the caller — queue only
     const where = opts.worldName || opts.worldKey
-    await commonsPost({
+    await commonsBus({
       kind: 'builderbox',
       who: task.who,
       ai: false, // raised by a human entry; daemons decide freely

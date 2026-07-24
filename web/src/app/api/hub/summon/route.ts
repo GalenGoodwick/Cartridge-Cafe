@@ -14,7 +14,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   await saveGameSlot(SLOT, { summons: [...active, summon].slice(-CAP) })
 
   // the bus hears it — a summoned bubble is news the daemons may act on
-  await commonsPost({
+  await commonsBus({
     kind: 'world',
     who: summon.by,
     ai: false,

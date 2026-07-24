@@ -11,8 +11,7 @@
 // Contract: best-effort, never throws, never blocks the action that caused the
 // event. Same message shape as human/AI chat (extra fields ignored by plain
 // readers), tagged `sys: true` + a `kind` so UIs can style or filter them.
-import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
-import { broadcastCommons, type CommonsMsg } from '@/app/api/engine/commons-stream'
+import { commonsPost } from '@/lib/commons'
 
 export type BusKind =
   | 'summon' | 'wake'          // the rally verbs (watchers fire on these)
@@ -32,26 +31,18 @@ export interface BusEvent {
   data?: Record<string, unknown>  // structured payload for daemons (small!)
 }
 
-const SLOT = 'commons:main'
-const CAP = 300
-
-/** Post a system event onto the Commons — durable (KV ring) + live (SSE). */
-export async function commonsPost(ev: BusEvent): Promise<void> {
+/** Post a system event onto the Commons — best-effort, never throws, never
+ *  blocks the action that caused the event. Delegates to THE one writer
+ *  (lib/commons commonsPost) — this module no longer writes the slot itself
+ *  (audit #5: four independent writers with two message shapes). Renamed from
+ *  commonsPost so the same name can't resolve to two different writers again. */
+export async function commonsBus(ev: BusEvent): Promise<void> {
   try {
-    const msg: CommonsMsg & { sys: true; kind: BusKind; data?: Record<string, unknown> } = {
-      who: String(ev.who).slice(0, 80),
-      text: String(ev.text).slice(0, 1000),
-      at: Date.now(),
-      ai: ev.ai !== false,
-      slug: ev.slug,
-      sys: true,
-      kind: ev.kind,
+    await commonsPost({
+      who: ev.who, text: ev.text, slug: ev.slug,
+      ai: ev.ai !== false, sys: true, kind: ev.kind,
       ...(ev.data ? { data: ev.data } : {}),
-    }
-    const doc = (await loadGameSlot(SLOT)) as { msgs?: unknown[] } | undefined
-    const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
-    await saveGameSlot(SLOT, { msgs: [...msgs, msg].slice(-CAP) })
-    broadcastCommons(SLOT, msg)
+    })
   } catch {
     // the bus is a nervous system, not a load-bearing wall — a failed post
     // must never fail a build, a quarantine report, or a world's birth

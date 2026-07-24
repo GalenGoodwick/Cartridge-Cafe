@@ -772,12 +772,8 @@ export async function POST(req: NextRequest) {
         const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
         const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
         const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
-        const msg = { who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
-          at: Date.now(), ai: true, slug: auth.slug, kind: 'wake' as const, target, world: auth.slug, viewUrl }
-        const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
-        const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
-        await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
-        broadcastCommons('commons:main', msg as never)
+        await commonsPost({ who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
+          ai: true, slug: auth.slug, kind: 'wake', extra: { target, world: auth.slug, viewUrl } })
         results.push({ type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') })
         continue
       }

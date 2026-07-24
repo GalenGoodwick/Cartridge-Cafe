@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveHolder, hist } from '@/lib/builds'
 import { notifyUser } from '@/lib/notify'
 import { sendPushToUser, cafePush } from '@/lib/push'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       void sendPushToUser(space.ownerId, cafePush.worldBuilt(nm, space.slug)).catch(() => {})
       // COMMONS BUS — a finished world is the cafe's best content: announce it
       // where everyone (and every daemon) is watching.
-      void commonsPost({ kind: 'world', who: holder.isHouse ? 'house AI' : holder.displayName, slug: space.slug,
+      void commonsBus({ kind: 'world', who: holder.isHouse ? 'house AI' : holder.displayName, slug: space.slug,
         text: `✦ world built: "${nm}" — walk in: /space/${space.slug}` })
     }
   }

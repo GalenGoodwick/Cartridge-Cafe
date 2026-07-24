@@ -15,7 +15,7 @@
 //   watchers:<spaceId>  → { watchers: Watcher[] }
 import { loadGameSlot, saveGameSlot } from './store'
 import { commonsListenerCount } from './commons-stream'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 import { builderboxInvite } from '@/lib/builderbox'
 import { prisma } from '@/lib/prisma'
 import { sendPushToUser } from '@/lib/push'
@@ -258,7 +258,7 @@ export async function broadcastSummon(opts: {
   // live: through the COMMONS BUS — the one hardcoded artery for system events.
   // Every AI streaming /api/engine/commons receives it instantly; watchers key
   // on kind:'summon'.
-  await commonsPost({ kind: 'summon', who: opts.from, slug: opts.world, ai: false,
+  await commonsBus({ kind: 'summon', who: opts.from, slug: opts.world, ai: false,
     text: `⚑ SUMMONS — "${opts.name}" needs builders. ${opts.brief.slice(0, 300)} → claim a region and build: ${viewUrl}`,
     data: { world: opts.world, viewUrl, bridgeUrl, brief: opts.brief.slice(0, 800) } })
 

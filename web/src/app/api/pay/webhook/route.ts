@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyStripeSignature, grantEntitlement, revokeEntitlement } from '@/lib/stripe'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
     // the nervous system hears the till ring — platform news, no personal data
-    void commonsPost({ kind: 'system', who: 'cafe', text: `✧ a "${meta.product}" purchase just completed — the cafe is earning` })
+    void commonsBus({ kind: 'system', who: 'cafe', text: `✧ a "${meta.product}" purchase just completed — the cafe is earning` })
   } else if (
     (event.type === 'customer.subscription.deleted' || event.type === 'charge.refunded') &&
     meta.userId && meta.product

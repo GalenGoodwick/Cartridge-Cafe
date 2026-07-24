@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync } from 'fs'
 import { loadGameSlot, saveGameSlot } from '../store'
 import { join } from 'path'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
     if ((seen.get(key) ?? 0) < nowMs - 10 * 60_000) {
       seen.set(key, nowMs)
       const what = hazards.map((h) => `${h.name}: ${String(h.reason ?? '').slice(0, 120)}`).join(' | ')
-      void commonsPost({ kind: 'quarantine', who: 'engine',
+      void commonsBus({ kind: 'quarantine', who: 'engine',
         text: `⚠ quarantine (${report.phase}) at ${report.url ?? 'unknown'} — ${what}`.slice(0, 600),
         data: { phase: report.phase, url: report.url } })
     }

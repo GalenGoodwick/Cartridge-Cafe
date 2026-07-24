@@ -105,12 +105,7 @@ export async function POST(req: NextRequest) {
   const text = String(body.text || '').trim().slice(0, 400)
   if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 })
   const who = String(body.from || session?.user?.name || session?.user?.email?.split('@')[0] || 'guest').slice(0, 60)
-  const msg = { who, text, at: Date.now(), ai: !!hasToken && !session?.user }
-  const { saveGameSlot } = await import('../store')
-  const doc = (await loadGameSlot('commons:main')) as { msgs?: unknown[] } | undefined
-  const msgs = Array.isArray(doc?.msgs) ? doc!.msgs! : []
-  await saveGameSlot('commons:main', { msgs: [...msgs, msg].slice(-300) })
-  const { broadcastCommons } = await import('../commons-stream')
-  broadcastCommons('commons:main', msg as never)
+  const { commonsPost } = await import('@/lib/commons')
+  await commonsPost({ who, text, ai: !!hasToken && !session?.user })
   return NextResponse.json({ ok: true })
 }

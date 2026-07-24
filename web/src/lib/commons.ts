@@ -20,6 +20,10 @@ export type CommonsMessage = {
   ai?: boolean
   system?: boolean
   slug?: string
+  /** bus events (lib/commons-bus): platform lifecycle, daemons key on kind */
+  sys?: true
+  kind?: string
+  data?: Record<string, unknown>
 }
 
 const CAP = 300 // the Commons keeps its most recent messages
@@ -62,6 +66,11 @@ export async function commonsPost(msg: {
   system?: boolean
   slug?: string
   sub?: string | null
+  sys?: true
+  kind?: string
+  data?: Record<string, unknown>
+  /** additive passthrough (the shape contract: plain readers ignore unknowns) */
+  extra?: Record<string, unknown>
 }): Promise<{ posted: CommonsMessage; count: number; slot: string }> {
   const slot = commonsSlot(msg.sub)
   const text = String(msg.text ?? '').trim().slice(0, 1000)
@@ -73,6 +82,10 @@ export async function commonsPost(msg: {
     ...(msg.ai ? { ai: true } : {}),
     ...(msg.system ? { system: true } : {}),
     ...(msg.slug ? { slug: msg.slug } : {}),
+    ...(msg.sys ? { sys: true as const } : {}),
+    ...(msg.kind ? { kind: msg.kind } : {}),
+    ...(msg.data ? { data: msg.data } : {}),
+    ...(msg.extra ?? {}),
   }
   const doc = (await loadGameSlot(slot)) as { msgs?: CommonsMessage[] } | undefined
   const msgs: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveHolder, mintBuildToken, revalidate, hist, LEASE_MS } from '@/lib/builds'
 import { mintSceneToken } from '@/app/api/engine/scene-token'
-import { commonsPost } from '@/lib/commons-bus'
+import { commonsBus } from '@/lib/commons-bus'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // COMMONS BUS — the build's start is public heartbeat: humans see motion,
   // watcher daemons see a lane go active.
-  void commonsPost({ kind: 'build', who: holder.displayName || holder.id, slug: job.spaceSlug,
+  void commonsBus({ kind: 'build', who: holder.displayName || holder.id, slug: job.spaceSlug,
     text: `⚒ build claimed: "${job.spaceSlug}" — ${holder.isHouse ? 'the house AI' : holder.displayName} is on it` })
 
   return NextResponse.json({
