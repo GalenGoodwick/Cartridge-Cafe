@@ -1,5 +1,6 @@
 'use client'
 
+import { copyText } from '@/lib/copyText'
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface SpaceManagementOverlayProps {
@@ -154,11 +155,10 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
   }
 
   const copyToClipboard = async (text: string, setter: (v: boolean) => void) => {
-    try {
-      await navigator.clipboard.writeText(text)
+    if (await copyText(text)) {
       setter(true)
       setTimeout(() => setter(false), 2000)
-    } catch { /* fallback: do nothing */ }
+    }
   }
 
   // Collapsed state — gear button (standalone mode only; embedded is always open)

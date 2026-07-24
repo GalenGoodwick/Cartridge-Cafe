@@ -1,5 +1,6 @@
 'use client'
 
+import { copyText } from '@/lib/copyText'
 import { useState } from 'react'
 
 // A light share affordance every viewer sees on a world — copy link + one-click
@@ -14,7 +15,7 @@ export default function ShareWorld({ slug, name }: { slug: string; name: string 
   const text = `Come play "${name}" — a little world on cartridge.cafe (open on a desktop)`
 
   const pop = (href: string) => window.open(href, '_blank', 'noopener,noreferrer,width=640,height=640')
-  const copy = () => navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600) })
+  const copy = async () => { if (await copyText(url)) { setCopied(true); setTimeout(() => setCopied(false), 1600) } }
 
   // SHARE opens only the in-world menu — no OS share sheet. navigator.share
   // popped a native window on top of (or instead of) our own; a single, in-game

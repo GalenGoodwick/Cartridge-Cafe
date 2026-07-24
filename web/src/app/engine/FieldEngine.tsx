@@ -1,5 +1,7 @@
 'use client'
 
+import { worldBriefingPrompt, iconAuthorPrompt } from '@/lib/connectPrompt'
+import { copyText } from '@/lib/copyText'
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
@@ -7476,22 +7478,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
             // the space token edits LIVE (no eye on the DB path) — the box must say so
             const alter = !bm && !!spaceSlug && !!isOwner
-            const looking = bm
-              ? `You are looking at world "${bm[1]}" — branch by ${bm[2]}, version v${bm[3]}.`
-              : `You are looking at world "${cur || spaceSlug}".`
-            const scope = bm
-              ? `This token is scoped to THIS branch: your edits continue it as v${Number(bm[3]) + 1}, v${Number(bm[3]) + 2}… (the eye auto-versions). Versions CONTINUE one branch. To bring a different take, make your OWN branch under your name (its own token) — that's a new challenger, not a version. The tournament, not edit access, decides which branch takes main; the original is immortal.`
-              : alter
-                ? `This token edits the LIVE world DIRECTLY — every command lands on main immediately, for everyone. No branch. A save point of the pre-alter world was kept; when you finish, tell the owner so they can SAVE VERSION to record the result.`
-                : `The eye versions your edits automatically after each settled burst — just build.`
-            const briefing = `${alter ? 'ALTER' : 'Connect to'} my cartridge.cafe ${bm ? `world "${bm[1]}" · branch "${bm[2]}" · v${bm[3]}` : `world "${cur || spaceSlug}"${alter ? ' — LIVE' : ''}`}:
-POST commands to ${origin}/api/engine/bridge
-header: Authorization: Bearer ${tok}
-${looking}
-1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
-2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
-${plugBrief.trim() ? (alter ? 'ALTER THIS: ' : 'BUILD THIS: ') + plugBrief.trim() : alter ? 'Ask me what to alter, or read the world state and continue it.' : 'Ask me what to build, or read the world state and continue it.'}
-${scope}`
+            const briefing = worldBriefingPrompt({
+              token: tok, worldName: cur || spaceSlug || '', alter: !!alter,
+              branch: bm ? { base: bm[1], by: bm[2], version: bm[3] } : null,
+              brief: plugBrief, origin,
+            })
             return (
               <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
                 <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
@@ -7564,7 +7555,7 @@ ${scope}`
                     {!mintFailed && (
                       <button
                         className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
-                        onClick={() => { navigator.clipboard?.writeText(briefing); showToast('briefing copied', 'success') }}
+                        onClick={async () => { const ok = await copyText(briefing); showToast(ok ? 'briefing copied' : 'copy blocked — select the text above and copy by hand', ok ? 'success' : 'error') }}
                       >
                         COPY
                       </button>
@@ -7580,15 +7571,7 @@ ${scope}`
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
             const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — are you the owner?)')
             const d = mkIconDesc.trim()
-            const prompt = `Author my cartridge.cafe world ICON — a tiny LIVING shader for this world's shelf bubble.
-POST to ${origin}/api/engine/bridge   header: Authorization: Bearer ${tok}
-Store it with ONE command:
-{"type":"set_world_data","data":{"icon_wgsl":"fn visual_icon(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f { /* your art */ }"}}
-HARD RULES — it renders alone in a 64px disc with NOTHING but its inputs:
-· use ONLY uv (-1..1), time, and built-in helpers (fbm, fbm4, voronoi, sdCircle, hsv2rgb, palette, rot2, smoothstep, mix…)
-· NO @group/@binding, NO textures, NO uni()/prevAt/fields, NO extra bindings — it runs in isolation or it's dropped
-· return rgb in 0..1, alpha 1.0; keep it calm — no strobing or flashing
-Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see what it is)'}. Reply to confirm once set.`
+            const prompt = iconAuthorPrompt(tok, d, origin)
             return (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMkIconOpen(false)}>
                 <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
@@ -7607,7 +7590,7 @@ Make it evoke THIS world${d ? ': ' + d : ' (read the world state first to see wh
                   <div className="flex gap-2 mt-3 justify-end">
                     <button
                       className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
-                      onClick={() => { navigator.clipboard?.writeText(prompt); setMkIconCopied(true); setTimeout(() => setMkIconCopied(false), 1600) }}
+                      onClick={async () => { if (await copyText(prompt)) { setMkIconCopied(true); setTimeout(() => setMkIconCopied(false), 1600) } else showToast('copy blocked — the prompt text is select-all, copy it by hand', 'error') }}
                     >
                       {mkIconCopied ? 'COPIED ✓' : 'COPY PROMPT'}
                     </button>

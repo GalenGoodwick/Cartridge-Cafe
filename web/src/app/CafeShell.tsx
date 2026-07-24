@@ -1,5 +1,7 @@
 'use client'
 
+import { brewStandbyPrompt } from '@/lib/connectPrompt'
+import { copyText } from '@/lib/copyText'
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from 'next-auth/react'
 import FieldEngine from '@/app/engine/FieldEngine'
@@ -332,10 +334,9 @@ fn visual_glyph(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
 uv spans -1..1 inside the icon's small cursor cell; animate off time; return vec4f(rgb, alpha) with alpha 0 outside the shape. Also pick fx/hue/size so the preset fallback echoes the idea. Full engine guide: ${o}/api/engine/guide
 
 Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightness swings, no unbounded loops (the cell caps its size). Within that, go as bold and alive as the description demands. Reply to confirm once it's set.`
-    try {
-      await navigator.clipboard.writeText(text)
+    if (await copyText(text)) {
       setIconCopied(true); setTimeout(() => setIconCopied(false), 1800)
-    } catch { /* clipboard blocked */ }
+    }
   }
   const [brewStep, setBrewStep] = useState(0)          // 0 closed · 1 open (single panel, gates unlock in place)
   const [brewName, setBrewName] = useState('')
@@ -683,22 +684,7 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
    *  AI key exists up front. The player names it, writes the brief, then hands
    *  the AI this connection prompt (key + guide + standby orders). The AI
    *  logging in is the trigger: we deliver name+brief and open the world. */
-  const connectPrompt = (token: string) => {
-    const o = window.location.origin
-    return `Connect to my cartridge.cafe world.
-POST commands to ${o}/api/engine/bridge
-Header: Authorization: Bearer ${token}
-
-Before doing ANYTHING else:
-1. GET ${o}/api/engine/guide and read it fully (markdown).
-2. GET ${o}/api/engine/bridge (same auth header) to see the world state.
-3. STAND BY. Do not build yet — I am writing your brief right now. It will
-   appear in worldData.creation_brief. When it does: build exactly that,
-   then set worldData.brief_done = true.
-You may open your world's page in your own (headless) browser as your eyes —
-GET the bridge URL and use space.viewUrl (it can change when I name the world).
-Your view is yours: it never takes my seat and never counts in head-counts.`
-  }
+  const connectPrompt = (token: string) => brewStandbyPrompt(token)
   const brew = async () => {
     const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
     if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent('/?brew=1'); return }
@@ -1703,19 +1689,9 @@ Your view is yours: it never takes my seat and never counts in head-counts.`
               )}
               <button disabled={!connectReady}
                 onClick={async () => {
-                  // clipboard API silently no-ops when absent/rejected — the
-                  // reported "prompt didn't copy" bug. Fallback + visible verdict.
-                  const t = connectPrompt(brewToken)
-                  let ok = false
-                  try { await navigator.clipboard.writeText(t); ok = true } catch { /* fallback */ }
-                  if (!ok) {
-                    try {
-                      const ta = document.createElement('textarea')
-                      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'
-                      document.body.appendChild(ta); ta.select()
-                      ok = document.execCommand('copy'); ta.remove()
-                    } catch { ok = false }
-                  }
+                  // the ONE hardened copy path (lib/copyText) — the inline
+                  // re-implementation this replaced had already drifted from it.
+                  const ok = await copyText(connectPrompt(brewToken))
                   window.dispatchEvent(new CustomEvent('cafe:caption', { detail: { text: ok ? 'prompt copied — paste it to your AI' : 'copy blocked — open preview and copy by hand', kind: ok ? 'tuned' : 'hint' } }))
                 }}
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">

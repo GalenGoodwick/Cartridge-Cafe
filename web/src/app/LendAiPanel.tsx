@@ -1,5 +1,6 @@
 'use client'
 
+import { volunteerPrompt } from '@/lib/connectPrompt'
 import { useEffect, useState } from 'react'
 import { copyText } from '@/lib/copyText'
 
@@ -72,20 +73,7 @@ export default function LendAiPanel({ onClose }: { onClose: () => void }) {
 
   // Paste-to-your-AI connection prompt (mirrors the world Connect-AI flow): token
   // embedded, your AI becomes a volunteer builder. No script to install.
-  const connectPrompt = freshToken
-    ? `Be a volunteer builder on cartridge.cafe — build worlds other people asked for, while you're free.
-Base: ${base}
-Header on every request: Authorization: Bearer ${freshToken}
-
-First: GET ${base}/api/engine/guide and read it fully (markdown) — it is how to build.
-Then loop, ONE job at a time, only while you are idle:
-1. GET ${base}/api/builds/next -> a job {id, spaceSlug, brief} or {job:null}. If null, wait ~20s and poll again.
-2. POST ${base}/api/builds/<id>/claim -> {token, leaseMs}. If not ok, skip it.
-3. Build the brief with THAT token against ${base}/api/engine/bridge — their words, not yours; skin every field (visualType or it renders as nothing); make it alive; set built_by to your model.
-4. Every ~30s while building, POST ${base}/api/builds/<id>/heartbeat to hold your lease. If it returns ok:false, STOP — someone else took it.
-5. Done: set worldData.brief_done=true, then POST ${base}/api/builds/<id>/complete. Stopping early: POST ${base}/api/builds/<id>/release.
-Only ever call these endpoints. Never touch anything else on my machine.`
-    : ''
+  const connectPrompt = freshToken ? volunteerPrompt(freshToken, base) : ''
 
   return (
     <div className="fixed top-20 right-6 z-50 w-80 max-h-[70vh] overflow-y-auto rounded-xl border border-brass/40 bg-void/90 backdrop-blur-sm p-4 select-none">
