@@ -14,6 +14,7 @@ import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
+import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
 
 export const maxDuration = 30
@@ -634,21 +635,15 @@ export async function POST(req: NextRequest) {
       if (auth.playerId) {
         if (cmd.type === 'create_world') {
           const name = (typeof cmd.name === 'string' && cmd.name.trim() ? cmd.name.trim() : 'untitled world').slice(0, 60)
-          const owned = await prisma.playerSpace.count({ where: { ownerId: auth.playerId } })
-          // 100 is a runaway backstop, not a product limit — Galen released the 20 cap (Jul 23 2026)
-          if (owned >= 100) { results.push({ type: cmd.type, error: 'world limit reached (100 per account) — delete one first' }); continue }
-          const base = slugify(name) || 'world'
-          let slug = base
-          for (let i = 0; i < 6; i++) {
-            const taken = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
-            if (!taken) break
-            slug = base + '-' + crypto.randomBytes(2).toString('hex')
-          }
-          const space = await prisma.playerSpace.create({ data: { name, slug, ownerId: auth.playerId } })
+          // one gate for every create path (world cap; guests handled on the human paths)
+          const gate = await canCreateWorld(auth.playerId)
+          if (!gate.ok) { results.push({ type: cmd.type, error: gate.error }); continue }
+          // race-safe: the DB unique constraint arbitrates the slug, not a prior read
+          const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId! }))
           const worldToken = await mintWorldToken(space.id, 'created via player key')
           // The platform speaks on its own bus: world births announce themselves.
-          commonsSystemSay(`⚙ new world born: "${name}" → /space/${slug}`, slug)
-          results.push({ ok: true, created: slug, spaceName: name, token: worldToken,
+          commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
+          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken,
             next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing.` })
           continue
         }
@@ -1177,23 +1172,6 @@ export async function POST(req: NextRequest) {
           }
           if (unskinned.length > 0) {
             cmd.__renderWarning = `${unskinned.length} field(s) have no visible skin (${unskinned.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}) — fine if intentional (logic-only), else set_visual them`
-          }
-          // VISION CHECK — beauty starts as a picture held in the head, not a
-          // struct (Galen). A world isn't done until its builder wrote what it
-          // was aiming at: worldData.vision, in CHECKABLE terms, so even a
-          // blind model can verify its render against its stated intent.
-          const wdNow = (snap?.worldData ?? {}) as Record<string, unknown>
-          const incoming = (cmd.data as Record<string, unknown>) ?? {}
-          const vision = incoming['vision'] ?? wdNow['vision']
-          const visionText = typeof vision === 'string' ? vision : vision ? JSON.stringify(vision) : ''
-          if (visionText.trim().length < 40) {
-            results.push({ type: cmd.type, error:
-              `VISION CHECK FAILED — brief_done refused: worldData.vision is missing. Before finishing, write what you were ` +
-              `aiming at, so you (and the probe) can verify the render against it: ` +
-              `{"type":"set_world_data","data":{"vision":"<the picture in words: focal point, light source, 3-color palette ` +
-              `(hex), mood, what the first frame shows — one paragraph>"}}. Then compare: probe dominantColors ≈ your ` +
-              `palette, meanLum ≈ your mood, bbox ≈ your focal point. Imagine RAW first; translate to layers second.` })
-            continue
           }
         } catch { /* the check must never block a legitimate finish */ }
       }

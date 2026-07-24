@@ -38,13 +38,25 @@ export async function POST(req: NextRequest) {
     const nh = handleOf(session.user.email)
     if (gh && nh && gh !== nh) {
       await hydrateAllScenes()
+      const existing = new Set(listScenes())
       for (const n of listScenes()) {
         const f = n.indexOf(' ⑂ ')
         if (f < 0 || n.slice(f + 3).split(' · ')[0].trim() !== gh) continue
         const scene = loadScene(n)
         if (!scene) continue
-        const renamed = n.slice(0, f + 3) + nh + n.slice(f + 3 + gh.length)
+        let renamed = n.slice(0, f + 3) + nh + n.slice(f + 3 + gh.length)
+        // NEVER clobber an existing branch of the new handle (saveScene would
+        // overwrite it — data loss). De-dupe by inserting a short suffix before
+        // the trailing version so both the claimed and the existing branch live.
+        if (existing.has(renamed) && renamed !== n) {
+          const vm = renamed.match(/^(.*?)( · v\d+)?$/)
+          const stem = vm?.[1] ?? renamed, ver = vm?.[2] ?? ''
+          let dedup = renamed
+          for (let k = 2; existing.has(dedup); k++) dedup = `${stem} (${k})${ver}`
+          renamed = dedup
+        }
         saveScene(renamed, { ...scene, name: renamed })
+        existing.add(renamed)
         deleteScene(n)
         branchesMoved++
       }

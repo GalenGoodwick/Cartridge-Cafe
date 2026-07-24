@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { slugify } from '@/lib/companion'
+import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts } from '@/lib/world-create'
 import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -19,16 +21,9 @@ export async function GET() {
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  // guests get three builds (worlds + branches) — the taste that sells the deed
-  if (session.user.isTemp) {
-    const { guestBuildCount, GUEST_BUILDS } = await import('@/lib/guest-quota')
-    const { hydrateAllScenes, listScenes } = await import('../engine/store')
-    await hydrateAllScenes()
-    const have = await guestBuildCount(user.id, session.user.email, listScenes())
-    if (have >= GUEST_BUILDS) {
-      return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
-    }
-  }
+  // NOTE: LISTING is never gated by the build quota — a guest who hit their
+  // 3-build limit must still be able to SEE the worlds they made. The quota
+  // lives on the create paths only (canCreateWorld).
 
   const spaces = await prisma.playerSpace.findMany({
     where: { ownerId: user.id },
@@ -61,16 +56,9 @@ export async function POST(req: NextRequest) {
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  // guests get three builds (worlds + branches) — the taste that sells the deed
-  if (session.user.isTemp) {
-    const { guestBuildCount, GUEST_BUILDS } = await import('@/lib/guest-quota')
-    const { hydrateAllScenes, listScenes } = await import('../engine/store')
-    await hydrateAllScenes()
-    const have = await guestBuildCount(user.id, session.user.email, listScenes())
-    if (have >= GUEST_BUILDS) {
-      return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
-    }
-  }
+  // one gate for every create path: world cap + (for guests) the 3-build limit
+  const gate = await canCreateWorld(user.id, { isGuest: session.user.isTemp, email: session.user.email })
+  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   const body = await req.json()
   const { name, slug: rawSlug, description, brief } = body
@@ -83,27 +71,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
 
+  // opportunistic cleanup: retire the caller's OWN abandoned drafts so they
+  // don't hoard slugs + the world cap forever (best-effort, never blocks)
+  await sweepAbandonedDrafts(user.id).catch(() => {})
+
   // Generate slug from name if not provided
-  const slug = (rawSlug?.trim() || name.trim())
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60)
-
-  if (!slug) {
+  const baseSlug = slugify(rawSlug?.trim() || name.trim())
+  if (!baseSlug) {
     return NextResponse.json({ error: 'Invalid slug' }, { status: 400 })
-  }
-
-  // Check slug uniqueness
-  const existing = await prisma.playerSpace.findUnique({ where: { slug } })
-  if (existing) {
-    return NextResponse.json({ error: 'Slug already taken' }, { status: 409 })
-  }
-
-  // Limit to 10 spaces per user
-  const count = await prisma.playerSpace.count({ where: { ownerId: user.id } })
-  if (count >= 10) {
-    return NextResponse.json({ error: 'Maximum 10 spaces per account' }, { status: 400 })
   }
 
   // the creation brief rides in the world itself: the FIRST thing a connecting
@@ -112,24 +87,15 @@ export async function POST(req: NextRequest) {
     ? { fields: [], worldData: { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } }
     : undefined
 
-  const space = await prisma.playerSpace.create({
-    data: {
-      name: name.trim(),
-      slug,
-      description: description?.trim() || null,
-      ownerId: user.id,
-      isPublic: !draft,
-      ...(snapshot ? { snapshot } : {}),
-    },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      description: true,
-      isPublic: true,
-      createdAt: true,
-    },
-  })
+  // race-safe: the DB unique constraint arbitrates the slug, not a prior read
+  const space = await createSpaceUniqueSlug(baseSlug, (slug) => ({
+    name: name.trim(),
+    slug,
+    description: description?.trim() || null,
+    ownerId: user.id,
+    isPublic: !draft,
+    ...(snapshot ? { snapshot } : {}),
+  }))
 
   // connect-AI-first: the world is born with its first companion key
   const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
@@ -142,5 +108,8 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  return NextResponse.json({ space, token: rawToken }, { status: 201 })
+  // shape the response (the create returns the full row now — don't leak
+  // snapshot / ownerId to the client)
+  const shaped = { id: space.id, slug: space.slug, name: space.name, description: space.description, isPublic: space.isPublic, createdAt: space.createdAt }
+  return NextResponse.json({ space: shaped, token: rawToken }, { status: 201 })
 }
