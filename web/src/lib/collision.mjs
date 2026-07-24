@@ -32,10 +32,12 @@ export function solidAt(x, z) {
  * Resolve a move from (ox,oz) → (nx,nz) against the solids: take the full move
  * if clear; else slide along whichever axis is clear (so you scrape past a
  * column instead of sticking); else stay put. Returns the resolved [x, z].
+ * `extra` is an optional predicate for DYNAMIC solids (e.g. a locked door).
  */
-export function resolveMove(ox, oz, nx, nz) {
-  if (!solidAt(nx, nz)) return [nx, nz]
-  if (!solidAt(nx, oz)) return [nx, oz] // slide along x
-  if (!solidAt(ox, nz)) return [ox, nz] // slide along z
+export function resolveMove(ox, oz, nx, nz, extra) {
+  const blocked = (x, z) => solidAt(x, z) || (extra ? extra(x, z) : false)
+  if (!blocked(nx, nz)) return [nx, nz]
+  if (!blocked(nx, oz)) return [nx, oz] // slide along x
+  if (!blocked(ox, nz)) return [ox, nz] // slide along z
   return [ox, oz]                        // fully blocked
 }

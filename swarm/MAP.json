@@ -148,40 +148,46 @@
         "src/__tests__/unit/vigil-logic.test.mjs"
       ],
       "evidence": {
-        "playthrough-confirmed": false
+        "playthrough-confirmed": "with the puzzle, crossings are DELIBERATE: the stance-panel solve flips a pane on command (vigil-puzzle solve test)"
       },
       "claim": null,
-      "playtestNote": "unit-green but playthrough FAILED: flips fired 2/800 ticks — crossings almost never align in free play. The mechanic needs the puzzle to make crossings deliberate + reachable.",
       "keyState": {
         "unit-tested": "pass",
-        "playthrough-confirmed": "fail"
+        "playthrough-confirmed": "pass"
       },
-      "status": "red",
-      "statusNote": "✓unit-tested  ✗playthrough-confirmed  — unit-green but playthrough FAILED: flips fired 2/800 ticks — crossings almost never align in free play. The mechanic needs the puzzle to make crossings deliberate + reachable."
+      "status": "green",
+      "statusNote": "✓unit-tested  ✓playthrough-confirmed"
     },
     {
       "id": "puzzle",
       "kind": "puzzle",
-      "area": "MISSING — the CORE LOOP that doesn't exist yet: doors that LOCK passage until you flip the right pane; panels you stand on to hold a gaze; a solvable sequence. Right now 'rule' only tints a pane and gates footing — there is no door, no lockout, no reason to flip.",
-      "files": [],
+      "area": "the door-lockout loop: doors block the nave until their linked pane flips; stance panels aim the flame so a crossing is a deliberate solve",
+      "files": [
+        "web/src/lib/vigil-puzzle.mjs"
+      ],
       "exports": [
-        "doors",
-        "lockState",
-        "solveCheck"
+        "initPuzzle",
+        "doorSolidAt",
+        "panelAssist",
+        "updateDoors"
       ],
       "dependsOn": [
         "mechanic",
         "collision"
       ],
-      "tests": [],
-      "status": "open",
+      "tests": [
+        "src/__tests__/unit/vigil-puzzle.test.mjs"
+      ],
       "claim": null,
-      "bornFrom": "feedback:door-lockout-not-triggering",
-      "keyState": {
-        "unit-tested": "pending",
-        "playthrough-confirmed": "pending"
+      "evidence": {
+        "playthrough-confirmed": "solve test: locked door blocks passage → stand on panel → sweep crosses aimed light → pane flips → door unlocks → walk through"
       },
-      "statusNote": "·unit-tested  ·playthrough-confirmed"
+      "keyState": {
+        "unit-tested": "pass",
+        "playthrough-confirmed": "pass"
+      },
+      "status": "green",
+      "statusNote": "✓unit-tested  ✓playthrough-confirmed"
     },
     {
       "id": "cartridge",

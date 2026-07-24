@@ -17,6 +17,7 @@ import {
   add, scale, normalize, rayPlaneHit, pointInPaneUV, gazeCrossOnPane,
 } from './gaze-math.mjs'
 import { resolveMove } from './collision.mjs'
+import { initPuzzle, doorSolidAt, panelAssist, updateDoors } from './vigil-puzzle.mjs'
 
 export const PANE_UP = [0, 1, 0] // horizontal panes face up
 
@@ -56,10 +57,11 @@ export function initVigilState() {
     ],
     // panes bridge the chasm along +z; walking plane y=1
     panes: [
-      { id: 0, origin: [-1, 1, 7], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0 },
-      { id: 1, origin: [-1, 1, 13], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'wall', lit: 0, flipped: 0 },
-      { id: 2, origin: [-1, 1, 19], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0 },
+      { id: 0, origin: [-1, 1, 7], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0, everFlipped: 0 },
+      { id: 1, origin: [-1, 1, 13], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'wall', lit: 0, flipped: 0, everFlipped: 0 },
+      { id: 2, origin: [-1, 1, 19], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0, everFlipped: 0 },
     ],
+    ...initPuzzle(),
     reliquaryZ: 24,
     win: 0,
     events: [],
@@ -85,13 +87,16 @@ export function stepVigil(G, input, dt) {
   const SPEED = 3.5
   const nx = G.flame.pos[0] + (input.moveX || 0) * SPEED * dt
   const nz = G.flame.pos[2] + (input.moveZ || 0) * SPEED * dt
-  const [rx, rz] = resolveMove(G.flame.pos[0], G.flame.pos[2], nx, nz)
+  const [rx, rz] = resolveMove(G.flame.pos[0], G.flame.pos[2], nx, nz, (x, z) => doorSolidAt(x, z, G.doors))
   G.flame.pos[0] = rx
   G.flame.pos[2] = rz
   if (input.aimX || input.aimZ) {
     const a = normalize([input.aimX || 0, 0, input.aimZ || 0])
     if (a[0] || a[2]) G.flame.aim = a
   }
+  // stance panels aim the light for you — a crossing becomes a solve, not luck
+  const assist = panelAssist(G.flame.pos, G.panels, G.panes)
+  if (assist) G.flame.aim = assist
   const light = flameRay(G.flame)
 
   // ── gaze rays this tick ──
@@ -120,11 +125,15 @@ export function stepVigil(G, input, dt) {
       if (cross.fires) {
         p.rule = FLIP[p.rule] || p.rule
         p.flipped = 1
+        p.everFlipped = 1
         G.events.push({ type: 'flip', pane: p.id, rule: p.rule })
         break
       }
     }
   }
+
+  // ── doors: unlock (latched) once their linked pane has flipped ──
+  updateDoors(G.doors, G.panes)
 
   // ── footing check: are you standing on something solid & lit? ──
   const fx = G.flame.pos[0], fz = G.flame.pos[2]
