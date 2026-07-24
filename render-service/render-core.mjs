@@ -13,6 +13,7 @@
 // CLI and as a server). PNG bytes are RETURNED (the caller writes/encodes them).
 import { encode } from "npm:fast-png@6";
 import { PRELUDE, HEADLESS_STUBS } from "./prelude.mjs";
+import { deduplicateModCode, funcNamesOf } from "./mod-dedupe.mjs";
 
 /** requestAdapter that works on a real GPU (Mac/Metal) AND on a headless
  *  software stack (Railway/lavapipe). Try the normal path, then a forced
@@ -85,7 +86,15 @@ export async function renderProbe(state, opts = {}) {
   }
   const trigState = (worldData.__trig ||= {});
   const edgeState = (worldData.__edge ||= {});
-  const chapters = () => (worldData.__chapters ||= { names: [], act: 1, unlocked: { 1: true } });
+  // chapters: EXACT world-sandbox.ts shape — { names:['',...], unlocked:[1,...], cur }
+  // (1-indexed names with a leading '', unlocked is an ARRAY, current is `cur`).
+  // A snapshot persisted by live play must read back identically here; the old
+  // headless-only {act, unlocked:{}} shape mis-selected the act on chapter worlds.
+  const chapters = () => {
+    let c = worldData.__chapters;
+    if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; worldData.__chapters = c; }
+    return c;
+  };
   const sim = {
     worldData, fields: simFields,
     rand: () => (_rng ? _rng() : Math.random()),
@@ -93,21 +102,33 @@ export async function renderProbe(state, opts = {}) {
     getField(id) { return simFields.get(id) || null; },
     // triggers: latched one-shot — TRUE exactly once, the first frame cond is truthy
     trigger(name, cond) { if (cond && !trigState[name]) { trigState[name] = 1; return true; } return false; },
-    resetTrigger(name) { trigState[name] = 0; },
+    resetTrigger(name) { delete trigState[name]; },
     // edge: TRUE on every false→true transition (re-arms on false)
     edge(name, cond) { const c = !!cond; const was = !!edgeState[name]; edgeState[name] = c; return c && !was; },
-    // chapters
-    defineChapters(list) { const ch = chapters(); ch.names = Array.isArray(list) ? list.slice() : []; if (!ch.act) ch.act = 1; ch.unlocked ||= {}; ch.unlocked[1] = true; },
-    get act() { return chapters().act; },
-    chapterName(n) { const ch = chapters(); return ch.names[(n ?? ch.act) - 1] || ''; },
-    chapterCount() { return chapters().names.length; },
-    chapterUnlocked(n) { return !!chapters().unlocked[n]; },
-    unlockChapter(n) { chapters().unlocked[n] = true; },
-    goChapter(n) { const ch = chapters(); if (ch.unlocked[n]) { ch.act = n; return true; } return false; },
-    completeChapter() { const ch = chapters(); const next = ch.act + 1; if (next <= ch.names.length) { ch.unlocked[next] = true; ch.act = next; } return ch.act; },
+    // chapters — mirror world-sandbox.ts member-for-member
+    defineChapters(names) { const c = chapters(); c.names = ['', ...(Array.isArray(names) ? names : [])]; if (!Array.isArray(c.unlocked) || !c.unlocked.length) c.unlocked = [1]; if (!c.cur) c.cur = 1; },
+    get act() { return chapters().cur; },
+    chapterName(n) { const c = chapters(); return c.names[n == null ? c.cur : n] || ''; },
+    chapterCount() { return chapters().names.length - 1; },
+    chapterUnlocked(n) { return chapters().unlocked.includes(n); },
+    unlockChapter(n) { const c = chapters(); if (n >= 1 && n <= c.names.length - 1 && !c.unlocked.includes(n)) c.unlocked.push(n); },
+    goChapter(n) { const c = chapters(); if (c.unlocked.includes(n)) { c.cur = n; return true; } return false; },
+    completeChapter() { const c = chapters(); const nx = c.cur + 1; if (nx <= c.names.length - 1) { if (!c.unlocked.includes(nx)) c.unlocked.push(nx); c.cur = nx; return true; } return false; },
     // one-shot celebrations sometimes call these; harmless no-ops if unused
     emit() {}, playSound() {},
   };
+  // Unknown sim members: no-op + REPORT, exactly like world-sandbox's Proxy trap —
+  // a hook reaching for an unmirrored FieldSimulation method must not hard-crash
+  // headless while degrading gracefully live. The gap is surfaced in hookErrors.
+  const __missingSim = new Set();
+  const __simNoop = function () { return undefined; };
+  const simProxy = new Proxy(sim, {
+    get(t, p, r) {
+      if (typeof p === 'symbol' || p in t) return Reflect.get(t, p, r);
+      __missingSim.add(String(p));
+      return __simNoop;
+    },
+  });
   const compiled = [];
   if (Array.isArray(state.stepHooks)) for (const h of state.stepHooks) {
     try { compiled.push({ id: h.id, fn: new Function("sim", "dt", h.code) }); }
@@ -172,7 +193,7 @@ export async function renderProbe(state, opts = {}) {
     const on = (n) => !!held[n], hit = (n) => !!pressed[n];
     const pdown = !!worldData.mouse_down;
     const pointer = {
-      x: worldData.mouse_x ?? 256, y: worldData.mouse_y ?? 256,
+      x: worldData.mouse_x ?? 0, y: worldData.mouse_y ?? 0,   // world-sandbox buildInput parity: a fresh session reads 0,0 until the mouse moves
       down: pdown, pressed: pdown && !prevPointerDown, released: !pdown && prevPointerDown,
     };
     prevPointerDown = pdown;
@@ -202,7 +223,7 @@ export async function renderProbe(state, opts = {}) {
     if (!compiled.length || NTICKS <= 0) return;
     applyInput(t);
     for (const h of compiled) {
-      try { h.fn(sim, DT); }
+      try { h.fn(simProxy, DT); }
       catch (e) { let rec = runtimeErrs.get(h.id); if (!rec) { rec = { hookId: h.id, phase: "runtime", error: String(e?.message || e), firstTick: t, count: 0 }; runtimeErrs.set(h.id, rec); } rec.count++; }
     }
     captureAudio(t);
@@ -228,10 +249,15 @@ export async function renderProbe(state, opts = {}) {
     }
   }`;
   }).join("\n");
+  // Module dedup at parity with the browser (shaders.ts deduplicateModCode):
+  // a module redeclaring a prelude fn (or an earlier module's fn) is silently
+  // stripped, not a compile error — so probe verdicts match live verdicts.
+  const modSeen = funcNamesOf(PRELUDE + HEADLESS_STUBS);
+  const dedupedModules = modules.map(m => deduplicateModCode(m.wgsl || "", modSeen));
   const wgsl = `
 ${PRELUDE}
 ${HEADLESS_STUBS}
-${modules.map(m => m.wgsl).join("\n")}
+${dedupedModules.join("\n")}
 ${usedVisuals.map(v => v.wgsl).join("\n")}
 struct Uni { data: array<vec4f, 64> };
 @group(0) @binding(1) var<uniform> gu: Uni;
@@ -239,6 +265,12 @@ fn uni(i: i32) -> f32 { let j = clamp(i, 0, 255); return gu.data[j / 4][j % 4]; 
 fn uni4(i: i32) -> vec4f { return gu.data[clamp(i, 0, 63)]; }
 struct FR { data: array<vec4f, 32> };
 @group(0) @binding(2) var<uniform> fr: FR;
+// entity population — REAL data (browser parity, shaders.ts effPopBuf):
+// element 0.x = count; entities at [1..4095] as (x, y, angle, aux).
+struct POPB { data: array<vec4f, 4096> };
+@group(0) @binding(3) var<uniform> popb: POPB;
+fn pop(i: i32) -> vec4f { return popb.data[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(popb.data[0].x); }
 struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32, cg: f32, cb: f32, ca: f32, bgr: f32, bgg: f32, bgb: f32, p0: f32, p1: f32, p2: f32 };
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
@@ -250,7 +282,7 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   // MATCH THE ENGINE: cellPos.y=0 is the top row (uv.y increases DOWNWARD). No flip.
   var colr = vec3f(u.bgr, u.bgg, u.bgb);
 ${fieldChain}
-  let keep = uni(0) * 0.0;
+  let keep = uni(0) * 0.0 + popb.data[0].y * 0.0;
   return vec4f(colr + vec3f(keep), 1.0);
 }`;
 
@@ -272,7 +304,8 @@ ${fieldChain}
   const ubuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const gbuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const fbuf = device.createBuffer({ size: 512, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); // 16 fields × 2 vec4
-  const bind = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: gbuf } }, { binding: 2, resource: { buffer: fbuf } }] });
+  const pbuf = device.createBuffer({ size: 65536, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); // 4096 vec4 population (count + 4095 entities)
+  const bind = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: gbuf } }, { binding: 2, resource: { buffer: fbuf } }, { binding: 3, resource: { buffer: pbuf } }] });
   const bpr = Math.ceil(S * 4 / 256) * 256;
   const rb = device.createBuffer({ size: bpr * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   const BG = [0.03, 0.02, 0.04]; const bgb = BG.map(v => Math.round(v * 255));
@@ -299,6 +332,13 @@ ${fieldChain}
     device.queue.writeBuffer(fbuf, 0, FREC);
     device.queue.writeBuffer(ubuf, 0, new Float32Array([S, time, 0, 0, 0, 0, 0, 0, 0, 0, BG[0], BG[1], BG[2], 0, 0, 0]));
     device.queue.writeBuffer(gbuf, 0, UARR);
+    // population upload — per sample, like gpuUniforms (hooks rebuild it per tick)
+    const popSrc = Array.isArray(worldData.gpuPopulation) ? worldData.gpuPopulation : [];
+    const PARR = new Float32Array(16384);
+    const popN = Math.min(Math.floor(popSrc.length / 4), 4095);
+    PARR[0] = popN;
+    for (let i = 0; i < popN * 4; i++) PARR[4 + i] = +popSrc[i] || 0;
+    device.queue.writeBuffer(pbuf, 0, PARR);
     const enc = device.createCommandEncoder();
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: tex.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
     pass.setPipeline(pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end();
@@ -341,6 +381,7 @@ ${fieldChain}
     samples.push(snap);
   }
   for (const rec of runtimeErrs.values()) hookErrors.push(rec);
+  if (__missingSim.size) hookErrors.push({ hookId: "*", phase: "sim-gap", error: "sandbox has no sim." + [...__missingSim].join(", sim.") + " — no-op'd (parity with world-sandbox Proxy trap)" });
 
   // ── motion from the struct series ──
   let motion = null;
