@@ -39,7 +39,14 @@ Only these endpoints. This key IS me — keep it secret; I can revoke it anytime
     try {
       const r = await fetch('/api/player-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const d = await r.json()
-      if (d?.token) { setFresh(d.token); load() }
+      if (d?.token) {
+        setFresh(d.token)
+        load()
+        // The prompt lands on the clipboard the moment it exists — copying must
+        // not cost an extra click (Galen). The mint click is the user gesture;
+        // if the clipboard still refuses, copy() opens the manual-select box.
+        copy(prompt(d.token), 'prompt')
+      }
     } finally { setBusy(false) }
   }
   const revoke = async () => {
