@@ -520,8 +520,9 @@ export function validate(graph) {
   }
   els.forEach((e, i) => { if (!seen.has(i)) errs.push(`V1 unsupported element #${i} (${e.kind})`) })
 
-  // V2 arch halves share their apex exactly (same coordinates)
-  const bez = els.filter(e => e.kind === 'bez')
+  // V2 arch halves share their apex exactly (arcade grammar only — other
+  // grammars use beziers freely, e.g. a humanoid spine)
+  const bez = graph.kind === 'arcade' ? els.filter(e => e.kind === 'bez') : []
   for (let i = 0; i < bez.length; i += 2) {
     const a = bez[i], b = bez[i + 1]
     if (!b) { errs.push('V2 odd bezier count'); break }

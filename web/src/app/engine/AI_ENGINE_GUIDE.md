@@ -1285,7 +1285,15 @@ realized dimension — so you can aim cameras and paint materials. Kinds:
 `"arcade"` (wall PIERCED by pointed-arch openings — two-circle construction,
 rim moldings, engaged columns, buttress piers on a rhythm) and `"gable"`
 (crow-step facade, blind arcature, through-lancets in the crown, shoulder
-pinnacles, spire). Optional `"prims"` remaps onto your world's primitive
+pinnacles, spire) and `"humanoid"` — FIGURES grown from the classical
+proportion canon in head-heights (`heads:[7.4,8]`, `build`, `shoulderHeads`,
+`armAngle`, `spineSway`; see `web/src/lib/grow-humanoid.mjs` defaults). The
+canon validator rejects malformed anatomy; monsters declare `offCanon: true`
+— MEASURED deviation from the canon is a design tool, undeclared deviation
+is a bug. Humanoid figures mirror about their own x=0: emit at the origin and
+call the fn with a translated/rotated `p` (never bake offsets). With
+`growUniform`, figures grow in ossification order: spine, chest, head, arms,
+legs. Optional `"prims"` remaps onto your world's primitive
 names (default `mod_w3_*`).
 Guidelines are RANGES, not values — `arch.pointiness [0.78,0.95]` (0.87 =
 equilateral) — a seeded rng resolves them per building: same seed = same

@@ -1032,9 +1032,10 @@ export async function POST(req: NextRequest) {
           const guidelines = cmd.guidelines as Record<string, unknown> | undefined
           if (!/^mod_[a-zA-Z0-9_]+$/.test(name)) { results.push({ error: 'grow_building: name must be a mod_* identifier' }); continue }
           if (!guidelines || typeof guidelines !== 'object') { results.push({ error: 'grow_building: guidelines object required (ranges, e.g. spring:{ratio:[1.15,1.45]})' }); continue }
-          if (kind !== 'arcade' && kind !== 'gable') { results.push({ error: `grow_building: unknown kind "${kind}" (arcade | gable)` }); continue }
-          const graph = kind === 'gable' ? grow.growGable(guidelines) : grow.growArcade(guidelines)
-          const verrs = grow.validate(graph)
+          if (kind !== 'arcade' && kind !== 'gable' && kind !== 'humanoid') { results.push({ error: `grow_building: unknown kind "${kind}" (arcade | gable | humanoid)` }); continue }
+          const human = kind === 'humanoid' ? await import('@/lib/grow-humanoid.mjs') : null
+          const graph = human ? human.growHumanoid(guidelines) : kind === 'gable' ? grow.growGable(guidelines) : grow.growArcade(guidelines)
+          const verrs = human ? [...human.validateHumanoid(graph), ...grow.validate(graph)] : grow.validate(graph)
           if (verrs.length) { results.push({ error: 'grow_building: structure invalid — ' + verrs.slice(0, 4).join('; ') }); continue }
           const prims = (cmd.prims as Record<string, string>) || { strut: 'mod_w3_taperStrut', bez: 'mod_w3_bezStrut', box: 'mod_w3_box', smin: 'opSmoothUnion' }
           const opts: Record<string, unknown> = {}
