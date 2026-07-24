@@ -785,6 +785,10 @@ export async function POST(req: NextRequest) {
             color: (cmd.color as number[] | undefined) ?? d.color ?? [1, 1, 1, 1],
             visualParams: (cmd.params as number[] | undefined) ?? d.params,
             tags: comp.tags,
+            // components are drawn parts, not physics bodies: without noHit the
+            // collision solver expels them from any big field they overlap
+            // (VEILFIRE's lamp fled to the corner). Opt back in with noHit:false.
+            noHit: (cmd.noHit as boolean | undefined) ?? true,
             properties: { component: comp.name, componentTags: comp.tags } })
           let newFieldId: string | undefined
           for (const sc of sub) {
