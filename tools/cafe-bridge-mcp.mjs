@@ -13,9 +13,11 @@
 // Minimal stdio JSON-RPC (MCP): newline-delimited messages on stdin/stdout.
 
 import { createInterface } from 'readline'
+import { makeClient, normalizeCommands } from './bridge-client.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const TOKEN = process.env.CAFE_BUILD_TOKEN || ''
+const cafe = makeClient({ base: BASE, token: TOKEN, timeoutMs: 60_000 })
 
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\n')
 const ok = (id, result) => write({ jsonrpc: '2.0', id, result })
@@ -54,22 +56,13 @@ const TOOLS = [
   },
 ]
 
-/** Models sometimes JSON-stringify nested values. Coax a value back to JSON. */
-function coax(v) {
-  if (typeof v !== 'string') return v
-  const t = v.trim()
-  if (t.startsWith('[') || t.startsWith('{')) { try { return JSON.parse(t) } catch { /* leave as string */ } }
-  return v
-}
-
 async function callTool(name, args) {
   const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` }
   if (name === 'cafe_guide') {
     // The full guide (~74k chars) blows the headless per-tool-result token cap, so
     // a locked agent never sees it and resorts to probing. Cap to a safe head and
     // point the rest at cafe_source (which pages the same file).
-    const r = await fetch(`${BASE}/api/engine/guide`)
-    const md = await r.text()
+    const md = await cafe.guide()
     const CAP = 52_000   // trimmed guide is ~46.5k — fits whole, well under the ~74k tool-result limit
     if (md.length <= CAP) return md
     return md.slice(0, CAP) +
@@ -83,31 +76,18 @@ async function callTool(name, args) {
       : a.path ? `?path=${encodeURIComponent(a.path)}` +
         (a.from != null ? `&from=${a.from}` : '') + (a.to != null ? `&to=${a.to}` : '')
       : ''
-    const r = await fetch(`${BASE}/api/engine/source${q}`)
-    return await r.text()
+    return (await cafe.text(`/api/engine/source${q}`)).text
   }
   if (name === 'cafe_state') {
-    const r = await fetch(`${BASE}/api/engine/bridge`, { headers: H })
-    return await r.text()
+    return (await cafe.bridgeGet()).text
   }
   if (name === 'cafe_describe') {
-    const r = await fetch(`${BASE}/api/engine/bridge?action=describe`, { headers: H })
-    return await r.text()
+    return (await cafe.bridgeGet('describe')).text
   }
   if (name === 'cafe_send') {
-    // accept {commands:[...]}, a bare array, a single command object, OR any of
-    // those where the model JSON-stringified the array/object (a common slip).
-    const a = coax(args) || {}
-    let cmds = coax(a.commands)
-    const body =
-        Array.isArray(cmds) && cmds.length ? { commands: cmds }
-      : Array.isArray(a) ? { commands: a }
-      : (cmds && typeof cmds === 'object' && cmds.type) ? { commands: [cmds] }
-      : a.type ? { commands: [a] }                       // whole arg is one command
-      : Array.isArray(cmds) ? { commands: cmds }         // empty array → surface bridge's own error
-      : { commands: [] }
-    const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(body) })
-    return await r.text()
+    // normalizeCommands accepts every malformed shape a model has produced;
+    // retryLock waits out the two-builders-one-world claim-lock (3 tries).
+    return JSON.stringify(await cafe.bridgeSend(args, { retryLock: 3 }))
   }
   if (name === 'cafe_probe') {
     // The eyes a headless agent lacks. RENDERED IN THE CLOUD first: the bridge's
@@ -122,8 +102,7 @@ async function callTool(name, args) {
       if (a.name) cmd.name = String(a.name)
       if (a.ticks != null) cmd.ticks = Number(a.ticks)
       if (a.input) cmd.input = a.input   // the HANDS: press controls, verify it plays
-      const r = await fetch(`${BASE}/api/engine/bridge`, { method: 'POST', headers: H, body: JSON.stringify(cmd) })
-      const j = await r.json()
+      const j = await cafe.bridgeSend(cmd, { retryLock: 2, normalize: false })
       const res = (Array.isArray(j.results) ? j.results[0] : null) || {}
       if (res.ok && res.image) {
         const { image, imageMime, type: _t, ...struct } = res
@@ -136,7 +115,7 @@ async function callTool(name, args) {
     } catch (e) { cloudErr = e.message }
     // ── fallback: local Deno probe on this machine's GPU ──
     const os = await import('os'), fs = await import('fs'), path = await import('path'), cp = await import('child_process')
-    const state = await (await fetch(`${BASE}/api/engine/bridge`, { headers: H })).text()
+    const state = (await cafe.bridgeGet()).text
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cafe-probe-'))
     const stateFile = path.join(dir, 'state.json'), pngFile = path.join(dir, 'out.png')
     fs.writeFileSync(stateFile, state)

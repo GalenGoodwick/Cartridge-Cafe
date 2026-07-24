@@ -22,6 +22,7 @@
 // you don't trust arbitrary briefs on your box, run it in a throwaway VM/user.
 
 import { execFile } from 'child_process'
+import { makeClient } from './bridge-client.mjs'
 import { mkdirSync, writeFileSync } from 'fs'
 import { homedir, loadavg, cpus, tmpdir } from 'os'
 import { dirname, join } from 'path'
@@ -48,13 +49,8 @@ if (!TOKEN || !TOKEN.startsWith('uc_bt_')) {
 
 const log = (m) => process.stdout.write(`${new Date().toISOString()} ${m}\n`)
 
-const api = async (path, opts = {}) => {
-  const res = await fetch(BASE + path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}`, ...(opts.headers || {}) },
-  })
-  return res.json().catch(() => ({}))
-}
+const cafe = makeClient({ base: BASE, token: TOKEN })
+const api = (path, opts = {}) => cafe.json(path, opts)
 
 // Only pick up work when the machine is genuinely idle (per-core load < 0.6).
 function machineIdle() {

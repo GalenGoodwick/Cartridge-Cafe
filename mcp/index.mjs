@@ -9,7 +9,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 
+import { makeClient } from '../tools/bridge-client.mjs'
+
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
+const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 60_000, headers: { Origin: BASE } })
 
 // ── one guest session per server run: cookie jar + the worlds we brewed ──
 const jar = {}
@@ -56,8 +59,7 @@ server.tool(
   'The engine guide — MANDATORY reading before building. Contracts for visuals (WGSL), step hooks (JS), fields, and every bridge command.',
   {},
   async () => {
-    const r = await fetch(BASE + '/api/engine/guide')
-    return text(await r.text())
+    return text(await bridgeFor('').guide())
   },
 )
 
@@ -118,12 +120,7 @@ server.tool(
   async ({ command, token }) => {
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
-    const r = await fetch(BASE + '/api/engine/bridge', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: BASE, Authorization: `Bearer ${tok}` },
-      body: JSON.stringify(command),
-    })
-    return text(await r.json().catch(() => ({ status: r.status })))
+    return text(await bridgeFor(tok).bridgeSend(command, { retryLock: 2, normalize: false }))
   },
 )
 
@@ -134,8 +131,9 @@ server.tool(
   async ({ token }) => {
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
-    const r = await fetch(BASE + '/api/engine/bridge', { headers: { Authorization: `Bearer ${tok}` } })
-    return text(await r.json().catch(() => ({ status: r.status })))
+    const st = await bridgeFor(tok).bridgeGet()
+    let body; try { body = JSON.parse(st.text) } catch { body = { status: st.status } }
+    return text(body)
   },
 )
 

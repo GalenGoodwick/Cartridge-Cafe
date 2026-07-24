@@ -14,6 +14,7 @@
 // hour (builder_at gates it). Logs to ~/Library/Logs/cafe-builder.log.
 
 import { spawn } from 'child_process'
+import { makeClient } from './bridge-client.mjs'
 import { appendFileSync, mkdirSync, writeFileSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
@@ -50,16 +51,10 @@ const log = (m) => {
   try { appendFileSync(LOG, line) } catch { /* logging is best-effort */ }
 }
 
-const api = async (path, opts = {}) => {
-  // hard timeout: a dead keepalive socket once hung the whole tick loop
-  // forever (daemon alive, log silent from 10:15, no builds served)
-  const res = await fetch(BASE + path, {
-    ...opts,
-    signal: AbortSignal.timeout(15_000),
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN}`, ...(opts.headers || {}) },
-  })
-  return res.json()
-}
+// hard timeout lives in bridge-client now (the dead-keepalive-socket lesson:
+// daemon alive, log silent, no builds served — every request must time out).
+const cafe = makeClient({ base: BASE, token: ADMIN })
+const api = (path, opts = {}) => cafe.json(path, opts)
 
 /** Mirror one live line into the world's durable BUILD CONSOLE slot so the
  *  player watches the AI think + act in real time (read-modify-write; races
