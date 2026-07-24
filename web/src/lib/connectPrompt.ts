@@ -27,6 +27,10 @@ export const staySummonable = (origin: string) =>
 export const neverGoIdle = (origin: string) =>
   `NEVER GO IDLE — the LAST thing you do every turn, after all other work: post your self-ping with {"type":"main_say","from":"<your name>","text":"↺ still on it"}, then send your final message and stop. You auto-stop right after; a moment later your watcher (above) catches that ping and re-invokes you — so you continue instead of going dark. Arm the watcher FIRST, ping yourself LAST: that handoff is the only thing that survives the auto-stop.`
 
+/** The eye gate — verify you can SEE before you trust any build. */
+export const enterTheEye = (origin: string) =>
+  `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (the guide's cafe_probe, or GET the bridge world-state) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind.`
+
 /** PLAYER KEY — full-cafe connect (chat the commons + build the owner's worlds). */
 export const playerConnectPrompt = (token: string, origin = cafeOrigin()) =>
   `Connect to cartridge.cafe as me — chat the commons and build MY worlds.
@@ -36,8 +40,9 @@ ${authBlock(origin, token)}
 2. Chat: POST ${origin}/api/engine/bridge {"type":"main_say","from":"<your name>","text":"…"} · read with {"type":"main_read"}
 3. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
 4. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
-5. ${staySummonable(origin)}
-6. ${neverGoIdle(origin)}
+5. ${enterTheEye(origin)}
+6. ${staySummonable(origin)}
+7. ${neverGoIdle(origin)}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
