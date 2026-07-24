@@ -3,11 +3,11 @@
 //
 // "An AI lives here. Or bring your own."
 //
-// Polls the pending-builds queue (worlds whose owners left a creation brief),
-// mints a build key for each, and hands the brief to a headless Claude Code
-// session — the exact same connect prompt a player would have pasted by hand.
-// The builder marks builder_at when it takes a job (so two runs don't collide)
-// and the building agent itself sets brief_done when the first pass lands.
+// Polls the /api/builds queue (worlds whose owners left a creation brief),
+// claims a job, and hands the brief to a headless Claude Code session — the
+// exact same connect prompt a player would have pasted by hand. Heartbeats
+// while building; complete/release reports the outcome, and the building
+// agent itself sets brief_done when the first pass lands.
 //
 // Runs on the studio machine via LaunchAgent (com.cafe.builder). One build at
 // a time; a build gets 15 minutes; a failed brief is retried once after an

@@ -33,11 +33,6 @@ export const DERIVED_KEYS: ReadonlySet<string> = new Set([
  *  progress keys are found generically; these are the exceptions to name. */
 const NAMED_GAME_KEYS = ['game']
 
-/** Back-compat: a flat list some callers still import. */
-export const GAME_STATE_KEYS: readonly string[] = [
-  ...NAMED_GAME_KEYS, '__tg', '__trig', '__edge', '__chapters', ...DERIVED_KEYS,
-]
-
 const isProgressKey = (wd: Record<string, unknown>, k: string): boolean => {
   if (PRESERVED_KEYS.has(k) || DERIVED_KEYS.has(k)) return false
   if (NAMED_GAME_KEYS.includes(k)) return true

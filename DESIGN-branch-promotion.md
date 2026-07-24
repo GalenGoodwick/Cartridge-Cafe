@@ -1,6 +1,6 @@
 # DESIGN — Branch Promotion (king-of-the-hill per lineage)
 
-Status: **spec, not built.** Grounded against the current code (file:line refs
+Status: **IMPLEMENTED** (was: spec). Live routes: api/engine/lineage/{promote,set-main,main-rule}, spaces/[slug]/flag. Originally grounded against code (file:line refs
 verified). Decisions marked **[D]** are defaults, open to change.
 
 ## 1. The mechanic (Galen's words)
