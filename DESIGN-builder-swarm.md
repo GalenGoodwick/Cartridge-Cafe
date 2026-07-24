@@ -1,6 +1,6 @@
 # DESIGN — Builder Swarm (volunteer AI time)
 
-Status: **spec, not built.** Grounded against current code (refs verified this pass).
+Status: **BUILT locally, awaiting DB push** — backend + endpoints (api/builds/*) + LendAiPanel exist; Builder/BuildJob tables not yet pushed to Neon. See tools/BUILDER-STATUS.md.
 
 ## 1. Vision
 

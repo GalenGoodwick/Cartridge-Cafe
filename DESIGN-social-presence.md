@@ -1,6 +1,6 @@
 # DESIGN — Social Presence (find each other & chat)
 
-Status: **spec, not built.** Grounded against current code (refs verified).
+Status: **IMPLEMENTED** (was: spec) — api/engine/presence, api/presence, follows, users/search + avatar/presence in CafeShell are live.
 
 ## 1. Vision
 

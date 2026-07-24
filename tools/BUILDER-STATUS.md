@@ -50,7 +50,7 @@ probe returned `P1014 (table does not exist)`. That is exactly why the LEND AI
 panel shows "could not enroll": `prisma.builder.create()` throws → 500. Nothing
 in the swarm works until the push runs. Left for you on purpose — I don't write
 to your production DB without an explicit yes. The old
-`GET /api/spaces/pending-builds` route still exists (harmless; superseded).
+`GET /api/spaces/pending-builds` route has been REMOVED (2026-07-23 cleanup — it was superseded by /api/builds and had no callers).
 
 ## Phase 3+4 — BUILT (local, not migrated/deployed) — 2026-07-18
 

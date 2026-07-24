@@ -24,9 +24,7 @@
 import { prisma } from '@/lib/prisma'
 import { getSpaceSnapshot, applyCommandToSnapshot } from '@/app/api/engine/space-store'
 import { deleteGameSlot } from '@/app/api/engine/store'
-import { GAME_STATE_KEYS, PRESERVED_KEYS, resetPatch, captureOriginal, progressKeysOf } from '@/lib/gameStateKeys'
-
-export { GAME_STATE_KEYS, PRESERVED_KEYS }
+import { PRESERVED_KEYS, resetPatch, captureOriginal, progressKeysOf } from '@/lib/gameStateKeys'
 
 export interface ResetOpts {
   clearPlayer?: boolean   // also wipe per-user progress (worldData.save)
