@@ -14,7 +14,11 @@ export function isAdminToken(authHeader?: string | null, opts: { allowLegacyAnth
   const bearer = authHeader.slice(7)
   const t = process.env.ENGINE_AGENT_TOKEN
   if (t && bearer === t) return true
-  if (opts.allowLegacyAnthropicKey) {
+  // Legacy parity is EXACT: the old code was `ENGINE_AGENT_TOKEN || ANTHROPIC_API_KEY`,
+  // so the Anthropic key was accepted ONLY when the engine token was UNSET. Keeping
+  // that short-circuit — a broader "either key" reading would newly promote a leaked
+  // ANTHROPIC_API_KEY to admin in prod (adversarial review, Jul 24).
+  if (opts.allowLegacyAnthropicKey && !t) {
     const a = process.env.ANTHROPIC_API_KEY
     if (a && bearer === a) return true
   }

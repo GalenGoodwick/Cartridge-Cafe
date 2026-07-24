@@ -332,6 +332,8 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'reset': {
+      // NUCLEAR by contract (guide: "clears everything") — the owner's
+      // category-law reset is lib/worldSave.resetWorld, a different operation.
       snap.fields = []
       snap.stepHooks = []
       snap.interactionRules = []

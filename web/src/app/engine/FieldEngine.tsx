@@ -6455,10 +6455,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     className="px-2 py-1 rounded bg-red-500/30 hover:bg-red-500/50 border border-red-400/40 text-red-50">RELOAD WORLD</button>
                 )}
                 <button
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     const detail = `[${fault.kind}] ${fault.message} — scene: ${lastSceneRef.current || playScene || spaceSlug || 'unknown'} — engine ${ENGINE_BUILD} — ${new Date().toISOString()}`
-                    navigator.clipboard?.writeText(detail).catch(() => {})
-                    const b = e.currentTarget; b.textContent = 'copied ✓'
+                    const b = e.currentTarget
+                    const ok = await copyText(detail)
+                    b.textContent = ok ? 'copied ✓' : 'copy blocked'
                     setTimeout(() => { if (b.isConnected) b.textContent = 'copy' }, 1500)
                   }}
                   className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 border border-white/15 text-red-200/80">copy</button>

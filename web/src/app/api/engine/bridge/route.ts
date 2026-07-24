@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
@@ -75,9 +76,8 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
     return { authorized: true, spaceId: null, ownerId: null, playerId: p.userId }
   }
 
-  // Legacy global token path (admin)
-  const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
-  if (envToken && token === envToken) {
+  // Legacy global token path (admin) — THE one check (lib/adminAuth, audit #6)
+  if (isAdminToken('Bearer ' + token, { allowLegacyAnthropicKey: true })) {
     return { authorized: true, spaceId: null, ownerId: null }
   }
 
@@ -168,6 +168,9 @@ async function mintWorldToken(spaceId: string, name: string): Promise<string> {
 // Relay commands to the agent SSE queue
 async function pushToAgent(command: Record<string, unknown>, req: NextRequest, spaceId?: string | null): Promise<unknown> {
   const baseUrl = req.nextUrl.origin
+  // NOTE: the ANTHROPIC fallback here is a SENDER-side value; the agent route's
+  // check accepts only ENGINE_AGENT_TOKEN, so the fallback only matters if that
+  // env var is unset (dev). Kept as-was; kill together with allowLegacyAnthropicKey.
   const token = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY || ''
 
   // Tag command with spaceId so the SSE queue routes it correctly

@@ -17,7 +17,8 @@ import { makeClient, normalizeCommands } from './bridge-client.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const TOKEN = process.env.CAFE_BUILD_TOKEN || ''
-const cafe = makeClient({ base: BASE, token: TOKEN, timeoutMs: 60_000 })
+// 150s: a lavapipe cloud render probe legitimately runs >60s (review finding)
+const cafe = makeClient({ base: BASE, token: TOKEN, timeoutMs: 150_000 })
 
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\n')
 const ok = (id, result) => write({ jsonrpc: '2.0', id, result })
@@ -87,7 +88,7 @@ async function callTool(name, args) {
   if (name === 'cafe_send') {
     // normalizeCommands accepts every malformed shape a model has produced;
     // retryLock waits out the two-builders-one-world claim-lock (3 tries).
-    return JSON.stringify(await cafe.bridgeSend(args, { retryLock: 3 }))
+    return JSON.stringify(await cafe.bridgeSend(args, { retryLock: 1 }))
   }
   if (name === 'cafe_probe') {
     // The eyes a headless agent lacks. RENDERED IN THE CLOUD first: the bridge's

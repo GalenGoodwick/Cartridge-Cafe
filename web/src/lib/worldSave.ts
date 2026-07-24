@@ -1,5 +1,15 @@
 // worldSave.ts — the UNIFIED SAVE HOLDER for a world.
 //
+// THE THREE RESETS (deliberate, distinct contracts — audit #11):
+//   1. resetWorld (HERE) — the OWNER's game-state reset: category law below
+//      (restore PROGRESS from __original, clear DERIVED, never touch CONFIG).
+//   2. {type:'reset'} bridge command — the guide's documented NUCLEAR reset:
+//      "clears everything" (space-store case 'reset'). A builder verb for
+//      wipe-and-rebuild; it obeys no category law BY CONTRACT.
+//   3. resetStore() — the GLOBAL engine-store wipe (admin/scene tooling only).
+// Same word, three operations. Do not "unify" them — renaming would break the
+// documented builder contract; this header is the map.
+//
 // A world's persistent state was scattered across stores with no common owner,
 // so a "reset" only ever cleared ONE of them (worldData.__tg) and left the rest
 // (triggers, chapters, the version-tournament, per-player saves) dirty — a

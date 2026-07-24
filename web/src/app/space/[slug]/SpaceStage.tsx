@@ -78,10 +78,9 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   // bubble in the directory (web/docs/presence-nesting-spec.md). Never counts
   // a version snapshot; hidden tabs skip the beat.
   usePresenceBeat(() => {
-    if (versionView) return null
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return null
     return 'main/players/space:' + spaceSlug
-  }, { intervalMs: 10_000, byeOnCleanup: true, deps: [name, spaceSlug, versionView] })
+  }, { intervalMs: 10_000, byeOnCleanup: true, enabled: !versionView, deps: [name, spaceSlug, versionView] })
 
   // The arena competes BRANCHES (forked child spaces), never versions (Galen:
   // versions are one branch's private history; the vote decides between works).

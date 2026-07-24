@@ -28,13 +28,17 @@ export function presencePid(): string {
  */
 export function usePresenceBeat(
   getKey: () => string | null | undefined,
-  opts: { intervalMs?: number; byeOnCleanup?: boolean; deps?: unknown[] } = {},
+  opts: { intervalMs?: number; byeOnCleanup?: boolean; enabled?: boolean; deps?: unknown[] } = {},
 ): void {
   const getKeyRef = useRef(getKey)
   getKeyRef.current = getKey
-  const { intervalMs = 12_000, byeOnCleanup = false } = opts
+  const { intervalMs = 12_000, byeOnCleanup = false, enabled = true } = opts
 
   useEffect(() => {
+    // enabled:false arms NOTHING — no interval, no pagehide, no unmount bye.
+    // (A version-snapshot view must not beacon `leave` for the shared pid and
+    // transiently erase the person's real presence — adversarial review.)
+    if (!enabled) return
     const pid = presencePid()
     const beat = () => {
       const key = getKeyRef.current()

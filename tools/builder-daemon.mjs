@@ -264,8 +264,11 @@ async function tick() {
     if (ok) {
       // a session that ran to a clean exit is DONE — complete it even if a limit
       // error surfaced along the way (the work is saved; don't phantom-requeue)
-      await api(`/api/builds/${jobId}/complete`, { method: 'POST', body: '{}' })
-      log(`completed ${slug}`)
+      const done = await api(`/api/builds/${jobId}/complete`, { method: 'POST', body: '{}' })
+      if (done && done.__parseError) {
+        log(`complete for ${slug} got a broken response (${done.status}) — releasing so it requeues promptly`)
+        await api(`/api/builds/${jobId}/release`, { method: 'POST', body: '{}' }).catch(() => {})
+      } else log(`completed ${slug}`)
     } else if (hitLimit) {
       // out of credits — requeue this brief for another builder and go dark so
       // the swarm reports the house AI unavailable until the cooldown passes

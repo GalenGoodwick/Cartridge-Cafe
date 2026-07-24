@@ -1,7 +1,7 @@
 'use client'
 
 import { usePresenceBeat } from '@/lib/usePresenceBeat'
-import { brewStandbyPrompt } from '@/lib/connectPrompt'
+import { brewStandbyPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { copyText } from '@/lib/copyText'
 import { useEffect, useRef, useState } from 'react'
 import { signOut } from 'next-auth/react'
@@ -321,20 +321,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const copyIconPrompt = async () => {
     const p = iconPrompt.trim()
     if (p.length < 3) return
-    const o = window.location.origin
-    const text = `Brew my cartridge.cafe player icon: "${p}".
-
-Author a custom WGSL glyph — this IS my cursor in the cafe, so make it live up to the description. Set it with one call:
-
-POST ${o}/api/engine/bridge
-Authorization: Bearer ${iconToken || '<open the brew panel while signed in to mint your icon token>'}
-Body: {"type":"set_player_icon","icon":{"fx":<0-4 preset fallback>,"hue":<0-1>,"size":<0.5-2>,"wgsl":"<the glyph>"}}
-
-The glyph is one WGSL function, under 6KB, no bindings, exactly this signature:
-fn visual_glyph(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f
-uv spans -1..1 inside the icon's small cursor cell; animate off time; return vec4f(rgb, alpha) with alpha 0 outside the shape. Also pick fx/hue/size so the preset fallback echoes the idea. Full engine guide: ${o}/api/engine/guide
-
-Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightness swings, no unbounded loops (the cell caps its size). Within that, go as bold and alive as the description demands. Reply to confirm once it's set.`
+    const text = playerGlyphPrompt(p, iconToken || null)
     if (await copyText(text)) {
       setIconCopied(true); setTimeout(() => setIconCopied(false), 1800)
     }

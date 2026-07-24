@@ -3,6 +3,10 @@
 // the STAY SUMMONABLE watcher section — landed in some prompts and not others).
 // Shared protocol blocks live at the top; each surface composes its prompt from
 // them, so changing the protocol changes every surface at once.
+// (Unifying the blocks normalized small wording drift between surfaces —
+// "(markdown)" in the guide step, "EVERY" in the auth line. Deliberate: one
+// phrasing IS the point. cafeOrigin's prod fallback differs from '' at SSR on
+// localhost only — dev-only hydration warning; prod origins match.)
 
 export const cafeOrigin = () =>
   typeof window !== 'undefined' ? window.location.origin : 'https://cartridge.cafe'
@@ -117,3 +121,20 @@ Before doing ANYTHING else:
 You may open your world's page in your own (headless) browser as your eyes —
 GET the bridge URL and use space.viewUrl (it can change when I name the world).
 Your view is yours: it never takes my seat and never counts in head-counts.`
+
+/** PLAYER GLYPH — the cursor-icon brew prompt (the 7th surface; found by the
+ *  post-unification sweep hiding inline in CafeShell). */
+export const playerGlyphPrompt = (desc: string, iconToken: string | null, origin = cafeOrigin()) =>
+  `Brew my cartridge.cafe player icon: "${desc}".
+
+Author a custom WGSL glyph — this IS my cursor in the cafe, so make it live up to the description. Set it with one call:
+
+POST ${origin}/api/engine/bridge
+Authorization: Bearer ${iconToken || '<open the brew panel while signed in to mint your icon token>'}
+Body: {"type":"set_player_icon","icon":{"fx":<0-4 preset fallback>,"hue":<0-1>,"size":<0.5-2>,"wgsl":"<the glyph>"}}
+
+The glyph is one WGSL function, under 6KB, no bindings, exactly this signature:
+fn visual_glyph(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f
+uv spans -1..1 inside the icon's small cursor cell; animate off time; return vec4f(rgb, alpha) with alpha 0 outside the shape. Also pick fx/hue/size so the preset fallback echoes the idea. Full engine guide: ${origin}/api/engine/guide
+
+Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightness swings, no unbounded loops (the cell caps its size). Within that, go as bold and alive as the description demands. Reply to confirm once it's set.`

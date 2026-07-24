@@ -5,6 +5,14 @@ replacing the two separate chrome implementations that wrap the same engine
 today. The engine stops asking "am I a spaceId or a branch?" and asks "what does
 this context grant?"*
 
+**STATUS (Jul 24 2026, audit #7 resolution):** the two-shell chrome was unified
+the PRACTICAL way — `lib/worldContext.ts` (the context + `can()` capability
+table) and `FocusChip` shipped and both shells consume them; FieldEngine's
+capability-gated inline dock is the canonical chrome. The full standalone
+`<WorldChrome>` shell drafted alongside was never rendered and has been DELETED
+(rotting parallel implementation). A future standalone shell should be designed
+fresh against `worldContext`.
+
 ## The problem: it's two implementations, not one UI with modes
 
 Every world on the site runs the **same** `FieldEngine`. But the chrome around

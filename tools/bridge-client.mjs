@@ -55,10 +55,13 @@ export function makeClient({ base = CAFE_BASE, token = '', timeoutMs = 15_000, h
   return {
     base, token,
 
-    /** Parsed-JSON fetch; parse failure → {} (a tick loop must not die on a 502 page). */
+    /** Parsed-JSON fetch; a non-JSON body (a 502 HTML page) returns
+     *  { __parseError: true, status } instead of throwing — a tick loop must
+     *  not die on it, but callers CAN tell "empty result" from "broken body"
+     *  (the old swallow-to-{} let a failed /complete log as success). */
     async json(path, opts = {}) {
       const res = await raw(path, opts)
-      return res.json().catch(() => ({}))
+      return res.json().catch(() => ({ __parseError: true, status: res.status }))
     },
 
     /** Body text + status, for callers that relay raw responses. */

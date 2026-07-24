@@ -1,5 +1,6 @@
 'use client'
 
+import { copyText } from '@/lib/copyText'
 import { useEffect, useState } from 'react'
 
 /** cartridge.cafe runs a WebGPU compute stack on a desktop-sized canvas.
@@ -140,7 +141,7 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         </p>
         {mobile && (
           <button
-            onClick={() => { try { void navigator.clipboard?.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ } }}
+            onClick={async () => { if (await copyText(window.location.href)) { setCopied(true); setTimeout(() => setCopied(false), 1600) } }}
             style={{
               marginTop: 20, padding: '9px 18px', borderRadius: 10, cursor: 'pointer',
               border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)',

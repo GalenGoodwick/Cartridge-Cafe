@@ -12,7 +12,7 @@ import { z } from 'zod'
 import { makeClient } from '../tools/bridge-client.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
-const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 60_000, headers: { Origin: BASE } })
+const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
 
 // ── one guest session per server run: cookie jar + the worlds we brewed ──
 const jar = {}
@@ -120,7 +120,7 @@ server.tool(
   async ({ command, token }) => {
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
-    return text(await bridgeFor(tok).bridgeSend(command, { retryLock: 2, normalize: false }))
+    return text(await bridgeFor(tok).bridgeSend(command, { retryLock: 1, normalize: false }))
   },
 )
 

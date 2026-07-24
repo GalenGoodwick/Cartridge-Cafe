@@ -45,6 +45,10 @@ export async function commonsBus(ev: BusEvent): Promise<void> {
     })
   } catch {
     // the bus is a nervous system, not a load-bearing wall — a failed post
-    // must never fail a build, a quarantine report, or a world's birth
+    // must never fail a build, a quarantine report, or a world's birth.
+    // (Known shape deltas vs the pre-unification bus, reviewed + accepted:
+    // empty-text events are dropped here instead of written verbatim, and
+    // falsy ai/system are OMITTED rather than false — all in-repo readers are
+    // truthiness-based.)
   }
 }

@@ -252,7 +252,10 @@ export async function renderProbe(state, opts = {}) {
   // Module dedup at parity with the browser (shaders.ts deduplicateModCode):
   // a module redeclaring a prelude fn (or an earlier module's fn) is silently
   // stripped, not a compile error — so probe verdicts match live verdicts.
-  const modSeen = funcNamesOf(PRELUDE + HEADLESS_STUBS);
+  // seen = PRELUDE only: a module redeclaring a STUB name (prevHere, pix, ...)
+  // must duplicate-error here exactly like it errors live (the stubs are not in
+  // the browser's SHADER_UTILITIES either — adversarial review, Jul 24).
+  const modSeen = funcNamesOf(PRELUDE);
   const dedupedModules = modules.map(m => deduplicateModCode(m.wgsl || "", modSeen));
   const wgsl = `
 ${PRELUDE}
@@ -337,7 +340,7 @@ ${fieldChain}
     const PARR = new Float32Array(16384);
     const popN = Math.min(Math.floor(popSrc.length / 4), 4095);
     PARR[0] = popN;
-    for (let i = 0; i < popN * 4; i++) PARR[4 + i] = +popSrc[i] || 0;
+    for (let i = 0; i < popN * 4; i++) { const v = +popSrc[i]; PARR[4 + i] = Number.isFinite(v) ? v : 0; }
     device.queue.writeBuffer(pbuf, 0, PARR);
     const enc = device.createCommandEncoder();
     const pass = enc.beginRenderPass({ colorAttachments: [{ view: tex.createView(), loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } }] });
