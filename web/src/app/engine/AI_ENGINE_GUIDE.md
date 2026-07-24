@@ -1264,6 +1264,28 @@ ops: `mod_w3_rotX/rotY/rotZ/repeat/polar` · combine with the global
 the ONE DAY class; bound secondary rays (shadows 24 steps, reflections ~22)
 and gate them by region. Check `worldData.__budget.frameMs` after building.
 
+**GROWN BUILDINGS — `tools/grow-building.mjs` (don't hand-place architecture):**
+hand-tuned SDF constants produce broken proportions you can't see until too
+late. Instead, GROW buildings from structural guidelines and let correctness
+happen by construction: `growArcade(guidelines)` (wall pierced by pointed-arch
+openings — two-circle construction, rim moldings, engaged columns, buttress
+piers on a rhythm, self-capping at any budget) and `growGable(guidelines)`
+(stepped facade + shoulder pinnacles + spire) return a validated node GRAPH.
+Guidelines are RANGES, not values — `spring: {ratio:[1.15,1.45]}`,
+`column: {slenderness:[7,10]}`, `arch: {pointiness:[0.78,0.95]}` (0.87 =
+equilateral) — a seeded rng resolves them per building, so same seed = same
+building, new seed = a sibling within your rules. YOUR ranges are your style;
+the tool prescribes none. Then: `validate(graph)` (support/proportion/bounds
+invariants), `node tools/grow-building.test.mjs` (exactness proofs), and
+**`node tools/grow-building-preview.mjs seed=7 out=look`** — a CPU raymarcher
+running the IDENTICAL math, so you SEE the building at full res locally BEFORE
+any bridge write. Iterate guidelines against previews, then
+`emitWGSL(graph, 'mod_myworld_grown', {strut:'mod_w3_taperStrut',
+bez:'mod_w3_bezStrut', box:'mod_w3_box', smin:'opSmoothUnion'})` emits one
+`fn mod_myworld_grown(p: vec3f) -> f32` (AABB-rejected, cell-repeat
+compressed) for `define_module`. Emitted code is generated — regrow, never
+hand-edit. First proven in VEILFIRE (Jul 24 2026).
+
 **Load-order law (engine-enforced since Jul 19 2026, but respect it anyway):**
 remove a module with `{"type":"remove_module","name":"..."}` (it deletes from
 the snapshot too). Register modules BEFORE the visuals that call them, and send a world's full
