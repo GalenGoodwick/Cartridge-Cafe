@@ -312,9 +312,12 @@ export class FieldSimulation {
       prevPositions.set(field.id, { x: field.transform.x, y: field.transform.y })
     }
 
-    // Apply own velocity
+    // Apply own velocity — but a STATIC backdrop never drifts: zero any velocity
+    // it picked up (a stray force, a leftover impulse) and skip integration so
+    // the fullscreen scene holds perfectly still.
     for (const field of this.fields.values()) {
       const t = field.transform
+      if (this.isStaticField(field)) { t.vx = 0; t.vy = 0; t.vr = 0; continue }
       if (t.vx !== 0 || t.vy !== 0 || t.vr !== 0) {
         t.x += t.vx * dt
         t.y += t.vy * dt
@@ -345,6 +348,24 @@ export class FieldSimulation {
         prevPositions.set(field.id, { x: field.transform.x, y: field.transform.y })
       }
     }
+  }
+
+  /** A world-covering backdrop (the fullscreen shader) is STATIC: physics never
+   *  MOVES it — no gravity, no collision/gravitation push, no velocity
+   *  integration — but it still PUSHES/attracts smaller fields. A held scene
+   *  that applies force without flying around (Galen: "the fullscreen field
+   *  should not be moving/subject to physics though it can apply physics").
+   *  Auto for `shapeType:'screen'` and world-covering rects/circles; override
+   *  with property `static:false` (a moving backdrop) or `static:true` (pin a
+   *  smaller field). Cached per field — the flag only changes on resize/shape. */
+  private isStaticField(f: Field): boolean {
+    const explicit = f.properties.get('static')
+    if (explicit === true) return true
+    if (explicit === false) return false
+    if (f.shapeType === 'screen') return true
+    const w = f.w ?? (f.radius ? f.radius * 2 : 0)
+    const h = f.h ?? (f.radius ? f.radius * 2 : 0)
+    return w >= DEFAULT_GRID_SIZE * 0.9 && h >= DEFAULT_GRID_SIZE * 0.9
   }
 
   /** Get cached field list — rebuilt only when field count changes */
@@ -378,9 +399,10 @@ export class FieldSimulation {
       // Rebuild spatial hash for broad-phase pair queries (O(n))
       this.rebuildSpatialHash()
 
-      // Apply gravity to all fields
+      // Apply gravity to all fields — except a static backdrop (it doesn't fall)
       if (wp.gravity !== 0) {
         for (const field of this.fields.values()) {
+          if (this.isStaticField(field)) continue
           field.transform.vy += wp.gravity * dt
         }
       }
@@ -490,10 +512,10 @@ export class FieldSimulation {
         const nx = dx / dist
         const ny = dy / dist
 
-        a.transform.vx += nx * force
-        a.transform.vy += ny * force
-        b.transform.vx -= nx * force
-        b.transform.vy -= ny * force
+        // a static backdrop still ATTRACTS the field (it applies physics), but
+        // the pull never MOVES the backdrop itself
+        if (!this.isStaticField(a)) { a.transform.vx += nx * force; a.transform.vy += ny * force }
+        if (!this.isStaticField(b)) { b.transform.vx -= nx * force; b.transform.vy -= ny * force }
       }
     }
   }
@@ -584,10 +606,10 @@ export class FieldSimulation {
         const overlap = Math.min(overlapX, overlapY)
         const forceMag = wp.collisionForce * overlap * dt
 
-        a.transform.vx -= dx * forceMag
-        a.transform.vy -= dy * forceMag
-        b.transform.vx += dx * forceMag
-        b.transform.vy += dy * forceMag
+        // a static backdrop pushes bodies OUT of itself but is never pushed —
+        // otherwise every overlapping body would shove the whole scene around
+        if (!this.isStaticField(a)) { a.transform.vx -= dx * forceMag; a.transform.vy -= dy * forceMag }
+        if (!this.isStaticField(b)) { b.transform.vx += dx * forceMag; b.transform.vy += dy * forceMag }
       }
     }
   }
@@ -722,6 +744,7 @@ export class FieldSimulation {
   private stepBoundaries(): void {
     const wp = this.worldParams
     for (const field of this.fields.values()) {
+      if (this.isStaticField(field)) continue   // a backdrop is the walls, not a body — never bounced
       const bounds = this.getFieldBounds(field.id)
       if (!bounds) continue
 
