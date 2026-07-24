@@ -1,5 +1,6 @@
 'use client'
 
+import { usePresenceBeat } from '@/lib/usePresenceBeat'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
@@ -72,30 +73,15 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   // bubble always read 0. Key it to the door's bubble id: (name || slug) upper-
   // cased, exactly how cafe-cartridge.mjs keys a space bubble (disp). Reuses the
   // same cc-pid so one person is one place, and never counts a version snapshot.
-  useEffect(() => {
-    if (versionView) return
-    let pid = ''
-    try {
-      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
-      localStorage.setItem('cc-pid', pid)
-    } catch { pid = Math.random().toString(36).slice(2, 12) }
-    // STEP 3 nesting: report the world's canonical location PATH so its viewers
-    // roll up onto the PLAYER WORLDS bubble on main AND onto this world's own
-    // bubble in the directory (web/docs/presence-nesting-spec.md).
-    const key = 'main/players/space:' + spaceSlug
-    const beat = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      fetch('/api/presence', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene: key, id: pid }),
-      }).catch(() => {})
-    }
-    beat()
-    const iv = setInterval(beat, 10_000)
-    const bye = () => { try { navigator.sendBeacon('/api/presence', JSON.stringify({ id: pid, leave: true })) } catch { /* gone anyway */ } }
-    window.addEventListener('pagehide', bye)
-    return () => { clearInterval(iv); window.removeEventListener('pagehide', bye); bye() }
-  }, [name, spaceSlug, versionView])
+  // STEP 3 nesting: report the world's canonical location PATH so its viewers
+  // roll up onto the PLAYER WORLDS bubble on main AND onto this world's own
+  // bubble in the directory (web/docs/presence-nesting-spec.md). Never counts
+  // a version snapshot; hidden tabs skip the beat.
+  usePresenceBeat(() => {
+    if (versionView) return null
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return null
+    return 'main/players/space:' + spaceSlug
+  }, { intervalMs: 10_000, byeOnCleanup: true, deps: [name, spaceSlug, versionView] })
 
   // The arena competes BRANCHES (forked child spaces), never versions (Galen:
   // versions are one branch's private history; the vote decides between works).

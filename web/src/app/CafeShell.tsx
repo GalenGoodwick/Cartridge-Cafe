@@ -1,5 +1,6 @@
 'use client'
 
+import { usePresenceBeat } from '@/lib/usePresenceBeat'
 import { brewStandbyPrompt } from '@/lib/connectPrompt'
 import { copyText } from '@/lib/copyText'
 import { useEffect, useRef, useState } from 'react'
@@ -1160,27 +1161,19 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // presence: one heartbeat per person, one poll for the door counts
+  // presence heartbeat — THE shared loop (lib/usePresenceBeat). STEP 3: report
+  // the location PATH (nesting); a hub view uses the path the door cartridge
+  // handed us, a core/house world (/play) reports main/world:<name>. Blocked
+  // tabs are ghosts; they don't beat. deps → immediate re-beat on view change.
+  usePresenceBeat(() => {
+    if (!activeTabRef.current) return null
+    return (sceneRef.current !== 'CAFE' && sceneRef.current !== 'SUB-MAIN')
+      ? 'main/world:' + sceneRef.current
+      : heartPathRef.current
+  }, { intervalMs: 12_000, deps: [scene, presenceRoom] })
+
+  // presence poll — the door counts (a read concern, separate from the beat)
   useEffect(() => {
-    let pid = ''
-    try {
-      // browser-level body: single-active-tab arbitration means only one tab
-      // ever beats, so one id = one person = one place
-      pid = localStorage.getItem('cc-pid') || Math.random().toString(36).slice(2, 12)
-      localStorage.setItem('cc-pid', pid)
-    } catch { pid = Math.random().toString(36).slice(2, 12) }
-    const beat = () => {
-      if (!activeTabRef.current) return   // blocked tabs are ghosts; they don't beat
-      // STEP 3: report the location PATH (nesting). A hub view uses the path the
-      // door cartridge handed us; a core/house world (/play) reports main/world:<name>.
-      const s = (sceneRef.current !== 'CAFE' && sceneRef.current !== 'SUB-MAIN')
-        ? 'main/world:' + sceneRef.current
-        : heartPathRef.current
-      fetch('/api/presence', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene: s, id: pid }),
-      }).catch(() => {})
-    }
     const poll = () => {
       // chips live on any hub, not just the main cafe
       if (sceneRef.current !== 'CAFE' && portalsRef.current.length === 0) return
@@ -1192,19 +1185,10 @@ Hard rules — the icon must be SAFE: no strobing or flashing, no rapid brightne
           ;(window as unknown as { __cafeCounts?: Record<string, number> }).__cafeCounts = d.counts || {}
         }).catch(() => {})
     }
-    // the door count is a live thing: beat fast, and say goodbye on the way out
-    const bye = () => {
-      try { navigator.sendBeacon('/api/presence', JSON.stringify({ id: pid, leave: true })) } catch { /* gone anyway */ }
-    }
-    beat()
     poll()
     const pt = setTimeout(poll, 1500)   // chips refresh right after arriving
-    const bi = setInterval(beat, 12000)
     const ci = setInterval(poll, 6000)
-    window.addEventListener('pagehide', bye)
-    return () => { clearInterval(bi); clearInterval(ci); clearTimeout(pt); window.removeEventListener('pagehide', bye) }
-  // presenceRoom in deps → immediate re-beat on hub view change so the dock count
-  // updates without waiting the interval
+    return () => { clearInterval(ci); clearTimeout(pt) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, presenceRoom])
 
