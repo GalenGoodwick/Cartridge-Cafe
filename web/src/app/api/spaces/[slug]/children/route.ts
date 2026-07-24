@@ -5,35 +5,33 @@ import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
-/** GET /api/spaces/:slug/children — List child spaces (owner only) */
+/** GET /api/spaces/:slug/children — List child spaces (branches).
+ *  Owner sees all children; anyone sees the PUBLIC children of a PUBLIC space —
+ *  the world vote competes branches, so viewers must be able to enumerate them. */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params
 
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { email: session.user.email },
-    select: { id: true },
-  })
-  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, isPublic: true },
   })
+  if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 })
 
-  if (!space || space.ownerId !== user.id) {
+  const session = await getServerSession(authOptions)
+  const user = session?.user?.email
+    ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+    : null
+  const owner = user?.id === space.ownerId
+
+  if (!owner && !space.isPublic) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
   const children = await prisma.playerSpace.findMany({
-    where: { parentSpaceId: space.id },
+    where: { parentSpaceId: space.id, ...(owner ? {} : { isPublic: true }) },
     select: {
       id: true,
       slug: true,

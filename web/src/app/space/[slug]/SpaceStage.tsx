@@ -28,7 +28,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   const [manageOpen, setManageOpen] = useState(false)
   const [dockBottom, setDockBottom] = useState(0)
   const [building, setBuilding] = useState(false)   // world is still blank-and-building → hide SHARE
-  const [versions, setVersions] = useState<{ version: number }[]>([])
+  const [branches, setBranches] = useState<{ slug: string; name: string }[]>([])
   // THE RECKONING on a space page: same contract main's shell has — the arena
   // reports its stage rect, the engine fits the grid into it, and hovering a
   // candidate hot-loads that save point. Without this wiring the vote overlay
@@ -97,16 +97,20 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     return () => { clearInterval(iv); window.removeEventListener('pagehide', bye); bye() }
   }, [name, spaceSlug, versionView])
 
-  const loadVersions = useCallback(async () => {
+  // The arena competes BRANCHES (forked child spaces), never versions (Galen:
+  // versions are one branch's private history; the vote decides between works).
+  const loadBranches = useCallback(async () => {
     try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`)
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/children`)
       const d = await r.json()
-      // versions are 1-based — drop any v0/negative so the arena never stages a
-      // "v0" candidate (previewing which would pin the engine to a nonexistent version)
-      if (Array.isArray(d?.versions)) setVersions(d.versions.filter((v: { version: number }) => v.version >= 1))
+      if (Array.isArray(d?.children)) setBranches(d.children.filter((c: { isPublic?: boolean }) => c.isPublic !== false))
     } catch { /* offline — no arena */ }
   }, [spaceSlug])
-  useEffect(() => { loadVersions() }, [loadVersions])
+  useEffect(() => {
+    loadBranches()
+    const t = setInterval(loadBranches, 30000)
+    return () => clearInterval(t)
+  }, [loadBranches])
 
   const deleteWorld = useCallback(async () => {
     setDelErr('')
@@ -205,23 +209,18 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
           : null}
       />
 
-      {/* the version arena: LIVE vs this world's save points — every page votes.
-          Was mounted by SpaceToolbar; now lives here so the engine dock is the
-          only visible chrome. Hidden while the world is still building — an
-          unfinished world (or one wiped for a rebuild) is not up for a vote,
-          even if it carries stale save points from a previous life. */}
-      {!playMode && <TournamentBar
+      {/* the BRANCH arena: MAIN vs this world's public branches — the vote
+          decides between works, never between one branch's own save points
+          (versions are private history; SET MAIN in the tools handles those).
+          No branches → no vote bar at all. Hidden while building. */}
+      {!playMode && branches.length > 0 && <TournamentBar
         slot={`tournament:space:${spaceSlug}`}
-        worlds={!building && versions.length > 0 ? ['LIVE', ...versions.slice(0, 9).map(v => `v${v.version}`)] : []}
+        worlds={!building ? ['MAIN', ...branches.slice(0, 9).map(b => b.name)] : []}
         visible
         rail
         railTop={dockBottom ? dockBottom + 8 : undefined}
         onReckoning={(on) => { setVoting(on); if (!on) { setPreviewVersion(null); setStageRect(null) } }}
-        onPreview={(w) => {
-          if (!w || w === 'LIVE') { setPreviewVersion(null); return }
-          const n = parseInt(String(w).replace(/^v/, ''), 10)
-          setPreviewVersion(Number.isFinite(n) && n >= 1 ? n : null)
-        }}
+        onPreview={() => { setPreviewVersion(null) }}
         onStageRect={setStageRect}
       />}
 

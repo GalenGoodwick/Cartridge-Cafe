@@ -7311,9 +7311,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       <button
                         disabled={versionBusy}
                         className="text-[14px] border border-white/15 rounded px-2 py-0.5 text-white/60 hover:text-white hover:border-white/40 disabled:opacity-40"
-                        title="restore this version as the live world (current state is saved first)"
+                        title="set this version as MAIN — what everyone sees (current state is saved first)"
                         onClick={async () => {
-                          if (!window.confirm(`Restore v${v.version} as the live world? Your current state is saved as a new version first.`)) return
+                          if (!window.confirm(`Set v${v.version} as MAIN — the live world everyone sees? Your current state is saved as a new version first.`)) return
                           setVersionBusy(true)
                           try {
                             await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions/${v.version}`, {
@@ -7323,7 +7323,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                             setTimeout(() => window.location.reload(), 600)
                           } catch { showToast('restore failed', 'error') } finally { setVersionBusy(false) }
                         }}
-                      >RESTORE</button>
+                      >SET MAIN</button>
                     )}
                   </div>
                 ))}

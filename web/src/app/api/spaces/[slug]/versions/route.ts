@@ -105,5 +105,34 @@ export async function POST(
     select: { id: true, version: true, note: true, createdAt: true },
   })
 
+  // Version hygiene (Galen): once a WORKING version exists, versions that
+  // recorded a fault are history nobody needs — auto-clean them. A version is
+  // "buggy" iff its frozen snapshot carries worldData.last_compile_error (the
+  // fault-telemetry pipeline writes it the moment a tab's GPU rejects a world).
+  void pruneBuggyVersions(space.id, nextVersion).catch(() => {})
+
   return NextResponse.json({ version }, { status: 201 })
+}
+
+/** Delete older versions whose snapshot recorded a compile/GPU fault, but only
+ *  when the newest version is clean — the working version is the keeper; the
+ *  broken drafts under it are noise. Never touches the newest version. */
+async function pruneBuggyVersions(spaceId: string, newestVersion: number): Promise<void> {
+  const newest = await prisma.spaceVersion.findFirst({
+    where: { spaceId, version: newestVersion },
+    select: { snapshot: true },
+  })
+  const wd = (newest?.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
+  if (wd && wd['last_compile_error']) return   // newest is itself buggy — keep history
+  const olds = await prisma.spaceVersion.findMany({
+    where: { spaceId, version: { lt: newestVersion } },
+    select: { id: true, version: true, snapshot: true },
+  })
+  const buggy = olds.filter(v => {
+    const w = (v.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
+    return !!(w && w['last_compile_error'])
+  })
+  if (buggy.length > 0) {
+    await prisma.spaceVersion.deleteMany({ where: { id: { in: buggy.map(b => b.id) } } })
+  }
 }
