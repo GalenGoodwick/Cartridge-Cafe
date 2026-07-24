@@ -51,25 +51,29 @@
           "id": "white-glow-walls",
           "kind": "render",
           "area": "walls emit/read as luminous white, not lit-grey — the core Antichamber surface",
-          "status": "open",
           "claim": null,
-          "keyState": {
-            "render-verified": "pending",
-            "visual-reference": "pending"
+          "evidence": {
+            "render-verified": "eye probe: renders clean",
+            "visual-reference": "eye frame: columns+walls GLOW white w/ bloom (meanLum 87->141, 46% bright-white px) — matches the Antichamber ask"
           },
-          "statusNote": "·render-verified  ·visual-reference"
+          "keyState": {
+            "render-verified": "pass",
+            "visual-reference": "pass"
+          },
+          "status": "green",
+          "statusNote": "✓render-verified  ✓visual-reference"
         },
         {
           "id": "gothic-vault",
           "kind": "render",
           "area": "pointed arches + ribbed vault between columns (currently just columns+finials)",
-          "status": "open",
+          "status": "partial",
           "claim": null,
           "keyState": {
-            "render-verified": "pending",
+            "render-verified": "pass",
             "visual-reference": "pending"
           },
-          "statusNote": "·render-verified  ·visual-reference"
+          "statusNote": "✓render-verified  ·visual-reference"
         }
       ],
       "keyState": {
@@ -77,7 +81,7 @@
         "visual-reference": "pending"
       },
       "status": "partial",
-      "statusNote": "✓render-verified  ·visual-reference  |  white-glow-walls·open gothic-vault·open"
+      "statusNote": "✓render-verified  ·visual-reference  |  white-glow-walls·green gothic-vault·partial"
     },
     {
       "id": "collision",

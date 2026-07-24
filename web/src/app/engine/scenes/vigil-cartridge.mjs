@@ -109,7 +109,7 @@ fn visual_vigil(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
     let pt = ro + rd * tt;
     let n = vg_nrm(pt);
     let ao = clamp(0.5 + 0.5 * n.y, 0.2, 1.0);
-    var m = vec3f(0.92) * ao;                               // Antichamber unlit white
+    var m = vec3f(1.06) - (1.0 - ao) * vec3f(0.10);        // Antichamber: walls GLOW white (HDR>1 → blooms)
 
     // material: the Watchers are charcoal; the reliquary burns warm
     var wNear = 0.0;
@@ -133,7 +133,7 @@ fn visual_vigil(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
     let sil = smoothstep(0.55, 0.98, pow(1.0 - max(dot(n, -rd), 0.0), 1.5));
     m = mix(m, vec3f(0.015, 0.015, 0.02), max(edge, sil));
 
-    let fog = 1.0 - exp(-tt * 0.02);
+    let fog = 1.0 - exp(-tt * 0.012);                      // lighter haze — the glow carries down the nave
     col = mix(m, vec3f(0.02, 0.02, 0.03), fog);
   }
 
