@@ -195,6 +195,7 @@ const stripModule = (src) => src
   .replace(/^\s*export\s+/gm, '')                            // export const/fn → const/fn
 const EMBED = [
   join(_here, '../../../lib/gaze-math.mjs'),
+  join(_here, '../../../lib/collision.mjs'),
   join(_here, '../../../lib/vigil-logic.mjs'),
 ].map((f) => stripModule(readFileSync(f, 'utf8'))).join('\n')
 

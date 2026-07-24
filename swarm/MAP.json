@@ -82,24 +82,31 @@
     {
       "id": "collision",
       "kind": "collision",
-      "area": "MISSING — the flame clips through walls and walked to z=50.7 past everything. Mirror vg_map in JS (the mod_cf_h one-truth pattern) and stop the player at solid surfaces + world bounds.",
-      "files": [],
+      "area": "the flame cannot pass through solid geometry — JS mirror of vg_map solids (mod_cf_h one-truth) + slide-resolve at the walking plane",
+      "files": [
+        "web/src/lib/collision.mjs"
+      ],
       "exports": [
-        "mapJS",
-        "resolveCollision"
+        "solidAt",
+        "resolveMove"
       ],
       "dependsOn": [
         "math"
       ],
-      "tests": [],
-      "status": "open",
+      "tests": [
+        "src/__tests__/unit/collision.test.mjs"
+      ],
       "claim": null,
       "bornFrom": "playthrough:clip-through",
-      "keyState": {
-        "unit-tested": "pending",
-        "playthrough-confirmed": "pending"
+      "evidence": {
+        "playthrough-confirmed": "headless playthrough: 1200 ticks of hard drive → flame bounded to z<=25.5,|x|<=9, never inside a solid (was z=50.7 clip-through)"
       },
-      "statusNote": "·unit-tested  ·playthrough-confirmed"
+      "keyState": {
+        "unit-tested": "pass",
+        "playthrough-confirmed": "pass"
+      },
+      "status": "green",
+      "statusNote": "✓unit-tested  ✓playthrough-confirmed"
     },
     {
       "id": "player-character",

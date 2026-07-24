@@ -16,6 +16,7 @@
 import {
   add, scale, normalize, rayPlaneHit, pointInPaneUV, gazeCrossOnPane,
 } from './gaze-math.mjs'
+import { resolveMove } from './collision.mjs'
 
 export const PANE_UP = [0, 1, 0] // horizontal panes face up
 
@@ -80,10 +81,13 @@ export function stepVigil(G, input, dt) {
   G.t += dt
   G.events = []
 
-  // ── flame: move along the floor, aim the light ──
+  // ── flame: move along the floor (collision-resolved), aim the light ──
   const SPEED = 3.5
-  G.flame.pos[0] += (input.moveX || 0) * SPEED * dt
-  G.flame.pos[2] += (input.moveZ || 0) * SPEED * dt
+  const nx = G.flame.pos[0] + (input.moveX || 0) * SPEED * dt
+  const nz = G.flame.pos[2] + (input.moveZ || 0) * SPEED * dt
+  const [rx, rz] = resolveMove(G.flame.pos[0], G.flame.pos[2], nx, nz)
+  G.flame.pos[0] = rx
+  G.flame.pos[2] = rz
   if (input.aimX || input.aimZ) {
     const a = normalize([input.aimX || 0, 0, input.aimZ || 0])
     if (a[0] || a[2]) G.flame.aim = a
@@ -134,8 +138,8 @@ export function stepVigil(G, input, dt) {
   }
   G.onSolid = onSolid ? 1 : 0
 
-  // ── win: reached the reliquary end of the nave, still footed ──
-  if (fz >= G.reliquaryZ && !G.win) {
+  // ── win: reached the reliquary end of the nave (its front — the ark is solid) ──
+  if (fz >= G.reliquaryZ - 2 && !G.win) {
     G.win = 1
     G.events.push({ type: 'win' })
   }
