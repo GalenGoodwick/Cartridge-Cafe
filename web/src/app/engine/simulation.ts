@@ -199,6 +199,22 @@ export class FieldSimulation {
       if (snap.memory?.length) {
         this.fieldMemory.set(snap.id, [...snap.memory])
       }
+      // HEAL persisted physics drift (4dfeff9, restored): before backdrops were
+      // pinned static, collision force could shove a world-covering field off
+      // center and the damage SAVED with the world. A static backdrop can never
+      // move again, so an off-center position on one is damage, not intent --
+      // snap it home on load. `static:false` (a deliberately moving backdrop)
+      // keeps whatever position it saved. The run-time pin in stepTransforms
+      // references this block as the healing half -- keep the pair together.
+      if (this.isWorldCovering(field) && !field.parentFieldId && field.properties.get('static') !== false) {
+        const c = this.gridSize / 2
+        if (Math.abs(field.transform.x - c) > 0.5 || Math.abs(field.transform.y - c) > 0.5) {
+          field.transform.x = c
+          field.transform.y = c
+          field.transform.vx = 0
+          field.transform.vy = 0
+        }
+      }
     }
   }
 
@@ -366,6 +382,11 @@ export class FieldSimulation {
     const explicit = f.properties.get('static')
     if (explicit === true) return true
     if (explicit === false) return false
+    return this.isWorldCovering(f)
+  }
+
+  /** World-covering geometry: `shapeType:'screen'` or >=90% of the grid. */
+  private isWorldCovering(f: Field): boolean {
     if (f.shapeType === 'screen') return true
     const w = f.w ?? (f.radius ? f.radius * 2 : 0)
     const h = f.h ?? (f.radius ? f.radius * 2 : 0)
