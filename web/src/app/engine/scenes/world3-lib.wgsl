@@ -83,6 +83,63 @@ fn mod_w3_octa(p: vec3f, s: f32) -> f32 {
 
 fn mod_w3_plane(p: vec3f, n: vec3f, d: f32) -> f32 { return dot(p, n) + d; }
 
+// ── skeleton assembly (nodes + struts + tissue) ────────────────────────────
+// Build forms as a GRAPH: struts between shared node points, joined with
+// opSmoothUnion (the "linkage tissue"). Gaps become impossible by construction
+// — parts share endpoints instead of hoping coordinates line up. Use tissue k
+// at structural joints (0.2–0.5) and hard min for edges that must stay crisp.
+
+// exact closed-form distance to a quadratic bezier strut (S start, Ctl control,
+// E end, radius r) — the connective arc: vaults, arches, branches, cables
+fn mod_w3_bezStrut(pos: vec3f, S: vec3f, Ctl: vec3f, E: vec3f, r: f32) -> f32 {
+  let a = Ctl - S;
+  let b = S - 2.0 * Ctl + E;
+  let c = a * 2.0;
+  let d = S - pos;
+  let bb = dot(b, b);
+  if (bb < 1e-9) {
+    let pa = pos - S;
+    let ba = E - S;
+    let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h) - r;
+  }
+  let kk = 1.0 / bb;
+  let kx = kk * dot(a, b);
+  let ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+  let kz = kk * dot(d, a);
+  let pp = ky - kx * kx;
+  let qq = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+  let h = qq * qq + 4.0 * pp * pp * pp;
+  var res: f32;
+  if (h >= 0.0) {
+    let hs = sqrt(h);
+    let x1 = (hs - qq) / 2.0;
+    let x2 = (-hs - qq) / 2.0;
+    let t = clamp(sign(x1) * pow(abs(x1), 0.3333333) + sign(x2) * pow(abs(x2), 0.3333333) - kx, 0.0, 1.0);
+    let g = d + (c + b * t) * t;
+    res = dot(g, g);
+  } else {
+    let z = sqrt(-pp);
+    let v = acos(qq / (pp * z * 2.0)) / 3.0;
+    let m = cos(v);
+    let n = sin(v) * 1.7320508;
+    let t1 = clamp((m + m) * z - kx, 0.0, 1.0);
+    let t2 = clamp((-n - m) * z - kx, 0.0, 1.0);
+    let g1 = d + (c + b * t1) * t1;
+    let g2 = d + (c + b * t2) * t2;
+    res = min(dot(g1, g1), dot(g2, g2));
+  }
+  return sqrt(res) - r;
+}
+
+// tapered strut between nodes (columns, spires, limbs): radius r1 at a → r2 at b
+fn mod_w3_taperStrut(p: vec3f, a: vec3f, b: vec3f, r1: f32, r2: f32) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - mix(r1, r2, h);
+}
+
 // round (Roman) arch opening — subtract from a wall. Origin at base center:
 // straight sides height h, half-width w (semicircle top radius w), half-depth d in z
 fn mod_w3_arch(p: vec3f, w: f32, h: f32, d: f32) -> f32 {
