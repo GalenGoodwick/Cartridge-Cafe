@@ -86,6 +86,16 @@ export async function getSpaceSnapshot(spaceId: string, fresh = false): Promise<
 }
 
 export async function setSpaceSnapshot(spaceId: string, snapshot: SceneSnapshot): Promise<void> {
+  // SANDBOX INVARIANT (security): a player space is UNTRUSTED ground. Any
+  // snapshot that carries JS hooks MUST be flagged __sandbox, always — so no
+  // sequence of commands (e.g. add_step_hook then set_world_data {__sandbox:
+  // null}) can persist a world whose hooks would then run on a visitor's main
+  // thread with their cookies + same-origin fetch. This is the single choke
+  // point every space write funnels through, so the rule can't be bypassed.
+  // (The client ALSO sandboxes /space worlds by origin — belt and suspenders.)
+  if (snapshot?.stepHooks?.length) {
+    ;(snapshot.worldData as Record<string, unknown>) = { ...(snapshot.worldData || {}), __sandbox: true }
+  }
   // Update cache immediately
   cache.set(spaceId, { snapshot, lastLoaded: Date.now() })
 

@@ -651,11 +651,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     sandboxRef.current?.dispose()
     sandboxRef.current = null
     liveHooksRef.current = new Map((stepHooks || []).map(h => [h.id, h]))
-    // __sandbox = untrusted author (AI / player world). Its JS runs ONLY in the
-    // sealed Worker — never new Function on the main thread, which would hand it
-    // the visitor's cookies + same-origin fetch. Canonical/admin worlds omit the
-    // flag and keep the proven main-thread path.
-    if (worldData?.__sandbox && stepHooks && stepHooks.length > 0) {
+    // Trust is decided by ORIGIN, not by a flag the author controls. Any world
+    // that carries a spaceId is player/AI ground — its JS runs ONLY in the
+    // sealed Worker (no DOM, cookies, or network), never new Function on the
+    // main thread. Trusting worldData.__sandbox alone was escapable: an author
+    // could add a hook (which set the flag) then set_world_data {__sandbox:null}
+    // to clear it, and the un-flagged hook would then run on every visitor's
+    // main thread. spaceId can't be cleared by a hook, so it's the real signal.
+    // worldData.__sandbox still forces the box for any non-space untrusted path;
+    // canonical CAFE/house scenes (no spaceId, no flag) keep the main thread.
+    const untrusted = !!spaceId || !!worldData?.__sandbox
+    if (untrusted && stepHooks && stepHooks.length > 0) {
       const box = new WorldSandbox()
       box.load(stepHooks.map(h => ({ id: h.id, code: h.code })))   // all hooks, isolated
       if (box.active) {
@@ -669,7 +675,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       return
     }
     for (const h of stepHooks || []) sim.addStepHook(h.id, h.author, h.description, h.code)
-  }, [])
+  }, [spaceId])
   /** EVERY hook this world owns — including sandbox-owned ones. A __sandbox
    *  world's hooks run in the sealed Worker (mirrored in liveHooksRef) and are
    *  NEVER registered in sim, so sim.getStepHookSnapshots() is EMPTY for them.
