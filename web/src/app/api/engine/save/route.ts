@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -32,11 +33,7 @@ function recordDeletion(slot: string, deleted: boolean, via: string): void {
  *  production requires a session or the engine agent token. */
 async function writeAllowed(req: NextRequest): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') return true
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const envToken = process.env.ENGINE_AGENT_TOKEN
-    if (envToken && authHeader.slice(7) === envToken) return true
-  }
+  if (isAdminToken(req.headers.get('authorization'))) return true
   const session = await getServerSession(authOptions)
   return !!session?.user?.email
 }
@@ -216,10 +213,7 @@ export async function POST(req: NextRequest) {
  *  only the engine agent token may delete. Dev stays frictionless. */
 async function deleteAllowed(req: NextRequest): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') return true
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) return false
-  const envToken = process.env.ENGINE_AGENT_TOKEN
-  return !!envToken && authHeader.slice(7) === envToken
+  return isAdminToken(req.headers.get('authorization'))
 }
 
 export async function DELETE(req: NextRequest) {

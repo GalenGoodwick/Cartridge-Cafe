@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { directChildren } from '@/lib/spaceTree'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,18 +31,7 @@ export async function GET(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  const children = await prisma.playerSpace.findMany({
-    where: { parentSpaceId: space.id, ...(owner ? {} : { isPublic: true }) },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      description: true,
-      isPublic: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  })
+  const children = await directChildren(space.id, { publicOnly: !owner })
 
   return NextResponse.json({ children })
 }

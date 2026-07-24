@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { mayWriteScene } from '../scene-auth'
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene, hydrateScene, hydrateAllScenes } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
-import { isAdmin } from '@/lib/adminAuth'
+import { isAdmin, isAdminToken } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,8 +24,7 @@ export async function GET(req: NextRequest) {
     // else the keeper's own signed-in sky keeps re-seeding hidden bubbles into
     // the shared doc. Only the explicit engine token (tooling) sees everything;
     // the keeper's shelf reads /api/admin/worlds instead.
-    const bearer = req.headers.get('authorization')?.slice(7)
-    if (!(process.env.ENGINE_AGENT_TOKEN && bearer === process.env.ENGINE_AGENT_TOKEN)) {
+    if (!isAdminToken(req.headers.get('authorization'))) {
       names = names.filter(n => !(loadScene(n) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private)
     }
     return NextResponse.json({ scenes: names })

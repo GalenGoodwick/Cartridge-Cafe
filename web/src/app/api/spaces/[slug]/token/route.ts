@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -62,8 +63,7 @@ export async function POST(
   // the HOUSE AI: the admin engine token may mint a build key for any world —
   // this is how the resident builder answers creation briefs without the owner
   // pasting anything anywhere ("an AI lives here")
-  const bearerTok = req.headers.get('authorization')?.slice(7)
-  const isHouse = !!process.env.ENGINE_AGENT_TOKEN && bearerTok === process.env.ENGINE_AGENT_TOKEN
+  const isHouse = isAdminToken(req.headers.get('authorization'))
   const owned = isHouse
     ? await (async () => {
         const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })

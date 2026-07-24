@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { logVisit } from '@/lib/visits'
@@ -22,9 +23,7 @@ export async function POST(req: NextRequest) {
 /** GET /api/t — summary for the admin (Bearer ENGINE_AGENT_TOKEN).
  *  ?hours=48 window. Counts by referrer host, top paths, uniques, agent hits. */
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization')
-  const token = process.env.ENGINE_AGENT_TOKEN
-  if (!token || auth !== `Bearer ${token}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (!isAdminToken(req.headers.get('authorization'))) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const hours = Math.min(24 * 30, Math.max(1, Number(req.nextUrl.searchParams.get('hours')) || 48))
   try {
     const [totals] = await prisma.$queryRaw<Array<{ pages: bigint; agents: bigint; mcp: bigint; uniques: bigint }>>`

@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -8,12 +9,7 @@ export const dynamic = 'force-dynamic'
 const SNAPSHOT_PATH = '/tmp/engine-snapshot.png'
 
 async function checkAuth(req: NextRequest): Promise<boolean> {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
-    const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
-    if (envToken && token === envToken) return true
-  }
+  if (isAdminToken(req.headers.get('authorization'), { allowLegacyAnthropicKey: true })) return true
   const session = await getServerSession(authOptions)
   return !!session?.user?.id
 }

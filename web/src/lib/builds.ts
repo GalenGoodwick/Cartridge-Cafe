@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import crypto from 'crypto'
 import { prisma } from '@/lib/prisma'
 import type { NextRequest } from 'next/server'
@@ -22,8 +23,7 @@ export async function resolveHolder(req: NextRequest): Promise<Holder | null> {
   if (!auth?.startsWith('Bearer ')) return null
   const token = auth.slice(7)
 
-  const admin = process.env.ENGINE_AGENT_TOKEN
-  if (admin && token === admin) return { id: HOUSE, isHouse: true, displayName: 'cafe house AI' }
+  if (isAdminToken(auth)) return { id: HOUSE, isHouse: true, displayName: 'cafe house AI' }
 
   if (token.startsWith('uc_bt_')) {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')

@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -26,8 +27,7 @@ const HOUSE: Ad = {
 /** create/activate are privileged (you, or the Stripe webhook via admin token). */
 function mayManage(req: NextRequest): boolean {
   if (process.env.NODE_ENV !== 'production') return true
-  const auth = req.headers.get('authorization')
-  return !!(auth?.startsWith('Bearer ') && process.env.ENGINE_AGENT_TOKEN && auth.slice(7) === process.env.ENGINE_AGENT_TOKEN)
+  return isAdminToken(req.headers.get('authorization'))
 }
 
 async function getAds(): Promise<AdsDoc> {

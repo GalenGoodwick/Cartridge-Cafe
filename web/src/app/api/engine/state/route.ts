@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -21,8 +22,7 @@ async function mayWriteSpace(req: NextRequest, spaceId: string): Promise<boolean
       const v = await validateSpaceToken(token)
       return !!v && v.spaceId === spaceId   // a key opens only its own world
     }
-    const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
-    if (envToken && token === envToken) return true
+    if (isAdminToken(authHeader, { allowLegacyAnthropicKey: true })) return true
   }
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return false
@@ -50,12 +50,7 @@ function claimSpaceWriter(spaceId: string, clientId: string, takeover: boolean):
 /** Check session or bearer token auth */
 async function checkAuth(req: NextRequest): Promise<boolean> {
   // Bearer token
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
-    const envToken = process.env.ENGINE_AGENT_TOKEN || process.env.ANTHROPIC_API_KEY
-    if (envToken && token === envToken) return true
-  }
+  if (isAdminToken(req.headers.get('authorization'), { allowLegacyAnthropicKey: true })) return true
 
   // Session auth
   const session = await getServerSession(authOptions)

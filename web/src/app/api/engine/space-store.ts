@@ -138,62 +138,9 @@ export async function setSpaceSnapshot(spaceId: string, snapshot: SceneSnapshot)
 // ancestry route), then breadth-first down to gather every descendant. Each
 // member carries its newest token use so a reader can tell which AIs are live.
 
-export interface SpaceFamily {
-  rootId: string
-  rootSlug: string
-  rootName: string
-  members: { id: string; slug: string; name: string; ownerId: string; lastTokenUse: number | null }[]
-}
-
-export async function getSpaceFamily(spaceId: string): Promise<SpaceFamily | null> {
-  const start = await prisma.playerSpace.findUnique({
-    where: { id: spaceId },
-    select: { id: true, slug: true, name: true, parentSpaceId: true, ownerId: true },
-  })
-  if (!start) return null
-
-  // walk up to the family root (cap 10, matching the ancestry route's guard)
-  let root = start
-  let depth = 0
-  while (root.parentSpaceId && depth < 10) {
-    const parent = await prisma.playerSpace.findUnique({
-      where: { id: root.parentSpaceId },
-      select: { id: true, slug: true, name: true, parentSpaceId: true, ownerId: true },
-    })
-    if (!parent) break
-    root = parent
-    depth++
-  }
-
-  // breadth-first down from the root, gathering every descendant (cap 100)
-  const members: SpaceFamily['members'] = []
-  const seen = new Set<string>()
-  let frontier: string[] = [root.id]
-  while (frontier.length && members.length < 100) {
-    const rows = await prisma.playerSpace.findMany({
-      where: { id: { in: frontier } },
-      select: {
-        id: true, slug: true, name: true, ownerId: true,
-        tokens: { select: { lastUsedAt: true, revokedAt: true } },
-      },
-    })
-    for (const r of rows) {
-      if (seen.has(r.id)) continue
-      seen.add(r.id)
-      const lastTokenUse = r.tokens
-        .filter(t => !t.revokedAt && t.lastUsedAt)
-        .reduce((m, t) => Math.max(m, t.lastUsedAt!.getTime()), 0) || null
-      members.push({ id: r.id, slug: r.slug, name: r.name, ownerId: r.ownerId, lastTokenUse })
-    }
-    const kids = await prisma.playerSpace.findMany({
-      where: { parentSpaceId: { in: frontier } },
-      select: { id: true },
-    })
-    frontier = kids.map(k => k.id).filter(id => !seen.has(id))
-  }
-
-  return { rootId: root.id, rootSlug: root.slug, rootName: root.name, members }
-}
+// The family walk lives in lib/spaceTree (audit #12 — one provenance walk).
+// Re-exported here so existing importers (bridge/route.ts) stay untouched.
+export { familyOf as getSpaceFamily, type SpaceFamily } from '@/lib/spaceTree'
 
 /** Invalidate cache for a space (e.g. after deletion) */
 export function invalidateSpaceCache(spaceId: string): void {

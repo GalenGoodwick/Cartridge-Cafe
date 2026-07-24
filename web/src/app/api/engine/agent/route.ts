@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -201,13 +202,8 @@ function pushCommand(command: EngineCommand, spaceId?: string | null): QueueEntr
 // Check auth — session OR bearer token (ENGINE_AGENT_TOKEN env var)
 async function checkAuth(req: NextRequest): Promise<{ authorized: boolean; isAdmin: boolean }> {
   // Check bearer token first (for CLI/external agent access)
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.slice(7)
-    const envToken = process.env.ENGINE_AGENT_TOKEN
-    if (envToken && token === envToken) {
-      return { authorized: true, isAdmin: true }
-    }
+  if (isAdminToken(req.headers.get('authorization'))) {
+    return { authorized: true, isAdmin: true }
   }
 
   // Fall back to session auth

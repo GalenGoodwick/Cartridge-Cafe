@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadScene, hydrateAllScenes } from '../../store'
 import { prisma } from '@/lib/prisma'
+import { walkUpRemixes, publicRemixesOf } from '@/lib/spaceTree'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,32 +20,12 @@ export async function GET(req: NextRequest) {
   const space = searchParams.get('space')?.trim()
 
   if (space) {
-    const trail: Node[] = []
-    let slug: string | null = space
-    const seen = new Set<string>()
-    for (let i = 0; i < 24 && slug && !seen.has(slug); i++) {
-      seen.add(slug)
-      const s: { name: string; slug: string; forkOf: { slug: string } | null } | null =
-        await prisma.playerSpace.findUnique({
-          where: { slug },
-          select: { name: true, slug: true, forkOf: { select: { slug: true } } },
-        })
-      if (!s) break
-      trail.unshift({ name: s.name, slug: s.slug, kind: s.forkOf ? 'remix' : 'root' })
-      slug = s.forkOf?.slug ?? null
-    }
-    if (trail.length) trail[0].kind = 'root'
+    const up = await walkUpRemixes(space)
+    const trail: Node[] = up.map(n => ({ name: n.name, slug: n.slug, kind: n.kind }))
     // downstream: the public remixes that grew FROM this world (the reverse side
     // the original never surfaced — branches show in the arena, remixes didn't)
-    const self = await prisma.playerSpace.findUnique({ where: { slug: space }, select: { id: true } })
-    const remixes = self
-      ? (await prisma.playerSpace.findMany({
-          where: { forkOfId: self.id, isPublic: true },
-          select: { name: true, slug: true },
-          orderBy: { updatedAt: 'desc' },
-          take: 30,
-        }))
-      : []
+    const selfId = up.length ? up[up.length - 1].id : null
+    const remixes = selfId ? await publicRemixesOf(selfId) : []
     return NextResponse.json({ trail, remixes })
   }
 

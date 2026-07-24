@@ -1,3 +1,4 @@
+import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -14,11 +15,7 @@ import { authOptions } from '@/lib/auth'
  *  Dev keeps the frictionless local workflow. */
 export async function mayWriteScene(req: NextRequest, name: string, intent: 'write' | 'delete' | 'govern' = 'write'): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') return true
-  const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    const envToken = process.env.ENGINE_AGENT_TOKEN
-    if (envToken && authHeader.slice(7) === envToken) return true
-  }
+  if (isAdminToken(req.headers.get('authorization'))) return true
   const email = (await getServerSession(authOptions))?.user?.email
   if (!email) return false
   // the site's human admins (ADMIN_EMAILS) hold the same authority as the
