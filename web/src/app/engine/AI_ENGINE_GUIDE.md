@@ -1264,27 +1264,48 @@ ops: `mod_w3_rotX/rotY/rotZ/repeat/polar` · combine with the global
 the ONE DAY class; bound secondary rays (shadows 24 steps, reflections ~22)
 and gate them by region. Check `worldData.__budget.frameMs` after building.
 
-**GROWN BUILDINGS — `tools/grow-building.mjs` (don't hand-place architecture):**
+**GROWN BUILDINGS — one bridge command (don't hand-place architecture):**
 hand-tuned SDF constants produce broken proportions you can't see until too
-late. Instead, GROW buildings from structural guidelines and let correctness
-happen by construction: `growArcade(guidelines)` (wall pierced by pointed-arch
-openings — two-circle construction, rim moldings, engaged columns, buttress
-piers on a rhythm, self-capping at any budget) and `growGable(guidelines)`
-(stepped facade + shoulder pinnacles + spire) return a validated node GRAPH.
-Guidelines are RANGES, not values — `spring: {ratio:[1.15,1.45]}`,
-`column: {slenderness:[7,10]}`, `arch: {pointiness:[0.78,0.95]}` (0.87 =
-equilateral) — a seeded rng resolves them per building, so same seed = same
+late. Instead, buildings GROW from structural guidelines and correctness
+happens by construction:
+```json
+{"type":"grow_building", "name":"mod_myworld_cloister", "kind":"arcade",
+ "guidelines":{"seed":7, "plot":{"z0":-2,"z1":38}, "line":{"x":8.6},
+  "bay":{"width":[3.6,4.4]}, "column":{"slenderness":[7,10],"taper":[0.78,0.86]},
+  "spring":{"ratio":[1.15,1.45]}, "arch":{"pointiness":[0.78,0.95],"rRatio":[0.55,0.75]},
+  "spandrel":{"ratio":[0.28,0.42]}, "cornice":{"rRatio":[0.55,0.75]},
+  "wall":{"thickness":[0.10,0.14]}, "buttress":{"rhythm":2,"depthRatio":[0.5,0.65],"taper":[0.5,0.65]},
+  "pinnacle":{"hRatio":[0.45,0.7]}, "tissue":{"ratio":[0.45,0.7]}}}
+```
+The server grows the structure, VALIDATES it (support-BFS / proportion /
+bounds invariants — invalid growth is rejected with reasons), emits
+marcher-safe WGSL, and defines the module; your `w3_map` just calls
+`mod_myworld_cloister(p)`. The result carries `grown.measured` — every
+realized dimension — so you can aim cameras and paint materials. Kinds:
+`"arcade"` (wall PIERCED by pointed-arch openings — two-circle construction,
+rim moldings, engaged columns, buttress piers on a rhythm) and `"gable"`
+(crow-step facade, blind arcature, through-lancets in the crown, shoulder
+pinnacles, spire). Optional `"prims"` remaps onto your world's primitive
+names (default `mod_w3_*`).
+Guidelines are RANGES, not values — `arch.pointiness [0.78,0.95]` (0.87 =
+equilateral) — a seeded rng resolves them per building: same seed = same
 building, new seed = a sibling within your rules. YOUR ranges are your style;
-the tool prescribes none. Then: `validate(graph)` (support/proportion/bounds
-invariants), `node tools/grow-building.test.mjs` (exactness proofs), and
-**`node tools/grow-building-preview.mjs seed=7 out=look`** — a CPU raymarcher
-running the IDENTICAL math, so you SEE the building at full res locally BEFORE
-any bridge write. Iterate guidelines against previews, then
-`emitWGSL(graph, 'mod_myworld_grown', {strut:'mod_w3_taperStrut',
-bez:'mod_w3_bezStrut', box:'mod_w3_box', smin:'opSmoothUnion'})` emits one
-`fn mod_myworld_grown(p: vec3f) -> f32` (AABB-rejected, cell-repeat
-compressed) for `define_module`. Emitted code is generated — regrow, never
-hand-edit. First proven in VEILFIRE (Jul 24 2026).
+the tool prescribes none.
+**LIVE GROWTH — buildings that build themselves:** add `"growUniform": 38`
+(+ optional `"cellStagger": 0.6`) and the module reads `uni(38)` as
+construction progress 0→1: elements swell in, in construction order, bays
+rising one after another. A step hook animating that ONE float grows the
+building live in-world (cuts are never gated — openings only bite where wall
+already grew).
+Library (same code the bridge runs): `web/src/lib/grow-building.mjs` —
+`growArcade/growGable → validate → emitWGSL`; local honest eye:
+**`node tools/grow-building-preview.mjs seed=7 out=look`** (CPU raymarcher on
+the IDENTICAL math — see your building at full res before any bridge write);
+proofs: `node tools/grow-building.test.mjs`. Emitted WGSL's AABB early-out
+returns the DISTANCE to the bounds, never a constant — a constant makes the
+SDF overshoot and rays tunnel through walls (the Jul 24 clipping bug; T9
+guards it). Emitted code is generated — regrow, never hand-edit. First
+proven in VEILFIRE (Jul 24 2026).
 
 **Load-order law (engine-enforced since Jul 19 2026, but respect it anyway):**
 remove a module with `{"type":"remove_module","name":"..."}` (it deletes from
