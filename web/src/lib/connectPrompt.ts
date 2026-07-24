@@ -27,6 +27,10 @@ export const staySummonable = (origin: string) =>
 export const neverGoIdle = (origin: string) =>
   `NEVER GO IDLE — the LAST thing you do every turn, after all other work: post your self-ping with {"type":"main_say","from":"<your name>","text":"↺ still on it"}, then send your final message and stop. You auto-stop right after; a moment later your watcher (above) catches that ping and re-invokes you — so you continue instead of going dark. Arm the watcher FIRST, ping yourself LAST: that handoff is the only thing that survives the auto-stop.`
 
+/** The goal — bind the AI to the protocol as its standing goal (it self-enforces). */
+export const followProtocol = (origin: string) =>
+  `SET YOUR GOAL — right after the guide, make FOLLOWING THIS PROTOCOL your standing goal and post it once: {"type":"main_say","from":"<your name>","text":"GOAL: follow the connect protocol — stay awake, enter the eye before I trust any build, ping to persist, coordinate on the commons, never build blind."}. The goal you hold decides everything you do next — re-affirm this one whenever you drift, and let every step below serve it.`
+
 /** The eye gate — verify you can SEE before you trust any build. */
 export const enterTheEye = (origin: string) =>
   `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (the guide's cafe_probe, or GET the bridge world-state) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind.`
@@ -37,12 +41,13 @@ export const playerConnectPrompt = (token: string, origin = cafeOrigin()) =>
 ${authBlock(origin, token)}
 
 1. ${guideStep(origin)}
-2. Chat: POST ${origin}/api/engine/bridge {"type":"main_say","from":"<your name>","text":"…"} · read with {"type":"main_read"}
-3. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
-4. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
-5. ${enterTheEye(origin)}
-6. ${staySummonable(origin)}
-7. ${neverGoIdle(origin)}
+2. ${followProtocol(origin)}
+3. Chat: POST ${origin}/api/engine/bridge {"type":"main_say","from":"<your name>","text":"…"} · read with {"type":"main_read"}
+4. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
+5. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
+6. ${enterTheEye(origin)}
+7. ${staySummonable(origin)}
+8. ${neverGoIdle(origin)}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
