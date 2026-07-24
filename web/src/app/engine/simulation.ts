@@ -315,20 +315,13 @@ export class FieldSimulation {
     // Apply own velocity — but a STATIC backdrop never drifts: zero any velocity
     // it picked up (a stray force, a leftover impulse) and skip integration so
     // the fullscreen scene holds perfectly still.
-    const gc = this.gridSize / 2
     for (const field of this.fields.values()) {
       const t = field.transform
-      if (this.isStaticField(field)) {
-        t.vx = 0; t.vy = 0; t.vr = 0
-        // RECENTER an already-drifted backdrop (Fable·A/Galen: a fullscreen field
-        // shoved off-center BEFORE the pin persisted its wrong position forever —
-        // the pin stops NEW drift but doesn't heal old drift). A world-covering
-        // field's center IS the grid center, so snap it home; already-broken
-        // worlds fix themselves on load. Explicitly-pinned SMALL fields keep
-        // their authored spot — only fullscreen backdrops recenter.
-        if (this.isFullscreenField(field) && (Math.abs(t.x - gc) > 0.5 || Math.abs(t.y - gc) > 0.5)) { t.x = gc; t.y = gc }
-        continue
-      }
+      // a static backdrop never drifts: zero any velocity it picked up and skip
+      // integration so it holds still. (HEALING an already-drifted backdrop is
+      // Fable·A's load-time restoreFromSnapshots snap — 4dfeff9, first-shipped;
+      // this run-time pin is the complementary half that stops NEW drift.)
+      if (this.isStaticField(field)) { t.vx = 0; t.vy = 0; t.vr = 0; continue }
       if (t.vx !== 0 || t.vy !== 0 || t.vr !== 0) {
         t.x += t.vx * dt
         t.y += t.vy * dt
@@ -369,18 +362,14 @@ export class FieldSimulation {
    *  Auto for `shapeType:'screen'` and world-covering rects/circles; override
    *  with property `static:false` (a moving backdrop) or `static:true` (pin a
    *  smaller field). Cached per field — the flag only changes on resize/shape. */
-  private isFullscreenField(f: Field): boolean {
-    if (f.shapeType === 'screen') return true
-    const w = f.w ?? (f.radius ? f.radius * 2 : 0)
-    const h = f.h ?? (f.radius ? f.radius * 2 : 0)
-    return w >= DEFAULT_GRID_SIZE * 0.9 && h >= DEFAULT_GRID_SIZE * 0.9
-  }
-
   private isStaticField(f: Field): boolean {
     const explicit = f.properties.get('static')
     if (explicit === true) return true
     if (explicit === false) return false
-    return this.isFullscreenField(f)
+    if (f.shapeType === 'screen') return true
+    const w = f.w ?? (f.radius ? f.radius * 2 : 0)
+    const h = f.h ?? (f.radius ? f.radius * 2 : 0)
+    return w >= DEFAULT_GRID_SIZE * 0.9 && h >= DEFAULT_GRID_SIZE * 0.9
   }
 
   /** Get cached field list — rebuilt only when field count changes */
