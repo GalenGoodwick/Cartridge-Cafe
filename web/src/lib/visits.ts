@@ -20,7 +20,21 @@ async function ensureTable() {
     ts timestamptz NOT NULL DEFAULT now()
   )`)
   await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "Visit_ts_idx" ON "Visit" (ts)`)
+  // `who` splits page views by WHO is looking, so "any new visitors?" has a real
+  // answer: 'owner' (the site's admin — me/Galen), 'account' (a signed-in
+  // non-admin), 'headless' (an in-house playtest browser), or null (an
+  // anonymous stranger — the number that actually means growth). Self-migrating
+  // ADD COLUMN so no Prisma lockstep, like the table itself.
+  await prisma.$executeRawUnsafe(`ALTER TABLE "Visit" ADD COLUMN IF NOT EXISTS who text`)
   tableReady = true
+}
+
+/** A headless/automated browser — our own playtests + probes, not a visitor.
+ *  They load real pages and fire the beacon, so they inflate "uniques" unless
+ *  tagged. Playwright/puppeteer default to a HeadlessChrome UA. */
+export function isHeadlessUA(ua: string | null | undefined): boolean {
+  if (!ua) return false
+  return /headless|playwright|puppeteer|bot|crawl|spider|curl|node-fetch|python-requests/i.test(ua)
 }
 
 export function visitorId(ip: string, ua: string): string {
@@ -29,11 +43,11 @@ export function visitorId(ip: string, ua: string): string {
   return createHash('sha256').update(`${day}|${salt}|${ip}|${ua}`).digest('hex').slice(0, 16)
 }
 
-export async function logVisit(v: { kind: 'page' | 'agent' | 'mcp'; path: string; ref?: string | null; ua?: string | null; ip?: string | null }) {
+export async function logVisit(v: { kind: 'page' | 'agent' | 'mcp'; path: string; ref?: string | null; ua?: string | null; ip?: string | null; who?: string | null }) {
   try {
     await ensureTable()
     const vid = visitorId(v.ip || '', v.ua || '')
-    await prisma.$executeRaw`INSERT INTO "Visit" (kind, path, ref, ua, vid)
-      VALUES (${v.kind}, ${v.path.slice(0, 300)}, ${(v.ref || '').slice(0, 300) || null}, ${(v.ua || '').slice(0, 300) || null}, ${vid})`
+    await prisma.$executeRaw`INSERT INTO "Visit" (kind, path, ref, ua, vid, who)
+      VALUES (${v.kind}, ${v.path.slice(0, 300)}, ${(v.ref || '').slice(0, 300) || null}, ${(v.ua || '').slice(0, 300) || null}, ${vid}, ${v.who ?? null})`
   } catch { /* logging must never break the page */ }
 }
