@@ -106,10 +106,16 @@ The bridge refuses `brief_done` until `worldData.vision` exists.
 
 **1. Imagine RAW.** Before any field exists, write the picture in words — in the
 language of images, not engine primitives: What is the focal point? Where does
-the light come from? What three colors own the frame (hex them)? What is the
-mood? What does the first frame show? Your aesthetic knowledge lives in this
-vocabulary — use it. Do NOT imagine in fields/uniforms/pixels; that produces a
-plan, and plans hold no beauty.
+the light come from? Which colors own the frame (hex the ones YOU choose)? What
+is the mood? What does the first frame show? Your aesthetic knowledge lives in
+this vocabulary — use it. Do NOT imagine in fields/uniforms/pixels; that
+produces a plan, and plans hold no beauty.
+
+Nothing here prescribes an aesthetic. The platform gives you the means to STATE
+a vision and CHECK a render against it — the vision itself is entirely yours.
+No house palettes, no approved moods, no correct style. Two worlds with opposite
+visions can both be right; a world with no vision is the only wrong one. (The
+example below is SYNTAX, not a style to copy.)
 
 **2. Ground it (if you can see).** Fetch 2–3 real reference images of what you
 are evoking and LOOK at them. Steal proportions, palettes, and composition from
