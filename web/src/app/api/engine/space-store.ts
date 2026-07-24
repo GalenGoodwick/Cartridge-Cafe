@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
-import type { SceneSnapshot, InteractionRule } from '@/app/engine/types'
+import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -158,8 +158,8 @@ export function invalidateSpaceCache(spaceId: string): void {
 // (non-fatal) warning so a typo'd param stops silently vanishing.
 const KNOWN_PARAMS: Record<string, Set<string>> = {
   create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
-  set_visual: new Set(['type', 'fieldId', 'visualType']),
-  set_position: new Set(['type', 'fieldId', 'x', 'y']),
+  set_visual: new Set(['type', 'fieldId', 'visualType', 'visualParams', 'renderTarget', 'sampleTargets', 'renderOrder']),
+  set_position: new Set(['type', 'fieldId', 'x', 'y', 'z', 'rotX', 'rotY']),
   set_color: new Set(['type', 'fieldId', 'color']),
   set_scale: new Set(['type', 'fieldId', 'scale']),
   set_world_data: new Set(['type', 'data']),
@@ -170,6 +170,14 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   remove_interaction_effect: new Set(['type', 'effectId']),
   clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
   delete_field: new Set(['type', 'fieldId']),
+  move: new Set(['type', 'fieldId', 'dx', 'dy']),
+  set_parent: new Set(['type', 'fieldId', 'parentFieldId']),
+  set_shape: new Set(['type', 'fieldId', 'shape', 'shapeType', 'radius', 'w', 'h']),
+  set_name: new Set(['type', 'fieldId', 'name']),
+  add_tag: new Set(['type', 'fieldId', 'tags']),
+  remove_tag: new Set(['type', 'fieldId', 'tags']),
+  update_effect: new Set(['type', 'fieldId', 'effectId', 'wgsl', 'glsl', 'description', 'blend', 'feedback']),
+  remove_interaction: new Set(['type', 'ruleId']),
 }
 
 function emptySnapshot(): SceneSnapshot {
@@ -195,7 +203,44 @@ function emptySnapshot(): SceneSnapshot {
 /** Apply one build command to a snapshot OBJECT, in place, with NO I/O. This is
  *  the shared brain: the space path (DB-backed) and the scene path (file-store
  *  branches) both run through it, so a branch is edited by the exact same command
- *  semantics as a space — no divergent second implementation. */
+ *  semantics as a space — no divergent second implementation.
+ *
+ *  ── DELIBERATELY LIVE-ONLY commands (documented policy, not an accident) ──
+ *  The snapshot can only persist what SceneSnapshot carries and what the loaders
+ *  (space load / load_scene in FieldEngine) actually restore: fields, worldParams,
+ *  worldData, stepHooks (JS), interactionRules, interactionEffects, visualTypes,
+ *  modules. Everything below mutates live structures OUTSIDE that schema, is
+ *  transient by design, is a read, or is handled by another server path — it
+ *  relays to open tabs over SSE but intentionally does NOT persist here:
+ *    · select, set_tool, set_camera — per-session UI/camera state
+ *    · generate — UI generation flow; its output lands as add_effect (persisted)
+ *    · inject_wgsl/inject_glsl, register_wgsl_mod/register_glsl_mod,
+ *      remove_wgsl_mod/remove_glsl_mod — shader-mod registry has no snapshot
+ *      section (global mode persists mods in the global store via the bridge)
+ *    · apply_force — a physics impulse; transient by design
+ *    · spawn_effect, spawn_projectile, clear_effects — pixel-buffer stamps and
+ *      timed particles; pixel state is never snapshotted
+ *    · add_gpu_step_hook/remove_gpu_step_hook — GPU hooks have no snapshot
+ *      section (SceneSnapshot.stepHooks holds JS hooks only)
+ *    · add_state_shader/remove_state_shader — renderer-global state shader, no
+ *      snapshot section
+ *    · define_command/execute_command — custom-command registry has no snapshot
+ *      section; the bridge expands execute_command macros server-side
+ *    · set_game_state/define_game_state — game-state machine, no snapshot section
+ *    · add_timer/remove_timer/fire_event/add_collision_callback/
+ *      remove_collision_callback/tween/cancel_tween — sim runtime structures,
+ *      cleared on every load, no snapshot section
+ *    · define_propagation — renderer propagation registry, no snapshot section
+ *    · create_render_target/destroy_render_target — renderer target registry, no
+ *      snapshot section (global mode persists them in the global store)
+ *    · set_order (and set_visual's renderOrder param) — field.renderOrder is not
+ *      serialized by generateSnapshots, so it cannot survive a reload anywhere
+ *    · undo_visual — the snapshot keeps no visual history (in global mode the
+ *      bridge rewrites it to define_visual with the restored WGSL)
+ *    · save_world/save_scene/load_scene/list_scenes/delete_scene — scene-store
+ *      operations with their own server routes
+ *    · get_properties/sample_region/status/main_say/main_read/render_probe —
+ *      reads / bridge-intercepted, nothing to persist */
 export function applyCommandToSnapshotObject(
   snap: SceneSnapshot,
   cmd: Record<string, unknown>
@@ -281,7 +326,20 @@ export function applyCommandToSnapshotObject(
       if (f) {
         if (cmd.x != null) f.transform.x = cmd.x as number
         if (cmd.y != null) f.transform.y = cmd.y as number
+        // 3D extras — the live engine sets these too and they ride the transform
+        if (cmd.z !== undefined) f.transform.z = cmd.z as number
+        if (cmd.rotX !== undefined) f.transform.rotX = cmd.rotX as number
+        if (cmd.rotY !== undefined) f.transform.rotY = cmd.rotY as number
       }
+      break
+    }
+
+    case 'move': {
+      // relative nudge — live semantics are `x += dx, y += dy`
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `move: no field with id "${cmd.fieldId}"`; return result }
+      f.transform.x += (cmd.dx as number) || 0
+      f.transform.y += (cmd.dy as number) || 0
       break
     }
 
@@ -294,6 +352,65 @@ export function applyCommandToSnapshotObject(
     case 'set_scale': {
       const f = snap.fields.find(f => f.id === cmd.fieldId)
       if (f && cmd.scale != null) f.transform.scale = cmd.scale as number
+      break
+    }
+
+    case 'set_shape': {
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `set_shape: no field with id "${cmd.fieldId}"`; return result }
+      const shape = (cmd.shape ?? cmd.shapeType) as 'circle' | 'rect' | 'screen' | undefined
+      if (shape) f.shapeType = shape
+      if (cmd.radius !== undefined) f.radius = cmd.radius as number
+      if (cmd.w !== undefined) f.w = cmd.w as number
+      if (cmd.h !== undefined) f.h = cmd.h as number
+      break
+    }
+
+    case 'set_name': {
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `set_name: no field with id "${cmd.fieldId}"`; return result }
+      f.name = (cmd.name as string) || f.name
+      break
+    }
+
+    case 'set_parent': {
+      // mirror sim.setParent: parent must exist, no self-parent, no cycles,
+      // hierarchy depth capped at 5
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `set_parent: no field with id "${cmd.fieldId}"`; return result }
+      const pid = cmd.parentFieldId as string | undefined
+      if (!pid) { f.parentFieldId = undefined; break }
+      if (pid === f.id) { result.error = 'set_parent: cannot parent a field to itself'; return result }
+      const byId = new Map(snap.fields.map(x => [x.id, x]))
+      if (!byId.has(pid)) { result.error = `set_parent: no field with id "${pid}"`; return result }
+      let cur: string | undefined = pid
+      let hops = 0
+      const seen = new Set<string>()
+      while (cur) {
+        if (cur === f.id) { result.error = 'set_parent: would create a cycle'; return result }
+        if (seen.has(cur)) break
+        seen.add(cur)
+        hops++
+        cur = byId.get(cur)?.parentFieldId
+      }
+      if (hops >= 5) { result.error = 'set_parent: depth limit (5) exceeded'; return result }
+      f.parentFieldId = pid
+      break
+    }
+
+    case 'add_tag': {
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      const tags = cmd.tags as string[] | undefined
+      if (!f || !tags?.length) { result.error = 'add_tag: fieldId and tags required'; return result }
+      f.tags = f.tags ?? []
+      for (const t of tags) if (!f.tags.includes(t)) f.tags.push(t)
+      break
+    }
+
+    case 'remove_tag': {
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      const tags = cmd.tags as string[] | undefined
+      if (f?.tags && tags?.length) f.tags = f.tags.filter(t => !tags.includes(t))
       break
     }
 
@@ -407,12 +524,36 @@ export function applyCommandToSnapshotObject(
       break
     }
 
+    case 'update_effect': {
+      // atomic in-place swap of an existing effect's shader (live compiles first;
+      // headless we persist optimistically, same as add_effect)
+      const f = snap.fields.find(f => f.id === cmd.fieldId)
+      if (!f) { result.error = `update_effect: no field with id "${cmd.fieldId}"`; return result }
+      const e = f.effects?.find(e => e.id === cmd.effectId)
+      if (!e) { result.error = `update_effect: no effect "${cmd.effectId}" on field "${cmd.fieldId}"`; return result }
+      const wgsl = (cmd.wgsl ?? cmd.glsl) as string | undefined
+      if (!wgsl) { result.error = 'update_effect: wgsl required'; return result }
+      e.wgsl = wgsl
+      if (cmd.description) e.description = cmd.description as string
+      if (cmd.blend) e.blend = cmd.blend as 'alpha' | 'additive' | 'multiply'
+      if (cmd.feedback !== undefined) e.feedback = !!cmd.feedback
+      break
+    }
+
     case 'clear_effect': {
       // no fieldId = strip every field's stack, matching the live-engine command
       for (const f of snap.fields) {
         if (cmd.fieldId && f.id !== cmd.fieldId) continue
         if (f.effects) f.effects = []
       }
+      break
+    }
+
+    case 'clear_all': {
+      // live semantics: wipe painted pixel buffers + every field's effect stack;
+      // fields themselves survive (unlike reset). Pixels aren't snapshotted, so
+      // the persistable mirror is the all-fields effect wipe.
+      for (const f of snap.fields) f.effects = []
       break
     }
 
@@ -436,15 +577,20 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'remove_step_hook': {
-      snap.stepHooks = snap.stepHooks.filter(h => h.id !== (cmd.hookId as string))
+      // live engine accepts `name` as an alias for hookId — mirror that
+      const hookId = (cmd.hookId as string) || (cmd.name as string) || ''
+      snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
       break
     }
 
-    case 'add_step_hook': {
+    case 'add_step_hook':
+    case 'update_step_hook': {
       // Same hookId REPLACES — without this, every re-push of a hook appended a
       // duplicate and all of them ran each frame (one agent stacked 49 physics
       // hooks before noticing). Omitting hookId still appends a fresh one.
-      const hookId = (cmd.hookId as string) ?? `hook_${Date.now()}`
+      // update_step_hook is the live engine's explicit replace spelling — the
+      // persisted semantics are identical (live also aliases `name` → hookId).
+      const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
       snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
       snap.stepHooks.push({
         id: hookId,
@@ -474,6 +620,43 @@ export function applyCommandToSnapshotObject(
           description: rule.description as string | undefined,
         })
       }
+      break
+    }
+
+    case 'remove_interaction': {
+      const rid = cmd.ruleId as string
+      if (rid) snap.interactionRules = snap.interactionRules.filter(r => r.id !== rid)
+      break
+    }
+
+    case 'field_message': {
+      // the live engine writes the exchange into BOTH fields' memory (which is
+      // part of the field snapshot); the dialog overlay itself is UI-only
+      const fromId = cmd.fromFieldId as string
+      const toId = cmd.toFieldId as string
+      const from = snap.fields.find(f => f.id === fromId)
+      const to = snap.fields.find(f => f.id === toId)
+      const fromName = from?.name || fromId
+      const toName = to?.name || toId
+      const MAX_MEMORY = 100   // FieldSimulation.MAX_MEMORY
+      const remember = (f: typeof from, entry: FieldMemoryEntry) => {
+        if (!f) return
+        f.memory = [...(f.memory ?? []), entry].slice(-MAX_MEMORY)
+      }
+      remember(from, {
+        timestamp: new Date().toISOString(),
+        type: 'message_sent',
+        content: `Sent to ${toName}: "${cmd.content}"`,
+        sourceFieldId: toId,
+        data: cmd.data as Record<string, unknown> | undefined,
+      })
+      remember(to, {
+        timestamp: new Date().toISOString(),
+        type: 'message_received',
+        content: `From ${fromName}: "${cmd.content}"`,
+        sourceFieldId: fromId,
+        data: cmd.data as Record<string, unknown> | undefined,
+      })
       break
     }
 
@@ -553,7 +736,34 @@ export function applyCommandToSnapshotObject(
       // to an existing field so it actually renders (persisted, no browser needed).
       const f = snap.fields.find(f => f.id === cmd.fieldId)
       if (!f) { result.error = `set_visual: no field with id "${cmd.fieldId}"`; return result }
-      f.visualTypeName = cmd.visualType as string
+      const vt = cmd.visualType
+      if (typeof vt === 'string') {
+        f.visualTypeName = vt
+        delete f.visualType   // numeric ids are per-session; the NAME is authoritative on load
+      } else if (vt === null) {
+        delete f.visualTypeName
+        delete f.visualType
+      }
+      // (a bare numeric visualType is a session-local id — nothing durable to persist)
+      if (cmd.visualParams !== undefined) {
+        f.visualParams = cmd.visualParams as [number, number, number, number]
+      }
+      // renderTarget / sampleTargets live in field.properties (that's where the
+      // live engine puts them, and properties round-trip through the snapshot)
+      if (cmd.renderTarget !== undefined) {
+        const props = { ...(f.properties as Record<string, unknown> | undefined) }
+        if (cmd.renderTarget === null) delete props.renderTarget
+        else props.renderTarget = cmd.renderTarget
+        f.properties = props
+      }
+      if (cmd.sampleTargets !== undefined) {
+        const props = { ...(f.properties as Record<string, unknown> | undefined) }
+        if (cmd.sampleTargets === null) delete props.sampleTargets
+        else props.sampleTargets = cmd.sampleTargets
+        f.properties = props
+      }
+      // NOTE: renderOrder is accepted live but not serialized by the engine's
+      // snapshot format — see the live-only list in the function doc.
       break
     }
 
