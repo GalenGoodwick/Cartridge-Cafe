@@ -63,11 +63,12 @@ export default async function Image() {
         <div style={{ width: '100%', height: '100%', display: 'flex', background: '#07060a', position: 'relative' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={shot} width={1200} height={630} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-          {/* left→dark scrim so the wordmark reads over the neon city */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(105deg, rgba(7,6,10,0.86) 0%, rgba(7,6,10,0.5) 42%, rgba(7,6,10,0.05) 70%)' }} />
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to bottom, rgba(7,6,10,0) 62%, rgba(7,6,10,0.55) 100%)' }} />
+          {/* gentle overall darken so a blown-out render doesn't glare */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to top, rgba(7,6,10,0.5) 0%, rgba(7,6,10,0.12) 55%, rgba(7,6,10,0) 100%)' }} />
           <div style={{ position: 'absolute', top: 28, left: 28, right: 28, bottom: 28, display: 'flex', border: '2px solid rgba(185,122,42,0.4)', borderRadius: 24 }} />
-          <div style={{ position: 'absolute', left: 72, top: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {/* the TEXT PLATE — a near-solid dark panel so the wordmark reads over
+              ANY render (a busy neon city used to swallow it). */}
+          <div style={{ position: 'absolute', left: 56, bottom: 54, display: 'flex', flexDirection: 'column', padding: '28px 44px', borderRadius: 18, background: 'rgba(9,7,12,0.9)', border: '1px solid rgba(185,122,42,0.4)' }}>
             <Wordmark onDark />
           </div>
         </div>

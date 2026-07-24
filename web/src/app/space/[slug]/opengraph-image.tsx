@@ -57,15 +57,17 @@ export default async function Image({ params }: { params: Promise<{ slug: string
           {/* the world render — 512² covering the 1200×630 card */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={shot} width={1200} height={630} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-          {/* bottom scrim so text stays legible over any frame */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to bottom, rgba(7,6,10,0) 40%, rgba(7,6,10,0.15) 62%, rgba(7,6,10,0.85) 100%)' }} />
+          {/* gentle overall darken so a bright render doesn't glare */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to top, rgba(7,6,10,0.5) 0%, rgba(7,6,10,0.12) 55%, rgba(7,6,10,0) 100%)' }} />
           <div style={{ position: 'absolute', top: 26, left: 26, right: 26, bottom: 26, display: 'flex', border: '2px solid rgba(185,122,42,0.45)', borderRadius: 24 }} />
-          <div style={{ position: 'absolute', left: 60, bottom: 54, right: 60, display: 'flex', flexDirection: 'column', fontFamily: 'serif' }}>
+          {/* the TITLE PLATE — a near-solid dark panel so the name reads over ANY
+              frame (a bright world used to swallow it, Galen). */}
+          <div style={{ position: 'absolute', left: 56, bottom: 54, maxWidth: 900, display: 'flex', flexDirection: 'column', padding: '24px 40px', borderRadius: 18, background: 'rgba(9,7,12,0.9)', border: '1px solid rgba(185,122,42,0.4)', fontFamily: 'serif' }}>
             <div style={{ display: 'flex', fontSize: 22, letterSpacing: 7, textTransform: 'uppercase', color: '#f0b45c' }}>cartridge.cafe</div>
-            <div style={{ display: 'flex', marginTop: 8, fontSize: 74, fontWeight: 700, color: '#fff', letterSpacing: -1, lineHeight: 1.02, textShadow: '0 2px 24px rgba(0,0,0,0.7)' }}>
-              {name.length > 34 ? name.slice(0, 34) + '…' : name}
+            <div style={{ display: 'flex', marginTop: 8, fontSize: 72, fontWeight: 700, color: '#fff', letterSpacing: -1, lineHeight: 1.02 }}>
+              {name.length > 30 ? name.slice(0, 30) + '…' : name}
             </div>
-            <div style={{ display: 'flex', marginTop: 6, fontSize: 30, color: '#e8dcc4', fontStyle: 'italic', textShadow: '0 2px 16px rgba(0,0,0,0.8)' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
+            <div style={{ display: 'flex', marginTop: 6, fontSize: 30, color: '#e8dcc4', fontStyle: 'italic' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
           </div>
         </div>
       ),
