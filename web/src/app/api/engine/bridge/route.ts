@@ -804,9 +804,13 @@ export async function POST(req: NextRequest) {
             const snap2 = await getSpaceSnapshot(auth.spaceId!, true)
             const others = ((snap2?.fields ?? []) as Array<{ id?: string; properties?: Record<string, unknown> }>)
               .filter(f => f.id && f.id !== newFieldId && Array.isArray(f.properties?.componentTags))
+            const existingIx = ((snap2?.interactionEffects ?? []) as Array<{ fieldA?: string; fieldB?: string }>)
+            const pairWired = (a?: string, b?: string) => existingIx.some(e =>
+              (e.fieldA === a && e.fieldB === b) || (e.fieldA === b && e.fieldB === a))
             for (const other of others) {
               for (const rule of matchTagRules(rules, comp.tags, other.properties!.componentTags as string[])) {
                 if (!rule.wgsl) continue
+                if (pairWired(newFieldId, other.id)) continue
                 const ix = { type: 'add_interaction_effect', fieldA: newFieldId, fieldB: other.id,
                   wgsl: rule.wgsl, spread: rule.spread ?? 6, hooks: rule.hooks,
                   description: `${rule.a} × ${rule.b}${rule.description ? ' — ' + rule.description : ''}`, author: 'tag-rule' }

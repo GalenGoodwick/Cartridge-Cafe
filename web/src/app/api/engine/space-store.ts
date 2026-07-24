@@ -220,6 +220,7 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   define_module: new Set(['type', 'name', 'wgsl']),
   remove_module: new Set(['type', 'name']),
   add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
+  remove_interaction_effect: new Set(['type', 'effectId']),
   clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
   delete_field: new Set(['type', 'fieldId']),
 }
@@ -313,6 +314,18 @@ export function applyCommandToSnapshotObject(
     case 'delete_field': {
       const id = cmd.fieldId as string
       snap.fields = snap.fields.filter(f => f.id !== id)
+      // a field's overlap shaders die with it — an orphaned interactionEffect
+      // referencing a deleted field corrupts rendering (VEILFIRE went dark)
+      snap.interactionEffects = snap.interactionEffects.filter(ix => {
+        const e = ix as { fieldA?: string; fieldB?: string }
+        return e.fieldA !== id && e.fieldB !== id
+      })
+      break
+    }
+
+    case 'remove_interaction_effect': {
+      const eid = cmd.effectId as string
+      if (eid) snap.interactionEffects = snap.interactionEffects.filter(ix => (ix as { id?: string }).id !== eid)
       break
     }
 
