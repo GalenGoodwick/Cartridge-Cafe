@@ -775,7 +775,7 @@ export function applyCommandToSnapshotObject(
   // #5b: surface unknown/typo'd params (non-fatal) — a silent drop becomes visible
   const known = KNOWN_PARAMS[cmd.type as string]
   if (known) {
-    const unknown = Object.keys(cmd).filter(k => !known.has(k))
+    const unknown = Object.keys(cmd).filter(k => !known.has(k) && !k.startsWith('__'))  // __-prefixed = route-internal annotations
     if (unknown.length) result.warnings = [`unknown params ignored: ${unknown.join(', ')}`]
   }
 

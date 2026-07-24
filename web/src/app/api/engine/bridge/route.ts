@@ -1018,6 +1018,40 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      // grow_building: buildings construct themselves from guideline RANGES —
+      // scope-agnostic, so it transforms BEFORE the scoping branches. Server
+      // grows + validates the node graph, emits marcher-safe WGSL, and the
+      // command becomes a define_module (undo_visual precedent) so every
+      // existing persistence/compile path (global, space, scene) applies.
+      // Docs: AI_ENGINE_GUIDE "GROWN BUILDINGS"; lib: web/src/lib/grow-building.mjs.
+      if (cmd.type === 'grow_building') {
+        try {
+          const grow = await import('@/lib/grow-building.mjs')
+          const kind = (cmd.kind as string) || 'arcade'
+          const name = (cmd.name as string) || ''
+          const guidelines = cmd.guidelines as Record<string, unknown> | undefined
+          if (!/^mod_[a-zA-Z0-9_]+$/.test(name)) { results.push({ error: 'grow_building: name must be a mod_* identifier' }); continue }
+          if (!guidelines || typeof guidelines !== 'object') { results.push({ error: 'grow_building: guidelines object required (ranges, e.g. spring:{ratio:[1.15,1.45]})' }); continue }
+          if (kind !== 'arcade' && kind !== 'gable') { results.push({ error: `grow_building: unknown kind "${kind}" (arcade | gable)` }); continue }
+          const graph = kind === 'gable' ? grow.growGable(guidelines) : grow.growArcade(guidelines)
+          const verrs = grow.validate(graph)
+          if (verrs.length) { results.push({ error: 'grow_building: structure invalid — ' + verrs.slice(0, 4).join('; ') }); continue }
+          const prims = (cmd.prims as Record<string, string>) || { strut: 'mod_w3_taperStrut', bez: 'mod_w3_bezStrut', box: 'mod_w3_box', smin: 'opSmoothUnion' }
+          const opts: Record<string, unknown> = {}
+          if (typeof cmd.growUniform === 'number') { opts.growUniform = cmd.growUniform; opts.cellStagger = cmd.cellStagger }
+          cmd.wgsl = grow.emitWGSL(graph, name, prims, opts)
+          const meta = { ...(graph.meta as Record<string, unknown>) }
+          delete meta.resolved
+          cmd.__growMeta = { kind, measured: meta, bounds: graph.bounds, liveGrowth: typeof cmd.growUniform === 'number' ? `uni(${cmd.growUniform}) 0→1 builds it` : undefined }
+          cmd.name = name
+          cmd.type = 'define_module'
+          delete cmd.kind; delete cmd.guidelines; delete cmd.prims; delete cmd.growUniform; delete cmd.cellStagger
+        } catch (e) {
+          results.push({ error: 'grow_building failed: ' + (e instanceof Error ? e.message : String(e)) })
+          continue
+        }
+      }
+
       // Server-side GLOBAL-registry ops run only in true global mode. A branch
       // token must NEVER land visuals/modules/interactions in the shared registry
       // (that global scoop is exactly what bled foreign visuals into ORCHID) —
@@ -1058,38 +1092,6 @@ export async function POST(req: NextRequest) {
 
         if (cmd.type === 'define_visual' && cmd.name && cmd.wgsl) {
           addVisualType(cmd.name as string, cmd.wgsl as string)
-        }
-
-        // grow_building: buildings construct themselves from guideline RANGES.
-        // Server grows + validates the node graph, emits marcher-safe WGSL, and
-        // the command becomes a define_module (undo_visual precedent) so every
-        // existing persistence/compile path applies. Docs: AI_ENGINE_GUIDE
-        // "GROWN BUILDINGS"; library: web/src/lib/grow-building.mjs.
-        if (cmd.type === 'grow_building') {
-          try {
-            const grow = await import('@/lib/grow-building.mjs')
-            const kind = (cmd.kind as string) || 'arcade'
-            const name = (cmd.name as string) || ''
-            const guidelines = cmd.guidelines as Record<string, unknown> | undefined
-            if (!/^mod_[a-zA-Z0-9_]+$/.test(name)) { results.push({ error: 'grow_building: name must be a mod_* identifier' }); continue }
-            if (!guidelines || typeof guidelines !== 'object') { results.push({ error: 'grow_building: guidelines object required (ranges, e.g. spring:{ratio:[1.15,1.45]})' }); continue }
-            if (kind !== 'arcade' && kind !== 'gable') { results.push({ error: `grow_building: unknown kind "${kind}" (arcade | gable)` }); continue }
-            const graph = kind === 'gable' ? grow.growGable(guidelines) : grow.growArcade(guidelines)
-            const verrs = grow.validate(graph)
-            if (verrs.length) { results.push({ error: 'grow_building: structure invalid — ' + verrs.slice(0, 4).join('; ') }); continue }
-            const prims = (cmd.prims as Record<string, string>) || { strut: 'mod_w3_taperStrut', bez: 'mod_w3_bezStrut', box: 'mod_w3_box', smin: 'opSmoothUnion' }
-            const opts: Record<string, unknown> = {}
-            if (typeof cmd.growUniform === 'number') { opts.growUniform = cmd.growUniform; opts.cellStagger = cmd.cellStagger }
-            cmd.wgsl = grow.emitWGSL(graph, name, prims, opts)
-            cmd.name = name
-            cmd.type = 'define_module'
-            const meta = { ...(graph.meta as Record<string, unknown>) }
-            delete meta.resolved
-            cmd.__growMeta = { kind, measured: meta, bounds: graph.bounds, liveGrowth: typeof cmd.growUniform === 'number' ? `uni(${cmd.growUniform}) 0→1 builds it` : undefined }
-          } catch (e) {
-            results.push({ error: 'grow_building failed: ' + (e instanceof Error ? e.message : String(e)) })
-            continue
-          }
         }
 
         if (cmd.type === 'define_module' && cmd.name && cmd.wgsl) {
