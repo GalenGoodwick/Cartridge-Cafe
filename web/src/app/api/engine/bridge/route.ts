@@ -1178,6 +1178,23 @@ export async function POST(req: NextRequest) {
           if (unskinned.length > 0) {
             cmd.__renderWarning = `${unskinned.length} field(s) have no visible skin (${unskinned.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}) — fine if intentional (logic-only), else set_visual them`
           }
+          // VISION CHECK — beauty starts as a picture held in the head, not a
+          // struct (Galen). A world isn't done until its builder wrote what it
+          // was aiming at: worldData.vision, in CHECKABLE terms, so even a
+          // blind model can verify its render against its stated intent.
+          const wdNow = (snap?.worldData ?? {}) as Record<string, unknown>
+          const incoming = (cmd.data as Record<string, unknown>) ?? {}
+          const vision = incoming['vision'] ?? wdNow['vision']
+          const visionText = typeof vision === 'string' ? vision : vision ? JSON.stringify(vision) : ''
+          if (visionText.trim().length < 40) {
+            results.push({ type: cmd.type, error:
+              `VISION CHECK FAILED — brief_done refused: worldData.vision is missing. Before finishing, write what you were ` +
+              `aiming at, so you (and the probe) can verify the render against it: ` +
+              `{"type":"set_world_data","data":{"vision":"<the picture in words: focal point, light source, 3-color palette ` +
+              `(hex), mood, what the first frame shows — one paragraph>"}}. Then compare: probe dominantColors ≈ your ` +
+              `palette, meanLum ≈ your mood, bbox ≈ your focal point. Imagine RAW first; translate to layers second.` })
+            continue
+          }
         } catch { /* the check must never block a legitimate finish */ }
       }
       // the world's DONE moment is its pristine state: remember it so reset can

@@ -97,6 +97,41 @@ renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact m
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
+## THE VISION (MANDATORY, before your first field)
+
+Beautiful worlds start as a picture held in the head — never as a struct. The
+variance between a breathtaking world and a flat one is almost never capability;
+it is whether the builder IMAGINED first and VERIFIED against that imagination.
+The bridge refuses `brief_done` until `worldData.vision` exists.
+
+**1. Imagine RAW.** Before any field exists, write the picture in words — in the
+language of images, not engine primitives: What is the focal point? Where does
+the light come from? What three colors own the frame (hex them)? What is the
+mood? What does the first frame show? Your aesthetic knowledge lives in this
+vocabulary — use it. Do NOT imagine in fields/uniforms/pixels; that produces a
+plan, and plans hold no beauty.
+
+**2. Ground it (if you can see).** Fetch 2–3 real reference images of what you
+are evoking and LOOK at them. Steal proportions, palettes, and composition from
+reality — a cathedral study changed a whole build here once.
+
+**3. Set the vision — in CHECKABLE terms:**
+
+```json
+{"type":"set_world_data","data":{"vision":"A white Gothic cloister at night under an aurora. Focal: the far lancet door, center. Light: one carried warm fire (#ffcf94) in a cold world (#0a1230, #f4f6f7). Mood: hushed, luminous dark (meanLum ~50 outside the fire). First frame: white arcades receding to the glowing facade."}}
+```
+
+**4. Translate to LAYERS, then build.** Now — and only now — compile the vision
+into staging: what is behind what (creation order = behind order), which field
+owns which part of the picture, where the light paints. The behind channel is a
+painter's layer model; use it like one.
+
+**5. Verify against the vision, not against "it renders".** Probe, then compare
+mechanically — this works even if you cannot see the PNG: `dominantColors` ≈
+your stated palette? `meanLum` ≈ your stated mood? `bbox` ≈ your stated focal
+point? If you CAN see, look at the frame and ask: is this the picture I wrote?
+Iterate until the answer is yes. "Compiles and responds" is the floor, not done.
+
 ## World Instructions (MANDATORY)
 
 Every world MUST ship `worldData.instructions` — a plain string surfaced behind the
