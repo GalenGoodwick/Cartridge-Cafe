@@ -1,0 +1,15 @@
+{
+  "_note": "A node's TRACE = its intended integrations. Declared when the node is made, so the seam is visible before it drifts. trace.mjs checks each against the map. CONTRACT traces are anchored to an export (statically checkable). CONVENTION traces are agreements no import can prove — an AI must DEBATE/verify them.",
+  "math": [
+    { "to": "mechanic", "via": "gazeCrossOnPane", "expect": "the pane rule-flip test calls it per pane, per gaze" }
+  ],
+  "mechanic": [
+    { "to": "hook", "via": "stepVigil", "expect": "the step-hook calls stepVigil(G,input,dt) each tick and publishes G" }
+  ],
+  "hook": [
+    { "to": "shader", "via": "gpuUniforms[0..40]", "expect": "the shader reads uni(i) at these EXACT indices — a numeric CONVENTION between JS publish and WGSL read; a mismatch is silent. verify by debate + pixel, never by import." }
+  ],
+  "shader": [
+    { "to": "deploy", "via": "VISUAL", "expect": "deploy ships the shader's VISUAL (and LIB) via the atomic build batch" }
+  ]
+}

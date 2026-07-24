@@ -1,0 +1,368 @@
+{
+  "project": "VIGIL",
+  "trunk": "vigil",
+  "note": "The full worktree for a AAA-quality VIGIL, using this engine's strengths (SDF render+collide-from-one-truth, procedural geometry, the ray-trigger substrate). A node is DONE only when every KEY it owes is fulfilled — kind auto-adds keys (a gameplay node owes playthrough-confirmed, a render node owes visual-reference). status is derived, never hand-set. Most of this is RED/PENDING: that is the honest picture of how much real game is left.",
+  "nodes": [
+    {
+      "id": "math",
+      "kind": "lib",
+      "area": "ray/plane/ray geometry primitives (reusable platform infra)",
+      "files": [
+        "web/src/lib/gaze-math.mjs"
+      ],
+      "exports": [
+        "rayPlaneHit",
+        "raysClosestApproach",
+        "pointInPaneUV",
+        "marchSDF",
+        "gazeCrossOnPane"
+      ],
+      "dependsOn": [],
+      "tests": [
+        "src/__tests__/unit/gaze-math.test.mjs"
+      ],
+      "claim": null,
+      "keyState": {
+        "unit-tested": "pass"
+      },
+      "status": "green",
+      "statusNote": "✓unit-tested"
+    },
+    {
+      "id": "world-sdf",
+      "kind": "shader",
+      "area": "the cathedral distance field — gothic form; walls must GLOW white (Antichamber), not read grey",
+      "files": [
+        "web/src/app/engine/scenes/vigil-cartridge.mjs"
+      ],
+      "exports": [
+        "vg_map"
+      ],
+      "dependsOn": [],
+      "tests": [
+        "src/__tests__/unit/vigil-cartridge.test.mjs"
+      ],
+      "evidence": {
+        "render-verified": "probe: renders clean"
+      },
+      "claim": null,
+      "children": [
+        {
+          "id": "white-glow-walls",
+          "kind": "render",
+          "area": "walls emit/read as luminous white, not lit-grey — the core Antichamber surface",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference"
+        },
+        {
+          "id": "gothic-vault",
+          "kind": "render",
+          "area": "pointed arches + ribbed vault between columns (currently just columns+finials)",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference"
+        }
+      ],
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pending"
+      },
+      "status": "partial",
+      "statusNote": "✓render-verified  ·visual-reference  |  white-glow-walls·open gothic-vault·open"
+    },
+    {
+      "id": "collision",
+      "kind": "collision",
+      "area": "MISSING — the flame clips through walls and walked to z=50.7 past everything. Mirror vg_map in JS (the mod_cf_h one-truth pattern) and stop the player at solid surfaces + world bounds.",
+      "files": [],
+      "exports": [
+        "mapJS",
+        "resolveCollision"
+      ],
+      "dependsOn": [
+        "math"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "bornFrom": "playthrough:clip-through",
+      "keyState": {
+        "unit-tested": "pending",
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·unit-tested  ·playthrough-confirmed"
+    },
+    {
+      "id": "player-character",
+      "kind": "character",
+      "area": "MISSING — evolve the flame from a mote into a carried-lantern character: body, gait, a real light CONE that defines the light-ray, held-flame animation",
+      "files": [],
+      "exports": [],
+      "dependsOn": [
+        "collision"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "bornFrom": "feedback:evolve-player",
+      "keyState": {
+        "unit-tested": "pending",
+        "playthrough-confirmed": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·unit-tested  ·playthrough-confirmed  ·visual-reference"
+    },
+    {
+      "id": "mechanic",
+      "kind": "mechanic",
+      "area": "gaze ∩ light ∩ pane rule-flip step logic",
+      "files": [
+        "web/src/lib/vigil-logic.mjs"
+      ],
+      "exports": [
+        "initVigilState",
+        "stepVigil",
+        "watcherGaze",
+        "flameRay"
+      ],
+      "dependsOn": [
+        "math"
+      ],
+      "tests": [
+        "src/__tests__/unit/vigil-logic.test.mjs"
+      ],
+      "evidence": {
+        "playthrough-confirmed": false
+      },
+      "claim": null,
+      "playtestNote": "unit-green but playthrough FAILED: flips fired 2/800 ticks — crossings almost never align in free play. The mechanic needs the puzzle to make crossings deliberate + reachable.",
+      "keyState": {
+        "unit-tested": "pass",
+        "playthrough-confirmed": "fail"
+      },
+      "status": "red",
+      "statusNote": "✓unit-tested  ✗playthrough-confirmed  — unit-green but playthrough FAILED: flips fired 2/800 ticks — crossings almost never align in free play. The mechanic needs the puzzle to make crossings deliberate + reachable."
+    },
+    {
+      "id": "puzzle",
+      "kind": "puzzle",
+      "area": "MISSING — the CORE LOOP that doesn't exist yet: doors that LOCK passage until you flip the right pane; panels you stand on to hold a gaze; a solvable sequence. Right now 'rule' only tints a pane and gates footing — there is no door, no lockout, no reason to flip.",
+      "files": [],
+      "exports": [
+        "doors",
+        "lockState",
+        "solveCheck"
+      ],
+      "dependsOn": [
+        "mechanic",
+        "collision"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "bornFrom": "feedback:door-lockout-not-triggering",
+      "keyState": {
+        "unit-tested": "pending",
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·unit-tested  ·playthrough-confirmed"
+    },
+    {
+      "id": "cartridge",
+      "kind": "container",
+      "area": "the VIGIL world = shader + hook, shipped to the engine",
+      "files": [
+        "web/src/app/engine/scenes/vigil-cartridge.mjs"
+      ],
+      "exports": [
+        "LIB",
+        "VISUAL",
+        "HOOK",
+        "buildBatch"
+      ],
+      "dependsOn": [
+        "math",
+        "mechanic",
+        "world-sdf"
+      ],
+      "claim": null,
+      "children": [
+        {
+          "id": "hook",
+          "kind": "hook",
+          "area": "JS step-hook: input → stepVigil → publish uniforms (embeds the tested mechanic verbatim)",
+          "files": [
+            "web/src/app/engine/scenes/vigil-cartridge.mjs"
+          ],
+          "exports": [
+            "HOOK",
+            "buildBatch"
+          ],
+          "tests": [
+            "src/__tests__/unit/vigil-cartridge.test.mjs"
+          ],
+          "claim": null,
+          "keyState": {
+            "unit-tested": "pass"
+          },
+          "status": "green",
+          "statusNote": "✓unit-tested"
+        },
+        {
+          "id": "shader",
+          "kind": "shader",
+          "area": "parent visual_vigil composing sub-shaders (Antichamber unlit-white + linework)",
+          "files": [
+            "web/src/app/engine/scenes/vigil-cartridge.mjs"
+          ],
+          "exports": [
+            "LIB",
+            "VISUAL"
+          ],
+          "tests": [
+            "src/__tests__/unit/vigil-cartridge.test.mjs"
+          ],
+          "evidence": {
+            "render-verified": "probe: visible, palette-correct, linework present"
+          },
+          "claim": null,
+          "children": [
+            {
+              "id": "render-watchers",
+              "kind": "render",
+              "area": "the charcoal hooded Watcher figures (now drawn)",
+              "evidence": {
+                "render-verified": "probe"
+              },
+              "claim": null,
+              "keyState": {
+                "render-verified": "pass",
+                "visual-reference": "pending"
+              },
+              "status": "partial",
+              "statusNote": "✓render-verified  ·visual-reference"
+            },
+            {
+              "id": "render-panes",
+              "kind": "render",
+              "area": "exists-where-seen glass, rule tint, lead lines",
+              "evidence": {
+                "render-verified": "probe"
+              },
+              "claim": null,
+              "keyState": {
+                "render-verified": "pass",
+                "visual-reference": "pending"
+              },
+              "status": "partial",
+              "statusNote": "✓render-verified  ·visual-reference"
+            },
+            {
+              "id": "render-gaze",
+              "kind": "render",
+              "area": "gaze-beam glow",
+              "evidence": {
+                "render-verified": "probe"
+              },
+              "claim": null,
+              "keyState": {
+                "render-verified": "pass",
+                "visual-reference": "pending"
+              },
+              "status": "partial",
+              "statusNote": "✓render-verified  ·visual-reference"
+            },
+            {
+              "id": "render-reliquary",
+              "kind": "render",
+              "area": "the warm reliquary goal (now drawn)",
+              "evidence": {
+                "render-verified": "probe"
+              },
+              "claim": null,
+              "keyState": {
+                "render-verified": "pass",
+                "visual-reference": "pending"
+              },
+              "status": "partial",
+              "statusNote": "✓render-verified  ·visual-reference"
+            }
+          ],
+          "keyState": {
+            "render-verified": "pass",
+            "visual-reference": "pending"
+          },
+          "status": "partial",
+          "statusNote": "✓render-verified  ·visual-reference  |  render-watchers·partial render-panes·partial render-gaze·partial render-reliquary·partial"
+        }
+      ],
+      "keyState": {},
+      "status": "partial",
+      "statusNote": "hook·green shader·partial"
+    },
+    {
+      "id": "audio",
+      "kind": "audio",
+      "area": "MISSING — footsteps on stone, the low hum of a passing gaze, the chime of a flip, the reliquary tone",
+      "files": [],
+      "exports": [],
+      "dependsOn": [
+        "mechanic"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "bornFrom": "vision:aaa",
+      "keyState": {
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·playthrough-confirmed"
+    },
+    {
+      "id": "game-flow",
+      "kind": "game",
+      "area": "MISSING — intro, the win at the reliquary, reset, and the gravity-flip TIERS from the original concept",
+      "files": [],
+      "exports": [],
+      "dependsOn": [
+        "puzzle",
+        "player-character"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "bornFrom": "vision:aaa",
+      "keyState": {
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·playthrough-confirmed"
+    },
+    {
+      "id": "deploy",
+      "kind": "deploy",
+      "area": "ship to /space/vigil (a build IS live — but it owes a playthrough-confirmed it does not yet have)",
+      "files": [],
+      "exports": [],
+      "dependsOn": [
+        "cartridge",
+        "puzzle"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·playthrough-confirmed"
+    }
+  ]
+}
