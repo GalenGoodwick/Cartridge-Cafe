@@ -403,7 +403,7 @@ export function emitWGSL(graph, name, prims, opts = {}) {
     const s = emitEl(e, pv, dv, zvar, helper, `gw${n}`)
     return `${indent}let gw${n} = clamp(${baseVar} - ${f(idx)}, 0.0, 1.0); if (gw${n} > 0.001) { ${s} }`
   }
-  const hasLancet = [...graph.statics, ...graph.repeats.flatMap(r => [...r.elements, ...(r.cellCuts || []), ...r.rhythm])]
+  const hasLancet = [...graph.statics, ...graph.cuts, ...graph.repeats.flatMap(r => [...r.elements, ...(r.cellCuts || []), ...r.rhythm])]
     .some(e => e.kind === 'lancetrim' || e.kind === 'lancetcut')
   if (hasLancet) {
     L.push(`// 2D pointed-arch opening (two-circle construction, open-bottom)`)

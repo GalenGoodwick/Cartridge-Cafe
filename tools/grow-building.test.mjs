@@ -155,5 +155,19 @@ ok(rr >= 0.75 && rr <= 0.98, `T2b arch rise/clearSpan pointed: ${rr.toFixed(2)} 
   ok(src.includes('let gbf = clamp(uni(38)'), 'T10f progress clamped')
 }
 
+// T11: gable emission — its openings live in graph.cuts; the helper must emit
+{
+  const gg = growGable({
+    seed: 3, line: { z: 39 }, plot: { width: 21 },
+    steps: 4, heightRatio: [0.55, 0.66], stepShrink: [1.0, 1.4],
+    thicknessRatio: [0.094, 0.096], pinnacleRatio: [0.5, 0.8], spireRatio: [0.28, 0.4],
+  })
+  const src = emitWGSL(gg, 'mod_test_gable', { strut: 'mod_vf3_strut', bez: 'mod_vf3_bez', box: 'mod_vf3_box', smin: 'opSmoothUnion' })
+  ok(src.includes('fn mod_test_gable_op('), 'T11a gable opening helper emitted (cuts scanned)')
+  const open2 = (src.match(/\{/g) || []).length, close2 = (src.match(/\}/g) || []).length
+  ok(open2 === close2, `T11b gable braces balanced (${open2}/${close2})`)
+  ok(!/undefined|NaN/.test(src), 'T11c gable emission clean')
+}
+
 console.log(fails === 0 ? '\nALL PASS' : `\n${fails} FAILURES`)
 process.exit(fails === 0 ? 0 : 1)
