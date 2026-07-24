@@ -1299,6 +1299,22 @@ Guidelines are RANGES, not values — `arch.pointiness [0.78,0.95]` (0.87 =
 equilateral) — a seeded rng resolves them per building: same seed = same
 building, new seed = a sibling within your rules. YOUR ranges are your style;
 the tool prescribes none.
+**GROWN RIGS — `web/src/lib/grow-rig.mjs` (creatures that pose themselves):**
+`growDemonRig(guidelines)` grows an articulated body whose joints are
+FUNCTIONS of (time, seed): breath, hip sway, planted feet via closed-form
+two-bone IK (targets clamped to chain reach — unreachable targets stretch
+limbs), claw flex, tail lash. Grotesquerie is the grammar: `hunch`,
+`armReach`, digitigrade `hockHeight`, `ribs`, `hornCurl`, `asym` (seeded
+per-side jitter). ONE TRUTH architecture: all coordinate math lives in
+poseJoints(); the body is a pure connectivity TABLE between named joints —
+JS preview and `emitRigWGSL(P, name, prims)` walk the same table, emitting
+`fn name(p, time, seed) -> f32` that animates itself in the uber-shader.
+A bounded displacement pass (|amp| <= 0.04, marcher-safe) gives hide
+texture; do surface/albedo detail in your scene visual's material branch.
+Proofs: `node tools/grow-rig.test.mjs` (IK exactness, no teleports, planted
+feet, bounded displacement, emission lint). First deployment: VEILFIRE's
+demons (Jul 24) — flipped to face -z, ember-crack crust in vf_scene.
+
 **LIVE GROWTH — buildings that build themselves:** add `"growUniform": 38`
 (+ optional `"cellStagger": 0.6`) and the module reads `uni(38)` as
 construction progress 0→1: elements swell in, in construction order, bays
