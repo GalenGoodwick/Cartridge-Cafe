@@ -47,7 +47,7 @@ export function flameRay(flame) {
 /** Fresh game state. Deterministic — no RNG, so ticks replay exactly in tests. */
 export function initVigilState() {
   return {
-    v: 1,
+    v: 2,
     t: 0,
     flame: { pos: [0, 1, 4], aim: [0, 0, 1] },
     watchers: [

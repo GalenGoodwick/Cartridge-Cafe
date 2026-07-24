@@ -203,7 +203,7 @@ const EMBED = [
 export const HOOK = `try {
 ${EMBED}
   const wd = sim.worldData;
-  if (!wd.__vg || wd.__vg.v !== 1) wd.__vg = initVigilState();
+  if (!wd.__vg || wd.__vg.v !== 2) wd.__vg = initVigilState();
   const G = wd.__vg;
   const step = Math.min(dt, 1/30);
 

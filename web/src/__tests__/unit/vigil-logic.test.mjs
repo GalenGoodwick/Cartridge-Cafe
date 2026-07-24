@@ -7,7 +7,7 @@ const noInput = { moveX: 0, moveZ: 0, aimX: 0, aimZ: 0 }
 describe('initVigilState', () => {
   it('is a clean, versioned, deterministic world', () => {
     const G = initVigilState()
-    expect(G.v).toBe(1)
+    expect(G.v).toBe(2)
     expect(G.panes.length).toBe(3)
     expect(G.win).toBe(0)
     // deterministic: two fresh states are identical

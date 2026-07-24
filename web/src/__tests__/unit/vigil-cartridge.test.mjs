@@ -28,7 +28,7 @@ describe('VIGIL hook — the stringified-and-shipped code actually runs', () => 
       // channel rather than pre-seeding a field the hook would overwrite.)
       mouse_x: 384, mouse_y: 256,
       __vg: {
-        v: 1, t: 0,
+        v: 2, t: 0,
         flame: { pos: [-2, 1, 8], aim: [1, 0, 0] },
         watchers: [{ origin: [0, 5, 8], base: [0, -1, 0], amp: 0, rate: 0, phase: 0 }],
         panes: [{ id: 0, origin: [-1, 1, 7], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0 }],
