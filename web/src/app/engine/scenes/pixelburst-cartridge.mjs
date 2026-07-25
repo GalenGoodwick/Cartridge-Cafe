@@ -1,17 +1,18 @@
 // PIXELBURST — a cartridge.cafe port of the 5 Espers "PixelFX" effect.
 //
-// The original (5 Espers Autonomous War, src/render/PixelFX.ts) is a Canvas-2D
-// system: it reads the rendered terrain with getImageData, launches each pixel
-// on a parabolic arc, morphs it terrain → white-hot → ember, and putImageData's
-// the result onto an overlay. "The terrain itself IS the source material."
+// The original (5 Espers, src/render/PixelFX.ts) is Canvas-2D: it reads the
+// rendered terrain with getImageData, launches each pixel on an arc, morphs it
+// terrain → white-hot → ember, and putImageData's an overlay. "The terrain
+// itself IS the source material."
 //
-// This port makes the pixels REAL: each launched terrain block is a live entity
-// in the population buffer (worldData.gpuPopulation → pop(i)/popCount()), with
-// its own arc + gravity. The step hook IS the particle simulation; the shader
-// just draws pop(i) blocks. One truth, two callers: surfH() in the hook mirrors
-// mod_pb_h() in the shader, so blocks launch from exactly the rendered ground.
+// This port makes the pixels REAL and REVERSIBLE: the terrain's own blocks lift
+// off their home cells as live entities in the population buffer, glow ember at
+// the apex, then fall back to EXACTLY their home and dissolve into the terrain.
+// Not a fountain of replacements — a reversible eruption that heals. The step
+// hook IS the sim; the shader draws pop(i) blocks. surfH() mirrors mod_pb_h() so
+// blocks leave exactly the rendered ground line (one truth, two callers).
 //
-//   WHITEBOARD: 0 t · 7 blockSize · 8 craterX · 9 craterY · 10 craterR
+//   WHITEBOARD: 0 t · 7 blockSize · 8 craterX · 9 craterY · 10 craterR*openness
 //   Run:  PB_TOKEN=uc_st_... node pixelburst-cartridge.mjs
 
 const TOKEN = process.env.PB_TOKEN
@@ -27,7 +28,6 @@ async function send(cmd, label) {
   return JSON.parse(t)
 }
 
-// ─────────────────────────────────────────── PARENT module: pb_lib ──
 const LIB = /* wgsl */`
 fn mod_pb_hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
 fn mod_pb_vnoise(p: vec2f) -> f32 {
@@ -51,8 +51,6 @@ fn mod_pb_terrain(px: vec2f, t: f32) -> vec3f {
 }
 `
 
-// base terrain — carves a dark crater where a burst is active so the blocks
-// really look like they LEFT the ground (uni: 8 craterX · 9 craterY · 10 craterR)
 const TERRAIN = /* wgsl */`
 fn visual_pbterrain(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let bs = max(uni(7), 1.0);
@@ -70,8 +68,6 @@ fn visual_pbterrain(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f,
 }
 `
 
-// the burst field — draws every flying block from the population buffer.
-// pop(i) = (x, y, heat, halfSize); a block is a chebyshev square at (x,y).
 const BURST = /* wgsl */`
 fn visual_pixelburst(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
   let px = (uv * 0.5 + 0.5) * 512.0;
@@ -85,68 +81,66 @@ fn visual_pixelburst(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f
       var cc = mix(vec3f(0.5, 0.36, 0.26), vec3f(1.0, 0.85, 0.5), clamp(heat * 1.8, 0.0, 1.0));
       cc = mix(cc, vec3f(0.96, 0.30, 0.09), clamp((heat - 0.45) * 1.9, 0.0, 1.0));
       col = cc;
-      a = 1.0;
+      a = clamp(heat * 4.0, 0.0, 1.0);   // fade IN off the ground, OUT as it lands
     }
   }
   return vec4f(col, a);
 }
 `
 
-// the step hook IS the particle simulation
 const HOOK = `
 try {
   const wd = sim.worldData
   const surfH = (x) => 300 + 42*Math.sin(x*0.013+0.7) + 20*Math.sin(x*0.031+2.1) + 9*Math.sin(x*0.07+4.0)
-  if (!wd.__pb) wd.__pb = { t:0, parts:[], bs:8, idle:0, seeded:0, crT:0, crX:256, crR:0 }
+  if (!wd.__pb || wd.__pb.ver !== 3) wd.__pb = { ver:3, t:0, parts:[], bs:8, idle:0, seeded:0, bx:256, ba:99, bdur:1, bR:90 }
   const G = wd.__pb
   const step = Math.min(dt, 1/30)
   G.t += step
   const bs = G.bs
   const burst = (cx) => {
     const R = 90
-    G.crX = cx; G.crR = R; G.crT = 0.5
+    G.bx = cx; G.ba = 0; G.bdur = 1.15; G.bR = R
     for (let x = cx - R; x <= cx + R; x += bs) {
       if (x < 4 || x > 508) continue
       const prox = 1 - Math.min(1, Math.abs(x - cx)/R)
       if (prox <= 0.05) continue
-      const surf = surfH(x)
+      const home = surfH(x)
       const layers = 1 + (Math.random() < prox ? 1 : 0)
       for (let k = 0; k < layers; k++) {
-        const jx = x + (Math.random()-0.5)*bs
-        const speed = (2.4 + Math.random()*2.8) * (0.45 + prox)
-        const ang = -Math.PI/2 + ((jx - cx)/R) * 0.85 + (Math.random()-0.5)*0.4
-        G.parts.push({ x: jx, y: surf + k*bs, vx: Math.cos(ang)*speed, vy: Math.sin(ang)*speed*1.25, age: 0, life: 0.75 + Math.random()*0.6 })
+        G.parts.push({ hx: x + (Math.random()-0.5)*bs, hy: home + k*bs, a: 0, dur: 0.8 + Math.random()*0.5, peak: (26 + Math.random()*90)*(0.4+prox), wob: (Math.random()-0.5)*34 })
       }
     }
-    if (G.parts.length > 500) G.parts = G.parts.slice(-500)
+    if (G.parts.length > 600) G.parts = G.parts.slice(-600)
   }
-  if (!G.seeded) { G.seeded = 1; burst(210); burst(330) }
+  if (!G.seeded) { G.seeded = 1; burst(230) }
   const ptr = (wd.input && wd.input.pointer) || {}
   if (ptr.pressed) burst(ptr.x)
   G.idle += step
-  if (G.idle > 1.6) { G.idle = 0; burst(110 + 300*Math.abs(Math.sin(G.t*0.7))) }
-  G.crT = Math.max(0, G.crT - step)
+  if (G.idle > 2.4) { G.idle = 0; burst(110 + 300*Math.abs(Math.sin(G.t*0.7))) }
+  G.ba += step
+  const bn = Math.min(1, G.ba / G.bdur)
+  const openness = (G.ba < G.bdur) ? 4*bn*(1-bn) : 0
   const out = []
   const alive = []
   for (const p of G.parts) {
-    p.age += step
-    if (p.age >= p.life) continue
-    p.vy += 9.5 * step
-    p.x += p.vx * step * 60
-    p.y += p.vy * step * 60
-    const heat = Math.min(1, (p.age / p.life) * 1.4)
+    p.a += step
+    if (p.a >= p.dur) continue           // arrived home → terrain again, drop it
+    const n = p.a / p.dur
+    const arc = 4*n*(1-n)                // 0 → 1 → 0: up, then exactly back home
+    const x = p.hx + p.wob * Math.sin(n*Math.PI)
+    const y = p.hy - p.peak * arc
     alive.push(p)
-    out.push(p.x, p.y, heat, bs * 0.5)
+    out.push(x, y, arc, bs*0.5)          // heat = arc (cool at ends, ember at apex)
   }
   G.parts = alive
   wd.gpuPopulation = out
-  const uni = []; uni[0] = G.t; uni[7] = bs; uni[8] = G.crX; uni[9] = surfH(G.crX); uni[10] = (G.crT > 0 ? G.crR : 0)
-  for (let i = 0; i < 11; i++) if (uni[i] == null) uni[i] = 0
+  const uni = []; uni[0]=G.t; uni[7]=bs; uni[8]=G.bx; uni[9]=surfH(G.bx); uni[10]=G.bR*openness
+  for (let i=0;i<11;i++) if (uni[i]==null) uni[i]=0
   wd.gpuUniforms = uni
 } catch (e) {}
 `
 
-const INSTRUCTIONS = 'PIXELBURST — tap the ground: terrain pixels DETACH off the grid, arc up, morph ember, and fall. Real particles (the population buffer). Port of 5 Espers PixelFX.'
+const INSTRUCTIONS = 'PIXELBURST — tap the ground: terrain pixels lift off, glow ember at the top, and settle back into place. Port of 5 Espers PixelFX.'
 
 async function main() {
   await send([
@@ -162,10 +156,10 @@ async function main() {
     if ((st.fields || []).some(f => f.name === name)) return
     await send({ type: 'create_field', name, shape: 'rect', x: 256, y: 256, width: 512, height: 512, visualType, color: [0.02, 0.03, 0.06, 1], noHit: true }, 'field ' + name)
   }
-  await ensureField('Terrain', 'pbterrain')   // field 0 — the ground
-  await ensureField('Burst', 'pixelburst')     // field 1 — flying blocks, alpha over terrain
+  await ensureField('Terrain', 'pbterrain')
+  await ensureField('Burst', 'pixelburst')
 
-  await send({ type: 'add_step_hook', hookId: 'pixelburst', author: 'Claude Opus 4.8', description: 'PIXELBURST: real particle sim — blocks detach off the grid, arc, gravity, ember; tap or auto-pulse', code: HOOK }, 'hook')
+  await send({ type: 'add_step_hook', hookId: 'pixelburst', author: 'Claude Opus 4.8', description: 'PIXELBURST: reversible particle sim — terrain blocks lift off and settle back home; tap or auto-pulse', code: HOOK }, 'hook')
   await send({ type: 'set_world_data', data: { postProcess: { bloomIntensity: 0.5, bloomThreshold: 0.6, exposure: 1.05, vignetteStrength: 0.3, vignetteRadius: 0.85 } } }, 'post')
 
   const v = await fetch(URL, { headers: { Authorization: `Bearer ${TOKEN}` } }).then(r => r.json())
