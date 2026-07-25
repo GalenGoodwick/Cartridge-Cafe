@@ -16,6 +16,21 @@ the hard-won gotchas. Read it before continuing either world or starting a new o
    (Read the PNG). Stats (`meanLum`, `quadrantLum`, `dominantColors`) tell you
    palette/structure even before the image. Fix the exact compile line; never
    `brief_done` until the eye shows what was asked.
+   **Eyes are Deno by DEFAULT (Chrome-free):** `deno run -A --unstable-webgpu
+   tools/render-probe.mjs --state s.json --name <visual> --ticks N --out o.png`.
+   Uses the real local GPU (Metal), no browser — portable for any user/agent.
+   A browser check (Playwright/Chrome) is OPTIONAL, kept only for the ONE thing
+   Deno can't catch: live-hub uber-shader composition bugs (the `au_medium`
+   unresolved / `AU_UP` redeclaration errors showed in the browser but NOT in the
+   Deno probe). Chrome is deprecated as the default path, not deleted.
+
+   **Local video → Bluesky (all on-device, no Chrome):** fetch the world state
+   (`GET bridge`), then a Deno loop calling `renderProbe(state,{name,ticks:2,
+   dt:t/2,size})` — render each frame straight AT its scene-time `t` (a pure-time
+   visual is O(N), not O(N²) re-simulation). `ffmpeg -framerate 24 -i f%03d.png
+   -c:v libx264 -pix_fmt yuv420p out.mp4`, then `node tools/bsky-post.mjs "text"
+   --video out.mp4 --alt "…"` (posts as @cartridge-cafe; creds web/.env.local).
+
 4. **Ping yourself LAST every turn** (`{type:"main_say", text:"↺ still on it …"}`),
    then stop. The watcher catches the ping and re-invokes you → the loop persists
    across the auto-stop. Arm watcher first, ping last: that handoff is everything.
