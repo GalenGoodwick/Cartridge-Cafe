@@ -167,7 +167,8 @@
         "render-verified": "pending",
         "budget-verified": "pending"
       },
-      "statusNote": "tests failed"
+      "statusNote": "tests failed",
+      "version": 2
     },
     {
       "id": "enemies",
