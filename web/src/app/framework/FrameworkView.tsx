@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import ShaderFrame from '@/app/pages/ShaderFrame'
 import { SEED_EMBER } from '@/app/pages/frame-shader'
 import {
-  FRAME_FIELD, FRAME_PIXEL, FRAME_WHITEBOARD, FRAME_CARTRIDGE, FRAME_BRIDGE,
+  FRAME_FIELDPIXEL, FRAME_WHITEBOARD, FRAME_CARTRIDGE, FRAME_BRIDGE,
   FRAME_EYES, FRAME_COMMONS, FRAME_WORKTREE, FRAME_HUB, FRAME_ARENA,
 } from './frames'
 
@@ -144,38 +144,22 @@ type Tab = {
 
 const TABS: Tab[] = [
   {
-    id: 'field', label: 'Field', tag: '01 · the field', title: 'The world is a field of cells.',
-    essence: 'No scene graph, no meshes — a world is a set of fields painted by shaders over one 512×512 grid.',
-    frame: FRAME_FIELD,
+    id: 'field', label: 'Fields · Pixels', tag: '01 · fields & pixels', title: 'Fields are shaders painting pixels.',
+    essence: 'The world is one 512×512 field of cells; every field is a shader that paints onto those pixels — and the pixels are the source of truth.',
+    frame: FRAME_FIELDPIXEL,
     body: [
-      'A field is a named entity with a transform, a color, and a shape — but it is invisible until it has a shader. The shader itself defines the field’s silhouette through its alpha; the engine just runs it over the grid of cells the field covers.',
-      'Shaders address each cell in region-relative space, so the same code fills any rectangle it lands in. Alongside the GPU field sits a CPU model — a spatial hash for collision and proximity — so the world both looks alive and behaves.',
+      'A field is a named entity with a transform and a shape, but it is invisible until it has a shader. That shader runs over the cells the field covers and defines its silhouette through alpha — so a field is literally pixels, computed. Fields superimpose: a visual receives whatever has already been rendered beneath it (the behind sample), so glass, glow and shadow read the layer below instead of faking it.',
+      'Every visual composes into one WGSL uber-shader, and because the render is authoritative, collision is pixel-perfect: the GPU reads back a per-cell field-index hit-map rather than guessing with bounding boxes. The canonical demo defines terrain height once in WGSL and calls the same math from the JS step hook — one truth, two callers — so the mountain you see is exactly the mountain the ball hits.',
     ],
     points: [
-      ['cell', 'one pixel of the 512×512 render grid'],
-      ['field', 'transform + color + shapeType, drawn by a shader'],
-      ['region', 'a field’s bounding box — its shader’s canvas'],
-    ],
-    term: 'regionUV(cellPos, regionMin, regionMax) → 0..1',
-    files: ['engine/FieldEngine.tsx', 'engine/simulation.ts', 'engine/types.ts'],
-    ai: 'An AI reasons about a world as data, not as pixels on a canvas: a field is a few numbers plus a shader. It can add, move, or restyle a field by writing values — no asset pipeline, no draw calls to juggle — so a model authors and edits worlds purely in text.',
-  },
-  {
-    id: 'pixel', label: 'Pixel-First', tag: '02 · pixel-first rendering', title: 'The pixels are the source of truth.',
-    essence: 'Every visual composes into a single WGSL “uber-shader”, and collision is read back from the very pixels it draws.',
-    frame: FRAME_PIXEL,
-    body: [
-      'A visual is a function — visual_NAME(uv, sdf, color, time, params, behind) — and reusable helpers carry the mod_ prefix. They all compile into one module; a standalone @fragment shader is rejected because everything must compose. A fault-isolating compile quarantines a broken visual so one bad shader can’t take the world down.',
-      'Because the render is authoritative, hit-testing is pixel-perfect: the GPU reads back a per-cell field-index hit-map instead of guessing with bounding boxes. The canonical demo defines terrain height once in WGSL and calls the same math from the JS step hook — one truth, two callers — so the mountain you see is exactly the mountain the ball collides with.',
-    ],
-    points: [
-      ['uber-shader', 'all visuals composed into one WGSL module'],
-      ['readback', 'collision from the rendered hit-map, not boxes'],
-      ['one truth', 'render and collide share the same math'],
+      ['cell', 'one pixel of the 512×512 grid — the substrate'],
+      ['field', 'a shader painting onto cells (invisible without one)'],
+      ['superimpose', 'a visual samples what is rendered behind it'],
+      ['readback', 'collision from the rendered pixels, not boxes'],
     ],
     term: 'visual_NAME(uv, sdf, color, time, params, behind)',
-    files: ['engine/renderer.ts', 'engine/shaders.ts', 'scenes/cinderfell-cartridge.mjs'],
-    ai: 'Because the render is the source of truth, an AI never keeps a separate physics model in sync with the art. Write one shader and collision follows from it — a single artifact to reason about — and the AI can literally SEE the result (the eyes) to check itself instead of trusting that tests covered it.',
+    files: ['engine/FieldEngine.tsx', 'engine/shaders.ts', 'engine/renderer.ts', 'engine/SUPERIMPOSITION.md'],
+    ai: 'One substrate, one truth. An AI writes a shader and gets the look, the silhouette and the collision from the same pixels — nothing to keep in sync — and it can SEE the result to check itself. Fields compose by superimposition, so a model builds complex scenes by stacking simple shaders instead of wiring a scene graph.',
   },
   {
     id: 'whiteboard', label: 'Whiteboard', tag: '03 · the whiteboard', title: 'One shared memory between logic and pixels.',
@@ -333,7 +317,7 @@ const TABS: Tab[] = [
 ]
 
 const GROUPS: { label: string; ids: string[] }[] = [
-  { label: 'the engine', ids: ['field', 'pixel', 'whiteboard', 'cartridge'] },
+  { label: 'the engine', ids: ['field', 'whiteboard', 'cartridge'] },
   { label: 'the ai layer', ids: ['bridge', 'eyes', 'commons'] },
   { label: 'the swarm', ids: ['graph', 'worktree'] },
   { label: 'live worlds', ids: ['hub', 'arena'] },
@@ -440,7 +424,7 @@ export default function FrameworkView() {
         <Reveal><p className="font-mono text-[12px] tracking-[0.34em] text-flame/90 uppercase mb-5">a different model of coding</p></Reveal>
         <Reveal delay={80}>
           <h1 className="font-sans font-extrabold leading-[0.98] tracking-[-0.02em] text-[40px] sm:text-[60px] text-steamer">
-            Eleven pieces.<br className="hidden sm:block" /> <span className="text-glow">One machine</span> for AI-built worlds.
+            Ten pieces.<br className="hidden sm:block" /> <span className="text-glow">One machine</span> for AI-built worlds.
           </h1>
         </Reveal>
         <Reveal delay={160}>

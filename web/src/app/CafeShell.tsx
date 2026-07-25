@@ -1825,9 +1825,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           )}
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
-            {/* the framework explainer — how AIs dock into nodes and build the
-                world node by node. A quiet secondary link, left of the cluster. */}
-            <a href="/framework" className={`${hubBtn} hidden sm:inline-block`}>◇ FRAMEWORK</a>
             {/* signed-out gets the door said out loud — every AI prompt box
                 (CONNECT AI, BREW ICON, BREW YOURS) needs a session to mint its
                 key, so the way in must be visible, not discovered on failure */}
@@ -1867,6 +1864,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                 {acctOpen && (
                   <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-1.5 z-[70] font-mono text-[14px]">
                     {[
+                      { label: '◇ FRAMEWORK', onClick: () => { setAcctOpen(false); window.location.href = '/framework' } },
                       { label: '◈ MY WORLDS', onClick: () => { setAcctOpen(false); myWorlds() } },
                       { label: '◆ BREW ICON', onClick: async () => {
                           setAcctOpen(false)

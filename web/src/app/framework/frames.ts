@@ -4,6 +4,34 @@
 // <ShaderFrame>. Built only from utilities proven to compile in the SEED_*
 // frames — regionUV, fbm, warp, hash11, hash21 — plus WGSL builtins.
 
+// 01 · FIELDS · PIXELS — a visible pixel substrate; a field painted onto it,
+// and a second field SUPERIMPOSED (it samples what's rendered behind and tints
+// it, like glass) — the unified "fields are shaders painting pixels" idea.
+export const FRAME_FIELDPIXEL = /* wgsl */ `
+fn fieldEffect(cellPos: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f {
+  let uv = regionUV(cellPos, regionMin, regionMax);
+  let px = 24.0;
+  let q = (floor(uv * px) + 0.5) / px;
+  var col = mix(vec3f(0.05, 0.07, 0.11), vec3f(0.02, 0.03, 0.06), q.y);
+  let f = fract(uv * px);
+  let cellIn = smoothstep(0.0, 0.08, f.x) * smoothstep(0.0, 0.08, 1.0 - f.x) * smoothstep(0.0, 0.08, f.y) * smoothstep(0.0, 0.08, 1.0 - f.y);
+  col += vec3f(0.15, 0.30, 0.40) * (1.0 - cellIn) * 0.10;
+  let da = distance(q, vec2f(0.40, 0.52));
+  let fieldA = smoothstep(0.20, 0.18, da);
+  col = mix(col, vec3f(0.2, 0.9, 0.6), fieldA * 0.9);
+  let bx = 0.60 + 0.06 * sin(time * 0.8);
+  let rq = max(abs(q.x - bx) - 0.16, abs(q.y - 0.5) - 0.13);
+  let fieldB = smoothstep(0.01, -0.01, rq);
+  let behind = col;
+  let glass = mix(behind, behind * vec3f(1.2, 0.7, 0.4) + vec3f(0.25, 0.10, 0.0), 0.6);
+  col = mix(col, glass, fieldB);
+  col += vec3f(1.0, 0.6, 0.25) * smoothstep(0.012, 0.0, abs(rq)) * 0.5;
+  let sy = fract(time * 0.3);
+  col += vec3f(0.3, 1.0, 0.65) * smoothstep(0.012, 0.0, abs(uv.y - sy)) * 0.35;
+  return vec4f(col, 1.0);
+}
+`
+
 // 01 · FIELD — a grid of cells with two shader-painted fields (circle + rect)
 export const FRAME_FIELD = /* wgsl */ `
 fn fieldEffect(cellPos: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f {
