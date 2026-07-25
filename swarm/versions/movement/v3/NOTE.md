@@ -1,0 +1,1 @@
+v3 (2026-07-25): pointer-lock mouse-look. Uses engine input.lookX/lookY (relative deltas from pointer-lock, shipped in FieldEngine gated by __mouseLook) summed with the absolute-pointer fallback. Un-reversed yaw. Needs the engine pointer-lock (main b855677) + worldData.__mouseLook.

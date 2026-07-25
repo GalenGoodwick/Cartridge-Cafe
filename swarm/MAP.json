@@ -139,7 +139,7 @@
         "collision-verified": "wall-slide AABB mirror of rooms extents; clamps before far wall (≤8.6), no tunneling"
       },
       "statusNote": "green (eye + unit)",
-      "version": 2
+      "version": 3
     },
     {
       "id": "renderer-mega",

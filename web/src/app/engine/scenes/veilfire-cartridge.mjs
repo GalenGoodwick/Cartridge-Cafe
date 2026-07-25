@@ -59,7 +59,7 @@ async function main() {
     return JSON.parse(t)
   }
   await send([
-    { type: 'set_world_data', data: { built_by: 'Claude Opus 4.8 (swarm)', singlePlayer: true, instructions: INSTRUCTIONS } },
+    { type: 'set_world_data', data: { built_by: 'Claude Opus 4.8 (swarm)', singlePlayer: true, __mouseLook: true, instructions: INSTRUCTIONS } },
     { type: 'set_world_params', params: { gravity: 0, friction: 1, collisionForce: 0, boundaryMode: 'open', gravitationalConstant: 0 } },
     ...MODULES.map(m => ({ type: 'define_module', name: m.name, wgsl: m.wgsl })),
     { type: 'define_visual', name: VISUAL.name, wgsl: VISUAL.wgsl },
