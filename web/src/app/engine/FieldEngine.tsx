@@ -2775,9 +2775,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
     }
     const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
+    const onErr = () => { /* a rejected lock (cooldown) just means: click again */ }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('pointerlockchange', onLock) }
+    document.addEventListener('pointerlockerror', onErr)
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onErr) }
   }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -2806,7 +2808,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // the cursor hides and the mouse gives unbounded relative deltas (an FPS
     // can't turn past the screen edge otherwise). Must be from this user gesture.
     if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
-      try { canvas.requestPointerLock() } catch { /* not supported */ }
+      // unadjustedMovement = RAW deltas (no OS mouse-acceleration) → a consistent
+      // 1:1 turn. Fall back to a plain lock if the option/API is unsupported, and
+      // swallow the rejection browsers throw for the ~1s cooldown after an Esc
+      // unlock (the next click re-locks).
+      try {
+        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
+        const rq = rpl.call(canvas, { unadjustedMovement: true })
+        if (rq && typeof (rq as Promise<void>).catch === 'function') {
+          (rq as Promise<void>).catch(() => { try { canvas.requestPointerLock() } catch { /* noop */ } })
+        }
+      } catch { try { canvas.requestPointerLock() } catch { /* noop */ } }
     }
 
     // 3D mode: right-click or alt+click = orbit camera
