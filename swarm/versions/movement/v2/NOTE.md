@@ -1,1 +1,1 @@
-v2 (2026-07-25): FPS controls — mouse-look (yaw+pitch delta), A/D strafe, Space jump (gravity+ground), column collision blockers. Eye: eye.png. Unit: strafe/forward/jump/look/fire-on-click all pass.
+v2 (2026-07-25): FPS controls — mouse-look (yaw+pitch delta, yaw un-reversed), A/D strafe, Space jump (gravity+ground), column collision blockers. NOTE: true continuous mouse-look + hidden cursor need engine pointer-lock (FieldEngine, not this node).

@@ -41,7 +41,7 @@ export function movement(sim, dt) {
   if (V.lx == null) { V.lx = ptr.x != null ? ptr.x : 256; V.ly = ptr.y != null ? ptr.y : 256 }
   const px = ptr.x != null ? ptr.x : V.lx, py = ptr.y != null ? ptr.y : V.ly
   const sens = 0.006
-  V.yaw += (px - V.lx) * sens
+  V.yaw -= (px - V.lx) * sens   // mouse right → look right (was reversed)
   V.pitch = Math.max(-1.2, Math.min(1.2, V.pitch - (py - V.ly) * sens))
   V.lx = px; V.ly = py
 
