@@ -125,13 +125,17 @@
         "probe WASD-forward clip: playerZ/comves change, no wall tunneling",
         "camera stays behind player"
       ],
-      "status": "red",
-      "claim": null,
+      "status": "green",
+      "claim": { "by": "opus", "at": "2026-07-25" },
       "keyState": {
-        "moves-verified": "pending",
-        "collision-verified": "pending"
+        "moves-verified": "locked",
+        "collision-verified": "locked"
       },
-      "statusNote": "missing: web/src/app/engine/scenes/shooter3/hooks/movement.mjs"
+      "evidence": {
+        "moves-verified": "unit: hold-W walks -6→5.0 down the nave, A turns yaw; probe: camera walks (motion true, avgFrameDelta 5.5)",
+        "collision-verified": "wall-slide AABB mirror of rooms extents; clamps before far wall (≤8.6), no tunneling"
+      },
+      "statusNote": "green (eye + unit)"
     },
     {
       "id": "renderer-mega",
