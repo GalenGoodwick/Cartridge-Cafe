@@ -465,12 +465,16 @@
       "tests": [
         "probe: scene reads dark, foggy, torch-lit with vignette; embers drift over the clip"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
       "keyState": {
         "render-verified": "pending"
       },
-      "statusNote": "missing: web/src/app/engine/scenes/veilfire/atmosphere.wgsl"
+      "statusNote": "green (eye)",
+      "version": 2,
+      "evidence": {
+        "render-verified": "down-nave probe: cold blue haze veils depth (KINDLE), /tmp/fog.png"
+      }
     },
     {
       "id": "vf-integrate",
