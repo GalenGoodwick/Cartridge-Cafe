@@ -23,6 +23,12 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
+    // A page purchase buys permanent hosting for one slug — take it live the
+    // instant Stripe confirms, so the buyer's redirect lands on a live page.
+    if (meta.product === 'page' && meta.slug) {
+      const { finalizePagePublish } = await import('@/lib/pages')
+      await finalizePagePublish(meta.slug)
+    }
     // the nervous system hears the till ring — platform news, no personal data
     void commonsBus({ kind: 'system', who: 'cafe', text: `✧ a "${meta.product}" purchase just completed — the cafe is earning` })
   } else if (

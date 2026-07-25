@@ -20,10 +20,19 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   ads: { env: 'STRIPE_PRICE_ADS', mode: 'subscription', label: 'contained ad slot ($/mo)' },
   protect: { env: 'STRIPE_PRICE_PROTECT', mode: 'payment', label: 'pay-to-protect a world' },
   slots: { env: 'STRIPE_PRICE_SLOTS', mode: 'subscription', label: 'pro world slots' },
+  // one-time $10 to publish a cafe page to permanent hosting at /p/<slug>.
+  // Scoped to the slug (Entitlement.slug) so a purchase buys exactly one address.
+  page: { env: 'STRIPE_PRICE_PAGE', mode: 'payment', label: 'publish a page — permanent hosting ($10)' },
 }
 
 export function stripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY
+}
+
+/** Is a single product wired (its price id present)? */
+export function isProductConfigured(key: string): boolean {
+  const p = PRODUCTS[key]
+  return !!p && !!process.env[p.env]
 }
 
 /** Products that are actually sellable right now (key + price id present). */
@@ -44,12 +53,20 @@ export async function createCheckoutSession(
   const price = product ? process.env[product.env] : undefined
   if (!product || !price) return { error: `unknown or unconfigured product "${productKey}"`, status: 400 }
 
+  // A page purchase returns to the composer, which polls until the webhook has
+  // flipped it live; other products land on the front door.
+  const success = productKey === 'page'
+    ? `${origin}/pages?paid=page`
+    : `${origin}/?paid=${productKey}`
+  const cancel = productKey === 'page'
+    ? `${origin}/pages?paycancel=page`
+    : `${origin}/?paycancel=${productKey}`
   const form = new URLSearchParams({
     mode: product.mode,
     'line_items[0][price]': price,
     'line_items[0][quantity]': '1',
-    success_url: origin + '/?paid=' + productKey,
-    cancel_url: origin + '/?paycancel=' + productKey,
+    success_url: success,
+    cancel_url: cancel,
     'metadata[userId]': userId,
     'metadata[product]': productKey,
     ...(slug ? { 'metadata[slug]': slug } : {}),
