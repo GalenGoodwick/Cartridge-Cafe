@@ -19,29 +19,14 @@ describe('VIGIL hook — the stringified-and-shipped code actually runs', () => 
     expect(sim.worldData.gpuUniforms[40]).toBe(24)
   })
 
-  it('the EMBEDDED tested logic flips a pane live and publishes the new rule code', () => {
-    // Seed a contrived, already-armed state (v:1 so the hook keeps it):
-    // one Watcher gazing straight down onto pane0, flame light crossing through it.
-    const sim = fakeSim({
-      // cursor right-of-centre → the hook aims the flame light toward +x, through
-      // the gaze at [0,1,8]. (The hook owns aim from input — the test drives that
-      // channel rather than pre-seeding a field the hook would overwrite.)
-      mouse_x: 384, mouse_y: 256,
-      __vg: {
-        v: 2, t: 0,
-        flame: { pos: [-2, 1, 8], aim: [1, 0, 0] },
-        watchers: [{ origin: [0, 5, 8], base: [0, -1, 0], amp: 0, rate: 0, phase: 0 }],
-        panes: [{ id: 0, origin: [-1, 1, 7], uAxis: [2, 0, 0], vAxis: [0, 0, 2], rule: 'floor', lit: 0, flipped: 0 }],
-        reliquaryZ: 24, win: 0, events: [],
-      },
-    })
-    runHook(sim, 1 / 60)
+  it('the EMBEDDED logic advances the flame along the walkway and publishes pane centres', () => {
+    const sim = fakeSim()
+    for (let i = 0; i < 400; i++) { sim.worldData.key_w = true; runHook(sim, 1 / 60) }
     expect(sim.worldData.last_hook_error).toBeUndefined()
-    expect(sim.worldData.__vg.panes[0].rule).toBe('door') // floor → door, live
-    // pane0 published at 28..31: cx,cz,lit,ruleCode → ruleCode 1 = door
+    expect(sim.worldData.__vg.flame.pos[2]).toBeGreaterThan(3.5) // moved forward from start z=3
     const u = sim.worldData.gpuUniforms
-    expect(u[28 + 2]).toBe(1) // lit
-    expect(u[28 + 3]).toBe(1) // door
+    expect(Math.abs(u[28] - 0)).toBeLessThan(0.01)    // pane0 centre x ≈ 0
+    expect(Math.abs(u[29] - 8.5)).toBeLessThan(0.01)  // pane0 centre z ≈ 8.5
   })
 
   it('survives 300 ticks of driven input without throwing', () => {

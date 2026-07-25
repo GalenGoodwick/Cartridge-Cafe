@@ -1,43 +1,28 @@
-// collision.mjs — the player cannot pass through solid cathedral geometry.
+// collision.mjs — the player is confined to the central WALKWAY and cannot pass
+// through its walls, the reliquary, or off its ends. Mirrors the shader's vg_map
+// solids (the CINDERFELL mod_cf_h one-truth); keep the numbers in sync.
 //
-// JS MIRROR of the shader's vg_map solids (the CINDERFELL mod_cf_h one-truth
-// discipline): columns, Watchers, the reliquary, the back wall, and the world
-// bounds. It MUST stay in sync with vigil-cartridge LIB `vg_map` — same numbers.
-// Collision is resolved at the walking plane (y ≈ 1); the central chasm (|x|<3)
-// is intentionally NOT solid — you can step over it onto a lit pane, and fall if
-// there is none (that is footing, handled in the mechanic).
+// The walkway is narrow (|x| ≤ 2.6), flanked by colonnade walls. The two GAPS in
+// it are NOT handled here — they are dynamic (crossable only where a Watcher's
+// gaze lights the pane), so the mechanic gates them via `gapBlocked` (vigil-puzzle).
 
-// Column rows repeat every 6 in z (rows at z = 2,8,14,20), on both sides x=±6.
-function nearestColumnZ(z) {
-  return Math.min(Math.max(Math.round((z - 2) / 6), 0), 4) * 6 + 2
-}
-
-const WATCHERS = [[-6, 8], [6, 14], [-6, 20]]
-
-/** Is (x,z) inside a solid obstacle or outside the walkable bounds, at y≈1? */
+/** Is (x,z) a solid wall / off the walkway / inside the reliquary, at y≈1? */
 export function solidAt(x, z) {
-  // world bounds: ledges span x∈[-9,9]; nave z∈[0,25.5] (back wall at z=26)
-  if (Math.abs(x) > 9 || z < 0 || z > 25.5) return true
-  // columns at x=±6, nearest row in z (0.9 footprint)
-  const cz = nearestColumnZ(z)
-  if (Math.hypot(x - 6, z - cz) < 0.9 || Math.hypot(x + 6, z - cz) < 0.9) return true
-  // Watchers
-  for (const [wx, wz] of WATCHERS) if (Math.hypot(x - wx, z - wz) < 0.8) return true
-  // reliquary at (0, 24)
-  if (Math.abs(x) < 1.2 && Math.abs(z - 24) < 1.0) return true
+  if (z < -1 || z > 25.5) return true                          // ends of the nave
+  if (Math.abs(x) > 2.6) return true                           // walkway walls (colonnade sides)
+  if (Math.abs(x) < 1.2 && Math.abs(z - 24) < 1.0) return true // the reliquary ark
   return false
 }
 
 /**
- * Resolve a move from (ox,oz) → (nx,nz) against the solids: take the full move
- * if clear; else slide along whichever axis is clear (so you scrape past a
- * column instead of sticking); else stay put. Returns the resolved [x, z].
- * `extra` is an optional predicate for DYNAMIC solids (e.g. a locked door).
+ * Resolve a move (ox,oz)→(nx,nz): take it if clear; else slide along a clear
+ * axis; else stay. `extra` is an optional predicate for DYNAMIC solids — the
+ * mechanic passes a gap-gate here so an unlit gap reads as a hole you can't enter.
  */
 export function resolveMove(ox, oz, nx, nz, extra) {
   const blocked = (x, z) => solidAt(x, z) || (extra ? extra(x, z) : false)
   if (!blocked(nx, nz)) return [nx, nz]
-  if (!blocked(nx, oz)) return [nx, oz] // slide along x
-  if (!blocked(ox, nz)) return [ox, nz] // slide along z
-  return [ox, oz]                        // fully blocked
+  if (!blocked(nx, oz)) return [nx, oz]
+  if (!blocked(ox, nz)) return [ox, nz]
+  return [ox, oz]
 }

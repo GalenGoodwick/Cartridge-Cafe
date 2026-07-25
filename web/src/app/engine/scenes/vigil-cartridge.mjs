@@ -54,20 +54,23 @@ fn vg_reliquary(p: vec3f, rz: f32) -> f32 {          // the goal at the nave's e
 // wall, the three standing Watchers, and the reliquary. Fixed geometry (the
 // gaze sweeps as beams in the visual; the bodies stand still). Stays exact.
 fn vg_map(p: vec3f) -> f32 {
-  let ledgeL = vg_box(p - vec3f(-6.0, -0.5, 14.0), vec3f(3.0, 0.5, 16.0));
-  let ledgeR = vg_box(p - vec3f( 6.0, -0.5, 14.0), vec3f(3.0, 0.5, 16.0));
-  var d = min(ledgeL, ledgeR);
-  let cz = clamp(round((p.z - 2.0) / 6.0), 0.0, 4.0) * 6.0 + 2.0;   // nearest column row
-  let colL = vg_box(vec3f(p.x + 6.0, p.y - 4.0, p.z - cz), vec3f(0.6, 5.0, 0.6));
-  let colR = vg_box(vec3f(p.x - 6.0, p.y - 4.0, p.z - cz), vec3f(0.6, 5.0, 0.6));
+  // ONE central walkway with two GAPS carved out — the gaps are crossed on panes
+  // that are only solid where a Watcher's gaze lights them.
+  let walk = vg_box(p - vec3f(0.0, -0.5, 13.0), vec3f(2.6, 0.5, 14.0));
+  let gap1 = vg_box(p - vec3f(0.0, -0.5, 8.5),  vec3f(3.2, 1.3, 1.7));
+  let gap2 = vg_box(p - vec3f(0.0, -0.5, 15.5), vec3f(3.2, 1.3, 1.7));
+  var d = max(walk, -min(gap1, gap2));                              // walkway minus the gaps
+  // flanking colonnade at x=±4, a column every 6 in z, ball finials
+  let cz = clamp(round((p.z - 2.0) / 6.0), 0.0, 4.0) * 6.0 + 2.0;
+  let colL = vg_box(vec3f(p.x + 4.0, p.y - 4.0, p.z - cz), vec3f(0.5, 5.0, 0.5));
+  let colR = vg_box(vec3f(p.x - 4.0, p.y - 4.0, p.z - cz), vec3f(0.5, 5.0, 0.5));
   d = min(d, min(colL, colR));
-  let capL = length(vec3f(p.x + 6.0, p.y - 9.3, p.z - cz)) - 0.9;   // spire finials
-  let capR = length(vec3f(p.x - 6.0, p.y - 9.3, p.z - cz)) - 0.9;
+  let capL = length(vec3f(p.x + 4.0, p.y - 9.3, p.z - cz)) - 0.8;
+  let capR = length(vec3f(p.x - 4.0, p.y - 9.3, p.z - cz)) - 0.8;
   d = min(d, min(capL, capR));
-  d = min(d, vg_box(p - vec3f(0.0, 4.0, 26.0), vec3f(9.0, 6.0, 0.5)));  // back wall
-  d = min(d, vg_watcher(p, vec3f(-6.0, 3.0, 8.0)));
-  d = min(d, vg_watcher(p, vec3f( 6.0, 3.0, 14.0)));
-  d = min(d, vg_watcher(p, vec3f(-6.0, 3.0, 20.0)));
+  d = min(d, vg_box(p - vec3f(0.0, 4.0, 26.5), vec3f(6.0, 6.0, 0.5)));  // back wall
+  d = min(d, vg_watcher(p, vec3f(-4.0, 3.0, 8.5)));                     // gaze the first gap
+  d = min(d, vg_watcher(p, vec3f( 4.0, 3.0, 15.5)));                    // gaze the second gap
   d = min(d, vg_reliquary(p, 24.0));
   return d;
 }
@@ -113,9 +116,8 @@ fn visual_vigil(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
 
     // material: the Watchers are charcoal; the reliquary burns warm
     var wNear = 0.0;
-    wNear = max(wNear, 1.0 - smoothstep(0.5, 1.7, length(pt - vec3f(-6.0, 3.0, 8.0))));
-    wNear = max(wNear, 1.0 - smoothstep(0.5, 1.7, length(pt - vec3f( 6.0, 3.0, 14.0))));
-    wNear = max(wNear, 1.0 - smoothstep(0.5, 1.7, length(pt - vec3f(-6.0, 3.0, 20.0))));
+    wNear = max(wNear, 1.0 - smoothstep(0.5, 1.7, length(pt - vec3f(-4.0, 3.0, 8.5))));
+    wNear = max(wNear, 1.0 - smoothstep(0.5, 1.7, length(pt - vec3f( 4.0, 3.0, 15.5))));
     m = mix(m, vec3f(0.10, 0.10, 0.13), wNear * 0.9);
     let dz = pt.z - 24.0;
     let relGlow = exp(-(dz * dz) * 0.4) * exp(-(pt.x * pt.x) * 0.12) * (1.0 - smoothstep(2.6, 3.4, pt.y));
@@ -146,7 +148,7 @@ fn visual_vigil(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, beh
     let ph = (1.0 - ro.y) / rd.y;                 // pane plane at y = 1
     if (ph < 0.0 || ph > sceneT) { continue; }
     let hp = ro + rd * ph;
-    if (abs(hp.x - cx) > 1.0 || abs(hp.z - cz) > 1.0) { continue; }
+    if (abs(hp.x - cx) > 2.5 || abs(hp.z - cz) > 1.5) { continue; }   // gap-bridge pane size
     var rc = vec3f(0.9);
     if (rule > 0.5 && rule < 1.5) { rc = vec3f(0.30, 0.90, 1.00); }   // door
     if (rule > 1.5 && rule < 2.5) { rc = vec3f(1.00, 0.70, 0.20); }   // wall
@@ -203,7 +205,7 @@ const EMBED = [
 export const HOOK = `try {
 ${EMBED}
   const wd = sim.worldData;
-  if (!wd.__vg || wd.__vg.v !== 2) wd.__vg = initVigilState();
+  if (!wd.__vg || wd.__vg.v !== 3) wd.__vg = initVigilState();
   const G = wd.__vg;
   const step = Math.min(dt, 1/30);
 
@@ -233,7 +235,7 @@ ${EMBED}
     A[b]=w.origin[0]; A[b+1]=w.origin[1]; A[b+2]=w.origin[2]; A[b+3]=g.dir[0]; A[b+4]=g.dir[1]; A[b+5]=g.dir[2]; }
   const RC={floor:0,door:1,wall:2,bridge:3};
   for (let i=0;i<3;i++){ const p=G.panes[i]; if(!p) continue; const b=28+i*4;
-    A[b]=p.origin[0]+1; A[b+1]=p.origin[2]+1; A[b+2]=p.lit||0; A[b+3]=RC[p.rule]||0; }
+    A[b]=p.origin[0]+(p.uAxis?p.uAxis[0]/2:1); A[b+1]=p.origin[2]+(p.vAxis?p.vAxis[2]/2:1); A[b+2]=p.lit||0; A[b+3]=0; }
   A[40]=G.reliquaryZ;
   wd.gpuUniforms = A;
 
