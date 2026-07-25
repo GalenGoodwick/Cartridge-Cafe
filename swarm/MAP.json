@@ -126,7 +126,10 @@
         "camera stays behind player"
       ],
       "status": "green",
-      "claim": { "by": "opus", "at": "2026-07-25" },
+      "claim": {
+        "by": "opus",
+        "at": "2026-07-25"
+      },
       "keyState": {
         "moves-verified": "locked",
         "collision-verified": "locked"
@@ -135,7 +138,8 @@
         "moves-verified": "unit: hold-W walks -6→5.0 down the nave, A turns yaw; probe: camera walks (motion true, avgFrameDelta 5.5)",
         "collision-verified": "wall-slide AABB mirror of rooms extents; clamps before far wall (≤8.6), no tunneling"
       },
-      "statusNote": "green (eye + unit)"
+      "statusNote": "green (eye + unit)",
+      "version": 2
     },
     {
       "id": "renderer-mega",
@@ -190,7 +194,10 @@
         "attack telegraph visible in range"
       ],
       "status": "green",
-      "claim": { "by": "opus", "at": "2026-07-25" },
+      "claim": {
+        "by": "opus",
+        "at": "2026-07-25"
+      },
       "keyState": {
         "render-verified": "locked",
         "ai-verified": "locked"
@@ -223,13 +230,21 @@
         "probe fire clip: tracer spawns on click and travels forward",
         "muzzle flash pulses"
       ],
-      "status": "red",
-      "claim": null,
-      "keyState": {
-        "render-verified": "pending",
-        "fire-verified": "pending"
+      "status": "green",
+      "claim": {
+        "by": "opus",
+        "at": "2026-07-25"
       },
-      "statusNote": "missing: web/src/app/engine/scenes/shooter3/hooks/projectiles.mjs, web/src/app/engine/scenes/shooter3/projectiles.wgsl"
+      "keyState": {
+        "render-verified": "locked",
+        "fire-verified": "locked"
+      },
+      "statusNote": "green (eye+unit)",
+      "version": 2,
+      "evidence": {
+        "render-verified": "tracer bolts render (composite)",
+        "fire-verified": "unit: fires on click (1), not on space (0)"
+      }
     },
     {
       "id": "combat",
