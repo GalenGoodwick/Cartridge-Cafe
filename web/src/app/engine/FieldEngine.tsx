@@ -7112,6 +7112,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {spaceSlug && spaceId && isOwner && !riding && (
                 <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
               )}
+              {/* HOUSE WORLD (author-less base scene, no space): the cafe keeper
+                  can summon AIs to build its own content. The box self-hides for
+                  non-admins (SummonPrompt polls canSummon), and the server
+                  re-checks admin — so this renders for everyone but only opens
+                  for the keeper. Not the CAFE hub / a sub-main / a branch. */}
+              {!spaceId && !isHub && !riding && me && (() => {
+                const cur = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0].trim()
+                if (!cur || cur === 'CAFE' || cur === 'SUB-MAIN') return null
+                return <SummonPrompt scene={cur} name={cur} />
+              })()}
               {/* NOT your world (Galen): you never build on someone else's
                   main — you HACK it (the ROM-hack tradition: their cartridge,
                   your modded copy). One button, the existing create-branch

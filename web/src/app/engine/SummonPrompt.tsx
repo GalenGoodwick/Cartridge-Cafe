@@ -2,20 +2,35 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** The build console's PROMPT BOX — the owner's call-to-arms. Fires a summons
- *  that rallies every connected AI to this world (broadcast on the commons +
- *  wakes registered companions), then shows who answered. Lives at the foot of
- *  the ⌁ BUILD CONSOLE. Owner-only; the server re-checks ownership. */
-export default function SummonPrompt({ slug, name }: { slug: string; name: string }) {
+/** The build console's PROMPT BOX — the call-to-arms. Fires a summons that
+ *  rallies every connected AI to this world (broadcast on the commons + wakes
+ *  registered companions), then shows who answered. Lives at the foot of the
+ *  ⌁ BUILDERBOX.
+ *
+ *  Two worlds, one box:
+ *   - SPACE (owner-only, gated by the parent): `slug` set → /api/spaces/:slug/summon
+ *   - HOUSE world (author-less, admin-only): `scene` set → /api/engine/summon.
+ *     In house mode the box SELF-HIDES until the poll confirms the viewer may
+ *     summon (canSummon) — no client admin flag needed, no forbidden-box flash. */
+export default function SummonPrompt({ slug, scene, name }: { slug?: string; scene?: string; name: string }) {
+  const house = !!scene && !slug
+  const getUrl = house
+    ? `/api/engine/summon?scene=${encodeURIComponent(scene!)}`
+    : `/api/spaces/${encodeURIComponent(slug!)}/summon`
+  const postUrl = house ? '/api/engine/summon' : `/api/spaces/${encodeURIComponent(slug!)}/summon`
+
   const [brief, setBrief] = useState('')
   const [sending, setSending] = useState(false)
   const [flash, setFlash] = useState<string | null>(null)
+  // house mode starts hidden (null) until the poll resolves the viewer's rights
+  const [allowed, setAllowed] = useState<boolean>(!house)
   const [here, setHere] = useState<{ watchers: number; builders: number; regions: number; contested: number }>({ watchers: 0, builders: 0, regions: 0, contested: 0 })
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const poll = useCallback(async () => {
     try {
-      const j = await fetch(`/api/spaces/${encodeURIComponent(slug)}/summon`).then(r => r.json())
+      const j = await fetch(getUrl).then(r => r.json())
+      if (house) setAllowed(!!j?.canSummon)
       const w = Array.isArray(j?.watchers) ? j.watchers : []
       const rg = Array.isArray(j?.regions) ? j.regions : []
       setHere({
@@ -25,7 +40,7 @@ export default function SummonPrompt({ slug, name }: { slug: string; name: strin
         contested: rg.filter((x: { status?: string }) => x.status === 'contested').length,
       })
     } catch { /* offline is fine */ }
-  }, [slug])
+  }, [getUrl, house])
 
   useEffect(() => {
     const kick = setTimeout(poll, 0)   // defer: no synchronous setState in the effect
@@ -38,17 +53,20 @@ export default function SummonPrompt({ slug, name }: { slug: string; name: strin
     if (!text || sending) return
     setSending(true); setFlash(null)
     try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/summon`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brief: text }),
+      const r = await fetch(postUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(house ? { scene, brief: text } : { brief: text }),
       })
       const j = await r.json()
       if (r.ok) { setFlash(`⚑ summoned — reached ${j.liveAisReached ?? 0} live, woke ${j.registeredWoke ?? 0} registered`); setBrief(''); poll() }
       else setFlash(j.error || 'summon failed')
     } catch { setFlash('summon failed — offline?') }
     finally { setSending(false) }
-  }, [brief, sending, slug, poll])
+  }, [brief, sending, postUrl, house, scene, poll])
 
   const onKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) summon() }
+
+  if (!allowed) return null   // house mode: hidden until admin confirmed
 
   return (
     <div className="border-t border-white/10 px-2.5 py-2 font-mono">
