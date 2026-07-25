@@ -189,13 +189,17 @@
         "probe: enemies render animated, move toward player across ticks",
         "attack telegraph visible in range"
       ],
-      "status": "red",
-      "claim": null,
+      "status": "green",
+      "claim": { "by": "opus", "at": "2026-07-25" },
       "keyState": {
-        "render-verified": "pending",
-        "ai-verified": "pending"
+        "render-verified": "locked",
+        "ai-verified": "locked"
       },
-      "statusNote": "missing: web/src/app/engine/scenes/shooter3/hooks/enemies.mjs, web/src/app/engine/scenes/shooter3/enemies.wgsl"
+      "evidence": {
+        "render-verified": "composite probe: demons render as gaunt ember walkers (gait), one closing to melee by the doorway; /tmp/en.png",
+        "ai-verified": "unit: demon0 seeks player 11.07→2.07 over the run, 3 in-range strikes → __vf.hits for combat; faces player via yaw"
+      },
+      "statusNote": "green (eye + unit)"
     },
     {
       "id": "projectiles",
