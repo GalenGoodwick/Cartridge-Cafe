@@ -92,7 +92,9 @@ fn visual_s3(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind
       // PROJECTILE / DEATH-BIT — emissive blob at the sphere hit
       if (sh < nearT) {
         nearT = sh;
-        col = s3_tracerColor(kind, clamp(b.x, 0.0, 1.0)) * 1.4;
+        let life = clamp(b.x, 0.0, 1.0);
+        if (kind > 4.5) { col = vec3f(1.0, 0.42, 0.12) * (0.5 + life * 1.6); }  // death ember
+        else { col = s3_tracerColor(kind, life) * 1.4; }
       }
     }
   }
