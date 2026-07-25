@@ -548,6 +548,12 @@ try {
       const R = wd.__cu
       R.portalSig = null; R.lastHover = -1; R.prevDown = false; R.kN = {}
       R.launched = 0; R.drag = 0; R.pollT = 0; R.sharedAt = 0
+      // the camera + the single-bump latch leak through the cc-save-CAFE stash:
+      // reset them per visit so returning from a game lands on the hub's default
+      // framing (not still zoomed in) and re-arms the center-bump so the icons
+      // re-cluster toward the middle instead of holding the saved spread.
+      R.cam = { x: 256, y: 256, z: 1 }
+      R.bumpedOnce = 0
     }
   }
   // wake starts 0: a joining player adopts the shared universe at rest —
