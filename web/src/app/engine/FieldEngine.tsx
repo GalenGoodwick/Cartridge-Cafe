@@ -2850,6 +2850,32 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId, chromeVisible])
 
+  // KEEP THE GLYPH LIVE OVER OVERLAY CHROME. In the hub the OS cursor is hidden
+  // and the glyph is drawn AT the pointer, but its position (mouse_x/mouse_y)
+  // only updates from the canvas' onPointerMove — so the instant the pointer
+  // moved onto a fixed overlay (the ⌕ search bar, its dropdown, any chrome
+  // above the canvas) the handler stopped firing and the glyph FROZE mid-screen
+  // until you moved back onto the canvas. A window-level listener tracks the
+  // pointer across the whole viewport while the hub glyph is active, so reaching
+  // for the search bar no longer strands your cursor. Cheap (one screenToCell);
+  // no-ops outside the hub.
+  useEffect(() => {
+    const onWinMove = (e: PointerEvent) => {
+      if (!hubCursorRef.current) return
+      const sim = simulationRef.current
+      const canvas = canvasRef.current
+      const input = inputRef.current
+      if (!sim || !canvas || !input) return
+      const rect = canvas.getBoundingClientRect()
+      const camera = cameraRef.current
+      const g = input.screenToCell(e.clientX, e.clientY, rect, camera, camera.zoom)
+      sim.worldData['mouse_x'] = g.x
+      sim.worldData['mouse_y'] = g.y
+    }
+    window.addEventListener('pointermove', onWinMove)
+    return () => window.removeEventListener('pointermove', onWinMove)
+  }, [])
+
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const input = inputRef.current
     const canvas = canvasRef.current
