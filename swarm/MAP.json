@@ -139,7 +139,7 @@
         "collision-verified": "wall-slide AABB mirror of rooms extents; clamps before far wall (≤8.6), no tunneling"
       },
       "statusNote": "green (eye + unit)",
-      "version": 3
+      "version": 4
     },
     {
       "id": "renderer-mega",
@@ -436,13 +436,17 @@
         "probe: a demon emerges from dark, lunges; light staggers it",
         "reads as horror, not generic"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
       "keyState": {
         "render-verified": "pending",
         "ai-verified": "pending"
       },
-      "statusNote": "missing: web/src/app/engine/scenes/veilfire/demons.wgsl"
+      "statusNote": "green (eye)",
+      "version": 2,
+      "evidence": {
+        "render-verified": "horror pass: ribs/sockets/maw catch ember, close-up /tmp/demon2.png"
+      }
     },
     {
       "id": "vf-atmosphere",
@@ -512,6 +516,27 @@
         "shipped": "pending"
       },
       "statusNote": "missing: web/src/app/engine/scenes/veilfire-cartridge.mjs"
+    },
+    {
+      "id": "lifecycle",
+      "kind": "mechanic",
+      "area": "reset on death",
+      "files": [
+        "web/src/app/engine/scenes/shooter3/hooks/lifecycle.mjs"
+      ],
+      "dependsOn": [
+        "combat"
+      ],
+      "status": "green",
+      "version": 1,
+      "claim": {
+        "by": "opus",
+        "at": "2026-07-25"
+      },
+      "evidence": {
+        "logic-verified": "unit: HP0 → ~2.2s → respawn (hp/pos/ammo reset)"
+      },
+      "statusNote": "green (unit)"
     }
   ]
 }
