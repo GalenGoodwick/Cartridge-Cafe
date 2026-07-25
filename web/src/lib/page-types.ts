@@ -103,11 +103,28 @@ const HAZARD_MAX_ARRAY_ELEMENTS = 2047
 const HAZARD_MAX_BAKED_ELEMENTS = 8192
 const HAZARD_MAX_LOOP_BOUND = 8192
 
+/** Scanner (not a regex) so nested generics can't hide a baked image:
+ *  `array<vec2<f32>, 2400>(…)` must count as 2400 elements. Finds each `array`
+ *  keyword, skips a balanced `<…>` if present, then counts top-level commas in
+ *  the following `(…)`. */
 function measureBakedArrays(w: string): { arrays: number; maxArray: number; totalElements: number } {
   let arrays = 0, maxArray = 0, totalElements = 0
-  const re = /\barray\b\s*(?:<[^>]*>)?\s*\(/g
-  while (re.exec(w) !== null) {
-    let depth = 1, commas = 0, i = re.lastIndex
+  const kw = /\barray\b/g
+  let m: RegExpExecArray | null
+  while ((m = kw.exec(w)) !== null) {
+    let i = m.index + 5
+    while (i < w.length && /\s/.test(w[i])) i++
+    if (w[i] === '<') {                      // balanced generic, any nesting depth
+      let angle = 1; i++
+      while (i < w.length && angle > 0) {
+        if (w[i] === '<') angle++
+        else if (w[i] === '>') angle--
+        i++
+      }
+      while (i < w.length && /\s/.test(w[i])) i++
+    }
+    if (w[i] !== '(') continue               // a type mention, not a literal
+    let depth = 1, commas = 0; i++
     for (; i < w.length && depth > 0; i++) {
       const ch = w[i]
       if (ch === '(') depth++
@@ -116,9 +133,44 @@ function measureBakedArrays(w: string): { arrays: number; maxArray: number; tota
     }
     const els = commas + 1
     if (els > 1) { arrays++; totalElements += els; if (els > maxArray) maxArray = els }
-    re.lastIndex = i
+    kw.lastIndex = i
   }
   return { arrays, maxArray, totalElements }
+}
+
+/** Page-frame loop policy — STRICTER than the engine's screen because published
+ *  pages are served to strangers for money. `while` and bare `loop` are refused
+ *  outright, and every `for` must carry a plain numeric literal bound ≤ cap
+ *  (scientific notation counts; a variable/expression bound is refused — the
+ *  engine tolerates those, a $10 public page does not). */
+function screenLoops(w: string): string | null {
+  if (/\bwhile\b/.test(w)) {
+    return 'while loops are not allowed in page frames — use a `for` with a literal bound (≤ ' + HAZARD_MAX_LOOP_BOUND + ')'
+  }
+  if (/\bloop\b/.test(w)) {
+    return 'bare `loop` blocks are not allowed in page frames — use a `for` with a literal bound (≤ ' + HAZARD_MAX_LOOP_BOUND + ')'
+  }
+  const forRe = /\bfor\s*\(([^)]*)\)/g
+  let fm: RegExpExecArray | null
+  while ((fm = forRe.exec(w)) !== null) {
+    const parts = fm[1].split(';')
+    if (parts.length < 2) return 'unrecognized for-loop header — write `for (var i = 0; i < N; i++)` with a literal N'
+    const cond = parts[1]
+    const cm = cond.match(/[<>]=?\s*([^\s;]+)\s*$/) || cond.match(/^\s*([^\s;]+)\s*[<>]=?/)
+    const tok = cm?.[1]
+    // The bound must LOOK like a numeric literal (digits, optional decimals /
+    // exponent, optional WGSL type suffix 26u/10i/5.0f/1.5h). A variable named
+    // `i` must NOT survive suffix-stripping into Number('') === 0.
+    const lit = tok?.match(/^(\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)[uifh]?$/)
+    const bound = lit ? Number(lit[1]) : NaN
+    if (!Number.isFinite(bound)) {
+      return `for-loop bound "${tok ?? cond.trim()}" is not a plain numeric literal — page frames require literal loop bounds (≤ ${HAZARD_MAX_LOOP_BOUND})`
+    }
+    if (bound > HAZARD_MAX_LOOP_BOUND) {
+      return `loop bound of ${bound} exceeds the ${HAZARD_MAX_LOOP_BOUND} cap — a per-pixel loop this long stalls the GPU for seconds per frame`
+    }
+  }
+  return null
 }
 
 export function screenWgslHazard(wgsl: string): string | null {
@@ -133,14 +185,7 @@ export function screenWgslHazard(wgsl: string): string | null {
   if (w.length > HAZARD_MAX_WGSL_BYTES) {
     return `oversized WGSL (${(w.length / 1024).toFixed(0)}KB > ${(HAZARD_MAX_WGSL_BYTES / 1024).toFixed(0)}KB) — would hang the GPU compiler`
   }
-  const loopRe = /for\s*\(\s*var\s+\w+[^;{]*;\s*\w+\s*<=?\s*(\d+)/g
-  let lm: RegExpExecArray | null
-  while ((lm = loopRe.exec(w)) !== null) {
-    if (parseInt(lm[1], 10) > HAZARD_MAX_LOOP_BOUND) {
-      return `loop bound of ${lm[1]} exceeds the ${HAZARD_MAX_LOOP_BOUND} cap — a per-pixel loop this long stalls the GPU for seconds per frame`
-    }
-  }
-  return null
+  return screenLoops(w)
 }
 
 /** Deterministic block id (the server mints crypto ids; this is the client/local
@@ -157,8 +202,11 @@ export function sanitizeBlock(input: unknown): Block | null {
   const id = typeof b.id === 'string' && b.id ? b.id.slice(0, 40) : localBlockId()
   switch (b.kind) {
     case 'shader': {
-      const wgsl = clamp(b.wgsl, MAX_WGSL_BYTES)
+      const wgsl = String(b.wgsl ?? '')
       if (!wgsl.trim()) return null
+      // REJECT oversize rather than truncate — a mid-token slice would pass the
+      // hazard screen as mangled-but-small and then fail (or worse) on the GPU.
+      if (wgsl.length > MAX_WGSL_BYTES) return null
       if (screenWgslHazard(wgsl)) return null
       return {
         id, kind: 'shader', wgsl,

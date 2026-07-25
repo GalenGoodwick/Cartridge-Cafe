@@ -5,7 +5,7 @@
 import ShaderFrame from './ShaderFrame'
 import { screenWgslHazard, type Block, type Aspect } from '@/lib/page-types'
 
-const ASPECT_CLASS: Record<Aspect, string> = {
+export const ASPECT_CLASS: Record<Aspect, string> = {
   tall: 'aspect-[3/4]',
   square: 'aspect-square',
   wide: 'aspect-[16/10]',

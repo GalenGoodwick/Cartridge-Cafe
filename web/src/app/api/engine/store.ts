@@ -897,6 +897,24 @@ export async function saveGameSlot(slot: string, data: unknown): Promise<void> {
   } catch { /* DB write is best-effort — the cache still serves this instance */ }
 }
 
+/** Write a named save slot, STRICT: throws if the Neon upsert fails instead of
+ *  quietly serving only this instance's memory cache. For writes that must be
+ *  durable before the caller reports success — a paid page publish, a freshly
+ *  minted token — where "cached on one lambda" equals data loss. */
+export async function saveGameSlotStrict(slot: string, data: unknown): Promise<void> {
+  const { prisma } = await import('@/lib/prisma')
+  await ensureSlotTable()
+  await prisma.engineSlot.upsert({
+    where: { slot },
+    create: { slot, data: (data ?? null) as never },
+    update: { data: (data ?? null) as never },
+  })
+  // DB write confirmed — now the cache may serve it
+  const savedAt = Date.now()
+  slotCache.set(slot, { data, savedAt, at: savedAt })
+  listCache = null
+}
+
 /** Read a named save slot (cache-first, then Neon). */
 export async function loadGameSlot(slot: string): Promise<unknown | undefined> {
   const c = slotCache.get(slot)

@@ -56,12 +56,33 @@ describe('screenWgslHazard', () => {
   it('passes normal shader source', () => {
     expect(screenWgslHazard('fn fieldEffect() -> vec4f { return vec4f(0.0); }')).toBeNull()
   })
+  it('passes typical literal-bounded for loops (with WGSL suffixes)', () => {
+    expect(screenWgslHazard('for (var i = 0; i < 26; i = i + 1) { }')).toBeNull()
+    expect(screenWgslHazard('for (var i = 0u; i < 26u; i++) { }')).toBeNull()
+    expect(screenWgslHazard('for (var i = 0.0; i < 32.0; i += 1.0) { }')).toBeNull()
+    expect(screenWgslHazard('for (var i = 10; i > 0; i--) { }')).toBeNull()
+  })
   it('flags a huge baked array literal', () => {
     const big = 'let x = array(' + Array(3000).fill('1').join(',') + ');'
     expect(screenWgslHazard(big)).toBeTruthy()
   })
+  it('flags a baked array hidden behind NESTED generics (review bypass)', () => {
+    const big = 'const img = array<vec2<f32>, 2400>(' + Array(2400).fill('vec2<f32>(0.0, 0.0)').join(',') + ');'
+    expect(screenWgslHazard(big)).toBeTruthy()
+  })
   it('flags an enormous per-pixel loop bound', () => {
     expect(screenWgslHazard('for (var i = 0; i < 999999; i = i + 1) {}')).toBeTruthy()
+  })
+  it('flags scientific-notation bounds (review bypass)', () => {
+    expect(screenWgslHazard('for (var i = 0.0; i < 1e7; i += 1.0) {}')).toBeTruthy()
+  })
+  it('refuses while loops and bare loop blocks (review bypass)', () => {
+    expect(screenWgslHazard('var i = 0; while (i < 10000000) { i++; }')).toBeTruthy()
+    expect(screenWgslHazard('loop { if (x > 1.0) { break; } }')).toBeTruthy()
+  })
+  it('refuses non-literal for bounds (review bypass)', () => {
+    expect(screenWgslHazard('let n = 10000000; for (var i = 0; i < n; i++) {}')).toBeTruthy()
+    expect(screenWgslHazard('for (var i = 0; i <= steps - 1; i++) {}')).toBeTruthy()
   })
 })
 

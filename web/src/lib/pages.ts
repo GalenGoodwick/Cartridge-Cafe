@@ -13,7 +13,7 @@
 // The pure model (types, caps, validateSlug/sanitizeBlock/screenWgslHazard) lives
 // in `@/lib/page-types` so it stays importable from client components.
 import crypto from 'crypto'
-import { loadGameSlot, saveGameSlot, deleteGameSlot } from '@/app/api/engine/store'
+import { loadGameSlot, saveGameSlot, saveGameSlotStrict, deleteGameSlot } from '@/app/api/engine/store'
 import {
   type PageDoc, type PublicPage, MAX_TITLE, sanitizeBlocks, validateSlug,
 } from '@/lib/page-types'
@@ -95,25 +95,53 @@ export async function deletePage(doc: PageDoc): Promise<void> {
 
 export type SlugIndex = { pageId: string; ownerId: string; reservedAt?: number }
 
+/** A checkout-time reservation holds the slug this long. Stripe Checkout links
+ *  live for 24h, but a squatter can start checkouts for free — so an UNPAID
+ *  reservation must lapse. A buyer who pays after the TTL is still safe: the
+ *  webhook re-verifies against its own pageId, and if the slug went to someone
+ *  else in the meantime the payment is flagged instead of clobbering. */
+export const RESERVE_TTL_MS = 30 * 60 * 1000
+
 export async function slugIndex(slug: string): Promise<SlugIndex | null> {
   const d = (await loadGameSlot(slugSlot(slug))) as SlugIndex | undefined
   return d && typeof d === 'object' && d.pageId ? d : null
 }
 
+/** Does this index entry currently block another page from the slug?
+ *  A permanent claim (no reservedAt — written by publishPage) always does.
+ *  An unpaid reservation only within its TTL. */
+function indexHolds(idx: SlugIndex): boolean {
+  if (!idx.reservedAt) return true
+  return Date.now() - idx.reservedAt < RESERVE_TTL_MS
+}
+
 /** Is `slug` free for `pageId`? A slug already owned by the SAME page is "free"
- *  (a re-publish). Reserved-word / syntax failures are surfaced too. */
+ *  (a re-publish); an EXPIRED unpaid reservation is free for anyone. */
 export async function slugAvailable(slug: string, pageId: string): Promise<{ ok: boolean; reason?: string }> {
   const v = validateSlug(slug)
   if (!v.ok) return { ok: false, reason: v.error }
   const idx = await slugIndex(slug.toLowerCase())
-  if (idx && idx.pageId !== pageId) return { ok: false, reason: 'that address is taken' }
+  if (idx && idx.pageId !== pageId && indexHolds(idx)) return { ok: false, reason: 'that address is taken' }
   return { ok: true }
 }
 
-/** Reserve a slug for a page (used the moment a paid checkout starts, so the
- *  address can't be sniped while the buyer is in Stripe). Idempotent per page. */
-export async function reserveSlug(slug: string, pageId: string, ownerId: string): Promise<void> {
-  await saveGameSlot(slugSlot(slug.toLowerCase()), { pageId, ownerId, reservedAt: Date.now() })
+/** Reserve a slug for a page at checkout start, so the address can't be sniped
+ *  while the buyer is in Stripe. Re-checks the index at write time (narrowing
+ *  the check-then-write race to milliseconds) and refuses to overwrite a live
+ *  claim; the webhook's pageId verification is the real settlement — see
+ *  finalizePagePublish. Durable (strict write): a reservation that existed only
+ *  in one lambda's cache couldn't be honored. Returns false if the slug is
+ *  held by someone else. */
+export async function reserveSlug(slug: string, pageId: string, ownerId: string): Promise<boolean> {
+  const s = slug.toLowerCase()
+  const idx = await slugIndex(s)
+  if (idx && idx.pageId !== pageId && indexHolds(idx)) return false
+  try {
+    await saveGameSlotStrict(slugSlot(s), { pageId, ownerId, reservedAt: Date.now() })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** The public shape served at /p/<slug> — no owner/internal fields. */
@@ -121,32 +149,57 @@ export function publicView(doc: PageDoc): PublicPage {
   return { title: doc.title, blocks: doc.blocks, publishedAt: doc.publishedAt ?? Date.now(), slug: doc.slug ?? '' }
 }
 
-/** Copy a draft live: write the public snapshot, claim the slug, mark published.
- *  Returns the saved doc. Assumes authority/entitlement already checked. */
+/** Copy a draft live: write the public snapshot, claim the slug permanently,
+ *  mark published. STRICT writes — this is what the $10 buys; a publish that
+ *  exists only in one lambda's cache is data loss, so a DB failure THROWS and
+ *  the caller must surface it (the webhook 500s so Stripe retries).
+ *  Assumes authority/entitlement already checked. */
 export async function publishPage(doc: PageDoc, slug: string): Promise<PageDoc> {
   const s = slug.toLowerCase()
   doc.slug = s
   doc.published = true
   doc.publishedAt = Date.now()
-  await savePageDoc(doc)
-  await saveGameSlot(slugSlot(s), { pageId: doc.id, ownerId: doc.ownerId })
-  await saveGameSlot(pubSlot(s), publicView(doc))
+  doc.updatedAt = Date.now()
+  // permanent claim first (no reservedAt = never expires), then the content
+  await saveGameSlotStrict(slugSlot(s), { pageId: doc.id, ownerId: doc.ownerId })
+  await saveGameSlotStrict(pubSlot(s), publicView(doc))
+  await saveGameSlotStrict(docSlot(doc.id), doc)
   return doc
 }
 
-/** Called by the Stripe webhook for a completed `page` purchase: look up the
- *  reserved slug, load its draft, and go live. Best-effort, never throws. */
-export async function finalizePagePublish(slug: string): Promise<boolean> {
-  try {
-    const idx = await slugIndex(slug.toLowerCase())
-    if (!idx) return false
-    const doc = await loadPageDoc(idx.pageId)
-    if (!doc) return false
-    await publishPage(doc, slug)
-    return true
-  } catch {
-    return false
+/** Refresh the live snapshot after an already-published page's draft changed.
+ *  The ONLY other writer of `page:pub:` — routes call this instead of
+ *  hand-building slot keys. */
+export async function syncPublishedSnapshot(doc: PageDoc): Promise<void> {
+  if (!doc.published || !doc.slug) return
+  await saveGameSlot(pubSlot(doc.slug), publicView(doc))
+}
+
+/** Called by the Stripe webhook for a completed `page` purchase. Verifies the
+ *  reservation still belongs to the page the buyer paid for — two buyers can
+ *  race checkouts for one slug, and the LAST reservation write wins the index,
+ *  so without this check A's money could publish B's page. Resolution:
+ *   - index matches the paid pageId → publish (normal case)
+ *   - index mismatch, slug NOT yet published → the PAYER wins: re-claim + publish
+ *   - index mismatch, slug already published by another page → refuse (returns
+ *     'conflict' so the webhook can flag it for manual care — never clobber a
+ *     live paid page)
+ *  Throws on DB failure so the webhook can 500 and Stripe retries. */
+export async function finalizePagePublish(
+  slug: string, paidPageId?: string,
+): Promise<'published' | 'conflict' | 'missing'> {
+  const s = slug.toLowerCase()
+  const idx = await slugIndex(s)
+  const pageId = paidPageId || idx?.pageId
+  if (!pageId) return 'missing'
+  if (idx && idx.pageId !== pageId) {
+    const alreadyLive = await loadPublished(s)
+    if (alreadyLive) return 'conflict'
   }
+  const doc = await loadPageDoc(pageId)
+  if (!doc) return 'missing'
+  await publishPage(doc, s)
+  return 'published'
 }
 
 export async function loadPublished(slug: string): Promise<PublicPage | null> {
@@ -164,7 +217,9 @@ const hashTok = (raw: string) => crypto.createHash('sha256').update(raw).digest(
 
 export async function mintPageToken(pageId: string, ownerId: string, name = 'connected AI'): Promise<string> {
   const raw = `uc_page_${crypto.randomBytes(20).toString('hex')}`
-  await saveGameSlot(tokSlot(hashTok(raw)), { pageId, ownerId, name: name.slice(0, 60), at: Date.now() } as PageTokenRec)
+  // STRICT: a token whose hash never reached the DB would 403 on every other
+  // lambda — the owner pasted it into their AI and it "randomly" doesn't work.
+  await saveGameSlotStrict(tokSlot(hashTok(raw)), { pageId, ownerId, name: name.slice(0, 60), at: Date.now() } as PageTokenRec)
   return raw
 }
 

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { loadPublished } from '@/lib/pages'
 import PageBlocks from '../../pages/PageBlocks'
@@ -7,6 +8,10 @@ import PageBlocks from '../../pages/PageBlocks'
 // blocks hydrate as client islands (see PageBlocks / ShaderFrame).
 export const dynamic = 'force-dynamic'
 
+// generateMetadata + the page component both need the doc — cache() dedupes
+// them into one store read per request.
+const getPage = cache(loadPublished)
+
 function firstText(blocks: { kind: string; text?: string }[]): string | undefined {
   const t = blocks.find((b) => (b.kind === 'text' || b.kind === 'heading') && b.text)?.text
   return t?.slice(0, 160)
@@ -14,7 +19,7 @@ function firstText(blocks: { kind: string; text?: string }[]): string | undefine
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
-  const page = await loadPublished(slug)
+  const page = await getPage(slug)
   if (!page) return { title: 'Page not found · cartridge.cafe' }
   const description = firstText(page.blocks) || 'A page built on cartridge.cafe.'
   return {
@@ -26,7 +31,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function PublicPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const page = await loadPublished(slug)
+  const page = await getPage(slug)
   if (!page) notFound()
 
   return (

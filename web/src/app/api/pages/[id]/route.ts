@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { authPage, requireOwner } from '@/lib/page-auth'
-import { savePageDoc, deletePage, sanitizeBlocks, MAX_TITLE, publicView } from '@/lib/pages'
+import {
+  savePageDoc, deletePage, sanitizeBlocks, syncPublishedSnapshot, MAX_TITLE,
+  type Block,
+} from '@/lib/pages'
+
+/** Merge guard for whole-document PUTs: if the CLIENT still thinks a shader
+ *  block is `awaiting` but the SERVER copy has been answered (an AI wrote wgsl
+ *  and cleared the flag since the client's last fetch), keep the server block —
+ *  otherwise the owner's debounced autosave silently destroys the AI's work
+ *  and the frame shows "awaiting your AI…" forever. */
+function keepAnsweredFrames(incoming: Block[], current: Block[]): Block[] {
+  return incoming.map((b) => {
+    if (b.kind !== 'shader' || !b.awaiting) return b
+    const server = current.find((s) => s.id === b.id && s.kind === 'shader')
+    if (server && server.kind === 'shader' && !server.awaiting && server.wgsl !== b.wgsl) return server
+    return b
+  })
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -30,15 +47,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const body = await req.json().catch(() => ({}))
   const doc = a.doc
   if (typeof body.title === 'string') doc.title = body.title.slice(0, MAX_TITLE) || doc.title
-  if (Array.isArray(body.blocks)) doc.blocks = sanitizeBlocks(body.blocks)
+  if (Array.isArray(body.blocks)) {
+    doc.blocks = keepAnsweredFrames(sanitizeBlocks(body.blocks), doc.blocks)
+  }
   await savePageDoc(doc)
 
-  // Keep a live published page in sync when its owner edits after publishing —
-  // they already paid for this slug, so a re-save just refreshes the snapshot.
-  if (doc.published && doc.slug) {
-    const { saveGameSlot } = await import('@/app/api/engine/store')
-    await saveGameSlot(`page:pub:${doc.slug}`, publicView(doc))
-  }
+  // OWNER edits keep a live published page in sync — they paid for the slug.
+  // Token (connected-AI) writes stay on the DRAFT: publish is deliberately an
+  // owner-only power, and a leaked page token must not be able to rewrite the
+  // live site. The owner sees AI work in the composer and pushes it live by
+  // saving (any owner edit) or re-publishing.
+  if (a.via === 'owner') await syncPublishedSnapshot(doc)
   return NextResponse.json({ doc })
 }
 

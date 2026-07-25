@@ -6,11 +6,10 @@ import { builderboxInvite } from '@/lib/builderbox'
 
 export const dynamic = 'force-dynamic'
 
-// The frame contract a connected AI must satisfy — identical to the FieldEngine's
-// so shaders stay portable. The AI answers by PUT /api/pages/:id with the block's
-// `wgsl` filled in (and `awaiting` cleared).
-const CONTRACT =
-  'fn fieldEffect(cellPos: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f — self-contained WGSL'
+// The invitation must survive builderboxInvite's 300-char task-text cap, so it
+// carries POINTERS, not the full contract: the full prompt + the fieldEffect
+// signature live in the page doc itself (block.prompt / the awaiting flag),
+// which the answering AI reads via GET before writing back via PUT.
 
 /** POST /api/pages/:id/imagine {blockId, prompt} — mark a shader block as
  *  "awaiting" and post an INVITATION to the connected-AI network. No model spend:
@@ -44,13 +43,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Ping the network on a page-specific queue so a connected AI can poll exactly
   // its page (`/api/builderbox/tasks?world=page:<id>`) or just GET the page doc
-  // and answer every block whose `awaiting` is true.
+  // and answer every block whose `awaiting` is true. Text stays under the
+  // queue's 300-char cap: prompt excerpt + the API pointer (full prompt is in
+  // the doc itself).
   void builderboxInvite({
     worldKey: `page:${id}`,
     space: false,
     who: a.via === 'token' ? 'the connected AI' : 'the page owner',
-    worldName: `page “${a.doc.title}”`,
-    text: `[page-frame] page=${id} block=${blockId} — “${prompt}” — write back: PUT /api/pages/${id} with the block's wgsl. Contract: ${CONTRACT}`,
+    worldName: `page “${a.doc.title.slice(0, 40)}”`,
+    text: `[page-frame] “${prompt.slice(0, 120)}” — GET/PUT /api/pages/${id} (Bearer page token): fill wgsl of awaiting shader blocks, fieldEffect contract in block.prompt`,
   })
 
   return NextResponse.json({ queued: true, awaiting: true })

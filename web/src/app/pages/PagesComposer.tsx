@@ -3,21 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import ShaderFrame from './ShaderFrame'
-import PageBlocks from './PageBlocks'
+import PageBlocks, { ASPECT_CLASS } from './PageBlocks'
 import { SEED_HERO, SEED_EMBER, SEED_AURORA } from './frame-shader'
 import {
   ASPECTS, slugify, localBlockId,
-  type Block, type BlockKind, type Aspect, type PageDoc,
+  type Block, type BlockKind, type PageDoc,
 } from '@/lib/page-types'
 
 const LOCAL_ID = 'cc_pages_current'      // last opened server pageId
 const LOCAL_ANON = 'cc_pages_v1'         // anon localStorage draft blocks
-
-const ASPECT_CLASS: Record<Aspect, string> = {
-  tall: 'aspect-[3/4]',
-  square: 'aspect-square',
-  wide: 'aspect-[16/10]',
-}
 
 function defaultBlocks(): Block[] {
   return [
@@ -41,6 +35,7 @@ export default function PagesComposer() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [showPublish, setShowPublish] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
+  const [paidPending, setPaidPending] = useState(false)
 
   const dirty = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -59,14 +54,7 @@ export default function PagesComposer() {
 
     async function boot() {
       if (!signedIn) {
-        let blocks = defaultBlocks()
-        try {
-          const raw = localStorage.getItem(LOCAL_ANON)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            if (Array.isArray(parsed?.blocks) && parsed.blocks.length) blocks = parsed.blocks
-          }
-        } catch { /* defaults */ }
+        const blocks = readAnonDraft() ?? defaultBlocks()
         if (!cancelled) setDoc({ id: null, title: titleFrom(blocks), slug: null, published: false, blocks })
         return
       }
@@ -75,6 +63,21 @@ export default function PagesComposer() {
       if (localId) {
         const got = await fetchDoc(localId)
         if (got) return adoptServer(got)
+      }
+      // MIGRATE the anonymous draft: "sign in to publish" must never mean
+      // "sign in and lose the page you just built". If this browser holds an
+      // anon draft that isn't just the stock template, it becomes the server
+      // page — cleared from localStorage only after the server confirms.
+      const anonBlocks = readAnonDraft()
+      if (anonBlocks && !isStockTemplate(anonBlocks)) {
+        const migrated = await fetch('/api/pages', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: titleFrom(anonBlocks), blocks: anonBlocks }),
+        }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        if (migrated?.doc) {
+          try { localStorage.removeItem(LOCAL_ANON) } catch { /* noop */ }
+          return adoptServer(migrated.doc)
+        }
       }
       const list = await fetch('/api/pages').then((r) => (r.ok ? r.json() : null)).catch(() => null)
       if (list?.pages?.length) {
@@ -148,28 +151,31 @@ export default function PagesComposer() {
      
   }, [signedIn, doc?.id, editing, saveState])
 
-  // ── after a Stripe return (?paid=page): poll until the webhook publishes ────
+  // ── after a Stripe return (?paid=page): the money is taken, so the modal
+  // shows an honest "finishing your publish…" state (never the buy button
+  // again) and polls until the webhook lands. Webhook + Stripe retries make
+  // eventual publish certain barring a flagged conflict.
   useEffect(() => {
     if (!doc?.id || typeof window === 'undefined') return
     if (new URLSearchParams(window.location.search).get('paid') !== 'page') return
     const id = doc.id
+    setPaidPending(true)
+    setShowPublish(true)
+    window.history.replaceState({}, '', '/pages')
     let tries = 0
     const t = setInterval(async () => {
       tries++
       const server = await fetchDoc(id)
       if (server?.published) {
         setDoc((d) => (d ? { ...d, published: true, slug: server.slug, blocks: server.blocks } : d))
-        setShowPublish(true)
-        window.history.replaceState({}, '', '/pages')
+        setPaidPending(false)
         clearInterval(t)
-      } else if (tries >= 8) {
-        setShowPublish(true)
-        window.history.replaceState({}, '', '/pages')
+      } else if (tries >= 40) {   // ~60s — stop hammering; message stays honest
         clearInterval(t)
       }
     }, 1500)
     return () => clearInterval(t)
-     
+
   }, [doc?.id])
 
   // ── block ops ────────────────────────────────────────────────────────────────
@@ -250,7 +256,7 @@ export default function PagesComposer() {
         </main>
       )}
 
-      {showPublish && <PublishModal doc={doc} signedIn={signedIn} onClose={() => setShowPublish(false)}
+      {showPublish && <PublishModal doc={doc} signedIn={signedIn} paidPending={paidPending} onClose={() => setShowPublish(false)}
         onPublished={(slug) => setDoc((d) => (d ? { ...d, published: true, slug } : d))} />}
       {showConnect && <ConnectModal pageId={doc.id} signedIn={signedIn} onClose={() => setShowConnect(false)} />}
     </div>
@@ -366,14 +372,19 @@ function Palette({ onAdd }: { onAdd: (k: BlockKind) => void }) {
 
 // ─── publish modal ──────────────────────────────────────────────────────────────
 
-function PublishModal({ doc, signedIn, onClose, onPublished }: {
-  doc: Doc; signedIn: boolean; onClose: () => void; onPublished: (slug: string) => void
+function PublishModal({ doc, signedIn, paidPending, onClose, onPublished }: {
+  doc: Doc; signedIn: boolean; paidPending?: boolean; onClose: () => void; onPublished: (slug: string) => void
 }) {
   const [slug, setSlug] = useState(doc.slug || slugify(doc.title) || '')
   const [avail, setAvail] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [liveUrl, setLiveUrl] = useState(doc.published && doc.slug ? `/p/${doc.slug}` : '')
   const [err, setErr] = useState('')
+
+  // the post-payment poll flips doc.published while this modal is open
+  useEffect(() => {
+    if (doc.published && doc.slug) setLiveUrl(`/p/${doc.slug}`)
+  }, [doc.published, doc.slug])
 
   useEffect(() => {
     if (!signedIn || !doc.id || !slug || liveUrl) { setAvail(null); return }
@@ -400,9 +411,15 @@ function PublishModal({ doc, signedIn, onClose, onPublished }: {
   }
 
   return (
-    <Modal onClose={onClose} title={liveUrl ? 'Your page is live' : 'Publish — $10, hosted forever'}>
+    <Modal onClose={onClose} title={liveUrl ? 'Your page is live' : paidPending ? 'Payment received' : 'Publish — $10, hosted forever'}>
       {!signedIn ? (
         <SignInNudge what="publish your page" />
+      ) : paidPending && !liveUrl ? (
+        <div className="space-y-3 text-center">
+          <p className="text-sm text-[#c7d3e0]">Payment received — finishing your publish…</p>
+          <p className="text-xs font-mono text-[#55677E] animate-pulse">your page goes live in a moment</p>
+          <p className="text-[11px] text-[#55677E]">Taking long? Your payment is recorded — refresh this page in a minute and it will be live.</p>
+        </div>
       ) : liveUrl ? (
         <div className="space-y-3">
           <p className="text-sm text-[#c7d3e0]">Live at:</p>
@@ -563,6 +580,32 @@ function freshBlock(kind: BlockKind): Block {
 function titleFrom(blocks: Block[]): string {
   const h = blocks.find((b) => b.kind === 'heading') as { text: string } | undefined
   return h?.text || 'Untitled page'
+}
+
+function readAnonDraft(): Block[] | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_ANON)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed?.blocks) && parsed.blocks.length) return parsed.blocks
+  } catch { /* corrupt draft */ }
+  return null
+}
+
+/** Content signature ignoring ids — is this draft still just the untouched
+ *  stock template? (Ids are random per defaultBlocks() call.) */
+function blockSig(blocks: Block[]): string {
+  return JSON.stringify(blocks.map((b) => {
+    switch (b.kind) {
+      case 'shader': return [b.kind, b.wgsl, b.span, b.aspect]
+      case 'heading': return [b.kind, b.text, b.level]
+      case 'link': case 'button': return [b.kind, b.text, b.href]
+      default: return [b.kind, b.text]
+    }
+  }))
+}
+function isStockTemplate(blocks: Block[]): boolean {
+  return blockSig(blocks) === blockSig(defaultBlocks())
 }
 
 async function fetchDoc(id: string): Promise<PageDoc | null> {

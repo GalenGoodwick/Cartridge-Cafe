@@ -43,9 +43,11 @@ export function availableProducts(): Array<{ key: string; mode: string; label: s
     .map(([key, p]) => ({ key, mode: p.mode, label: p.label }))
 }
 
-/** Create a Stripe Checkout session for one product. Returns the redirect URL. */
+/** Create a Stripe Checkout session for one product. Returns the redirect URL.
+ *  `pageId` rides along in metadata for the `page` product so the webhook can
+ *  verify the reservation it settles belongs to the page the buyer paid for. */
 export async function createCheckoutSession(
-  productKey: string, userId: string, origin: string, slug?: string,
+  productKey: string, userId: string, origin: string, slug?: string, pageId?: string,
 ): Promise<{ url: string } | { error: string; status: number }> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
@@ -70,6 +72,7 @@ export async function createCheckoutSession(
     'metadata[userId]': userId,
     'metadata[product]': productKey,
     ...(slug ? { 'metadata[slug]': slug } : {}),
+    ...(pageId ? { 'metadata[pageId]': pageId } : {}),
     // subscriptions need the metadata on the subscription too, so renewals map back
     ...(product.mode === 'subscription'
       ? { 'subscription_data[metadata][userId]': userId, 'subscription_data[metadata][product]': productKey }

@@ -55,11 +55,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ published: true, url, dev: true })
   }
 
-  // 4. paid path — reserve the address, then hand back a Stripe Checkout URL.
-  //    The webhook finalizes the publish the instant payment completes.
+  // 4. paid path — reserve the address (refused = just lost a race for it),
+  //    then hand back a Stripe Checkout URL. The webhook verifies this page's
+  //    id against the reservation and finalizes the instant payment completes.
   if (stripeConfigured() && isProductConfigured(PRODUCT)) {
-    await reserveSlug(slug, id, a.userId)
-    const out = await createCheckoutSession(PRODUCT, a.userId, req.nextUrl.origin, slug)
+    if (!(await reserveSlug(slug, id, a.userId))) {
+      return NextResponse.json({ error: 'that address was just taken — pick another' }, { status: 409 })
+    }
+    const out = await createCheckoutSession(PRODUCT, a.userId, req.nextUrl.origin, slug, id)
     if ('error' in out) return NextResponse.json({ error: out.error }, { status: out.status })
     return NextResponse.json({ checkout: out.url })
   }

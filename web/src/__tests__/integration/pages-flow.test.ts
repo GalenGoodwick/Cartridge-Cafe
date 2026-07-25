@@ -24,12 +24,14 @@ describe.sequential('pages flow (dev DB)', () => {
   it('creates a page with sanitized blocks', async () => {
     doc = await createPage(OWNER, {
       title: 'Integration Test Page',
+      // ids omitted on purpose — sanitizeBlocks mints them (the API route feeds
+      // raw client JSON through the same path), hence the cast
       blocks: [
         { kind: 'heading', text: 'Hello', level: 1 },
         { kind: 'text', text: 'Body copy.' },
         { kind: 'link', text: 'bad', href: 'javascript:alert(1)' },
         { kind: 'shader', wgsl: 'fn fieldEffect(cellPos: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f { return vec4f(0.5); }' },
-      ],
+      ] as unknown as PageDoc['blocks'],
     })
     expect(doc.id).toMatch(/^pg_/)
     expect(doc.blocks.length).toBe(4)
@@ -69,10 +71,36 @@ describe.sequential('pages flow (dev DB)', () => {
   it('finalizePagePublish (webhook path) republishes from a reservation', async () => {
     doc.title = 'After Purchase'
     await savePageDoc(doc)
-    await reserveSlug(SLUG, doc.id, OWNER)
-    expect(await finalizePagePublish(SLUG)).toBe(true)
+    expect(await reserveSlug(SLUG, doc.id, OWNER)).toBe(true)
+    expect(await finalizePagePublish(SLUG, doc.id)).toBe('published')
     const pub = await loadPublished(SLUG)
     expect(pub?.title).toBe('After Purchase')
+  })
+
+  it('reservation for a LIVE slug is refused for another page; paid conflict refuses to clobber', async () => {
+    // SLUG is published by doc now (permanent claim, no reservedAt)
+    expect(await reserveSlug(SLUG, 'pg_intruder', 'someone-else')).toBe(false)
+    // a phantom payment for another page against this live slug → conflict, page untouched
+    expect(await finalizePagePublish(SLUG, 'pg_intruder')).toBe('conflict')
+    const pub = await loadPublished(SLUG)
+    expect(pub?.title).toBe('After Purchase')
+  })
+
+  it('finalize verifies the PAID pageId even when a later reservation overwrote the index', async () => {
+    // fresh unpublished slug reserved by the buyer's page
+    const raceSlug = SLUG + '-race'
+    expect(await reserveSlug(raceSlug, doc.id, OWNER)).toBe(true)
+    // buyer's webhook lands with their pageId → publishes THEIR page
+    expect(await finalizePagePublish(raceSlug, doc.id)).toBe('published')
+    const pub = await loadPublished(raceSlug)
+    expect(pub?.title).toBe('After Purchase')
+    // cleanup the extra slug
+    const { deleteGameSlot } = await import('@/app/api/engine/store')
+    await deleteGameSlot('page:pub:' + raceSlug)
+    await deleteGameSlot('page:slug:' + raceSlug)
+    // restore doc's canonical slug for the delete test
+    doc.slug = SLUG
+    await savePageDoc(doc)
   })
 
   it('delete removes draft, published copy, and slug', async () => {
