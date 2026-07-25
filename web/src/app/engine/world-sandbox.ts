@@ -256,11 +256,16 @@ export class WorldSandbox {
       released: !pdown && this.prevPointerDown,
     }
     this.prevPointerDown = pdown
+    // relative mouse-look deltas from pointer-lock (FieldEngine writes mouse_dx/dy);
+    // consumed per frame so a hook reads this frame's turn, not an accumulation.
+    const lookX = (wd['mouse_dx'] as number) || 0
+    const lookY = (wd['mouse_dy'] as number) || 0
+    wd['mouse_dx'] = 0; wd['mouse_dy'] = 0
     return {
       held, pressed, released, moveX, moveY,
       action: hit('space') || hit('enter'),         // primary-action edge
       actionHeld: on('space') || on('enter'),
-      pointer,
+      pointer, lookX, lookY,
     }
   }
 

@@ -2760,6 +2760,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
+  // pointer-lock for mouse-look worlds: while locked, accumulate relative mouse
+  // deltas into worldData.mouse_dx/dy (world-sandbox exposes them as input.lookX/
+  // lookY) and hide the cursor. Gated by worldData.__mouseLook — no effect on
+  // other worlds, which never request the lock.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== canvas) return
+      const sim = simulationRef.current
+      if (!sim) return
+      sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
+      sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
+    }
+    const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('pointerlockchange', onLock)
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('pointerlockchange', onLock) }
+  }, [])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current
@@ -2780,6 +2800,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.worldData['mouse_down'] = true
       // pulse counter — a click shorter than one sim frame still lands once
       sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
+    }
+
+    // MOUSE-LOOK worlds opt in via worldData.__mouseLook → lock the pointer so
+    // the cursor hides and the mouse gives unbounded relative deltas (an FPS
+    // can't turn past the screen edge otherwise). Must be from this user gesture.
+    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+      try { canvas.requestPointerLock() } catch { /* not supported */ }
     }
 
     // 3D mode: right-click or alt+click = orbit camera
