@@ -212,6 +212,23 @@ const TABS: Tab[] = [
     ai: 'One substrate, one truth. An AI writes a shader and gets the look, the silhouette and the collision from the same pixels — nothing to keep in sync — and it can SEE the result to check itself. Fields compose by superimposition, so a model builds complex scenes by stacking simple shaders instead of wiring a scene graph.',
   },
   {
+    id: 'interactions', label: 'Interactions', tag: '02 · interactions', title: 'Interactions happen at the overlapping pixels.',
+    essence: 'A field’s drawn alpha is also its collider and its interaction zone — so overlaps resolve at the exact pixels, in the same pass that draws them.',
+    body: [
+      'Because the render is authoritative, a field needs no separate hitbox: the pixels it paints ARE its shape, its collider and its interaction surface, all at once. Two fields interact wherever their drawn alpha truly overlaps — not where two bounding boxes cross — so a wisp of flame chars the plank only at the pixels it actually licks.',
+      'And interactions are wired by vocabulary, not by pairwise code. A component carries tags; a tag rule (fire × flammable) binds a small interactionEffect shader that the engine runs at exactly the overlap pixels, with a few pixels of spread. Place a brazier beside dry grass and the charring happens on its own — no bespoke collision handler, no per-object glue. Intersections emerge from what things ARE.',
+    ],
+    points: [
+      ['alpha', 'the drawn pixels — shape, collider and interaction zone at once'],
+      ['tag rule', 'fire × flammable — an effect wired by vocabulary, not by hand'],
+      ['interactionEffect', 'a shader run at the exact overlap pixels (+ spread)'],
+      ['components', 'reusable tagged parts — place objects, interactions follow'],
+    ],
+    term: 'define_tag_rule({ a, b, spread, wgsl }) → interactionEffect at the overlap',
+    files: ['engine/AI_ENGINE_GUIDE.md', 'engine/FieldEngine.tsx', 'engine/shaders.ts', 'engine/SUPERIMPOSITION.md'],
+    ai: 'The same pixels carry look, collision and interaction, so an AI never wires a hidden collision graph or a bespoke interaction handler, and never keeps three models in sync. It places tagged objects and the intersections resolve themselves at the overlap — then it can SEE them land in the render. Behaviour by vocabulary, verified by eye.',
+  },
+  {
     id: 'whiteboard', label: 'Whiteboard', tag: '03 · the whiteboard', title: 'One shared memory between logic and pixels.',
     essence: 'A small float array is the only channel: the hook simulates, the shader only reads.',
     body: [
