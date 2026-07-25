@@ -1,15 +1,16 @@
 // End-to-end of the pages durable layer against the dev database (cool-pond).
-// Exercises the real slot store — create → edit → token mint/verify → publish →
-// load-published → delete — the same calls the API routes make.
+// Exercises the real slot store — create (live at birth) → edit → token
+// mint/verify → claim → rename → views → delete — the same calls the API
+// routes make.
 //
 // Needs DATABASE_URL (run via `npm run test:integration` with .env.local loaded).
 import { describe, it, expect, afterAll } from 'vitest'
 import {
   createPage, loadPageDoc, savePageDoc, deletePage,
   mintPageToken, verifyPageToken, revokePageToken,
-  slugAvailable, publishPage, loadPublished, finalizePagePublish, reserveSlug,
-  listPublishedPages, bumpPageViews,
-  sanitizeBlocks, type PageDoc,
+  slugAvailable, claimPage, renamePage, loadPublished, finalizePagePublish,
+  reserveSlug, listPublishedPages, bumpPageViews,
+  sanitizeBlocks, syncPublishedSnapshot, type PageDoc,
 } from '@/lib/pages'
 
 const OWNER = 'test-user-pages-flow'
@@ -22,7 +23,7 @@ describe.sequential('pages flow (dev DB)', () => {
     if (doc) await deletePage(doc).catch(() => {})
   })
 
-  it('creates a page with sanitized blocks', async () => {
+  it('a page is LIVE at birth: auto address, unclaimed, unlisted', async () => {
     doc = await createPage(OWNER, {
       title: 'Integration Test Page',
       // ids omitted on purpose — sanitizeBlocks mints them (the API route feeds
@@ -38,13 +39,24 @@ describe.sequential('pages flow (dev DB)', () => {
     expect(doc.blocks.length).toBe(4)
     const link = doc.blocks.find((b) => b.kind === 'link')
     expect(link && 'href' in link && link.href).toBe('#')   // scheme neutralized
+    // live from creation, at an auto slug derived from the title
+    expect(doc.published).toBe(true)
+    expect(doc.claimed).toBe(false)
+    expect(doc.slug).toMatch(/^integration-test-page-[0-9a-f]{4}$/)
+    const pub = await loadPublished(doc.slug!)
+    expect(pub?.claimed).toBe(false)
+    // on the index but flagged unclaimed (hub/sitemap filter these out)
+    const entry = (await listPublishedPages()).find((p) => p.slug === doc.slug)
+    expect(entry?.claimed).toBe(false)
   })
 
-  it('round-trips a save', async () => {
+  it('round-trips a save and the live snapshot follows', async () => {
     doc.blocks = sanitizeBlocks([...doc.blocks, { kind: 'text', text: 'appended' }])
     await savePageDoc(doc)
+    await syncPublishedSnapshot(doc)
     const back = await loadPageDoc(doc.id)
     expect(back?.blocks.length).toBe(5)
+    expect((await loadPublished(doc.slug!))?.blocks.length).toBe(5)
   })
 
   it('mints and verifies a page token; wrong token fails', async () => {
@@ -57,66 +69,71 @@ describe.sequential('pages flow (dev DB)', () => {
     expect(await verifyPageToken(raw)).toBeNull()
   })
 
-  it('slug availability + publish + public load', async () => {
+  it('claiming moves the page to its chosen address and releases the auto one', async () => {
+    const autoAddr = doc.slug!
     expect((await slugAvailable(SLUG, doc.id)).ok).toBe(true)
-    await publishPage(doc, SLUG)
-    // taken for another page now
+    await claimPage(doc, SLUG)
+    expect(doc.claimed).toBe(true)
+    expect(doc.slug).toBe(SLUG)
+    // chosen address live + listed as claimed
+    expect((await loadPublished(SLUG))?.claimed).toBe(true)
+    expect((await listPublishedPages()).find((p) => p.slug === SLUG)?.claimed).toBe(true)
+    // auto address released entirely
+    expect(await loadPublished(autoAddr)).toBeNull()
+    expect((await listPublishedPages()).find((p) => p.slug === autoAddr)).toBeUndefined()
+    // taken for another page, still "free" for a same-page re-publish
     expect((await slugAvailable(SLUG, 'pg_other')).ok).toBe(false)
-    // still "available" (re-publish) for the same page
     expect((await slugAvailable(SLUG, doc.id)).ok).toBe(true)
-    const pub = await loadPublished(SLUG)
-    expect(pub?.title).toBe('Integration Test Page')
-    expect(pub?.blocks.length).toBe(5)
   })
 
-  it('finalizePagePublish (webhook path) republishes from a reservation', async () => {
+  it('rename (free, post-claim) carries the audience count', async () => {
+    await Promise.all([bumpPageViews(SLUG), bumpPageViews(SLUG)])
+    const renamed = SLUG + '-renamed'
+    await renamePage(doc, renamed)
+    expect((await listPublishedPages()).find((p) => p.slug === renamed)?.views).toBe(2)
+    expect(await loadPublished(SLUG)).toBeNull()   // old address released
+    await renamePage(doc, SLUG)                     // move back for later tests
+    expect((await listPublishedPages()).find((p) => p.slug === SLUG)?.views).toBe(2)
+  })
+
+  it('finalizePagePublish (webhook path) claims from a reservation', async () => {
     doc.title = 'After Purchase'
+    doc.claimed = false   // simulate a page paying for the claim
     await savePageDoc(doc)
     expect(await reserveSlug(SLUG, doc.id, OWNER)).toBe(true)
     expect(await finalizePagePublish(SLUG, doc.id)).toBe('published')
     const pub = await loadPublished(SLUG)
     expect(pub?.title).toBe('After Purchase')
+    expect(pub?.claimed).toBe(true)
+    doc = (await loadPageDoc(doc.id))!   // pick up claimed=true
+    expect(doc.claimed).toBe(true)
   })
 
   it('reservation for a LIVE slug is refused for another page; paid conflict refuses to clobber', async () => {
-    // SLUG is published by doc now (permanent claim, no reservedAt)
     expect(await reserveSlug(SLUG, 'pg_intruder', 'someone-else')).toBe(false)
-    // a phantom payment for another page against this live slug → conflict, page untouched
     expect(await finalizePagePublish(SLUG, 'pg_intruder')).toBe('conflict')
-    const pub = await loadPublished(SLUG)
-    expect(pub?.title).toBe('After Purchase')
+    expect((await loadPublished(SLUG))?.title).toBe('After Purchase')
   })
 
   it('finalize verifies the PAID pageId even when a later reservation overwrote the index', async () => {
-    // fresh unpublished slug reserved by the buyer's page
     const raceSlug = SLUG + '-race'
     expect(await reserveSlug(raceSlug, doc.id, OWNER)).toBe(true)
-    // buyer's webhook lands with their pageId → publishes THEIR page
     expect(await finalizePagePublish(raceSlug, doc.id)).toBe('published')
-    const pub = await loadPublished(raceSlug)
-    expect(pub?.title).toBe('After Purchase')
-    // cleanup the extra slug (index too — a manual slot-delete bypasses deletePage)
-    const { deleteGameSlot } = await import('@/app/api/engine/store')
-    const { unindexPublishedPage } = await import('@/lib/pages')
-    await deleteGameSlot('page:pub:' + raceSlug)
-    await deleteGameSlot('page:slug:' + raceSlug)
-    await unindexPublishedPage(raceSlug)
-    // restore doc's canonical slug for the delete test
-    doc.slug = SLUG
-    await savePageDoc(doc)
+    expect((await loadPublished(raceSlug))?.title).toBe('After Purchase')
+    // move back and confirm the race address fully released (rename releases)
+    await renamePage(doc, SLUG)
+    expect(await loadPublished(raceSlug)).toBeNull()
+    expect((await listPublishedPages()).find((p) => p.slug === raceSlug)).toBeUndefined()
   })
 
-  it('publish puts the page on the hub index; views bump atomically', async () => {
-    const listed = await listPublishedPages()
-    const mine = listed.find((p) => p.slug === SLUG)
-    expect(mine?.title).toBe('After Purchase')
-    const before = mine?.views ?? 0
+  it('views bump atomically under concurrency', async () => {
+    const before = (await listPublishedPages()).find((p) => p.slug === SLUG)?.views ?? 0
     await Promise.all([bumpPageViews(SLUG), bumpPageViews(SLUG), bumpPageViews(SLUG)])
     const after = (await listPublishedPages()).find((p) => p.slug === SLUG)?.views ?? 0
     expect(after).toBe(before + 3)   // concurrent bumps may not lose counts
   })
 
-  it('delete removes draft, published copy, slug, and hub listing', async () => {
+  it('delete removes draft, live copy, slug, and listing', async () => {
     const id = doc.id
     await deletePage(doc)
     expect(await loadPageDoc(id)).toBeNull()

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireOwner } from '@/lib/page-auth'
-import { slugAvailable, reserveSlug, publishPage } from '@/lib/pages'
-import { readEntitlements, stripeConfigured, createCheckoutSession, isProductConfigured } from '@/lib/stripe'
+import { slugAvailable, reserveSlug, claimPage, renamePage } from '@/lib/pages'
+import {
+  readEntitlements, grantEntitlement, revokeEntitlement,
+  stripeConfigured, createCheckoutSession, isProductConfigured,
+} from '@/lib/stripe'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,11 +20,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json(avail)
 }
 
-/** POST /api/pages/:id/publish {slug} — go live. Order of resolution:
- *   1. re-publish of a slug this page already owns → free
- *   2. owner already paid for this slug (entitlement) → publish
- *   3. localhost dev → publish free (so it's testable without Stripe)
- *   4. Stripe configured for the `page` product → return a checkout URL
+/** POST /api/pages/:id/publish {slug} — CLAIM the page's permanent address.
+ *  The page is already live at its auto address; the $10 buys the chosen name,
+ *  the permanence promise, and the hub/sitemap listing. Order of resolution:
+ *   1. already claimed → free RENAME (the entitlement moves with the page)
+ *   2. owner already paid for this slug (entitlement) → claim
+ *   3. localhost dev → claim free (testable without Stripe)
+ *   4. Stripe configured → reserve slug + return a Checkout URL
  *   5. otherwise → 501 (payments not switched on yet) */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -35,24 +40,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const url = `${req.nextUrl.origin}/p/${slug}`
 
-  // 1. re-publishing the page's own current slug — no charge.
-  if (a.doc.slug === slug && a.doc.published) {
-    await publishPage(a.doc, slug)
-    return NextResponse.json({ published: true, url })
+  // 1. already claimed — renaming is free, the paid entitlement moves along.
+  if (a.doc.claimed) {
+    const oldSlug = a.doc.slug
+    if (oldSlug === slug) return NextResponse.json({ claimed: true, url })
+    await renamePage(a.doc, slug)
+    if (oldSlug) {
+      const ents = await readEntitlements(a.userId)
+      if (ents.some((e) => e.active && e.product === PRODUCT && e.slug === oldSlug)) {
+        await revokeEntitlement(a.userId, PRODUCT, oldSlug)
+        await grantEntitlement(a.userId, { product: PRODUCT, slug })
+      }
+    }
+    return NextResponse.json({ claimed: true, url })
   }
 
-  // 2. already entitled for this slug (paid earlier, or webhook granted it).
+  // 2. already entitled for this slug (paid earlier; webhook may have missed).
   const ents = await readEntitlements(a.userId)
-  const paid = ents.some((e) => e.active && e.product === PRODUCT && e.slug === slug)
-  if (paid) {
-    await publishPage(a.doc, slug)
-    return NextResponse.json({ published: true, url })
+  if (ents.some((e) => e.active && e.product === PRODUCT && e.slug === slug)) {
+    await claimPage(a.doc, slug)
+    return NextResponse.json({ claimed: true, url })
   }
 
   // 3. localhost dev convenience — never in production.
   if (process.env.NODE_ENV !== 'production') {
-    await publishPage(a.doc, slug)
-    return NextResponse.json({ published: true, url, dev: true })
+    await claimPage(a.doc, slug)
+    return NextResponse.json({ claimed: true, url, dev: true })
   }
 
   // 4. paid path — reserve the address (refused = just lost a race for it),
@@ -69,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // 5. rail not switched on.
   return NextResponse.json(
-    { error: 'Publishing opens when payments are switched on.' },
+    { error: 'Claiming opens when payments are switched on — your page stays live at its current address.' },
     { status: 501 },
   )
 }

@@ -33,7 +33,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // The pages network: hub + every published page (SSR'd real text — heading/
     // paragraph blocks and shader prompts are all crawlable).
     const { listPublishedPages } = await import('@/lib/pages')
-    const published = await listPublishedPages()
+    const published = (await listPublishedPages()).filter((p) => p.claimed !== false)
     if (published.length) out.push({ url: `${base}/p`, changeFrequency: 'hourly', priority: 0.8 })
     for (const p of published) {
       out.push({

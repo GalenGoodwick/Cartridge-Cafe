@@ -15,7 +15,7 @@
 import crypto from 'crypto'
 import { loadGameSlot, saveGameSlot, saveGameSlotStrict, deleteGameSlot, invalidateSlotCache } from '@/app/api/engine/store'
 import {
-  type PageDoc, type PublicPage, MAX_TITLE, sanitizeBlocks, validateSlug,
+  type PageDoc, type PublicPage, MAX_TITLE, sanitizeBlocks, validateSlug, slugify,
 } from '@/lib/page-types'
 
 export * from '@/lib/page-types'
@@ -75,11 +75,26 @@ async function addOwnerPage(userId: string, id: string): Promise<void> {
   if (!ids.includes(id)) await saveGameSlot(ownerSlot(userId), { ids: [...ids, id].slice(-100) })
 }
 
+/** A page is LIVE from birth: creation mints an auto address and publishes
+ *  immediately (unclaimed — unlisted, banner, renameable by claiming). */
 export async function createPage(ownerId: string, seed?: Partial<PageDoc>): Promise<PageDoc> {
   const doc = newPageDoc(ownerId, seed)
-  await savePageDoc(doc)
+  doc.claimed = false
   await addOwnerPage(ownerId, doc.id)
+  await publishPage(doc, await autoSlug(doc.title, doc.id))
   return doc
+}
+
+/** Mint an available auto address from a title: `my-title-3f2a`. The random
+ *  tail keeps titles from colliding and makes unclaimed addresses obviously
+ *  provisional — claiming buys the clean name. */
+export async function autoSlug(title: string, pageId: string): Promise<string> {
+  const base = (slugify(title) || 'page').slice(0, 40)
+  for (let i = 0; i < 5; i++) {
+    const s = `${base}-${crypto.randomBytes(2).toString('hex')}`
+    if (validateSlug(s).ok && (await slugAvailable(s, pageId)).ok) return s
+  }
+  return `page-${crypto.randomBytes(4).toString('hex')}`   // vanishing odds
 }
 
 export async function deletePage(doc: PageDoc): Promise<void> {
@@ -118,26 +133,30 @@ function indexHolds(idx: SlugIndex): boolean {
 }
 
 /** Is `slug` free for `pageId`? A slug already owned by the SAME page is "free"
- *  (a re-publish); an EXPIRED unpaid reservation is free for anyone. */
+ *  (a re-publish); an EXPIRED unpaid reservation is free for anyone — UNLESS a
+ *  live page is actually being served there (an abandoned self-claim checkout
+ *  must not expose a live page's address to a clobbering claim). */
 export async function slugAvailable(slug: string, pageId: string): Promise<{ ok: boolean; reason?: string }> {
   const v = validateSlug(slug)
   if (!v.ok) return { ok: false, reason: v.error }
-  const idx = await slugIndex(slug.toLowerCase())
+  const s = slug.toLowerCase()
+  const idx = await slugIndex(s)
   if (idx && idx.pageId !== pageId && indexHolds(idx)) return { ok: false, reason: 'that address is taken' }
+  if ((!idx || idx.pageId !== pageId) && (await loadPublished(s))) {
+    return { ok: false, reason: 'that address is taken' }   // live page holds its ground
+  }
   return { ok: true }
 }
 
 /** Reserve a slug for a page at checkout start, so the address can't be sniped
- *  while the buyer is in Stripe. Re-checks the index at write time (narrowing
- *  the check-then-write race to milliseconds) and refuses to overwrite a live
- *  claim; the webhook's pageId verification is the real settlement — see
- *  finalizePagePublish. Durable (strict write): a reservation that existed only
- *  in one lambda's cache couldn't be honored. Returns false if the slug is
- *  held by someone else. */
+ *  while the buyer is in Stripe. Re-checks availability at write time
+ *  (narrowing the check-then-write race to milliseconds); the webhook's pageId
+ *  verification is the real settlement — see finalizePagePublish. Durable
+ *  (strict write): a reservation that existed only in one lambda's cache
+ *  couldn't be honored. Returns false if the slug is held by someone else. */
 export async function reserveSlug(slug: string, pageId: string, ownerId: string): Promise<boolean> {
   const s = slug.toLowerCase()
-  const idx = await slugIndex(s)
-  if (idx && idx.pageId !== pageId && indexHolds(idx)) return false
+  if (!(await slugAvailable(s, pageId)).ok) return false
   try {
     await saveGameSlotStrict(slugSlot(s), { pageId, ownerId, reservedAt: Date.now() })
     return true
@@ -146,28 +165,57 @@ export async function reserveSlug(slug: string, pageId: string, ownerId: string)
   }
 }
 
-/** The public shape served at /p/<slug> — no owner/internal fields. */
+/** The public shape served at /p/<slug> — no owner/internal fields. Legacy
+ *  snapshots (pre-claim model) count as claimed. */
 export function publicView(doc: PageDoc): PublicPage {
-  return { title: doc.title, blocks: doc.blocks, publishedAt: doc.publishedAt ?? Date.now(), slug: doc.slug ?? '' }
+  return {
+    title: doc.title, blocks: doc.blocks,
+    publishedAt: doc.publishedAt ?? Date.now(),
+    slug: doc.slug ?? '',
+    claimed: doc.claimed ?? true,
+  }
 }
 
-/** Copy a draft live: write the public snapshot, claim the slug permanently,
- *  mark published. STRICT writes — this is what the $10 buys; a publish that
- *  exists only in one lambda's cache is data loss, so a DB failure THROWS and
- *  the caller must surface it (the webhook 500s so Stripe retries).
- *  Assumes authority/entitlement already checked. */
+/** Take a page live at `slug`: write the public snapshot, claim the slug
+ *  permanently, mark published. Does NOT change `doc.claimed` — creation
+ *  publishes unclaimed, claiming publishes claimed. STRICT writes: for a
+ *  claimed page this is what the $10 bought; a publish that exists only in one
+ *  lambda's cache is data loss, so a DB failure THROWS and the caller surfaces
+ *  it (the webhook 500s so Stripe retries). Assumes authority checked. */
 export async function publishPage(doc: PageDoc, slug: string): Promise<PageDoc> {
   const s = slug.toLowerCase()
   doc.slug = s
   doc.published = true
-  doc.publishedAt = Date.now()
+  doc.publishedAt = doc.publishedAt ?? Date.now()
   doc.updatedAt = Date.now()
   // permanent claim first (no reservedAt = never expires), then the content
   await saveGameSlotStrict(slugSlot(s), { pageId: doc.id, ownerId: doc.ownerId })
   await saveGameSlotStrict(pubSlot(s), publicView(doc))
   await saveGameSlotStrict(docSlot(doc.id), doc)
-  await indexPublishedPage(doc)   // onto the hub shelf + sitemap (best-effort)
+  await indexPublishedPage(doc)   // onto the index (hub/sitemap filter claimed)
   return doc
+}
+
+/** Move a live page to a new address: release the old slots + index entry
+ *  (views travel with the page), publish at the new slug. */
+export async function renamePage(doc: PageDoc, newSlug: string): Promise<PageDoc> {
+  const old = doc.slug
+  const views = old ? (await listPublishedPages()).find((p) => p.slug === old)?.views : undefined
+  await publishPage(doc, newSlug)
+  if (typeof views === 'number' && views > 0) await seedViews(doc.slug!, views)
+  if (old && old !== doc.slug) {
+    await deleteGameSlot(pubSlot(old))
+    await deleteGameSlot(slugSlot(old))
+    await unindexPublishedPage(old)
+  }
+  return doc
+}
+
+/** The $10 lands: the page takes its chosen permanent address and goes on the
+ *  shelf. Renames from the auto address, flips `claimed`. */
+export async function claimPage(doc: PageDoc, slug: string): Promise<PageDoc> {
+  doc.claimed = true
+  return renamePage(doc, slug)
 }
 
 /** Refresh the live snapshot after an already-published page's draft changed.
@@ -182,12 +230,11 @@ export async function syncPublishedSnapshot(doc: PageDoc): Promise<void> {
 /** Called by the Stripe webhook for a completed `page` purchase. Verifies the
  *  reservation still belongs to the page the buyer paid for — two buyers can
  *  race checkouts for one slug, and the LAST reservation write wins the index,
- *  so without this check A's money could publish B's page. Resolution:
- *   - index matches the paid pageId → publish (normal case)
- *   - index mismatch, slug NOT yet published → the PAYER wins: re-claim + publish
- *   - index mismatch, slug already published by another page → refuse (returns
- *     'conflict' so the webhook can flag it for manual care — never clobber a
- *     live paid page)
+ *  so without this check A's money could claim against B's page. Resolution:
+ *   - index matches the paid pageId → claim (normal case)
+ *   - index mismatch, slug NOT yet live → the PAYER wins: re-claim
+ *   - index mismatch, slug already live under another page → refuse ('conflict'
+ *     — flagged for manual care; never clobber someone's live page)
  *  Throws on DB failure so the webhook can 500 and Stripe retries. */
 export async function finalizePagePublish(
   slug: string, paidPageId?: string,
@@ -202,7 +249,7 @@ export async function finalizePagePublish(
   }
   const doc = await loadPageDoc(pageId)
   if (!doc) return 'missing'
-  await publishPage(doc, s)
+  await claimPage(doc, s)
   return 'published'
 }
 
@@ -217,7 +264,7 @@ export async function loadPublished(slug: string): Promise<PublicPage | null> {
 // listing needs. Views are bumped ATOMICALLY in SQL — a read-modify-write from
 // N lambdas would eat counts.
 
-export type PageIndexEntry = { title: string; publishedAt: number; views?: number; desc?: string }
+export type PageIndexEntry = { title: string; publishedAt: number; views?: number; desc?: string; claimed?: boolean }
 export type PagesIndex = { pages: Record<string, PageIndexEntry> }
 
 export async function listPublishedPages(): Promise<Array<{ slug: string } & PageIndexEntry>> {
@@ -242,7 +289,17 @@ async function indexPublishedPage(doc: PageDoc): Promise<void> {
     publishedAt: prev?.publishedAt ?? doc.publishedAt ?? Date.now(),
     views: prev?.views ?? 0,     // a re-publish keeps its audience count
     desc: pageDesc(doc),
+    claimed: doc.claimed ?? true,   // hub/sitemap list claimed only; legacy = claimed
   }
+  await saveGameSlot(INDEX_SLOT, idx)
+}
+
+/** Carry an audience count to a renamed address (the page moved, its history
+ *  moves with it). Plain write — rename is owner-serialized, not contended. */
+async function seedViews(slug: string, views: number): Promise<void> {
+  const idx = (await loadGameSlot(INDEX_SLOT)) as PagesIndex | undefined
+  if (!idx?.pages?.[slug]) return
+  idx.pages[slug].views = views
   await saveGameSlot(INDEX_SLOT, idx)
 }
 

@@ -31,14 +31,18 @@ export type PageDoc = {
   title: string
   slug: string | null
   blocks: Block[]
+  /** live at /p/<slug>. True from creation — a page exists by being live. */
   published: boolean
+  /** the $10: a chosen permanent address + hub/sitemap listing. Unclaimed
+   *  pages are live but unlisted, at an auto-generated address. */
+  claimed?: boolean
   publishedAt?: number
   createdAt: number
   updatedAt: number
 }
 
 /** The public shape served at /p/<slug> — no owner/internal fields. */
-export type PublicPage = { title: string; blocks: Block[]; publishedAt: number; slug: string }
+export type PublicPage = { title: string; blocks: Block[]; publishedAt: number; slug: string; claimed?: boolean }
 
 // ─── Caps ────────────────────────────────────────────────────────────────────
 

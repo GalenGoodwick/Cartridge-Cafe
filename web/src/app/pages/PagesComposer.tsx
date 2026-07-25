@@ -25,7 +25,7 @@ function defaultBlocks(): Block[] {
   ]
 }
 
-type Doc = Pick<PageDoc, 'title' | 'slug' | 'published' | 'blocks'> & { id: string | null }
+type Doc = Pick<PageDoc, 'title' | 'slug' | 'published' | 'claimed' | 'blocks'> & { id: string | null }
 
 export default function PagesComposer() {
   const { status } = useSession()
@@ -38,9 +38,11 @@ export default function PagesComposer() {
   const [showConnect, setShowConnect] = useState(false)
   const [paidPending, setPaidPending] = useState(false)
 
-  // the hub's "⚡ connect your AI" CTA deep-links here as /pages#connect
+  // deep-links: /pages#connect opens the AI modal, /pages#claim the claim modal
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#connect') setShowConnect(true)
+    if (typeof window === 'undefined') return
+    if (window.location.hash === '#connect') setShowConnect(true)
+    if (window.location.hash === '#claim') setShowPublish(true)
   }, [])
 
   const dirty = useRef(false)
@@ -55,7 +57,7 @@ export default function PagesComposer() {
 
     function adoptServer(d: PageDoc) {
       safeSet(LOCAL_ID, d.id)
-      if (!cancelled) setDoc({ id: d.id, title: d.title, slug: d.slug, published: d.published, blocks: d.blocks })
+      if (!cancelled) setDoc({ id: d.id, title: d.title, slug: d.slug, published: d.published, claimed: d.claimed, blocks: d.blocks })
     }
 
     async function boot() {
@@ -65,6 +67,12 @@ export default function PagesComposer() {
         return
       }
 
+      // the admin bar on a live page links here as /pages?page=<id>
+      const wanted = new URLSearchParams(window.location.search).get('page')
+      if (wanted) {
+        const got = await fetchDoc(wanted)
+        if (got) return adoptServer(got)
+      }
       const localId = safeGet(LOCAL_ID)
       if (localId) {
         const got = await fetchDoc(localId)
@@ -172,8 +180,8 @@ export default function PagesComposer() {
     const t = setInterval(async () => {
       tries++
       const server = await fetchDoc(id)
-      if (server?.published) {
-        setDoc((d) => (d ? { ...d, published: true, slug: server.slug, blocks: server.blocks } : d))
+      if (server?.claimed) {
+        setDoc((d) => (d ? { ...d, published: true, claimed: true, slug: server.slug, blocks: server.blocks } : d))
         setPaidPending(false)
         clearInterval(t)
       } else if (tries >= 40) {   // ~60s — stop hammering; message stays honest
@@ -234,9 +242,14 @@ export default function PagesComposer() {
         <div className="flex items-center gap-2 shrink-0">
           <SaveBadge state={saveState} signedIn={signedIn} />
           <Link href="/p" className={btnGhost}>browse</Link>
+          {doc.slug && <a href={`/p/${doc.slug}`} target="_blank" rel="noreferrer" className={btnGhost}>view live ↗</a>}
           <button onClick={() => setEditing((e) => !e)} className={btnGhost}>{editing ? 'preview' : 'edit'}</button>
           {editing && <button onClick={() => setShowConnect(true)} className={btnGhost}>connect AI</button>}
-          {editing && <button onClick={() => setShowPublish(true)} className={btnAccent}>{doc.published ? 'published ✓' : 'publish'}</button>}
+          {editing && (
+            <button onClick={() => setShowPublish(true)} className={doc.claimed ? btnGhost : btnAccent}>
+              {doc.claimed ? 'claimed ✓' : 'claim — $10'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -258,13 +271,17 @@ export default function PagesComposer() {
           </div>
           <Palette onAdd={addBlock} />
           <p className="mt-6 text-center text-[11px] font-mono text-[#3f4f63]">
-            {signedIn ? 'saved to your account · $10 publishes it forever at cartridge.cafe/p/…' : 'saved to this browser · sign in to publish & connect an AI'}
+            {!signedIn
+              ? 'saved to this browser · sign in and it goes live instantly'
+              : doc.slug
+                ? <>live at <a href={`/p/${doc.slug}`} target="_blank" rel="noreferrer" className="text-[#55677E] underline underline-offset-2 hover:text-[#FFB25A]">/p/{doc.slug}</a>{doc.claimed ? ' · claimed forever' : ' · $10 claims a permanent name + the shelf'}</>
+                : 'saving takes it live at its own address'}
           </p>
         </main>
       )}
 
       {showPublish && <PublishModal doc={doc} signedIn={signedIn} paidPending={paidPending} onClose={() => setShowPublish(false)}
-        onPublished={(slug) => setDoc((d) => (d ? { ...d, published: true, slug } : d))} />}
+        onPublished={(slug) => setDoc((d) => (d ? { ...d, published: true, claimed: true, slug } : d))} />}
       {showConnect && <ConnectModal pageId={doc.id} signedIn={signedIn} onClose={() => setShowConnect(false)} />}
     </div>
   )
@@ -377,32 +394,37 @@ function Palette({ onAdd }: { onAdd: (k: BlockKind) => void }) {
   )
 }
 
-// ─── publish modal ──────────────────────────────────────────────────────────────
+// ─── claim modal ──────────────────────────────────────────────────────────────
+// The page is ALREADY LIVE at its auto address. This modal is where the $10
+// happens: choose the permanent name (claim), or — once claimed — move to a
+// new one for free (the entitlement travels with the page).
 
 function PublishModal({ doc, signedIn, paidPending, onClose, onPublished }: {
   doc: Doc; signedIn: boolean; paidPending?: boolean; onClose: () => void; onPublished: (slug: string) => void
 }) {
-  const [slug, setSlug] = useState(doc.slug || slugify(doc.title) || '')
+  const [slug, setSlug] = useState(doc.claimed ? doc.slug || '' : slugify(doc.title) || '')
   const [avail, setAvail] = useState<{ ok: boolean; reason?: string } | null>(null)
   const [busy, setBusy] = useState(false)
-  const [liveUrl, setLiveUrl] = useState(doc.published && doc.slug ? `/p/${doc.slug}` : '')
+  const [renaming, setRenaming] = useState(false)
+  const [claimedUrl, setClaimedUrl] = useState(doc.claimed && doc.slug ? `/p/${doc.slug}` : '')
   const [err, setErr] = useState('')
 
-  // the post-payment poll flips doc.published while this modal is open
+  // the post-payment poll flips doc.claimed while this modal is open
   useEffect(() => {
-    if (doc.published && doc.slug) setLiveUrl(`/p/${doc.slug}`)
-  }, [doc.published, doc.slug])
+    if (doc.claimed && doc.slug) setClaimedUrl(`/p/${doc.slug}`)
+  }, [doc.claimed, doc.slug])
 
+  const picking = !claimedUrl || renaming
   useEffect(() => {
-    if (!signedIn || !doc.id || !slug || liveUrl) { setAvail(null); return }
+    if (!signedIn || !doc.id || !slug || !picking) { setAvail(null); return }
     const t = setTimeout(async () => {
       const r = await fetch(`/api/pages/${doc.id}/publish?slug=${encodeURIComponent(slug)}`).then((r) => r.json()).catch(() => null)
       setAvail(r)
     }, 350)
     return () => clearTimeout(t)
-  }, [slug, signedIn, doc.id, liveUrl])
+  }, [slug, signedIn, doc.id, picking])
 
-  async function publish() {
+  async function claim() {
     if (!doc.id) return
     setBusy(true); setErr('')
     try {
@@ -412,32 +434,50 @@ function PublishModal({ doc, signedIn, paidPending, onClose, onPublished }: {
       })
       const data = await res.json()
       if (data.checkout) { window.location.href = data.checkout; return }
-      if (data.published) { setLiveUrl(data.url || `/p/${slug}`); onPublished(slug) }
-      else setErr(data.error || `Error ${res.status}`)
+      if (data.claimed || data.published) {
+        setClaimedUrl(data.url || `/p/${slug}`)
+        setRenaming(false)
+        onPublished(slug)
+      } else setErr(data.error || `Error ${res.status}`)
     } catch { setErr('Network error') } finally { setBusy(false) }
   }
 
+  const wasClaimed = !!doc.claimed
   return (
-    <Modal onClose={onClose} title={liveUrl ? 'Your page is live' : paidPending ? 'Payment received' : 'Publish — $10, hosted forever'}>
+    <Modal onClose={onClose} title={
+      paidPending && !claimedUrl ? 'Payment received'
+      : claimedUrl && !renaming ? 'Your address is claimed'
+      : wasClaimed ? 'Move to a new address'
+      : 'Claim your address — $10'
+    }>
       {!signedIn ? (
-        <SignInNudge what="publish your page" />
-      ) : paidPending && !liveUrl ? (
+        <SignInNudge what="claim your page's address" />
+      ) : paidPending && !claimedUrl ? (
         <div className="space-y-3 text-center">
-          <p className="text-sm text-[#c7d3e0]">Payment received — finishing your publish…</p>
-          <p className="text-xs font-mono text-[#55677E] animate-pulse">your page goes live in a moment</p>
-          <p className="text-[11px] text-[#55677E]">Taking long? Your payment is recorded — refresh this page in a minute and it will be live.</p>
+          <p className="text-sm text-[#c7d3e0]">Payment received — anchoring your address…</p>
+          <p className="text-xs font-mono text-[#55677E] animate-pulse">done in a moment</p>
+          <p className="text-[11px] text-[#55677E]">Taking long? Your payment is recorded — refresh in a minute and it will be claimed.</p>
         </div>
-      ) : liveUrl ? (
+      ) : claimedUrl && !renaming ? (
         <div className="space-y-3">
-          <p className="text-sm text-[#c7d3e0]">Live at:</p>
-          <a href={liveUrl} target="_blank" rel="noreferrer" className="block break-all rounded bg-black/40 border border-[#26364e] px-3 py-2 font-mono text-sm text-[#FFB25A]">
-            {typeof window !== 'undefined' ? window.location.origin : ''}{liveUrl}
+          <p className="text-sm text-[#c7d3e0]">Yours, permanently:</p>
+          <a href={claimedUrl} target="_blank" rel="noreferrer" className="block break-all rounded bg-black/40 border border-[#26364e] px-3 py-2 font-mono text-sm text-[#FFB25A]">
+            {typeof window !== 'undefined' ? window.location.origin : ''}{claimedUrl}
           </a>
-          <p className="text-xs text-[#7E93AC]">Edits you make in the composer update the live page automatically.</p>
+          <p className="text-xs text-[#7E93AC]">On the shelf, in the sitemap, hosted forever. Every edit goes live instantly.</p>
+          <button onClick={() => { setRenaming(true); setSlug(doc.slug || '') }} className={btnGhost + ' w-full'}>
+            ↻ move to a new address (free)
+          </button>
         </div>
       ) : (
         <div className="space-y-3">
-          <label className="block text-sm text-[#7E93AC]">Choose your address</label>
+          {!wasClaimed && doc.slug && (
+            <p className="text-xs text-[#7E93AC]">
+              Your page is live at <span className="font-mono text-[#c7d3e0]">/p/{doc.slug}</span> — a provisional address.
+              Claiming names it, anchors it forever, and puts it on the shelf.
+            </p>
+          )}
+          <label className="block text-sm text-[#7E93AC]">{wasClaimed ? 'New address' : 'Choose your address'}</label>
           <div className="flex items-center gap-1 rounded bg-black/40 border border-[#26364e] px-2 py-1.5">
             <span className="font-mono text-xs text-[#55677E]">cartridge.cafe/p/</span>
             <input value={slug} onChange={(e) => setSlug(slugify(e.target.value))} placeholder="my-page"
@@ -448,14 +488,20 @@ function PublishModal({ doc, signedIn, paidPending, onClose, onPublished }: {
               {avail.ok ? '✓ available' : `✕ ${avail.reason}`}
             </p>
           )}
-          <p className="text-xs text-[#7E93AC]">
-            $10 one-time. Permanent hosting, no subscription. Your page renders on each visitor’s GPU.
-          </p>
+          {!wasClaimed && (
+            <p className="text-xs text-[#7E93AC]">$10 one-time. No subscription. Renaming later is free.</p>
+          )}
+          {wasClaimed && doc.slug && (
+            <p className="text-xs text-[#7E93AC]">Free — your claim moves with the page. The old address (<span className="font-mono">/p/{doc.slug}</span>) is released.</p>
+          )}
           {err && <p className="text-xs text-[#ff9b7a]">{err}</p>}
-          <button onClick={publish} disabled={busy || !avail?.ok}
+          <button onClick={claim} disabled={busy || !avail?.ok}
             className="w-full rounded-md bg-[#FF6A2B] py-2 text-sm font-semibold text-[#140a04] disabled:opacity-40">
-            {busy ? 'starting checkout…' : 'Publish for $10'}
+            {busy ? 'working…' : wasClaimed ? 'Move address' : 'Claim for $10'}
           </button>
+          {wasClaimed && (
+            <button onClick={() => setRenaming(false)} className={btnGhost + ' w-full'}>cancel</button>
+          )}
         </div>
       )}
     </Modal>

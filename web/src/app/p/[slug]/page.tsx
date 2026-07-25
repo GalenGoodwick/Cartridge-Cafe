@@ -2,11 +2,15 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
-import { loadPublished, bumpPageViews } from '@/lib/pages'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { loadPublished, bumpPageViews, slugIndex } from '@/lib/pages'
 import PageBlocks from '../../pages/PageBlocks'
+import AdminBar from './AdminBar'
 
-// Permanently-hosted, published cafe page. Server-rendered for metadata; shader
-// blocks hydrate as client islands (see PageBlocks / ShaderFrame).
+// A live cafe page. Server-rendered for metadata; shader blocks hydrate as
+// client islands (see PageBlocks / ShaderFrame). Pages are live from creation —
+// unclaimed ones carry a drift banner; the $10 claim anchors them.
 export const dynamic = 'force-dynamic'
 
 // generateMetadata + the page component both need the doc — cache() dedupes
@@ -27,6 +31,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${page.title} · cartridge.cafe`,
     description,
     openGraph: { title: page.title, description, type: 'website' },
+    // unclaimed addresses are provisional — keep them out of search indexes
+    ...(page.claimed === false ? { robots: { index: false } } : {}),
   }
 }
 
@@ -36,10 +42,22 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
   if (!page) notFound()
   void bumpPageViews(slug)   // count the visit — atomic, fire-and-forget
 
+  // owner? → admin bar on the live page (the page is the workspace)
+  const [session, idx] = await Promise.all([getServerSession(authOptions), slugIndex(slug)])
+  const isOwner = !!session?.user?.id && !!idx && idx.ownerId === session.user.id
+  const unclaimed = page.claimed === false
+
   return (
     <div className="min-h-dvh bg-[#0A0D13] text-[#E9EFF7]">
+      {unclaimed && (
+        <div className="border-b border-[#2a2410] bg-[#171307] px-4 py-1.5 text-center">
+          <span className="font-mono text-[11px] text-[#8a7440]">
+            unclaimed page · this address is provisional — claiming ($10) names it and anchors it forever
+          </span>
+        </div>
+      )}
       <PageBlocks blocks={page.blocks} title={page.title} />
-      <footer className="mx-auto w-full max-w-3xl px-3 pb-8 pt-4 text-center space-x-4">
+      <footer className={`mx-auto w-full max-w-3xl px-3 pt-4 text-center space-x-4 ${isOwner ? 'pb-20' : 'pb-8'}`}>
         <a href="/pages" className="text-[11px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
           built on cartridge.cafe · make your own ✦
         </a>
@@ -47,6 +65,7 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
           more pages →
         </Link>
       </footer>
+      {isOwner && idx && <AdminBar pageId={idx.pageId} claimed={!unclaimed} />}
     </div>
   )
 }

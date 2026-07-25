@@ -16,7 +16,9 @@ export const metadata: Metadata = {
 const RAIL = 12   // cards per rail
 
 export default async function PagesHub() {
-  const all = await listPublishedPages()
+  // the shelf shows CLAIMED pages — unclaimed ones are live but unlisted
+  // (shareable by link; the $10 buys the listing + the permanent name)
+  const all = (await listPublishedPages()).filter((p) => p.claimed !== false)
   const fresh = [...all].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, RAIL)
   const top = [...all].filter((p) => (p.views ?? 0) > 0).sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, RAIL)
 
@@ -38,7 +40,7 @@ export default async function PagesHub() {
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[#7E93AC]">
           Living pages — every frame is a shader imagined by an AI, running live on your GPU.
-          Free to build. <span className="text-[#c7d3e0]">$10 publishes yours forever.</span>
+          Yours is live the moment you make it. <span className="text-[#c7d3e0]">$10 names it and puts it on this shelf, forever.</span>
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <a href="/pages" className="rounded-md bg-[#FF6A2B] px-5 py-2.5 text-sm font-semibold text-[#140a04] hover:bg-[#ff7d44] transition-colors">

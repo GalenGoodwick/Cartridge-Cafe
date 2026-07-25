@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { authPage, requireOwner } from '@/lib/page-auth'
 import {
-  savePageDoc, deletePage, sanitizeBlocks, syncPublishedSnapshot, MAX_TITLE,
+  savePageDoc, deletePage, sanitizeBlocks, syncPublishedSnapshot, publishPage,
+  autoSlug, MAX_TITLE,
   type Block,
 } from '@/lib/pages'
 
@@ -50,14 +51,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (Array.isArray(body.blocks)) {
     doc.blocks = keepAnsweredFrames(sanitizeBlocks(body.blocks), doc.blocks)
   }
-  await savePageDoc(doc)
 
-  // OWNER edits keep a live published page in sync — they paid for the slug.
-  // Token (connected-AI) writes stay on the DRAFT: publish is deliberately an
-  // owner-only power, and a leaked page token must not be able to rewrite the
-  // live site. The owner sees AI work in the composer and pushes it live by
-  // saving (any owner edit) or re-publishing.
-  if (a.via === 'owner') await syncPublishedSnapshot(doc)
+  if (!doc.slug) {
+    // legacy draft from the pre-live model — a page IS its live URL now; the
+    // first save mints its auto address and takes it live (unclaimed).
+    doc.claimed = doc.claimed ?? false
+    await publishPage(doc, await autoSlug(doc.title, doc.id))
+  } else {
+    await savePageDoc(doc)
+    // The page is LIVE BY DESIGN — every edit (owner or connected AI) lands on
+    // /p/<slug> immediately, exactly like AI-built worlds edit live. The owner
+    // chose to hand the token over; sanitation + revocation are the guardrails.
+    await syncPublishedSnapshot(doc)
+  }
   return NextResponse.json({ doc })
 }
 
