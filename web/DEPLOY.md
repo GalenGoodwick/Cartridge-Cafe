@@ -91,3 +91,26 @@ Lives in the Neon `EngineSlot` table (self-creates on first use — see
 `store.ts`). Also **per-database**, so local and prod accumulate their own
 tournament/group/layout state. This is intentional: prod is its own world. There
 is nothing to port here — it fills in as players use the live site.
+
+---
+
+## Pages monetization ($10 permanent publishing)
+
+The `/pages` builder sells one-time permanent hosting at `/p/<slug>` through the
+existing key-drop-ready Stripe rail (`src/lib/stripe.ts`). It is **inert until
+keys land** — the publish button returns 501 in production without them.
+
+To switch it on, drop into Vercel env:
+
+- `STRIPE_SECRET_KEY` — the account secret key (shared by all products)
+- `STRIPE_WEBHOOK_SECRET` — webhook signing secret for `/api/pay/webhook`
+- `STRIPE_PRICE_PAGE` — a Stripe **one-time $10** price id for the page product
+
+Flow: publish → slug reserved → Stripe Checkout → webhook
+`checkout.session.completed` grants the `page` entitlement (scoped to the slug)
+and auto-publishes the reserved draft → buyer's redirect lands on `/pages?paid=page`,
+which polls until live. Refunds revoke the entitlement (existing webhook path);
+the published page stays until an admin removes it.
+
+On localhost (`NODE_ENV !== 'production'`) publishing is free so the whole flow
+is testable without Stripe.
