@@ -96,10 +96,27 @@ pop(2i)   = (x, y, z, kind)     kind: 0 empty · 1 enemyWalker · 2 enemyFlyer
 pop(2i+1) = (hp01, animPhase, yaw, flags)
 ```
 The visual loops `for i in 0..popCount()/2` and branches on `kind`. The hook writes
-both slots per entity. **Open contract question for `enemies`:** reconcile this with
-`anim3-lib`'s actual per-entity input — if anim3 wants (x,y,angle,aux) 2D, either
-adapt anim3's driver or document the mapping here BEFORE building enemies. Resolve in
-the `contracts` node and update this section; downstream nodes read it as law.
+both slots per entity.
+
+**RESOLVED (contracts, verified against anim3-lib.wgsl:8-15):** anim3 imposes NO
+storage layout — it is stateless pure functions (`mod_a3_ik2`, `mod_a3_bone`,
+`mod_a3_gait(phase, duty)`, `mod_a3_aim`, …). Its documented crowd convention (one
+entry `[x, y, heading, phase]`) is a *suggestion*, not a requirement. Because
+VEILFIRE needs full 3D positions + kind + hp in ONE buffer shared by enemies,
+projectiles and death-bits, we keep the uniform **2-entry/entity** layout and DRIVE
+anim3 by extracting its inputs per walker:
+```
+groundPos = pop(2i).xyz          // (x, y=floor, z)   — center the local body frame here
+heading   = pop(2i+1).z          // yaw → mod_a3_aim forward
+gaitPhase = pop(2i+1).y          // → mod_a3_gait(gaitPhase, duty)
+hp01      = pop(2i+1).x          // draw damage state; combat reads/writes
+flags     = pop(2i+1).w
+```
+The visual, per walker, centers a local frame at `groundPos`, aims it along `heading`,
+and calls `mod_a3_gait(gaitPhase, duty)` for the legs — exactly anim3's pattern, fed
+from our values. Uniform 2-entry stride keeps the loop trivial; max ≈ 2047 entities
+(ample for a horror game). Projectiles/death-bits leave the anim slots unused. **This
+is LAW — downstream nodes read it, do not diverge.**
 
 ### File ownership (the clobber law — edit ONLY your node's files)
 ```
