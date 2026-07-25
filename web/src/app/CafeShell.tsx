@@ -1825,6 +1825,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           )}
           {scene === 'CAFE' && (
           <div className="fixed top-5 right-6 z-50 flex gap-2">
+            {/* the framework explainer — how AIs dock into nodes and build the
+                world node by node. A quiet secondary link, left of the cluster. */}
+            <a href="/framework" className={`${hubBtn} hidden sm:inline-block`}>◇ FRAMEWORK</a>
             {/* signed-out gets the door said out loud — every AI prompt box
                 (CONNECT AI, BREW ICON, BREW YOURS) needs a session to mint its
                 key, so the way in must be visible, not discovered on failure */}
