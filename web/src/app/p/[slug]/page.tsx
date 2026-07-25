@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
-import { loadPublished } from '@/lib/pages'
+import { loadPublished, bumpPageViews } from '@/lib/pages'
 import PageBlocks from '../../pages/PageBlocks'
 
 // Permanently-hosted, published cafe page. Server-rendered for metadata; shader
@@ -33,14 +34,18 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
   const { slug } = await params
   const page = await getPage(slug)
   if (!page) notFound()
+  void bumpPageViews(slug)   // count the visit — atomic, fire-and-forget
 
   return (
     <div className="min-h-dvh bg-[#0A0D13] text-[#E9EFF7]">
       <PageBlocks blocks={page.blocks} title={page.title} />
-      <footer className="mx-auto w-full max-w-3xl px-3 pb-8 pt-4 text-center">
+      <footer className="mx-auto w-full max-w-3xl px-3 pb-8 pt-4 text-center space-x-4">
         <a href="/pages" className="text-[11px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
           built on cartridge.cafe · make your own ✦
         </a>
+        <Link href="/p" className="text-[11px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
+          more pages →
+        </Link>
       </footer>
     </div>
   )

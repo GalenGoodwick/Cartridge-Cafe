@@ -13,7 +13,7 @@
 // The pure model (types, caps, validateSlug/sanitizeBlock/screenWgslHazard) lives
 // in `@/lib/page-types` so it stays importable from client components.
 import crypto from 'crypto'
-import { loadGameSlot, saveGameSlot, saveGameSlotStrict, deleteGameSlot } from '@/app/api/engine/store'
+import { loadGameSlot, saveGameSlot, saveGameSlotStrict, deleteGameSlot, invalidateSlotCache } from '@/app/api/engine/store'
 import {
   type PageDoc, type PublicPage, MAX_TITLE, sanitizeBlocks, validateSlug,
 } from '@/lib/page-types'
@@ -36,6 +36,7 @@ const pubSlot = (slug: string) => `page:pub:${slug}`
 const slugSlot = (slug: string) => `page:slug:${slug}`
 const ownerSlot = (userId: string) => `pages:owner:${userId}`
 const tokSlot = (hash: string) => `page:tok:${hash}`
+const INDEX_SLOT = 'pages:index'   // one row: every published page, for the hub + sitemap
 
 // ─── Document CRUD ────────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export async function deletePage(doc: PageDoc): Promise<void> {
   if (doc.slug) {
     await deleteGameSlot(pubSlot(doc.slug))
     await deleteGameSlot(slugSlot(doc.slug))
+    await unindexPublishedPage(doc.slug)
   }
   const ids = (await listOwnerPageIds(doc.ownerId)).filter((x) => x !== doc.id)
   await saveGameSlot(ownerSlot(doc.ownerId), { ids })
@@ -164,6 +166,7 @@ export async function publishPage(doc: PageDoc, slug: string): Promise<PageDoc> 
   await saveGameSlotStrict(slugSlot(s), { pageId: doc.id, ownerId: doc.ownerId })
   await saveGameSlotStrict(pubSlot(s), publicView(doc))
   await saveGameSlotStrict(docSlot(doc.id), doc)
+  await indexPublishedPage(doc)   // onto the hub shelf + sitemap (best-effort)
   return doc
 }
 
@@ -173,6 +176,7 @@ export async function publishPage(doc: PageDoc, slug: string): Promise<PageDoc> 
 export async function syncPublishedSnapshot(doc: PageDoc): Promise<void> {
   if (!doc.published || !doc.slug) return
   await saveGameSlot(pubSlot(doc.slug), publicView(doc))
+  await indexPublishedPage(doc)   // title/desc on the shelf follow the edit
 }
 
 /** Called by the Stripe webhook for a completed `page` purchase. Verifies the
@@ -206,6 +210,66 @@ export async function loadPublished(slug: string): Promise<PublicPage | null> {
   const p = (await loadGameSlot(pubSlot(slug.toLowerCase()))) as PublicPage | undefined
   return p && typeof p === 'object' && Array.isArray(p.blocks) ? p : null
 }
+
+// ─── The published-pages index — the hub's shelf and the sitemap's source ────
+// One slot row holds every published page's card data. Small on purpose: no
+// block content here (the hub loads hero shaders per shown card), just what a
+// listing needs. Views are bumped ATOMICALLY in SQL — a read-modify-write from
+// N lambdas would eat counts.
+
+export type PageIndexEntry = { title: string; publishedAt: number; views?: number; desc?: string }
+export type PagesIndex = { pages: Record<string, PageIndexEntry> }
+
+export async function listPublishedPages(): Promise<Array<{ slug: string } & PageIndexEntry>> {
+  const idx = (await loadGameSlot(INDEX_SLOT)) as PagesIndex | undefined
+  const pages = idx?.pages && typeof idx.pages === 'object' ? idx.pages : {}
+  return Object.entries(pages).map(([slug, e]) => ({ slug, ...e }))
+}
+
+/** First indexable line of a page — for the hub card + meta description. */
+function pageDesc(doc: PageDoc): string {
+  const t = doc.blocks.find((b) => (b.kind === 'text' || b.kind === 'heading') && b.text)
+  return (t && 'text' in t ? t.text : '').slice(0, 160)
+}
+
+async function indexPublishedPage(doc: PageDoc): Promise<void> {
+  if (!doc.slug) return
+  const idx = ((await loadGameSlot(INDEX_SLOT)) as PagesIndex | undefined) ?? { pages: {} }
+  if (!idx.pages || typeof idx.pages !== 'object') idx.pages = {}
+  const prev = idx.pages[doc.slug]
+  idx.pages[doc.slug] = {
+    title: doc.title,
+    publishedAt: prev?.publishedAt ?? doc.publishedAt ?? Date.now(),
+    views: prev?.views ?? 0,     // a re-publish keeps its audience count
+    desc: pageDesc(doc),
+  }
+  await saveGameSlot(INDEX_SLOT, idx)
+}
+
+export async function unindexPublishedPage(slug: string): Promise<void> {
+  const idx = (await loadGameSlot(INDEX_SLOT)) as PagesIndex | undefined
+  if (!idx?.pages?.[slug]) return
+  delete idx.pages[slug]
+  await saveGameSlot(INDEX_SLOT, idx)
+}
+
+/** Count a visit. Atomic jsonb increment in Postgres — concurrent lambdas
+ *  can't lose each other's counts. Fire-and-forget; never throws. */
+export async function bumpPageViews(slug: string): Promise<void> {
+  try {
+    const s = slug.toLowerCase()
+    if (!SAFE_SLUG_FOR_PATH.test(s)) return
+    const { prisma } = await import('@/lib/prisma')
+    await prisma.$executeRaw`
+      UPDATE "EngineSlot"
+      SET data = jsonb_set(data, ARRAY['pages', ${s}, 'views'],
+        to_jsonb(COALESCE((data->'pages'->${s}->>'views')::int, 0) + 1), true)
+      WHERE slot = ${INDEX_SLOT} AND data->'pages' ? ${s}`
+    // the SQL mutated the row behind the slot cache — drop the stale copy
+    invalidateSlotCache(INDEX_SLOT)
+  } catch { /* a lost view count must never break a page render */ }
+}
+const SAFE_SLUG_FOR_PATH = /^[a-z0-9][a-z0-9-]{1,48}$/
 
 // ─── Page-author tokens (connect-AI) ──────────────────────────────────────────
 // Mirrors the SpaceToken pattern but self-contained in the slot store: the raw

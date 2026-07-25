@@ -915,6 +915,12 @@ export async function saveGameSlotStrict(slot: string, data: unknown): Promise<v
   listCache = null
 }
 
+/** Drop one slot from this instance's cache — for callers that mutate the row
+ *  directly in SQL (e.g. an atomic jsonb increment) behind the cache's back. */
+export function invalidateSlotCache(slot: string): void {
+  slotCache.delete(slot)
+}
+
 /** Read a named save slot (cache-first, then Neon). */
 export async function loadGameSlot(slot: string): Promise<unknown | undefined> {
   const c = slotCache.get(slot)

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import Link from 'next/link'
 import ShaderFrame from './ShaderFrame'
 import PageBlocks, { ASPECT_CLASS } from './PageBlocks'
 import { SEED_HERO, SEED_EMBER, SEED_AURORA } from './frame-shader'
@@ -36,6 +37,11 @@ export default function PagesComposer() {
   const [showPublish, setShowPublish] = useState(false)
   const [showConnect, setShowConnect] = useState(false)
   const [paidPending, setPaidPending] = useState(false)
+
+  // the hub's "⚡ connect your AI" CTA deep-links here as /pages#connect
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#connect') setShowConnect(true)
+  }, [])
 
   const dirty = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -227,6 +233,7 @@ export default function PagesComposer() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <SaveBadge state={saveState} signedIn={signedIn} />
+          <Link href="/p" className={btnGhost}>browse</Link>
           <button onClick={() => setEditing((e) => !e)} className={btnGhost}>{editing ? 'preview' : 'edit'}</button>
           {editing && <button onClick={() => setShowConnect(true)} className={btnGhost}>connect AI</button>}
           {editing && <button onClick={() => setShowPublish(true)} className={btnAccent}>{doc.published ? 'published ✓' : 'publish'}</button>}

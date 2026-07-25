@@ -8,6 +8,7 @@ import {
   createPage, loadPageDoc, savePageDoc, deletePage,
   mintPageToken, verifyPageToken, revokePageToken,
   slugAvailable, publishPage, loadPublished, finalizePagePublish, reserveSlug,
+  listPublishedPages, bumpPageViews,
   sanitizeBlocks, type PageDoc,
 } from '@/lib/pages'
 
@@ -94,21 +95,34 @@ describe.sequential('pages flow (dev DB)', () => {
     expect(await finalizePagePublish(raceSlug, doc.id)).toBe('published')
     const pub = await loadPublished(raceSlug)
     expect(pub?.title).toBe('After Purchase')
-    // cleanup the extra slug
+    // cleanup the extra slug (index too — a manual slot-delete bypasses deletePage)
     const { deleteGameSlot } = await import('@/app/api/engine/store')
+    const { unindexPublishedPage } = await import('@/lib/pages')
     await deleteGameSlot('page:pub:' + raceSlug)
     await deleteGameSlot('page:slug:' + raceSlug)
+    await unindexPublishedPage(raceSlug)
     // restore doc's canonical slug for the delete test
     doc.slug = SLUG
     await savePageDoc(doc)
   })
 
-  it('delete removes draft, published copy, and slug', async () => {
+  it('publish puts the page on the hub index; views bump atomically', async () => {
+    const listed = await listPublishedPages()
+    const mine = listed.find((p) => p.slug === SLUG)
+    expect(mine?.title).toBe('After Purchase')
+    const before = mine?.views ?? 0
+    await Promise.all([bumpPageViews(SLUG), bumpPageViews(SLUG), bumpPageViews(SLUG)])
+    const after = (await listPublishedPages()).find((p) => p.slug === SLUG)?.views ?? 0
+    expect(after).toBe(before + 3)   // concurrent bumps may not lose counts
+  })
+
+  it('delete removes draft, published copy, slug, and hub listing', async () => {
     const id = doc.id
     await deletePage(doc)
     expect(await loadPageDoc(id)).toBeNull()
     expect(await loadPublished(SLUG)).toBeNull()
     expect((await slugAvailable(SLUG, 'pg_other')).ok).toBe(true)
+    expect((await listPublishedPages()).find((p) => p.slug === SLUG)).toBeUndefined()
     doc = undefined as unknown as PageDoc   // afterAll: nothing to clean
   })
 })
