@@ -1,0 +1,419 @@
+{
+  "project": "AUREON",
+  "subtitle": "a drowned cathedral of light and water — a maximum-graphics showcase for the SDF engine",
+  "trunk": "aureon",
+  "note": "The imagined worktree. Each node is a RENDERING TECHNIQUE; together they blend into one coherent frame that plays to what raymarched SDF does best (analytic soft shadows, AO, reflection/refraction, volumetrics, infinite detail). status is derived from tests + the EYE, never hand-set. A render node is done only when its visual-reference key is earned from a real probe frame. performance-budget gates every render node — max quality WITHIN the GPU budget, or it renders nothing. [FIRST FRAME LANDED: beautiful + distinct, but performance-budget FAILS (>3s/frame) — optimize next.]",
+  "nodes": [
+    {
+      "id": "sdf-cathedral",
+      "kind": "shader",
+      "area": "the drowned nave geometry: clustered gothic columns, ribbed pointed-arch vault, a shattered rose window, a still waterline mid-nave",
+      "technique": "SDF CSG — smooth-union, domain repetition for the colonnade, analytic lancet arches, boolean window breaks",
+      "dependsOn": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "raymarch-core",
+      "kind": "shader",
+      "area": "the high-quality sphere tracer everything renders through",
+      "technique": "enhanced sphere tracing — over-relaxation, adaptive epsilon by distance, tetrahedral normals, high iteration budget with early-out",
+      "dependsOn": [
+        "sdf-cathedral"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "atmosphere",
+      "kind": "shader",
+      "area": "dusk sky seen through the rose window; the colour the whole scene is bathed in",
+      "technique": "analytic sky gradient + aerial perspective + a warm low sun disk (the light source for shafts + caustics)",
+      "dependsOn": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "lighting",
+      "kind": "render",
+      "area": "direct light + contact realism",
+      "technique": "one warm key light through the window; blend of SDF techniques below",
+      "dependsOn": [
+        "raymarch-core",
+        "atmosphere"
+      ],
+      "status": "partial",
+      "claim": null,
+      "children": [
+        {
+          "id": "soft-shadows",
+          "kind": "render",
+          "area": "penumbra shadows from the window tracery",
+          "technique": "SDF soft shadows (k-softness shadow march)",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "ao",
+          "kind": "render",
+          "area": "crevice darkening in the vault + column bases",
+          "technique": "SDF ambient occlusion (multi-tap) + horizon term",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "gi-ambient",
+          "kind": "render",
+          "area": "coloured bounce — gold light filling the stone",
+          "technique": "faked GI: hemispheric irradiance + one coloured bounce from the lit surfaces",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        }
+      ],
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference  |  soft-shadows·open ao·open gi-ambient·open",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "materials-pbr",
+      "kind": "render",
+      "area": "what every surface is MADE of",
+      "technique": "triplanar procedural PBR (Cook-Torrance): albedo/roughness/normal from fbm",
+      "dependsOn": [
+        "lighting"
+      ],
+      "status": "partial",
+      "claim": null,
+      "children": [
+        {
+          "id": "mat-wetstone",
+          "kind": "render",
+          "area": "wet, streaked cathedral stone near the water",
+          "technique": "triplanar fbm albedo + wetness darkening + roughness map",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "mat-gold",
+          "kind": "render",
+          "area": "tarnished gold of the altar + window lead",
+          "technique": "metallic PBR with anisotropic tarnish",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "mat-glass",
+          "kind": "render",
+          "area": "the coloured rose-window glass",
+          "technique": "coloured dielectric, thin-film tint",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        }
+      ],
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference  |  mat-wetstone·open mat-gold·open mat-glass·open",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "water",
+      "kind": "shader",
+      "area": "the flood surface halfway up the nave — the scene's mirror and lens",
+      "technique": "analytic water plane: Fresnel blend of REFLECTION (re-march the scene) and REFRACTION (Snell-bent re-march underwater), Gerstner+fbm ripples, depth-tint, foam at the columns",
+      "dependsOn": [
+        "raymarch-core",
+        "materials-pbr"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "caustics",
+      "kind": "render",
+      "area": "dancing gold light patterns on the submerged stone",
+      "technique": "procedural animated caustics (layered voronoi/fbm) modulated by light depth + shadow",
+      "dependsOn": [
+        "water",
+        "lighting"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "volumetrics",
+      "kind": "render",
+      "area": "the god-rays — solid shafts of dusk light through the rose window, dust motes, a low mist on the water",
+      "technique": "volumetric raymarch (single-scattering) with in-shadow sampling; half-res + blue-noise jitter for budget; dust particles; height fog",
+      "dependsOn": [
+        "soft-shadows",
+        "atmosphere"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "detail-displacement",
+      "kind": "render",
+      "area": "micro-detail so surfaces hold up close: chipped stone, floor grout, ripple normals",
+      "technique": "fbm displacement (marcher-safe amplitude) + parallax on the floor",
+      "dependsOn": [
+        "materials-pbr"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "camera-cinematic",
+      "kind": "game",
+      "area": "a slow reverent dolly up the nave toward the drowned altar, subtle handheld sway",
+      "technique": "spline dolly + damped noise sway; the player can also free-look",
+      "dependsOn": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·playthrough-confirmed"
+    },
+    {
+      "id": "post-hdr",
+      "kind": "render",
+      "area": "the final grade that makes it read as a photograph, not a render",
+      "technique": "HDR pipeline",
+      "dependsOn": [
+        "water",
+        "caustics",
+        "volumetrics",
+        "detail-displacement",
+        "gi-ambient"
+      ],
+      "status": "partial",
+      "claim": null,
+      "children": [
+        {
+          "id": "tonemap",
+          "kind": "render",
+          "area": "filmic response",
+          "technique": "ACES tonemap + exposure",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "bloom",
+          "kind": "render",
+          "area": "light bleed from the shafts + caustics",
+          "technique": "physically-weighted bloom (engine bloom + threshold)",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "dof",
+          "kind": "render",
+          "area": "shallow focus on the altar, soft foreground",
+          "technique": "depth-of-field bokeh",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        },
+        {
+          "id": "grade",
+          "kind": "render",
+          "area": "the final look",
+          "technique": "chromatic aberration + vignette + fine film grain",
+          "status": "open",
+          "claim": null,
+          "keyState": {
+            "render-verified": "pending",
+            "visual-reference": "pending"
+          },
+          "statusNote": "·render-verified  ·visual-reference",
+          "evidence": {
+            "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+            "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+          }
+        }
+      ],
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference  |  tonemap·open bloom·open dof·open grade·open",
+      "evidence": {
+        "render-verified": "swarm frame renders clean (aureon-first-frame.png): jellyfish/plankton/kelp/god-rays, teal abyss",
+        "visual-reference": "holds craft bar beside tideglass/veilfire/kindle, distinct organic style"
+      }
+    },
+    {
+      "id": "performance-budget",
+      "kind": "perf",
+      "area": "THE GATE — max quality only counts if it renders. Keep the frame under the render-GPU budget or nothing shows.",
+      "technique": "march-step caps, half-res volumetrics, reflection/refraction bounce limits, LOD by distance, early-out; measure cost each change",
+      "dependsOn": [
+        "post-hdr"
+      ],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "perf-verified": "pending"
+      },
+      "statusNote": "FAIL: >3s/frame on render GPU — optimization pass needed",
+      "evidence": {
+        "perf-verified": false
+      }
+    }
+  ]
+}
