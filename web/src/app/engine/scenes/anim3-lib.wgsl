@@ -19,8 +19,8 @@
 // for `target`. Returns the MID joint (elbow/knee). `pole` bends the joint
 // toward it (knee forward, elbow back) — give it a point, not a direction.
 // Unreachable targets clamp to full extension; degenerate poles self-heal.
-fn mod_a3_ik2(root: vec3f, target: vec3f, l1: f32, l2: f32, pole: vec3f) -> vec3f {
-  var to = target - root;
+fn mod_a3_ik2(root: vec3f, tgt: vec3f, l1: f32, l2: f32, pole: vec3f) -> vec3f {
+  var to = tgt - root;
   var d = length(to);
   let maxR = l1 + l2 - 0.0001;
   d = clamp(d, abs(l1 - l2) + 0.0001, maxR);

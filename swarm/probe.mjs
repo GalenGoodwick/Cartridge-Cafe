@@ -32,11 +32,15 @@ export function buildState({ modules = [], visuals = [], fields = null, worldDat
 }
 
 // run the probe; return a verdict. input: null | 'auto' | 'run-right' | 'tap-action' | 'sweep-cursor'
-export function probe(state, { ticks = 45, input = null, samples = null, out = '/tmp/vf-probe.png' } = {}) {
-  const sf = '/tmp/vf-probe-state.json'
+// unique temp paths per call so concurrent swarm agents don't race on one file.
+let _probeN = 0
+export function probe(state, { ticks = 45, input = null, samples = null, out = null } = {}) {
+  const tag = `${process.pid}-${++_probeN}`
+  const sf = `/tmp/vf-probe-${tag}.json`
+  const outPath = out || `/tmp/vf-probe-${tag}.png`
   writeFileSync(sf, JSON.stringify(state))
   const args = ['run', '-A', '--unstable-webgpu', join(REPO, 'tools/render-probe.mjs'),
-    '--state', sf, '--ticks', String(ticks), '--out', out]
+    '--state', sf, '--ticks', String(ticks), '--out', outPath]
   if (input) args.push('--input', input)
   if (samples) args.push('--samples', String(samples))
   let line
@@ -44,7 +48,11 @@ export function probe(state, { ticks = 45, input = null, samples = null, out = '
     const stdout = execFileSync('deno', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     line = stdout.trim().split('\n').filter(Boolean).pop()
   } catch (e) {
-    return { ok: false, fatal: String(e.stderr || e.message || e).slice(0, 400) }
+    // render-probe prints its JSON verdict (with errors[]) to stdout THEN exits 1
+    // on compile failure — recover it so real WGSL errors surface, not "Command failed".
+    const so = (e.stdout || '').toString().trim().split('\n').filter(Boolean).pop()
+    if (so && so.startsWith('{')) { line = so }
+    else return { ok: false, fatal: String(e.stderr || e.message || e).slice(0, 500) }
   }
   let d = {}
   try { d = JSON.parse(line) } catch { return { ok: false, fatal: 'unparseable probe line: ' + (line || '').slice(0, 200) } }
@@ -56,7 +64,7 @@ export function probe(state, { ticks = 45, input = null, samples = null, out = '
     coveragePct: d.coveragePct, meanLum: d.meanLum,
     dominant: (d.dominantColors || []).map(c => c.rgb),
     motion: d.motion ? { moving: d.motion.moving, travel: d.motion.travel, avgFrameDelta: d.motion.avgFrameDelta } : null,
-    png: out,
+    png: outPath,
   }
   return v
 }
