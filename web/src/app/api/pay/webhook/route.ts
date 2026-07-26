@@ -17,12 +17,31 @@ export async function POST(req: NextRequest) {
   try { event = JSON.parse(payload) } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }) }
   const obj = (event.data?.object ?? {}) as {
     id?: string
-    metadata?: { userId?: string; product?: string; slug?: string }
+    metadata?: { userId?: string; product?: string; slug?: string; pageId?: string }
   }
   const meta = obj.metadata ?? {}
 
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
+    // A page purchase buys permanent hosting for one slug — take it live the
+    // instant Stripe confirms, so the buyer's redirect lands on a live page.
+    // finalizePagePublish verifies the reservation matches the PAID pageId
+    // (two buyers can race one slug) and uses strict durable writes.
+    if (meta.product === 'page' && meta.slug) {
+      const { finalizePagePublish } = await import('@/lib/pages')
+      try {
+        const out = await finalizePagePublish(meta.slug, meta.pageId)
+        if (out === 'conflict') {
+          // someone else's PAID page already holds the slug — never clobber it;
+          // flag loudly for manual care (refund/re-slug the loser).
+          void commonsBus({ kind: 'system', who: 'cafe', text: `⚠ page purchase CONFLICT: slug "${meta.slug}" was published by another page before session ${obj.id} settled — buyer ${meta.userId} needs manual care` })
+        }
+      } catch {
+        // durable write failed — non-2xx so Stripe retries the whole event
+        // (grantEntitlement above is idempotent per product+slug).
+        return NextResponse.json({ error: 'publish write failed, retry' }, { status: 500 })
+      }
+    }
     // the nervous system hears the till ring — platform news, no personal data
     void commonsBus({ kind: 'system', who: 'cafe', text: `✧ a "${meta.product}" purchase just completed — the cafe is earning` })
   } else if (

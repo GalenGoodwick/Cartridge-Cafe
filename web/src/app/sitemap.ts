@@ -29,6 +29,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (handle) makers.add(handle)
     }
     for (const h of makers) out.push({ url: `${base}/u/${h}`, changeFrequency: 'weekly', priority: 0.4 })
+
+    // The pages network: hub + every published page (SSR'd real text — heading/
+    // paragraph blocks and shader prompts are all crawlable).
+    const { listPublishedPages } = await import('@/lib/pages')
+    const published = (await listPublishedPages()).filter((p) => p.claimed !== false)
+    if (published.length) out.push({ url: `${base}/p`, changeFrequency: 'hourly', priority: 0.8 })
+    for (const p of published) {
+      out.push({
+        url: `${base}/p/${p.slug}`,
+        lastModified: new Date(p.publishedAt),
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      })
+    }
   } catch { /* DB napping — the homepage entry still stands */ }
 
   return out

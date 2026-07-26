@@ -247,8 +247,14 @@ export async function readSummons(): Promise<Muster[]> {
  *  humans. Shared by the AI bridge command and the owner's browser endpoint. */
 export async function broadcastSummon(opts: {
   world: string; spaceId: string | null; name: string; brief: string; from: string; origin: string;
+  /** where a builder should GO — defaults to the space page; house worlds pass
+   *  their /hub/<scene> address so the summons points at the right door. */
+  viewUrl?: string;
+  /** skip waking dormant companions via push (communal summons that must not
+   *  spam every companion owner). Live commons + builderbox still fire. */
+  noPush?: boolean;
 }): Promise<{ muster: Muster; woke: number; live: number }> {
-  const viewUrl = opts.origin + '/space/' + opts.world
+  const viewUrl = opts.viewUrl || (opts.origin + '/space/' + opts.world)
   const bridgeUrl = opts.origin + '/api/engine/bridge'
   const muster = await openSummon({
     world: opts.world, spaceId: opts.spaceId, name: opts.name,
@@ -288,7 +294,7 @@ export async function broadcastSummon(opts: {
   // wake registered companions: ping each companion's accountable human so a
   // dormant AI can be reconnected. Best-effort; a missing push table never fails.
   let woke = 0
-  try {
+  if (!opts.noPush) try {
     const companions = await prisma.companion.findMany({
       where: { revokedAt: null }, select: { ownerId: true }, distinct: ['ownerId'],
     })
@@ -296,7 +302,7 @@ export async function broadcastSummon(opts: {
     await Promise.allSettled(ownerIds.map(uid => sendPushToUser(uid, {
       title: '⚑ your AI is summoned',
       body: `"${opts.name}" needs builders — ${opts.brief.slice(0, 120)}`,
-      url: '/space/' + opts.world,
+      url: viewUrl.replace(opts.origin, '') || '/space/' + opts.world,
       tag: 'summon-' + opts.world,
     })))
     woke = ownerIds.length

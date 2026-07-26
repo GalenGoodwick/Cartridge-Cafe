@@ -31,6 +31,11 @@ const DEFAULT_LIMITS: Record<string, { maxRequests: number; windowMs: number }> 
   // Engine
   engine_generate: { maxRequests: 3, windowMs: 60_000 },
   engine_icon: { maxRequests: 8, windowMs: 60_000 },
+  // Pages builder — owner autosave is frequent (debounced ~700ms), AI writes and
+  // imagine invitations are looser but bounded.
+  pages_write: { maxRequests: 60, windowMs: 60_000 },
+  pages_ai_write: { maxRequests: 30, windowMs: 60_000 },
+  pages_imagine: { maxRequests: 12, windowMs: 60_000 },
 }
 
 function getConfig(endpoint: string): { maxRequests: number; windowMs: number; enabled: boolean } {

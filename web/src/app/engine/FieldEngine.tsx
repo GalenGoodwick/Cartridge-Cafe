@@ -2889,6 +2889,32 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId, chromeVisible])
 
+  // KEEP THE GLYPH LIVE OVER OVERLAY CHROME. In the hub the OS cursor is hidden
+  // and the glyph is drawn AT the pointer, but its position (mouse_x/mouse_y)
+  // only updates from the canvas' onPointerMove — so the instant the pointer
+  // moved onto a fixed overlay (the ⌕ search bar, its dropdown, any chrome
+  // above the canvas) the handler stopped firing and the glyph FROZE mid-screen
+  // until you moved back onto the canvas. A window-level listener tracks the
+  // pointer across the whole viewport while the hub glyph is active, so reaching
+  // for the search bar no longer strands your cursor. Cheap (one screenToCell);
+  // no-ops outside the hub.
+  useEffect(() => {
+    const onWinMove = (e: PointerEvent) => {
+      if (!hubCursorRef.current) return
+      const sim = simulationRef.current
+      const canvas = canvasRef.current
+      const input = inputRef.current
+      if (!sim || !canvas || !input) return
+      const rect = canvas.getBoundingClientRect()
+      const camera = cameraRef.current
+      const g = input.screenToCell(e.clientX, e.clientY, rect, camera, camera.zoom)
+      sim.worldData['mouse_x'] = g.x
+      sim.worldData['mouse_y'] = g.y
+    }
+    window.addEventListener('pointermove', onWinMove)
+    return () => window.removeEventListener('pointermove', onWinMove)
+  }, [])
+
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     const input = inputRef.current
     const canvas = canvasRef.current
@@ -7151,6 +7177,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {spaceSlug && spaceId && isOwner && !riding && (
                 <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
               )}
+              {/* HOUSE WORLD (author-less base scene, no space): the cafe keeper
+                  can summon AIs to build its own content. The box self-hides for
+                  non-admins (SummonPrompt polls canSummon), and the server
+                  re-checks admin — so this renders for everyone but only opens
+                  for the keeper. Not the CAFE hub / a sub-main / a branch. */}
+              {!spaceId && !isHub && !riding && me && (() => {
+                const cur = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0].trim()
+                if (!cur || cur === 'CAFE' || cur === 'SUB-MAIN') return null
+                return <SummonPrompt scene={cur} name={cur} />
+              })()}
               {/* NOT your world (Galen): you never build on someone else's
                   main — you HACK it (the ROM-hack tradition: their cartridge,
                   your modded copy). One button, the existing create-branch
