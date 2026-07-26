@@ -2776,10 +2776,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
     const onErr = () => { /* a rejected lock (cooldown) just means: click again */ }
+    // Release the lock and restore the cursor when leaving the world — browser
+    // Back/Forward (popstate), tab hide / bfcache (pagehide), or unmount. Without
+    // this the pointer stays locked after navigating away and the hub's player
+    // glyph freezes (it tracks mouse_x/mouse_y, which only update while UNlocked).
+    const release = () => {
+      if (document.pointerLockElement === canvas) { try { document.exitPointerLock() } catch { /* noop */ } }
+      canvas.style.cursor = ''
+    }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
     document.addEventListener('pointerlockerror', onErr)
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('pointerlockchange', onLock); document.removeEventListener('pointerlockerror', onErr) }
+    window.addEventListener('pagehide', release)
+    window.addEventListener('popstate', release)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('pointerlockchange', onLock)
+      document.removeEventListener('pointerlockerror', onErr)
+      window.removeEventListener('pagehide', release)
+      window.removeEventListener('popstate', release)
+      release()
+    }
   }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
