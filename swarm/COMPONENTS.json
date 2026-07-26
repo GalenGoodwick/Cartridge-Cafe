@@ -1,0 +1,46 @@
+{
+  "_note": "The CITATION ZONE. Proven, procedurally-reusable code a NEW scene cites from prior tree nodes instead of rebuilding. A component earns its place by going green (or probe-verified) in one world AND being general enough to reuse. JS libs are imported; WGSL/SDF components compose procedurally (min/smin) into new geometry.",
+  "components": [
+    {
+      "id": "gaze-math",
+      "from": "VIGIL/math",
+      "kind": "js-lib",
+      "path": "web/src/lib/gaze-math.mjs",
+      "exports": ["rayPlaneHit", "raysClosestApproach", "pointInPaneUV", "marchSDF", "gazeCrossOnPane"],
+      "proven": "23 unit tests, analytic to 1e-9",
+      "cite": "import { gazeCrossOnPane } from '@/lib/gaze-math.mjs'",
+      "reuse": "any world whose interactions are broadcast rays meeting planes (seeing-is-touching, hitscan, line-of-sight, trigger volumes)"
+    },
+    {
+      "id": "vigil-sdf-kit",
+      "from": "VIGIL/shader",
+      "kind": "wgsl-sdf",
+      "path": "web/src/app/engine/scenes/vigil-cartridge.mjs#LIB",
+      "exports": ["vg_box", "vg_capsule", "vg_watcher", "vg_reliquary"],
+      "proven": "GPU probe — renders clean, visible, correct palette",
+      "cite": "copy the fn into your LIB module; prefix-rename to avoid builtin/uber-shader collisions",
+      "reuse": "procedural gothic/architectural SDF primitives",
+      "compose": "min()/smin() these to grow new worlds — components compose like paint, not sprites"
+    },
+    {
+      "id": "antichamber-linework",
+      "from": "VIGIL/shader",
+      "kind": "wgsl-snippet",
+      "path": "web/src/app/engine/scenes/vigil-cartridge.mjs#VISUAL",
+      "exports": ["crease+silhouette edge pass"],
+      "proven": "GPU probe — dark-pixel share doubled, reads as ink lines",
+      "cite": "paste the tangent/bitangent normal-deviation block after your normal is known",
+      "reuse": "unlit-white + black-line Antichamber look on ANY SDF scene"
+    },
+    {
+      "id": "swarm-substrate",
+      "from": "SWARM-SUBSTRATE",
+      "kind": "tooling",
+      "path": "swarm/",
+      "exports": ["MAP.json", "tree.mjs", "dock.mjs", "status.mjs", "loop.mjs", "trace.mjs", "COMPONENTS.json", "SWARM-GUIDE.md"],
+      "proven": "self-hosted — the loop runs on MAP.self.json",
+      "cite": "cp -r swarm/ into a new project; author its MAP.json; node swarm/loop.mjs",
+      "reuse": "any project that wants a swarm work-graph: dock, derive-green, ideate, jump, heal, trace"
+    }
+  ]
+}
