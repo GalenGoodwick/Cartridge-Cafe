@@ -1,0 +1,12 @@
+{
+  "project": "SWARM-SUBSTRATE (self-hosted)",
+  "trunk": "vigil",
+  "note": "The map describing the map-tools themselves. The same dock/status/loop operate on this file — the program building the program. Self-tests do not exist yet: that absence is the substrate's own honest gap, recorded here rather than hidden.",
+  "nodes": [
+    { "id": "map-schema", "area": "the work-graph format (nodes, typed contract edges, derived status)", "files": ["swarm/MAP.json"], "exports": ["nodes", "dependsOn", "status"], "dependsOn": [], "tests": [], "status": "open", "statusNote": "no self-test yet — unverifiable", "claim": null },
+    { "id": "status", "area": "derive green/red from tests — the signal the swarm coordinates on", "files": ["swarm/status.mjs"], "exports": ["deriveStatus"], "dependsOn": ["map-schema"], "tests": [], "status": "open", "statusNote": "no self-test yet — unverifiable", "claim": null },
+    { "id": "dock", "area": "the situation briefing an AI reads on entering a node", "files": ["swarm/dock.mjs"], "exports": ["situation"], "dependsOn": ["map-schema"], "tests": [], "status": "open", "statusNote": "no self-test yet — unverifiable", "claim": null },
+    { "id": "loop", "area": "find-open / vision / expand / jump / finish", "files": ["swarm/loop.mjs"], "exports": ["nextAction"], "dependsOn": ["map-schema", "status"], "tests": [], "status": "open", "statusNote": "no self-test yet — unverifiable", "claim": null },
+    { "id": "guide", "area": "the law a docked AI follows", "files": ["swarm/SWARM-GUIDE.md"], "exports": ["rules"], "dependsOn": [], "tests": [], "status": "open", "statusNote": "prose — verified by use, not tests", "claim": null }
+  ]
+}
