@@ -1,0 +1,1 @@
+v2 (2026-07-25): FIX — demon bounding sphere was at the feet (y=0,r=1.4), clipping the ribcage/head/horns; only legs rendered. Centered it at torso (ppos+y1.05, r1.6) so the whole demon shows. eye.png = full-body horned demon.
