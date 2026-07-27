@@ -723,6 +723,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const audio = audioRef.current
     return () => { audio.destroy(); sandboxRef.current?.dispose() }
   }, [])
+  // no world's looping music/score outlives its scene. The full loadScene teardown
+  // stops audio, but the VOTE RECKONING flicks between cached previews on a fast
+  // path that bypasses it — so closing the reckoning (playScene: preview → hub)
+  // left the previewed world's loop playing. Stop on EVERY playScene change; the
+  // incoming scene re-triggers its own music, and stopMusic/stopScore are idempotent.
+  useEffect(() => {
+    const audio = audioRef.current
+    return () => { audio.stopScore(); audio.stopMusic(0.25) }
+  }, [playScene])
   // ── fault surface: when the world goes down, SAY WHY on screen ──
   const [fault, setFault] = useState<{ kind: string; message: string } | null>(null)
   const frameCrashRef = useRef(false)
