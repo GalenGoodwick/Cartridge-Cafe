@@ -998,6 +998,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // pointer-lock: try RAW deltas (unadjustedMovement) but drop to a plain lock
   // permanently once a platform rejects the option — see handlePointerDown.
   const wantUnadjustedLook = useRef(true)
+  // Pointer-lock API is webkit-prefixed on Safari — request, detect, and exit all
+  // differ. Route EVERY touchpoint through these so the lock actually engages AND
+  // is detected on Safari (unprefixed-only was why the cursor stayed visible).
+  const plElement = (): Element | null => document.pointerLockElement || (document as unknown as { webkitPointerLockElement?: Element }).webkitPointerLockElement || null
+  const plRequest = (el: HTMLElement, opts?: unknown) => {
+    const fn = (el.requestPointerLock || (el as unknown as { webkitRequestPointerLock?: (o?: unknown) => unknown }).webkitRequestPointerLock) as ((o?: unknown) => unknown) | undefined
+    if (!fn) return undefined
+    return opts !== undefined ? fn.call(el, opts) : fn.call(el)
+  }
+  const plExit = () => {
+    const fn = (document.exitPointerLock || (document as unknown as { webkitExitPointerLock?: () => void }).webkitExitPointerLock) as (() => void) | undefined
+    if (fn) { try { fn.call(document) } catch { /* noop */ } }
+  }
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
@@ -2778,7 +2791,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const canvas = canvasRef.current
     if (!canvas) return
     const onMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== canvas) return
+      if (plElement() !== canvas) return
       const sim = simulationRef.current
       if (!sim) return
       sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
@@ -2789,7 +2802,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // → hooks can react). Every lock/unlock path funnels through here so the
     // chip and the flag can never drift from reality.
     const syncLock = () => {
-      const isLocked = document.pointerLockElement === canvas
+      const isLocked = plElement() === canvas
       canvas.style.cursor = isLocked ? 'none' : ''
       setPointerLocked(isLocked)
       const sim = simulationRef.current
@@ -2805,7 +2818,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // this the pointer stays locked after navigating away and the hub's player
     // glyph freezes (it tracks mouse_x/mouse_y, which only update while UNlocked).
     const release = () => {
-      if (document.pointerLockElement === canvas) { try { document.exitPointerLock() } catch { /* noop */ } }
+      if (plElement() === canvas) { try { plExit() } catch { /* noop */ } }
       canvas.style.cursor = ''
       setPointerLocked(false)
       const sim = simulationRef.current
@@ -2832,14 +2845,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // raw-then-plain self-heal the click handler used before.
       const raw = wantUnadjustedLook.current
       try {
-        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
-        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
+        const rq = raw ? plRequest(canvas, { unadjustedMovement: true }) : plRequest(canvas)
         if (rq && typeof (rq as Promise<void>).catch === 'function') {
           (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
         }
       } catch {
         if (raw) wantUnadjustedLook.current = false
-        try { canvas.requestPointerLock() } catch { /* not supported */ }
+        try { plRequest(canvas) } catch { /* not supported */ }
       }
     }
     const onKeyLook = (e: KeyboardEvent) => {
@@ -2850,9 +2862,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const sim = simulationRef.current
       if (!sim || !sim.worldData['__mouseLook']) return
       e.preventDefault()
-      if (document.pointerLockElement === canvas) {
+      if (plElement() === canvas) {
         // Toggle OFF: drop the lock AND leave fullscreen.
-        try { document.exitPointerLock() } catch { /* noop */ }
+        try { plExit() } catch { /* noop */ }
         if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* noop */ })
         return
       }
@@ -2871,6 +2883,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
     document.addEventListener('pointerlockerror', onErr)
+    document.addEventListener('webkitpointerlockchange', onLock)
+    document.addEventListener('webkitpointerlockerror', onErr)
     document.addEventListener('fullscreenchange', onFullscreen)
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('keydown', onKeyLook)
@@ -2916,15 +2930,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // Once locked (i.e. you're actually aiming) clicks FIRE, and L also
     // locks+fullscreens. So click only "locks instead of fires" while unlocked,
     // when you weren't aiming anyway — the standard FPS convention.
-    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+    if (sim && sim.worldData['__mouseLook'] && plElement() !== canvas) {
       const raw = wantUnadjustedLook.current
       try {
-        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
-        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
+        const rq = raw ? plRequest(canvas, { unadjustedMovement: true }) : plRequest(canvas)
         if (rq && typeof (rq as Promise<void>).catch === 'function') {
           (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
         }
-      } catch { if (raw) wantUnadjustedLook.current = false; try { canvas.requestPointerLock() } catch { /* noop */ } }
+      } catch { if (raw) wantUnadjustedLook.current = false; try { plRequest(canvas) } catch { /* noop */ } }
       return   // consume this click as the lock — don't register it as a shot
     }
 
