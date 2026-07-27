@@ -2817,10 +2817,63 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // moment the player returns.
     const onVisibility = () => { if (document.visibilityState !== 'visible') release(); else syncLock() }
     const onPageShow = () => { syncLock() }
+    // Leaving fullscreen (Esc, or our L-toggle-off) almost always drops the
+    // pointer lock too — re-sync so the chip re-arms and __pointerLocked reads 0.
+    const onFullscreen = syncLock
+
+    // L = the lock trigger (click is FIRE in these worlds). L also enters
+    // FULLSCREEN — Galen: "for a game like this, full screen with cursor lock."
+    // Ignore L while typing so it can't hijack a text field. Esc still exits
+    // both natively.
+    const requestLook = () => {
+      // RAW deltas (unadjustedMovement: no OS mouse-acceleration → 1:1 turn) when
+      // supported; a rejected raw request throttles pointer-lock ~1s, so on
+      // rejection we stop asking and every later attempt locks plainly. Same
+      // raw-then-plain self-heal the click handler used before.
+      const raw = wantUnadjustedLook.current
+      try {
+        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
+        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
+        if (rq && typeof (rq as Promise<void>).catch === 'function') {
+          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
+        }
+      } catch {
+        if (raw) wantUnadjustedLook.current = false
+        try { canvas.requestPointerLock() } catch { /* not supported */ }
+      }
+    }
+    const onKeyLook = (e: KeyboardEvent) => {
+      if (e.key !== 'l' && e.key !== 'L') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const sim = simulationRef.current
+      if (!sim || !sim.worldData['__mouseLook']) return
+      e.preventDefault()
+      if (document.pointerLockElement === canvas) {
+        // Toggle OFF: drop the lock AND leave fullscreen.
+        try { document.exitPointerLock() } catch { /* noop */ }
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* noop */ })
+        return
+      }
+      // Enter FULLSCREEN first (the engine's sizing parent, so the canvas CSS-
+      // fills it), THEN lock — same user gesture. If fullscreen is rejected or
+      // unavailable, lock anyway.
+      const fsTarget = (canvas.parentElement as HTMLElement) || document.documentElement
+      if (!document.fullscreenElement && typeof fsTarget.requestFullscreen === 'function') {
+        const fp = fsTarget.requestFullscreen()
+        if (fp && typeof fp.then === 'function') fp.then(requestLook).catch(requestLook)
+        else requestLook()
+      } else {
+        requestLook()
+      }
+    }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
     document.addEventListener('pointerlockerror', onErr)
+    document.addEventListener('fullscreenchange', onFullscreen)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('keydown', onKeyLook)
     window.addEventListener('pageshow', onPageShow)
     window.addEventListener('pagehide', release)
     window.addEventListener('popstate', release)
@@ -2828,7 +2881,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('pointerlockchange', onLock)
       document.removeEventListener('pointerlockerror', onErr)
+      document.removeEventListener('fullscreenchange', onFullscreen)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('keydown', onKeyLook)
       window.removeEventListener('pageshow', onPageShow)
       window.removeEventListener('pagehide', release)
       window.removeEventListener('popstate', release)
@@ -2873,36 +2928,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
     }
 
-    // MOUSE-LOOK worlds opt in via worldData.__mouseLook → lock the pointer so
-    // the cursor hides and the mouse gives unbounded relative deltas (an FPS
-    // can't turn past the screen edge otherwise). Must be from this user gesture.
-    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
-      // Lock the pointer from THIS gesture. Prefer RAW deltas
-      // (unadjustedMovement: no OS mouse-acceleration → a consistent 1:1 turn),
-      // but a rejected request leaves the pointer UNLOCKED *and* throttles
-      // pointer-lock for ~1s — so the old async ".catch → requestPointerLock()"
-      // re-request (fa6bf48) was itself throttled and the lock stopped engaging
-      // at all on any platform that rejects the option. Fix: never retry inside
-      // the rejected promise; instead remember the rejection and fall back to a
-      // plain lock on every later click, which has no unsupported option to
-      // reject on and always engages. Supported platforms keep raw deltas; the
-      // rest self-heal after one bounced click.
-      const raw = wantUnadjustedLook.current
-      try {
-        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
-        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
-        if (rq && typeof (rq as Promise<void>).catch === 'function') {
-          // Swallow rejections (unsupported option, or the ~1s post-Esc
-          // cooldown). If we asked for raw and it failed, stop asking so the
-          // NEXT click locks plainly rather than re-throttling.
-          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
-        }
-      } catch {
-        // Options form not understood at all → plain lock, still in this gesture.
-        if (raw) wantUnadjustedLook.current = false
-        try { canvas.requestPointerLock() } catch { /* not supported */ }
-      }
-    }
+    // MOUSE-LOOK worlds: a click is FIRE here, not the lock trigger (Galen's
+    // call). The pointer lock is toggled by the L KEY instead — see the keydown
+    // handler in the pointer-lock lifecycle effect. So pointerdown does NOTHING
+    // lock-related; it only records the press above so hooks see the fire.
 
     // 3D mode: right-click or alt+click = orbit camera
     if (renderModeRef.current === '3d' && (e.button === 2 || e.altKey)) {
@@ -6535,6 +6564,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Canvas area */}
         <div className="flex-1 relative overflow-hidden min-h-0">
+          {/* In fullscreen (L in a mouse-look world) the engine's sizing parent
+              fills the viewport; keep the canvas stretched to it so the world
+              CSS-fills the screen. Always mounted — fullscreen happens while the
+              chip (and its own <style>) is hidden. Backing buffer follows
+              clientWidth/clientHeight in renderer.ts, so this drives it. */}
+          <style>{`:fullscreen>canvas{width:100%!important;height:100%!important}`}</style>
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
@@ -6558,7 +6593,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div
                 className="px-3.5 py-1.5 rounded-full bg-black/70 border border-amber-400/30 backdrop-blur-sm font-mono text-[13px] tracking-[0.2em] text-amber-300/90 shadow-lg shadow-black/40 whitespace-nowrap"
                 style={{ animation: 'ccPlockPulse 2.2s ease-in-out infinite' }}>
-                ⊕ CLICK TO LOOK · ESC TO RELEASE
+                ⊕ PRESS L TO LOOK · ESC TO RELEASE
               </div>
             </div>
           )}
