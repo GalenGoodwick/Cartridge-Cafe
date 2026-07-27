@@ -335,6 +335,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
   const [playMode, setPlayMode] = useState(false)
+  // POINTER-LOCK lifecycle (mouse-look worlds only): `pointerLocked` mirrors the
+  // real lock state (driven by pointerlockchange + every unlock path), and
+  // `mouseLookWorld` tracks whether the current world opted into __mouseLook.
+  // Together they gate the CHARGED CHIP — the "click to look" cue that must show
+  // whenever a mouse-look world is unlocked and re-arm on every unlock path.
+  const [pointerLocked, setPointerLocked] = useState(false)
+  const [mouseLookWorld, setMouseLookWorld] = useState(false)
   const enterPlayMode = () => {
     setUiDockOpen(false); setChromeVisible(false); setWorldChatOpen(false)
     setInstrOpen(false); setBuildConsoleOpen(false)
@@ -2777,8 +2784,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
       sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
     }
-    const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
-    const onErr = () => { /* a rejected lock (cooldown) just means: click again */ }
+    // One source of truth for lock state: read the DOM, mirror it into React
+    // (`pointerLocked` → the CHARGED CHIP) and into worldData (`__pointerLocked`
+    // → hooks can react). Every lock/unlock path funnels through here so the
+    // chip and the flag can never drift from reality.
+    const syncLock = () => {
+      const isLocked = document.pointerLockElement === canvas
+      canvas.style.cursor = isLocked ? 'none' : ''
+      setPointerLocked(isLocked)
+      const sim = simulationRef.current
+      if (sim) sim.worldData['__pointerLocked'] = isLocked ? 1 : 0
+    }
+    const onLock = syncLock
+    // A rejected lock (unsupported option, or the ~1s post-Esc cooldown) leaves
+    // us UNLOCKED — re-sync so the chip re-arms and the flag reads 0. The click
+    // handler already self-heals the raw→plain fallback; nothing to retry here.
+    const onErr = syncLock
     // Release the lock and restore the cursor when leaving the world — browser
     // Back/Forward (popstate), tab hide / bfcache (pagehide), or unmount. Without
     // this the pointer stays locked after navigating away and the hub's player
@@ -2786,20 +2807,48 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const release = () => {
       if (document.pointerLockElement === canvas) { try { document.exitPointerLock() } catch { /* noop */ } }
       canvas.style.cursor = ''
+      setPointerLocked(false)
+      const sim = simulationRef.current
+      if (sim) sim.worldData['__pointerLocked'] = 0
     }
+    // Tab-away and bfcache restore ALWAYS drop the lock (the browser exits it on
+    // hide). pointerlockchange usually fires, but not reliably across bfcache —
+    // so re-sync explicitly on both edges to guarantee the chip is re-armed the
+    // moment the player returns.
+    const onVisibility = () => { if (document.visibilityState !== 'visible') release(); else syncLock() }
+    const onPageShow = () => { syncLock() }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
     document.addEventListener('pointerlockerror', onErr)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pageshow', onPageShow)
     window.addEventListener('pagehide', release)
     window.addEventListener('popstate', release)
     return () => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('pointerlockchange', onLock)
       document.removeEventListener('pointerlockerror', onErr)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pageshow', onPageShow)
       window.removeEventListener('pagehide', release)
       window.removeEventListener('popstate', release)
       release()
     }
+  }, [])
+
+  // Track whether the current world opted into mouse-look (__mouseLook is set by
+  // the cartridge via set_world_data and stays put). worldData isn't reactive, so
+  // a cheap 400ms poll drives the React `mouseLookWorld` gate — setState only on a
+  // real transition, so it costs nothing while nothing changes.
+  useEffect(() => {
+    const tick = () => {
+      const sim = simulationRef.current
+      const on = !!(sim && sim.worldData['__mouseLook'])
+      setMouseLookWorld(prev => (prev === on ? prev : on))
+    }
+    tick()
+    const id = window.setInterval(tick, 400)
+    return () => window.clearInterval(id)
   }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -6497,6 +6546,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             onContextMenu={e => e.preventDefault()}
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
+
+          {/* CHARGED TRIGGER cue — a mouse-look world is unlocked, so a click will
+              grab the pointer. Shows on first entry and re-arms on EVERY unlock
+              (Esc, tab-away/return, browser Back, any dropped lock). pointer-events
+              none so the click it advertises passes straight through to the canvas;
+              it vanishes the instant the lock engages (pointerLocked → true). */}
+          {mouseLookWorld && !pointerLocked && !gpuFailed && !fault && (
+            <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 z-40 select-none">
+              <style>{`@keyframes ccPlockPulse{0%,100%{opacity:.6}50%{opacity:1}}`}</style>
+              <div
+                className="px-3.5 py-1.5 rounded-full bg-black/70 border border-amber-400/30 backdrop-blur-sm font-mono text-[13px] tracking-[0.2em] text-amber-300/90 shadow-lg shadow-black/40 whitespace-nowrap"
+                style={{ animation: 'ccPlockPulse 2.2s ease-in-out infinite' }}>
+                ⊕ CLICK TO LOOK · ESC TO RELEASE
+              </div>
+            </div>
+          )}
 
           {/* fault banner: the world went down, and here is why */}
           {fault && (
