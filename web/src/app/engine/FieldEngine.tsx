@@ -1535,37 +1535,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
-  /** CREATE BRANCH + hand it to the house AI: fork the branch (so it exists and
-   *  the owner can write it), then queue its brief for the swarm. Branches are
-   *  scenes, so this goes through /api/builds/enqueue-scene (uc_sc_), not the
-   *  world creation_brief path. */
-  const branchWithHouseAi = useCallback(async (labelRaw: string, briefRaw: string) => {
-    if (!me) { window.location.href = '/auth/signin'; return }
-    const brief = briefRaw.trim()
-    if (brief.length < 20) { showToast('write a longer brief first (what should it build?)', 'error'); return }
-    const src = lastSceneRef.current || playScene || spaceSlug || ''
-    if (!src) { showToast('load a world first', 'error'); return }
-    const base = src.split(' ⑂ ')[0]
-    const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
-    const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-    const savedAs = await saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
-    if (!savedAs) { showToast('could not open the branch', 'error'); return }
-    lastSceneRef.current = savedAs
-    const r = await fetch('/api/builds/enqueue-scene', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sceneName: savedAs, brief }),
-    }).then(x => x.json()).catch(() => null)
-    setBranchCreateOpen(false)
-    if (r?.ok) {
-      showToast(`house AI building your branch — opening it live`, 'success')
-      // move the owner to the NEW branch view so they watch it build (the branch
-      // exists now; without this they were left on the world they branched from).
-      window.location.href = '/hub/' + encodeURIComponent(savedAs)
-    } else showToast(r?.error || 'could not queue the house AI', 'error')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, spaceSlug, saveSceneAs])
-
   /** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
    *  the live-scoped token, open the plug box. The altered world IS main — the
    *  save point is the way back. */
@@ -6807,12 +6776,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       {/* GATE 3 — BUILD (locked until brief) */}
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
                         <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
-                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          className="w-full px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           OPEN + CONNECT AI
-                        </button>
-                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
-                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
-                          ☕ HAVE THE HOUSE AI BUILD IT
                         </button>
                       </div>
                     </>)
@@ -7565,25 +7530,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         }}
                       >
                         ✓ SAVE VERSION
-                      </button>
-                    )}
-                    {alter && spaceSlug && (
-                      <button
-                        disabled={!plugBrief.trim()}
-                        className="text-[14px] tracking-[0.15em] bg-brass/80 hover:bg-glow text-void rounded px-3 py-1 transition-colors disabled:opacity-40"
-                        title="hand your brief to the house AI — it alters your LIVE world"
-                        onClick={async () => {
-                          try {
-                            const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
-                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ brief: plugBrief.trim(), houseAi: true }),
-                            })
-                            if (r.ok) { showToast('house AI queued — it will alter your live world as one comes free', 'success'); setPlugOpen(false) }
-                            else showToast('could not queue the house AI', 'error')
-                          } catch { showToast('could not queue the house AI', 'error') }
-                        }}
-                      >
-                        ☕ HAVE THE HOUSE AI DO IT
                       </button>
                     )}
                     {!mintFailed && (

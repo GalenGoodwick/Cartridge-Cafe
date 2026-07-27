@@ -106,11 +106,11 @@ export async function PATCH(
     const wd = (snap.worldData as Record<string, unknown>) || {}
     wd.creation_brief = { prompt: body.brief.trim(), by: user.id, at: Date.now() }
     delete wd.brief_done
-    // consent to the HOUSE AI is explicit: only "have the house AI build it" sets this,
-    // so reconcile enqueues it. Connecting your OWN AI leaves it off — the brief is
-    // still there for your AI to read, but the daemon won't scavenge the world.
-    if (body.houseAi === true) wd.__house_requested = true
-    else delete wd.__house_requested
+    // the cafe no longer plugs a house/borrowed AI in to build FOR players — every
+    // world is built by an AI the player brings (their own connect). So the brief
+    // is never marked for house scavenge; the reconcile gate (needs __house_requested)
+    // stays dark. (The swarm/build framework itself remains, for dynamic agents.)
+    delete wd.__house_requested
     snap.worldData = wd
     await setSpaceSnapshot(space.id, snap as never)
   }

@@ -335,7 +335,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const [brewAi, setBrewAi] = useState(false)
   const [brewNameOk, setBrewNameOk] = useState<boolean | null>(null)   // null = unchecked/too short · true/false = unique?
   const [brewChecking, setBrewChecking] = useState(false)
-  const [houseAiUp, setHouseAiUp] = useState(false)   // a swarm builder is online → offer "have the house AI build it"
   const brewSlugRef = useRef('')
   const brewFinalizedRef = useRef(false)
   const activeTabRef = useRef(true)
@@ -756,17 +755,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     if (brewAi && connectReady) finalizeBrief()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brewAi, connectReady])
-  // is a swarm builder (house AI or a volunteer) online right now? gates the
-  // "have the house AI build it" button so a player with no AI can still ship.
-  useEffect(() => {
-    if (brewStep < 1) { setHouseAiUp(false); return }
-    let alive = true
-    const check = () => fetch('/api/builds/availability').then(r => r.json())
-      .then(d => { if (alive) setHouseAiUp(!!d.available) }).catch(() => {})
-    check()
-    const iv = setInterval(check, 15_000)
-    return () => { alive = false; clearInterval(iv) }
-  }, [brewStep])
   // draft autosave: keep the name + brief so a mistaken exit (close, reload,
   // navigate away) restores them on reopen. Cleared on world-made or manual wipe.
   useEffect(() => {
@@ -795,18 +783,16 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     }
     window.location.href = '/space/' + brewSlugRef.current
   }
-  /** Deliver the brief and open the world — fired either by the player's OWN AI
-   *  logging in (brewAi), or by "have the house AI build it": setting the brief
-   *  enqueues it, and a resident/volunteer builder picks it up and builds live. */
-  const finalizeBrief = async (houseAi = false) => {
+  /** Deliver the brief and open the world — fired when the player's OWN AI logs
+   *  in (brewAi). Every world is built by an AI the player brings; the cafe no
+   *  longer plugs a house/borrowed AI in to build games for people. */
+  const finalizeBrief = async () => {
     if (brewFinalizedRef.current || !connectReady) return
     brewFinalizedRef.current = true
     setBrewErr('')
     const r = await fetch('/api/spaces/' + brewSlugRef.current, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      // houseAi:true ONLY when they chose "have the house AI build it" — that's the
-      // one consent that lets the daemon claim this world. Own-AI connect leaves it off.
-      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim(), houseAi }),
+      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim() }),
     }).catch(() => null)
     const d = await r?.json().catch(() => null)
     if (!r || !r.ok) { brewFinalizedRef.current = false; setBrewErr(d?.error || 'could not open the world'); return }
@@ -1668,16 +1654,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 COPY CONNECTION PROMPT
               </button>
-              <div className="font-mono text-[14px] tracking-[0.2em] text-crema/70 text-center my-2">— or —</div>
-              <button disabled={!connectReady} onClick={() => finalizeBrief(true)}
-                className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
-                ☕ HAVE THE HOUSE AI BUILD IT
-              </button>
-              <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
-                {houseAiUp
-                  ? <span className="text-glow/70">a resident AI is online — it builds your brief live while you watch.</span>
-                  : 'no AI of your own? leave it to the house — your brief queues and an AI builds it as soon as one is free.'}
-              </div>
               <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
                 {brewAi && connectReady
                   ? <span className="text-glow animate-pulse">your AI connected — delivering the brief and opening your world…</span>
