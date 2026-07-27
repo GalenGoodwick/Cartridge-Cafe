@@ -2911,6 +2911,23 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const sim = simulationRef.current
     if (!canvas) return
 
+    // MOUSE-LOOK worlds: when NOT yet locked, a click ENGAGES the lock (the
+    // known-good path that worked before) and is consumed — it does NOT fire.
+    // Once locked (i.e. you're actually aiming) clicks FIRE, and L also
+    // locks+fullscreens. So click only "locks instead of fires" while unlocked,
+    // when you weren't aiming anyway — the standard FPS convention.
+    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+      const raw = wantUnadjustedLook.current
+      try {
+        const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
+        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
+        if (rq && typeof (rq as Promise<void>).catch === 'function') {
+          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
+        }
+      } catch { if (raw) wantUnadjustedLook.current = false; try { canvas.requestPointerLock() } catch { /* noop */ } }
+      return   // consume this click as the lock — don't register it as a shot
+    }
+
     pointerDown.current = true
     lastPointer.current = { x: e.clientX, y: e.clientY }
 
@@ -6593,7 +6610,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div
                 className="px-3.5 py-1.5 rounded-full bg-black/70 border border-amber-400/30 backdrop-blur-sm font-mono text-[13px] tracking-[0.2em] text-amber-300/90 shadow-lg shadow-black/40 whitespace-nowrap"
                 style={{ animation: 'ccPlockPulse 2.2s ease-in-out infinite' }}>
-                ⊕ PRESS L TO LOOK · ESC TO RELEASE
+                ⊕ CLICK OR PRESS L TO LOOK · ESC TO RELEASE
               </div>
             </div>
           )}
