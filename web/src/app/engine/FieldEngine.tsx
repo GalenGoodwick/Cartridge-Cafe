@@ -335,13 +335,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
   const [playMode, setPlayMode] = useState(false)
-  // POINTER-LOCK lifecycle (mouse-look worlds only): `pointerLocked` mirrors the
-  // real lock state (driven by pointerlockchange + every unlock path), and
-  // `mouseLookWorld` tracks whether the current world opted into __mouseLook.
-  // Together they gate the CHARGED CHIP — the "click to look" cue that must show
-  // whenever a mouse-look world is unlocked and re-arm on every unlock path.
-  const [pointerLocked, setPointerLocked] = useState(false)
-  const [mouseLookWorld, setMouseLookWorld] = useState(false)
   const enterPlayMode = () => {
     setUiDockOpen(false); setChromeVisible(false); setWorldChatOpen(false)
     setInstrOpen(false); setBuildConsoleOpen(false)
@@ -995,22 +988,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Pointer state for panning (Space + drag to pan)
   const pointerDown = useRef(false)
   const isPanning = useRef(false)
-  // pointer-lock: try RAW deltas (unadjustedMovement) but drop to a plain lock
-  // permanently once a platform rejects the option — see handlePointerDown.
-  const wantUnadjustedLook = useRef(true)
-  // Pointer-lock API is webkit-prefixed on Safari — request, detect, and exit all
-  // differ. Route EVERY touchpoint through these so the lock actually engages AND
-  // is detected on Safari (unprefixed-only was why the cursor stayed visible).
-  const plElement = (): Element | null => document.pointerLockElement || (document as unknown as { webkitPointerLockElement?: Element }).webkitPointerLockElement || null
-  const plRequest = (el: HTMLElement, opts?: unknown) => {
-    const fn = (el.requestPointerLock || (el as unknown as { webkitRequestPointerLock?: (o?: unknown) => unknown }).webkitRequestPointerLock) as ((o?: unknown) => unknown) | undefined
-    if (!fn) return undefined
-    return opts !== undefined ? fn.call(el, opts) : fn.call(el)
-  }
-  const plExit = () => {
-    const fn = (document.exitPointerLock || (document as unknown as { webkitExitPointerLock?: () => void }).webkitExitPointerLock) as (() => void) | undefined
-    if (fn) { try { fn.call(document) } catch { /* noop */ } }
-  }
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
@@ -2783,141 +2760,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
-  // pointer-lock for mouse-look worlds: while locked, accumulate relative mouse
-  // deltas into worldData.mouse_dx/dy (world-sandbox exposes them as input.lookX/
-  // lookY) and hide the cursor. Gated by worldData.__mouseLook — no effect on
-  // other worlds, which never request the lock.
+  // MOUSE-LOOK (worldData.__mouseLook): mousemove deltas → worldData.mouse_dx/dy
+  // (world-sandbox exposes them as input.lookX/lookY) while the pointer is locked;
+  // the cursor hides on lock. Dead simple — click requests the lock (below), Esc
+  // releases it natively. No effect on non-mouse-look worlds.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const onMove = (e: MouseEvent) => {
-      if (plElement() !== canvas) return
+      if (document.pointerLockElement !== canvas) return
       const sim = simulationRef.current
       if (!sim) return
       sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
       sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
     }
-    // One source of truth for lock state: read the DOM, mirror it into React
-    // (`pointerLocked` → the CHARGED CHIP) and into worldData (`__pointerLocked`
-    // → hooks can react). Every lock/unlock path funnels through here so the
-    // chip and the flag can never drift from reality.
-    const syncLock = () => {
-      const isLocked = plElement() === canvas
-      canvas.style.cursor = isLocked ? 'none' : ''
-      setPointerLocked(isLocked)
-      const sim = simulationRef.current
-      if (sim) sim.worldData['__pointerLocked'] = isLocked ? 1 : 0
-    }
-    const onLock = syncLock
-    // A rejected lock (unsupported option, or the ~1s post-Esc cooldown) leaves
-    // us UNLOCKED — re-sync so the chip re-arms and the flag reads 0. The click
-    // handler already self-heals the raw→plain fallback; nothing to retry here.
-    const onErr = syncLock
-    // Release the lock and restore the cursor when leaving the world — browser
-    // Back/Forward (popstate), tab hide / bfcache (pagehide), or unmount. Without
-    // this the pointer stays locked after navigating away and the hub's player
-    // glyph freezes (it tracks mouse_x/mouse_y, which only update while UNlocked).
-    const release = () => {
-      if (plElement() === canvas) { try { plExit() } catch { /* noop */ } }
-      canvas.style.cursor = ''
-      setPointerLocked(false)
-      const sim = simulationRef.current
-      if (sim) sim.worldData['__pointerLocked'] = 0
-    }
-    // Tab-away and bfcache restore ALWAYS drop the lock (the browser exits it on
-    // hide). pointerlockchange usually fires, but not reliably across bfcache —
-    // so re-sync explicitly on both edges to guarantee the chip is re-armed the
-    // moment the player returns.
-    const onVisibility = () => { if (document.visibilityState !== 'visible') release(); else syncLock() }
-    const onPageShow = () => { syncLock() }
-    // Leaving fullscreen (Esc, or our L-toggle-off) almost always drops the
-    // pointer lock too — re-sync so the chip re-arms and __pointerLocked reads 0.
-    const onFullscreen = syncLock
-
-    // L = the lock trigger (click is FIRE in these worlds). L also enters
-    // FULLSCREEN — Galen: "for a game like this, full screen with cursor lock."
-    // Ignore L while typing so it can't hijack a text field. Esc still exits
-    // both natively.
-    const requestLook = () => {
-      // RAW deltas (unadjustedMovement: no OS mouse-acceleration → 1:1 turn) when
-      // supported; a rejected raw request throttles pointer-lock ~1s, so on
-      // rejection we stop asking and every later attempt locks plainly. Same
-      // raw-then-plain self-heal the click handler used before.
-      const raw = wantUnadjustedLook.current
-      try {
-        const rq = raw ? plRequest(canvas, { unadjustedMovement: true }) : plRequest(canvas)
-        if (rq && typeof (rq as Promise<void>).catch === 'function') {
-          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
-        }
-      } catch {
-        if (raw) wantUnadjustedLook.current = false
-        try { plRequest(canvas) } catch { /* not supported */ }
-      }
-    }
-    const onKeyLook = (e: KeyboardEvent) => {
-      if (e.key !== 'l' && e.key !== 'L') return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const t = e.target as HTMLElement | null
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      const sim = simulationRef.current
-      if (!sim || !sim.worldData['__mouseLook']) return
-      e.preventDefault()
-      if (plElement() === canvas) {
-        // Toggle OFF: drop the lock AND leave fullscreen.
-        try { plExit() } catch { /* noop */ }
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* noop */ })
-        return
-      }
-      // Lock SYNCHRONOUSLY inside this keydown gesture — pointer lock needs an
-      // active user gesture, and chaining it off the fullscreen promise (the old
-      // fp.then(requestLook)) runs it a microtask LATER, outside the gesture, so
-      // it silently never engaged (the bug). Request the lock first, then ask for
-      // fullscreen fire-and-forget in the SAME gesture; if the FS transition drops
-      // the lock, fullscreenchange→syncLock re-arms the chip and the next L relocks.
-      requestLook()
-      const fsTarget = (canvas.parentElement as HTMLElement) || document.documentElement
-      if (!document.fullscreenElement && typeof fsTarget.requestFullscreen === 'function') {
-        try { const fp = fsTarget.requestFullscreen(); if (fp && typeof fp.catch === 'function') fp.catch(() => { /* noop */ }) } catch { /* noop */ }
-      }
-    }
+    const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('pointerlockchange', onLock)
-    document.addEventListener('pointerlockerror', onErr)
-    document.addEventListener('webkitpointerlockchange', onLock)
-    document.addEventListener('webkitpointerlockerror', onErr)
-    document.addEventListener('fullscreenchange', onFullscreen)
-    document.addEventListener('visibilitychange', onVisibility)
-    window.addEventListener('keydown', onKeyLook)
-    window.addEventListener('pageshow', onPageShow)
-    window.addEventListener('pagehide', release)
-    window.addEventListener('popstate', release)
     return () => {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('pointerlockchange', onLock)
-      document.removeEventListener('pointerlockerror', onErr)
-      document.removeEventListener('fullscreenchange', onFullscreen)
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.removeEventListener('keydown', onKeyLook)
-      window.removeEventListener('pageshow', onPageShow)
-      window.removeEventListener('pagehide', release)
-      window.removeEventListener('popstate', release)
-      release()
     }
-  }, [])
-
-  // Track whether the current world opted into mouse-look (__mouseLook is set by
-  // the cartridge via set_world_data and stays put). worldData isn't reactive, so
-  // a cheap 400ms poll drives the React `mouseLookWorld` gate — setState only on a
-  // real transition, so it costs nothing while nothing changes.
-  useEffect(() => {
-    const tick = () => {
-      const sim = simulationRef.current
-      const on = !!(sim && sim.worldData['__mouseLook'])
-      setMouseLookWorld(prev => (prev === on ? prev : on))
-    }
-    tick()
-    const id = window.setInterval(tick, 400)
-    return () => window.clearInterval(id)
   }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -2925,20 +2788,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const sim = simulationRef.current
     if (!canvas) return
 
-    // MOUSE-LOOK worlds: when NOT yet locked, a click ENGAGES the lock (the
-    // known-good path that worked before) and is consumed — it does NOT fire.
-    // Once locked (i.e. you're actually aiming) clicks FIRE, and L also
-    // locks+fullscreens. So click only "locks instead of fires" while unlocked,
-    // when you weren't aiming anyway — the standard FPS convention.
-    if (sim && sim.worldData['__mouseLook'] && plElement() !== canvas) {
-      const raw = wantUnadjustedLook.current
-      try {
-        const rq = raw ? plRequest(canvas, { unadjustedMovement: true }) : plRequest(canvas)
-        if (rq && typeof (rq as Promise<void>).catch === 'function') {
-          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
-        }
-      } catch { if (raw) wantUnadjustedLook.current = false; try { plRequest(canvas) } catch { /* noop */ } }
-      return   // consume this click as the lock — don't register it as a shot
+    // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
+    // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
+    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+      try { canvas.requestPointerLock() } catch { /* not supported */ }
     }
 
     pointerDown.current = true
@@ -6611,22 +6464,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             onContextMenu={e => e.preventDefault()}
             onPointerLeave={() => { setPixelInfo(null); if (pixelInfoTimeout.current) clearTimeout(pixelInfoTimeout.current) }}
           />
-
-          {/* CHARGED TRIGGER cue — a mouse-look world is unlocked, so a click will
-              grab the pointer. Shows on first entry and re-arms on EVERY unlock
-              (Esc, tab-away/return, browser Back, any dropped lock). pointer-events
-              none so the click it advertises passes straight through to the canvas;
-              it vanishes the instant the lock engages (pointerLocked → true). */}
-          {mouseLookWorld && !pointerLocked && !gpuFailed && !fault && (
-            <div className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 z-40 select-none">
-              <style>{`@keyframes ccPlockPulse{0%,100%{opacity:.6}50%{opacity:1}}`}</style>
-              <div
-                className="px-3.5 py-1.5 rounded-full bg-black/70 border border-amber-400/30 backdrop-blur-sm font-mono text-[13px] tracking-[0.2em] text-amber-300/90 shadow-lg shadow-black/40 whitespace-nowrap"
-                style={{ animation: 'ccPlockPulse 2.2s ease-in-out infinite' }}>
-                ⊕ CLICK OR PRESS L TO LOOK · ESC TO RELEASE
-              </div>
-            </div>
-          )}
 
           {/* fault banner: the world went down, and here is why */}
           {fault && (
