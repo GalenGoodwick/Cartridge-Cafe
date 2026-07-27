@@ -988,6 +988,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Pointer state for panning (Space + drag to pan)
   const pointerDown = useRef(false)
   const isPanning = useRef(false)
+  // pointer-lock: try RAW deltas (unadjustedMovement) but drop to a plain lock
+  // permanently once a platform rejects the option — see handlePointerDown.
+  const wantUnadjustedLook = useRef(true)
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
@@ -2825,17 +2828,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // the cursor hides and the mouse gives unbounded relative deltas (an FPS
     // can't turn past the screen edge otherwise). Must be from this user gesture.
     if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
-      // unadjustedMovement = RAW deltas (no OS mouse-acceleration) → a consistent
-      // 1:1 turn. Fall back to a plain lock if the option/API is unsupported, and
-      // swallow the rejection browsers throw for the ~1s cooldown after an Esc
-      // unlock (the next click re-locks).
+      // Lock the pointer from THIS gesture. Prefer RAW deltas
+      // (unadjustedMovement: no OS mouse-acceleration → a consistent 1:1 turn),
+      // but a rejected request leaves the pointer UNLOCKED *and* throttles
+      // pointer-lock for ~1s — so the old async ".catch → requestPointerLock()"
+      // re-request (fa6bf48) was itself throttled and the lock stopped engaging
+      // at all on any platform that rejects the option. Fix: never retry inside
+      // the rejected promise; instead remember the rejection and fall back to a
+      // plain lock on every later click, which has no unsupported option to
+      // reject on and always engages. Supported platforms keep raw deltas; the
+      // rest self-heal after one bounced click.
+      const raw = wantUnadjustedLook.current
       try {
         const rpl = canvas.requestPointerLock as (this: Element, o?: unknown) => unknown
-        const rq = rpl.call(canvas, { unadjustedMovement: true })
+        const rq = raw ? rpl.call(canvas, { unadjustedMovement: true }) : rpl.call(canvas)
         if (rq && typeof (rq as Promise<void>).catch === 'function') {
-          (rq as Promise<void>).catch(() => { try { canvas.requestPointerLock() } catch { /* noop */ } })
+          // Swallow rejections (unsupported option, or the ~1s post-Esc
+          // cooldown). If we asked for raw and it failed, stop asking so the
+          // NEXT click locks plainly rather than re-throttling.
+          (rq as Promise<void>).catch(() => { if (raw) wantUnadjustedLook.current = false })
         }
-      } catch { try { canvas.requestPointerLock() } catch { /* noop */ } }
+      } catch {
+        // Options form not understood at all → plain lock, still in this gesture.
+        if (raw) wantUnadjustedLook.current = false
+        try { canvas.requestPointerLock() } catch { /* not supported */ }
+      }
     }
 
     // 3D mode: right-click or alt+click = orbit camera
