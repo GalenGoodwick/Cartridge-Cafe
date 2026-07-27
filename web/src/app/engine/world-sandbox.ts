@@ -179,6 +179,17 @@ export class WorldSandbox {
   private quarantined = false
   private lastPostAt = 0
   private slowStrikes = 0
+  // CADENCE FIX (the "choppy on ProMotion" core failure): the old pipeline posted
+  // one tick per RAF only when the previous reply had already landed — at 120Hz
+  // the ~10ms worker round-trip misses the 8.3ms frame window, so hooks ran at
+  // ~50Hz against a 120Hz display (camera judder) AND each skipped frame's dt
+  // was silently dropped (game time ran at ~40-50% of wall time). Now: dt is
+  // WALL-CLOCK elapsed since the last posted tick (game time == wall time by
+  // construction), replies are applied the moment they arrive, and a bounded
+  // chain-post keeps the hook near display rate. Measured before the fix on
+  // veilfire-3d: RAF p50 8.3ms, worker tick p50 20.2ms, 12.2s game time / 25s wall.
+  private lastSim: FieldSimulation | null = null
+  private lastTickAt = 0        // perfNow() of the last POSTED tick — wall-clock dt basis
   // input edge-detection: last frame's held-state, so the hook is handed a ready
   // `input` object (held / pressed / released / moveX / moveY / action) instead
   // of diffing raw key_* itself. ESC is never a game key (unmapped upstream); R
@@ -276,6 +287,7 @@ export class WorldSandbox {
     this.quarantined = false
     this.slowStrikes = 0
     this.lastPostAt = 0
+    this.lastTickAt = 0
     const specs = typeof hooks === 'string' ? [{ id: 'hook', code: hooks }] : hooks
     try {
       const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }))
@@ -294,6 +306,21 @@ export class WorldSandbox {
       } else {
         this.inFlight = false
         this.pending = m as SandboxReply
+        // apply the instant it arrives — the very next rendered frame sees fresh
+        // uniforms instead of waiting for the next RAF's tick() to notice
+        const sim = this.lastSim
+        if (sim) {
+          this.applyPending(sim)
+          // bounded CHAIN-POST: if a whole tick quantum has already elapsed, don't
+          // idle until the next RAF — post now. The 7ms floor caps the hook near
+          // ~140Hz so a fast round-trip can never busy-loop a core. Determinism
+          // worlds (__fixedStep) stay strictly one-tick-per-rendered-frame.
+          const fs = (sim.worldData as Record<string, unknown>)['__fixedStep']
+          if (!this.quarantined && !this.inFlight && !(typeof fs === 'number' && fs > 0) &&
+              (perfNow() - this.lastTickAt) >= 7) {
+            this.postTick(sim)
+          }
+        }
       }
     }
     this.worker.onerror = (e) => console.warn('[sandbox] worker error:', e.message)
@@ -306,6 +333,8 @@ export class WorldSandbox {
   /** one frame: apply the worker's last reply, then post current sim state.
    *  Call this BEFORE sim.step so gpuUniforms/__play_sound land for this frame. */
   tick(sim: FieldSimulation, dt: number): void {
+    void dt   // dt is now derived from wall-clock at post time (see postTick)
+    this.lastSim = sim
     if (this.quarantined || !this.worker || !this.ready) return
 
     // KILL-SWITCH ─ a tick posted but no reply for HANG_MS means a hook is
@@ -323,60 +352,76 @@ export class WorldSandbox {
       this.surface(sim, 'compile', this.compileError)
     }
 
-    // 1 ─ apply the pending reply (from ~1 frame ago)
-    if (this.pending) {
-      // SUSTAINED heavy cost ⇒ quarantine. Strikes accrue on a heavy tick and
-      // decay 2× as fast, so brief spikes never trip it — only a hook that is
-      // consistently over budget for seconds on end.
-      if (typeof this.pending.ms === 'number') {
-        if (this.pending.ms > SLOW_MS) {
-          if (++this.slowStrikes >= SLOW_STRIKE_LIMIT) {
-            this.quarantine(sim, 'it was using too much time every frame', `sustained ${Math.round(this.pending.ms)}ms/tick over ${SLOW_STRIKE_LIMIT} ticks (budget ${SLOW_MS}ms)`)
-            return
-          }
-        } else {
-          this.slowStrikes = Math.max(0, this.slowStrikes - 2)
-        }
-      }
-      // an error means ONE hook threw — surface it, but still apply the reply:
-      // the other hooks ran fine and their worldData/patches are valid.
-      if (this.pending.error) {
-        console.warn('[sandbox] hook runtime error:', this.pending.error)
-        this.surface(sim, 'runtime', this.pending.error)
-      }
-      {
-        const wd = sim.worldData as Record<string, unknown>
-        const incoming = this.pending.worldData || {}
-        // apply ONLY what a hook produces: render outputs + its own __state.
-        // Blasting the whole worldData back would clobber host-owned keys
-        // (presence, pixel samples, live input) with a stale frame — which
-        // reads as warping and jitter. The host owns everything else.
-        for (const k of Object.keys(incoming)) {
-          if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
-              k === 'instructions' ||
-              (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
-            wd[k] = incoming[k]
-          }
-        }
-        // field transforms the hook moved
-        for (const p of this.pending.fieldPatches || []) {
-          const f = sim.fields.get(p.id)
-          if (f && p.transform) f.transform = { ...f.transform, ...p.transform }
-        }
-        // the whitelisted events the hook "dispatched"
-        if (typeof window !== 'undefined') {
-          for (const e of this.pending.events || []) {
-            if (typeof e.type === 'string' && e.type.startsWith('cafe:')) {
-              window.dispatchEvent(new CustomEvent(e.type, { detail: e.detail }))
-            }
-          }
-        }
-      }
-      this.pending = null
-    }
+    // 1 ─ apply any reply not already applied on arrival (normally a no-op —
+    //     onmessage applies immediately; this catches a reply that landed
+    //     before lastSim was first set)
+    this.applyPending(sim)
+    if (this.quarantined) return
 
-    // 2 ─ post current state for the next frame (backpressure: skip if busy)
+    // 2 ─ post current state (backpressure: skip if a tick is in flight; the
+    //     wall-clock dt in postTick means a skipped frame's time is never lost)
     if (this.inFlight) return
+    this.postTick(sim)
+  }
+
+  /** apply the worker's pending reply to the sim (strikes, errors, outputs). */
+  private applyPending(sim: FieldSimulation): void {
+    if (!this.pending) return
+    // SUSTAINED heavy cost ⇒ quarantine. Strikes accrue on a heavy tick and
+    // decay 2× as fast, so brief spikes never trip it — only a hook that is
+    // consistently over budget for seconds on end.
+    if (typeof this.pending.ms === 'number') {
+      if (this.pending.ms > SLOW_MS) {
+        if (++this.slowStrikes >= SLOW_STRIKE_LIMIT) {
+          this.quarantine(sim, 'it was using too much time every frame', `sustained ${Math.round(this.pending.ms)}ms/tick over ${SLOW_STRIKE_LIMIT} ticks (budget ${SLOW_MS}ms)`)
+          return
+        }
+      } else {
+        this.slowStrikes = Math.max(0, this.slowStrikes - 2)
+      }
+    }
+    // an error means ONE hook threw — surface it, but still apply the reply:
+    // the other hooks ran fine and their worldData/patches are valid.
+    if (this.pending.error) {
+      console.warn('[sandbox] hook runtime error:', this.pending.error)
+      this.surface(sim, 'runtime', this.pending.error)
+    }
+    {
+      const wd = sim.worldData as Record<string, unknown>
+      const incoming = this.pending.worldData || {}
+      // apply ONLY what a hook produces: render outputs + its own __state.
+      // Blasting the whole worldData back would clobber host-owned keys
+      // (presence, pixel samples, live input) with a stale frame — which
+      // reads as warping and jitter. The host owns everything else.
+      for (const k of Object.keys(incoming)) {
+        if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
+            k === 'instructions' ||
+            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
+          wd[k] = incoming[k]
+        }
+      }
+      // field transforms the hook moved
+      for (const p of this.pending.fieldPatches || []) {
+        const f = sim.fields.get(p.id)
+        if (f && p.transform) f.transform = { ...f.transform, ...p.transform }
+      }
+      // the whitelisted events the hook "dispatched"
+      if (typeof window !== 'undefined') {
+        for (const e of this.pending.events || []) {
+          if (typeof e.type === 'string' && e.type.startsWith('cafe:')) {
+            window.dispatchEvent(new CustomEvent(e.type, { detail: e.detail }))
+          }
+        }
+      }
+    }
+    this.pending = null
+  }
+
+  /** post the current sim state as one tick. dt = WALL-CLOCK seconds since the
+   *  last posted tick (clamped), so hook game-time tracks real time no matter
+   *  how many rendered frames a reply spans. __fixedStep keeps its exact quantum. */
+  private postTick(sim: FieldSimulation): void {
+    if (!this.worker) return
     const fields: { id: string; name: string; transform: unknown; properties: unknown }[] = []
     for (const f of sim.fields.values()) {
       fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties })
@@ -384,7 +429,9 @@ export class WorldSandbox {
     // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
     // one exact quantum — one tick per rendered frame, same sequence every run
     const fs = sim.worldData['__fixedStep']
-    const useDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : dt
+    const now = perfNow()
+    const wallDt = this.lastTickAt ? Math.min(Math.max((now - this.lastTickAt) / 1000, 0), 0.1) : 1 / 60
+    const useDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : wallDt
     try {
       const payload = cloneable(sim.worldData)
       payload.input = this.buildInput(sim.worldData)   // derived; never persisted to sim.worldData
@@ -398,7 +445,8 @@ export class WorldSandbox {
         : []
       this.worker.postMessage({ type: 'tick', worldData: payload, dt: useDt, fields })
       this.inFlight = true
-      this.lastPostAt = perfNow()   // hang-detector baseline for this in-flight tick
+      this.lastPostAt = now      // hang-detector baseline for this in-flight tick
+      this.lastTickAt = now      // wall-clock dt baseline for the NEXT tick
     } catch (e) {
       // non-cloneable worldData (shouldn't happen — it's plain data)
       console.warn('[sandbox] tick post failed:', e)
@@ -411,6 +459,8 @@ export class WorldSandbox {
     this.inFlight = false
     this.pending = null
     this.compileError = null
+    this.lastSim = null
+    this.lastTickAt = 0
   }
 }
 

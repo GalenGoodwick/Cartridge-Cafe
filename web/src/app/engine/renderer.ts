@@ -400,8 +400,17 @@ export class FieldRenderer {
     return px > this.maxBufferPixels ? dpr * Math.sqrt(this.maxBufferPixels / px) : dpr
   }
 
-  /** Update post-processing settings. Partial updates supported. */
+  /** Update post-processing settings. Partial updates supported.
+   *  Diffs first: FieldEngine calls this EVERY FRAME for any world that sets
+   *  worldData.postProcess, and unconditionally nulling the cached bind group
+   *  forced a rebuild per frame. Only a real change invalidates the cache. */
   setPostProcess(settings: Partial<typeof FieldRenderer.prototype.postProcessSettings>): void {
+    const cur = this.postProcessSettings as Record<string, unknown>
+    let changed = false
+    for (const k of Object.keys(settings)) {
+      if (cur[k] !== (settings as Record<string, unknown>)[k]) { changed = true; break }
+    }
+    if (!changed) return
     Object.assign(this.postProcessSettings, settings)
     this._cachedPostProcessBG = null
   }
