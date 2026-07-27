@@ -1573,7 +1573,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       {brewStep > 0 && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/80 backdrop-blur-sm"
           onClick={brewCancel}>
-          <div className="relative w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+          <div className="relative w-[480px] max-w-[94vw] border border-brass/60 rounded-xl px-7 py-6 bg-gradient-to-b from-[#2a2016] to-[#1a130b] ring-1 ring-glow/10 shadow-[0_0_90px_rgba(255,178,90,0.28)]"
             onClick={e => e.stopPropagation()}>
             <button onClick={brewCancel} aria-label="back out"
               className="absolute top-2.5 right-3.5 font-mono text-sm text-crema/70 hover:text-glow transition-colors">✕</button>
