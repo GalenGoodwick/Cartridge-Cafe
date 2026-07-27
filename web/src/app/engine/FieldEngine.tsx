@@ -2856,16 +2856,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* noop */ })
         return
       }
-      // Enter FULLSCREEN first (the engine's sizing parent, so the canvas CSS-
-      // fills it), THEN lock — same user gesture. If fullscreen is rejected or
-      // unavailable, lock anyway.
+      // Lock SYNCHRONOUSLY inside this keydown gesture — pointer lock needs an
+      // active user gesture, and chaining it off the fullscreen promise (the old
+      // fp.then(requestLook)) runs it a microtask LATER, outside the gesture, so
+      // it silently never engaged (the bug). Request the lock first, then ask for
+      // fullscreen fire-and-forget in the SAME gesture; if the FS transition drops
+      // the lock, fullscreenchange→syncLock re-arms the chip and the next L relocks.
+      requestLook()
       const fsTarget = (canvas.parentElement as HTMLElement) || document.documentElement
       if (!document.fullscreenElement && typeof fsTarget.requestFullscreen === 'function') {
-        const fp = fsTarget.requestFullscreen()
-        if (fp && typeof fp.then === 'function') fp.then(requestLook).catch(requestLook)
-        else requestLook()
-      } else {
-        requestLook()
+        try { const fp = fsTarget.requestFullscreen(); if (fp && typeof fp.catch === 'function') fp.catch(() => { /* noop */ }) } catch { /* noop */ }
       }
     }
     document.addEventListener('mousemove', onMove)
