@@ -3296,6 +3296,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // Render loop — crash-guarded: an exception must not silently freeze
     // the canvas to black. The first crash is surfaced as a fault.
     function frame() {
+      // Zombie-loop guard: once this effect run has been torn down (cleanup set
+      // `cancelled`), a frame already in flight must NOT reschedule itself, or it
+      // survives cancellation and keeps driving the (re-created) renderer, stacking a
+      // second live loop on every re-init and degrading performance over a session.
+      if (cancelled) return
       try { frameBody() } catch (e) {
         const msg = String((e as Error)?.message || e)
         // The vote reckoning insets the canvas; mid-resize the browser can throw a
