@@ -71,7 +71,7 @@ function SignInInner() {
                 you&apos;re brewing as a guest. sign in through any door below and your world comes with you.
               </p>
             )}
-            {session?.user && (
+            {session?.user && !session.user.isTemp && (
               <div className="rounded-lg border border-brass/25 bg-void/30 px-4 py-3.5 space-y-2">
                 <div className="font-mono text-[14px] tracking-[0.25em] text-brass">YOU ARE IN AS {(session.user.email || '').toUpperCase()}</div>
                 <p className="font-sans text-[16px] text-grounds">secure this device — next time, your face or fingerprint is the key.</p>
@@ -106,10 +106,12 @@ function SignInInner() {
                 {ERROR_TEXT[errorCode] || ERROR_TEXT.Default}
               </p>
             )}
-            {/* The sign-in DOORS. Once you're in, they vanish — the only thing
-                left is the post-auth card above (name is set, secure the device,
-                turn on notifications). "After auth" belongs after auth. */}
-            {!session?.user && <>
+            {/* The sign-in DOORS. Once you're in for REAL they vanish — the only
+                thing left is the post-auth card above. But a GUEST also has a
+                session (isTemp), and a guest's whole reason to be here is to sign
+                in / sign up (and carry their world over) — so guests see the doors
+                too. Only a real, non-temp account hides them. */}
+            {(!session?.user || session.user.isTemp) && <>
             {(!providers || !!providers.google) && (
               <button
                 onClick={() => signIn('google', { callbackUrl })}
@@ -197,8 +199,10 @@ function SignInInner() {
               <br />worlds you make public can be branched by others · private stays yours.
             </div>
             </>}
-            {/* once signed in, the way onward — the doors above are gone */}
-            {session?.user && (
+            {/* once signed in for REAL, the way onward — the doors above are gone.
+                (A guest still has doors to choose, so this only shows for a
+                non-temp account.) */}
+            {session?.user && !session.user.isTemp && (
               <a href={callbackUrl}
                 className="block w-full text-center rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-colors">
                 ENTER THE CAFE →

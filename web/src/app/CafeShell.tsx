@@ -1860,13 +1860,20 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                     ))}
                     <div className="my-1 border-t border-white/10" />
                     {who.guest ? (
-                      // a guest has no account to sign out of — offer to KEEP their
-                      // work. The auth page claims their guest-built worlds onto the
-                      // real account they create / sign in to.
-                      <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
-                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
-                        ◆ CREATE ACCOUNT
-                      </button>
+                      // a guest has no real account, but two ways out: KEEP their
+                      // work (the auth page claims their guest-built worlds onto the
+                      // account they create / sign in to), or just LEAVE — sign out
+                      // of the guest session and go back to being a stranger.
+                      <>
+                        <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
+                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
+                          ◆ CREATE ACCOUNT
+                        </button>
+                        <button onClick={() => signOut({ callbackUrl: '/' })}
+                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
+                          sign out of guest
+                        </button>
+                      </>
                     ) : (
                       <button onClick={() => signOut({ callbackUrl: '/' })}
                         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
