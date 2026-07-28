@@ -36,6 +36,23 @@ export async function GET(req: NextRequest) {
     prisma.playerSpace.count({ where: { owner: isGuest } }),
   ])
 
+  // ── WHAT ARE THE 15k "users"? segment by real activity + email-domain pattern ──
+  const [verified, withWorld, withSession, withAccount, withPasskey] = await Promise.all([
+    prisma.user.count({ where: { ...notGuest, emailVerified: { not: null } } }),
+    prisma.user.count({ where: { ...notGuest, ownedSpaces: { some: {} } } }),
+    prisma.user.count({ where: { ...notGuest, sessions: { some: {} } } }),
+    prisma.user.count({ where: { ...notGuest, accounts: { some: {} } } }),
+    prisma.user.count({ where: { ...notGuest, passkeys: { some: {} } } }),
+  ])
+  const anyActivity = await prisma.user.count({ where: { ...notGuest, OR: [{ ownedSpaces: { some: {} } }, { sessions: { some: {} } }, { accounts: { some: {} } }, { passkeys: { some: {} } }] } })
+  let topDomains: { domain: string; count: number }[] = []
+  let signupsByDay: { day: string; count: number }[] = []
+  try {
+    topDomains = (await prisma.$queryRawUnsafe(`SELECT split_part(email,'@',2) AS domain, count(*) AS c FROM "User" WHERE email NOT LIKE '%@guest.cartridge.cafe' GROUP BY domain ORDER BY c DESC LIMIT 15`) as Record<string, unknown>[]).map(r => ({ domain: String(r.domain), count: n(r.c) }))
+    signupsByDay = (await prisma.$queryRawUnsafe(`SELECT to_char(date_trunc('day',"createdAt"),'YYYY-MM-DD') AS day, count(*) AS c FROM "User" WHERE email NOT LIKE '%@guest.cartridge.cafe' AND "createdAt" >= now()-interval '45 days' GROUP BY day ORDER BY day DESC LIMIT 45`) as Record<string, unknown>[]).map(r => ({ day: String(r.day), count: n(r.c) }))
+  } catch { /* raw query failed */ }
+  const humans = { verified, everLoggedIn: withSession, withOAuth: withAccount, withPasskey, madeAWorld: withWorld, anyActivity }
+
   const recentWorlds = (await prisma.playerSpace.findMany({
     orderBy: { createdAt: 'desc' }, take: 15,
     select: { slug: true, name: true, createdAt: true, isPublic: true, createdByCompanionId: true, owner: { select: { email: true, name: true } } },
@@ -70,7 +87,10 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     generatedAt: new Date().toISOString(),
-    users: { real: usersReal, newReal_24h: usersReal1d, newReal_7d: usersReal7d, guests: guestUsers, newGuests_7d: guestUsers7d },
+    users: { rows_nonGuest: usersReal, newRows_24h: usersReal1d, newRows_7d: usersReal7d, guests: guestUsers, newGuests_7d: guestUsers7d },
+    humans,   // rows_nonGuest is just User table rows; THESE are the ones who actually did something
+    userTopDomains: topDomains,
+    signupsByDay,
     worlds: { total: worldsTotal, public: worldsPublic, new_24h: worlds1d, new_7d: worlds7d, guestMade: guestWorlds, aiMade: aiWorlds, forks },
     visitors,   // strangers_* = anonymous humans (real growth); uniq_* excludes our headless playtests
     liveNow,
