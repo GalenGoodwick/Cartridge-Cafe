@@ -2197,10 +2197,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
           console.log('[Propagation] Check:', { hasPipeline: !!this.propagationPipeline, hasIxBuf: !!this.ixBuf, ixBufPixels: this.ixBufPixelCount })
           this._propLogDone = true
         }
-        // The 3D raymarch never writes ixBuf, and a world with no interactions has
-        // nothing to propagate — so this full-buffer 32-tap pass only does real work
-        // in 2D worlds that declared interactions. Skip it otherwise (all 3D worlds).
-        if (!is3D && activeInteractions && activeInteractions.length > 0 && hasSuperFields && this.propagationPipeline && this.ixBuf && this.ixTypeBuf) {
+        // The 3D raymarch never writes ixBuf, so propagation is pure waste in 3D.
+        // In 2D it processes accumBuf per-field (bubble spread/containment) even
+        // without declared interactions, so 2D worlds like the hub MUST keep it —
+        // gate on 3D alone, not on interaction count.
+        if (!is3D && hasSuperFields && this.propagationPipeline && this.ixBuf && this.ixTypeBuf) {
           if (!this._cachedPropBG) {
             this._cachedPropBG = device.createBindGroup({
               layout: this.propagationBindGroupLayout!,
