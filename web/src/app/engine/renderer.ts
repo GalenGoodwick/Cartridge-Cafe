@@ -257,6 +257,9 @@ export class FieldRenderer {
   private hitIdStagingBuffer: GPUBuffer | null = null
   private hitIdPixelCount: number = 0
   private hitIdReadbackPending: boolean = false
+  private _hitReadbackNeeded: boolean = false
+  /** True only when some field is hittable — gates the hit-ID copy + readback. */
+  get hitReadbackNeeded(): boolean { return this._hitReadbackNeeded }
   /** Latest readback: per-pixel field index (0xFFFFFFFF = no field) */
   hitMap: Uint32Array | null = null
   hitMapWidth: number = 0
@@ -2025,7 +2028,20 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     let textureView: GPUTextureView
     try { textureView = ctx.getCurrentTexture().createView() } catch { return }
 
-    // --- Pass 1: Base (opaque) ---
+    // Computed BEFORE the base pass so a 3D world can skip the base DRAW: the
+    // raymarch covers the whole screen, so drawing the 2D grid-world backdrop
+    // underneath it is fully overdrawn (and bleeds a grid through ray-miss
+    // pixels). The CLEAR stays — miss pixels still need a cleared target — but
+    // the multi-tap fragment draw is dropped every 3D frame. Helps every 3D world.
+    const is3D = !!mode3D
+    const hasSuperFields = superFields && superFields.length > 0 && (is3D ? this.super3DPipelineReady : this.superPipelineReady)
+    // Is any field actually hittable? renderTargetId (shapeDims[3]) === -2 marks a
+    // noHit field. When EVERY field is noHit the hit-ID map is always empty, so the
+    // 8.8MB GPU→CPU copy + mapAsync sync below are pure waste — and readback stalls
+    // are especially costly on tile-based mobile GPUs. Skip them for noHit worlds.
+    this._hitReadbackNeeded = !!superFields && superFields.some(f => (f.shapeDims?.[3] ?? -1) !== -2)
+
+    // --- Pass 1: Base — clear always; draw the 2D backdrop only when NOT a 3D world ---
     {
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
@@ -2035,17 +2051,19 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
           storeOp: 'store',
         }],
       })
-
-      pass.setPipeline(this.basePipeline)
-      pass.setBindGroup(0, this.getFrameBindGroup())
-      pass.setBindGroup(1, this.getBaseTextureBindGroup())
-      pass.draw(6)
+      // Skip the backdrop draw ONLY for a 3D world whose raymarch is ready and
+      // will cover the screen. 2D superfield worlds still need it; and during 3D
+      // load (pipeline not ready) we keep drawing it as the fallback.
+      if (!(is3D && hasSuperFields)) {
+        pass.setPipeline(this.basePipeline)
+        pass.setBindGroup(0, this.getFrameBindGroup())
+        pass.setBindGroup(1, this.getBaseTextureBindGroup())
+        pass.draw(6)
+      }
       pass.end()
     }
 
     // --- Effects ---
-    const is3D = !!mode3D
-    const hasSuperFields = superFields && superFields.length > 0 && (is3D ? this.super3DPipelineReady : this.superPipelineReady)
     if ((fieldEffects && fieldEffects.length > 0) || hasSuperFields) {
       // Separate effects into compute-eligible and render-fallback
       const computeEffects: FieldEffectData[] = []
@@ -2179,7 +2197,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
           console.log('[Propagation] Check:', { hasPipeline: !!this.propagationPipeline, hasIxBuf: !!this.ixBuf, ixBufPixels: this.ixBufPixelCount })
           this._propLogDone = true
         }
-        if (hasSuperFields && this.propagationPipeline && this.ixBuf && this.ixTypeBuf) {
+        // The 3D raymarch never writes ixBuf, and a world with no interactions has
+        // nothing to propagate — so this full-buffer 32-tap pass only does real work
+        // in 2D worlds that declared interactions. Skip it otherwise (all 3D worlds).
+        if (!is3D && activeInteractions && activeInteractions.length > 0 && hasSuperFields && this.propagationPipeline && this.ixBuf && this.ixTypeBuf) {
           if (!this._cachedPropBG) {
             this._cachedPropBG = device.createBindGroup({
               layout: this.propagationBindGroupLayout!,
@@ -3624,8 +3645,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     )
     pass.end()
 
-    // Copy hit ID buffer to staging for CPU readback
-    if (this.hitIdStagingBuffer && !this.hitIdReadbackPending) {
+    // Copy hit ID buffer to staging for CPU readback — skipped when no field is
+    // hittable (noHit worlds), where the map is always empty.
+    if (this.hitIdStagingBuffer && !this.hitIdReadbackPending && this._hitReadbackNeeded) {
       const byteSize = bufferW * bufferH * 4
       encoder.copyBufferToBuffer(this.hitIdBuffer!, 0, this.hitIdStagingBuffer, 0, byteSize)
     }

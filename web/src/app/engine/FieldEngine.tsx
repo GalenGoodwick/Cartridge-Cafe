@@ -4075,8 +4075,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         renderer.render(camera, camera.zoom, time, fieldEffects, superFields, activeInteractions, mode3D ? { pos: mode3D.pos, pitch: mode3D.pitch, yaw: mode3D.yaw, fov: mode3D.fov } : undefined, stepHookData)
       }
 
-      // Trigger async readback of hit ID map for pixel-perfect hit testing
-      if (superFields.length > 0) {
+      // Trigger async readback of hit ID map for pixel-perfect hit testing —
+      // only when a field is actually hittable (skipped for noHit worlds like the
+      // raymarched 3D scenes, whose hit map is always empty).
+      if (superFields.length > 0 && renderer.hitReadbackNeeded) {
         renderer.readbackHitMap()
         // Update simulation with latest hit map and grid-to-pixel converters
         sim.superHitMap = renderer.hitMap
