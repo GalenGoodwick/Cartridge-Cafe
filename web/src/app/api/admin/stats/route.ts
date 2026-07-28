@@ -16,9 +16,10 @@ async function safe<T>(label: string, fb: T, fn: () => Promise<T>): Promise<T> {
 }
 
 /** GET /api/admin/stats — user / visitor / world metrics for the keeper. Read-only.
- *  NOTE: the User/Account/Session tables are SHARED with the original Unity Chant
- *  app (same Neon DB). `humans.*` are cafe-activity signals that separate real cafe
- *  people from the inherited Unity-Chant-era pool. */
+ *  As of the Jul 2026 DB split the cafe runs on its OWN Neon branch (CAFE_DATABASE_URL),
+ *  no longer sharing User/Account/Session with the Unity Chant app — so the counts here
+ *  are cafe-only. `humans.*` remain useful real-activity signals (world made, passkey,
+ *  companion, OAuth) but no longer need to subtract an inherited agent pool. */
 export async function GET(req: NextRequest) {
   if (!(await isAdmin(req.headers.get('authorization')))) {
     return NextResponse.json({ error: 'not the keeper' }, { status: 403 })
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     guests: await safe('users.guests', 0, () => prisma.user.count({ where: isGuest })),
   }
 
-  // cafe-activity signals — these SEPARATE real cafe people from the 15k legacy pool
+  // cafe-activity signals — real engagement (world made / passkey / companion / OAuth)
   const humans = {
     madeAWorld: await safe('humans.world', 0, () => prisma.user.count({ where: { ...notGuest, ownedSpaces: { some: {} } } })),
     withPasskey: await safe('humans.passkey', 0, () => prisma.user.count({ where: { ...notGuest, passkeys: { some: {} } } })),
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     generatedAt: new Date().toISOString(),
-    _note: 'User/Account/Session are SHARED with the original Unity Chant app. humans.* = real cafe activity.',
+    _note: 'Cafe runs on its own Neon branch (CAFE_DATABASE_URL) since the Jul 2026 split — counts are cafe-only. humans.* = real cafe activity.',
     users, humans, worlds, visitors, liveNow, recentWorlds, userTopDomains, signupsByDay,
     _queryFailures: fails,
   })
