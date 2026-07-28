@@ -801,10 +801,14 @@ try {
           // THE HOUSE always stands — it holds the canonical AI-made worlds too
           want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
         } else {
+          // canonical scenes credited to a maker (the scene-makers slot) carry
+          // that name on their MAIN bubble too \u2014 not just in PLAYER WORLDS.
+          const credited = (sp && sp.sceneMakers) || {}
           for (const n of (sc.scenes || [])) {
             if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
             if (n.includes(' \u2442 ')) continue
-            want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+            const cred = credited[n]
+            want[n] = { launch: n, style: STYLE_OF[n] ?? 8, ...(cred ? { author: spaceWords(cred.name || cred.handle) } : {}) }
           }
           // player-made worlds surface directly on main too, right alongside the
           // canonical worlds and the three big front-door bubbles.
