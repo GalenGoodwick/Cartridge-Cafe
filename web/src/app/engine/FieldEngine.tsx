@@ -3318,14 +3318,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     function frameBody() {
       const now = performance.now()
-      // Cap at ~60fps: ProMotion displays otherwise drive the full compute
-      // pipeline at 120Hz — double the GPU load (and laptop heat) for no
-      // perceptible gain in a shader-driven scene. Watching IS using, focused
-      // or not — the usual posture is the engine visible beside a chat window,
-      // and a 10fps unfocused throttle read as "the scene is choppy" (Jul 12
-      // 2026, measured: every dropped frame was an unfocused one). Full rate
-      // whenever visible; hidden tabs still pause free via rAF.
-      const minFrameMs = 15
+      // Frame budget by attention state:
+      //  · FOCUSED, visible → ~60fps (cap ProMotion's 120Hz — double GPU load
+      //    and laptop heat for no perceptible gain in a shader scene).
+      //  · UNFOCUSED but visible (engine beside a chat/terminal window) → ~30fps.
+      //    A prior 10fps unfocused throttle read as "choppy" (Jul 12 2026), so
+      //    that was reverted to full rate — but full rate pins ~20% CPU + the GPU
+      //    the whole time another app is on top. 30fps is the middle: it roughly
+      //    halves the render+sim cost of the beside-a-window posture and still
+      //    reads smooth (30 ≠ the old 10). Tune UNFOCUSED_MS to taste.
+      //  · HIDDEN tab → rAF pauses for free (browser), so this never runs.
+      const UNFOCUSED_MS = 33
+      const minFrameMs = windowFocusedRef.current ? 15 : UNFOCUSED_MS
       if (now - lastFrameRef.current < minFrameMs) {
         animFrameRef.current = requestAnimationFrame(frame)
         return
