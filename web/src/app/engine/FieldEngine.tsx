@@ -886,7 +886,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // ({action, fieldName, at}); poll it so the human can see what the AI is doing.
   const [aiFocus, setAiFocus] = useState<{ action?: string; fieldName?: string; at?: number; error?: { name: string; type: string; error: string } | null } | null>(null)
   // the AI's eye — the latest render_probe PNG the bridge stashed to slot ai_eye:<scope>
-  const [aiEye, setAiEye] = useState<{ png?: string; at?: number; name?: string } | null>(null)
+  const [aiEye, setAiEye] = useState<{ png?: string; at?: number; name?: string; stats?: { meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: number; hookErrors?: number; dominantColors?: number[][] } } | null>(null)
   // ◈ AI VIEW tabs — EYE (focus + render) and NODES (the world's architecture graph).
   // The whole world IS a node graph: modules → visuals → fields, with hooks driving the
   // uniforms the visuals read. Tier-1 is read-only + inspector; the same nodes are built
@@ -7172,7 +7172,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     <div className="px-3 pt-2 pb-2.5 flex-1 min-h-0 overflow-auto">
                       <div className="font-mono text-[11px] text-amber-300/45 mb-1.5">◉ what the AI sees{eyeFresh && aiEye!.name ? ' · ' + aiEye!.name : ''}</div>
                       {eyeFresh ? (
-                        <img src={aiEye!.png!.startsWith('data:') ? aiEye!.png! : 'data:image/png;base64,' + aiEye!.png!} alt="the AI's eye" className="w-full rounded border border-white/10 object-contain bg-black" />
+                        <>
+                          <img src={aiEye!.png!.startsWith('data:') ? aiEye!.png! : 'data:image/png;base64,' + aiEye!.png!} alt="the AI's eye" className="w-full rounded border border-white/10 object-contain bg-black" />
+                          {/* the renderer's SELF-REPORT (#7) — what the probe measured, not
+                              just what it drew. Red flags surface first. */}
+                          {aiEye!.stats && (
+                            <div className="mt-1.5 font-mono text-[10.5px] leading-relaxed">
+                              {(aiEye!.stats.errors || 0) > 0 && <div className="text-red-300/90">⚠ {aiEye!.stats.errors} shader error{aiEye!.stats.errors === 1 ? '' : 's'} in probe</div>}
+                              {(aiEye!.stats.hookErrors || 0) > 0 && <div className="text-amber-300/90">⚠ {aiEye!.stats.hookErrors} hook error{aiEye!.stats.hookErrors === 1 ? '' : 's'} (budget/throw) during probe</div>}
+                              {aiEye!.stats.visible === false && <div className="text-red-300/90">⚠ probe target not visible</div>}
+                              <div className="text-white/35 flex flex-wrap gap-x-2.5">
+                                {typeof aiEye!.stats.coveragePct === 'number' && <span title="pixels the visual covered">cover {Math.round(aiEye!.stats.coveragePct)}%</span>}
+                                {typeof aiEye!.stats.meanLum === 'number' && <span className={aiEye!.stats.meanLum < 8 ? 'text-amber-300/80' : ''} title="mean luminance — very low = near-black">lum {Math.round(aiEye!.stats.meanLum)}</span>}
+                                {typeof aiEye!.stats.motion === 'number' && <span title="frame-to-frame change">motion {Math.round(aiEye!.stats.motion)}</span>}
+                                {aiEye!.stats.visual && <span title="visual sampled">· {aiEye!.stats.visual}</span>}
+                              </div>
+                              {Array.isArray(aiEye!.stats.dominantColors) && aiEye!.stats.dominantColors.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1" title="dominant colors">
+                                  {aiEye!.stats.dominantColors.map((c, i) => Array.isArray(c) && c.length >= 3 ? (
+                                    <span key={i} className="inline-block w-3.5 h-3.5 rounded-sm border border-white/15" style={{ background: `rgb(${c[0]},${c[1]},${c[2]})` }} />
+                                  ) : null)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className="w-full aspect-square rounded border border-dashed border-white/12 bg-black/50 flex items-center justify-center text-center px-3">
                           <span className="font-mono text-[11px] text-white/25 leading-relaxed">no eye yet.<br/>appears when the AI takes a render_probe snapshot of the scene.</span>

@@ -735,10 +735,23 @@ export async function POST(req: NextRequest) {
             : getEngineState()
         const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input })
         results.push({ type: 'render_probe', ...out })
-        // stash the eye image so the BuilderBox can show a human WHAT THE AI SEES
+        // stash the eye image + the renderer's SELF-REPORT so the BuilderBox shows a
+        // human/AI WHAT THE AI SEES *and how the renderer describes it* (#7: a renderer
+        // that explains itself). The stats are already computed by the probe — surface
+        // them instead of throwing them away.
         if (aiScope) {
-          const img = (out as { png?: string; image?: string })?.png || (out as { image?: string })?.image
-          if (img) { try { await saveGameSlot('ai_eye:' + aiScope, { png: img, at: Date.now(), name: cmd.name ?? null }) } catch { /* courtesy, never blocks the probe */ } }
+          const o = out as { png?: string; image?: string; meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: unknown[]; hookErrors?: unknown[]; dominantColors?: unknown }
+          const img = o?.png || o?.image
+          if (img) {
+            const stats = {
+              meanLum: o.meanLum, maxLum: o.maxLum, coveragePct: o.coveragePct, visible: o.visible,
+              motion: o.motion, visual: o.visual,
+              errors: Array.isArray(o.errors) ? o.errors.length : 0,
+              hookErrors: Array.isArray(o.hookErrors) ? o.hookErrors.length : 0,
+              dominantColors: Array.isArray(o.dominantColors) ? (o.dominantColors as unknown[]).slice(0, 4) : undefined,
+            }
+            try { await saveGameSlot('ai_eye:' + aiScope, { png: img, at: Date.now(), name: cmd.name ?? null, stats }) } catch { /* courtesy, never blocks the probe */ }
+          }
         }
         continue
       }
