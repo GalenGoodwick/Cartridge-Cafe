@@ -6003,17 +6003,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // player actually SEES it, then we never fight their toggle again.
   const buildConsoleRef = useRef<HTMLDivElement>(null)
   // NO auto-snap (Galen): the panel's own ▼ CURRENT button is the one way down.
-  // auto-open the build console once a build starts producing log lines — unless
-  // the reader manually closed it. When the log clears (a fresh build), re-arm.
+  // Galen: an AI edit must NOT hijack whoever is watching. The BuilderBox is
+  // HUMAN-CHOICE ONLY — the build log still flows into it, but it only opens on a
+  // deliberate click of the ⌁ BUILDERBOX button, never an auto-pop on a build.
   useEffect(() => {
     if (terminalLog.length === 0) { buildConsoleClosedRef.current = false; return }
-    if (buildConsoleClosedRef.current) return
-    // Only pop for a LIVE build. A world that was built before still has its old
-    // console lines sitting in its build:console slot; without this recency gate,
-    // revisiting it re-opened the console with stale output. Auto-open only when
-    // the newest line is fresh (a build actively producing).
-    const newest = terminalLog[terminalLog.length - 1]?.timestamp || 0
-    if (Date.now() - newest < 120_000) setBuildConsoleOpen(true)
+    // no auto-open — a build (esp. an AI edit via the bridge) must not steal the view
   }, [terminalLog.length])
 
   // WORLD CHAT liveness — poll the world's shared chat so the ⌁ door shows if
