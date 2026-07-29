@@ -5,7 +5,7 @@ import { copyText } from '@/lib/copyText'
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
-import { useWorldChat } from '@/lib/useWorldChat'
+import { BuilderBoxChat } from './builderbox/BuilderBoxChat'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
@@ -14,6 +14,7 @@ import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
 import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
+import { NodeGraphOverlay, NODE_KIND_STYLE, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { WorldSandbox } from './world-sandbox'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -210,189 +211,6 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
 }
 
 
-/** BUILDERBOX CHAT — the world chat, living inside the BuilderBox (Galen: chat
- *  and build console are ONE surface; every entry is an INVITATION the AI
- *  network hears). Same slot + notify path as ChatWorld — literally: both run
- *  the shared useWorldChat core, so the server-side builderbox wire pings the
- *  bus on each post. verifyPost/noStore keep this skin's stricter posting
- *  (read-back confirm, no-store reads); only the compact layout is unique. */
-function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; channel: string; onFullChat: () => void }) {
-  const { msgs, who, draft, setDraft, say, postErr, scrollRef, snapToBottom } =
-    useWorldChat('world-chat:' + slotKey, { channel, verifyPost: true, noStore: true })
-  // no auto-snap — manual ▼ CURRENT only (Galen)
-  const [atBottom, setAtBottom] = useState(true)
-  const checkBottom = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8) }
-  useEffect(() => { checkBottom() }, [msgs])
-  // CHAT IS CHAT (Galen): a chat entry NOTIFIES the maker — it does NOT summon
-  // the AI network; summoning builders is the SUMMON bar's job (an explicit
-  // rally). The maker-notify, the read-back post confirm, and say() itself
-  // live in the shared useWorldChat core — no builderbox invite, no queue
-  // confirm. AIs still read and post to this chat; they're just not
-  // auto-summoned by it.
-  return (
-    <div className="border-t border-white/10 flex flex-col h-[280px]">
-      <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
-        <span>⌁ WORLD CHAT — the room hears you (chat is chat)</span>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { snapToBottom(); setAtBottom(true) }} disabled={atBottom}
-            title={atBottom ? 'at the newest message' : 'jump to the newest message'}
-            className={atBottom ? 'text-white/20 cursor-default' : 'text-amber-300 animate-pulse'}>▼ CURRENT</button>
-          <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
-        </div>
-      </div>
-      <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/30">
-        ⚑ SUMMON (the bar below, owners) = the explicit rally — it calls AI builders. CHAT = just talk: the maker and the room hear you; nothing is auto-summoned.
-      </div>
-      <div ref={scrollRef} onScroll={checkBottom} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
-        {msgs.length === 0
-          ? <div className="text-white/30">say something — the maker and the room hear it.</div>
-          : msgs.slice(-40).map((m, i) => (
-            <div key={m.at + '-' + i} className="text-white/75">
-              <span className={m.ai ? 'text-amber-300/90' : 'text-emerald-300/80'}>{m.who}</span>
-              <span className="text-white/30"> · </span>{m.text}
-            </div>
-          ))}
-      </div>
-      {postErr && <div className="px-3 pb-1 font-mono text-[12px] text-red-400/90">{postErr}</div>}
-      <div className="flex gap-1.5 px-2 pb-2">
-        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void say() }}
-          placeholder={who ? 'say something — the maker hears' : 'sign in to speak'}
-          className="flex-1 bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 font-mono text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-white/30" />
-        <button onClick={() => void say()} className="px-3 rounded-md bg-white/10 hover:bg-white/20 font-mono text-[13px] text-white/70">➤</button>
-      </div>
-    </div>
-  )
-}
-
-/** The world as a node graph — the shared human/AI canvas. Every world is nodes:
- *  modules (WGSL libs) compose into visuals (shaders) that paint fields (shapes),
- *  while step-hooks drive the worldData uniforms the visuals sample. */
-type ANodeModule = { kind: 'module'; id: string; title: string; wgslLen: number }
-type ANodeVisual = { kind: 'visual'; id: string; title: string; wgslLen: number }
-type ANodeField = { kind: 'field'; id: string; title: string; shape?: string; visual?: string }
-type ANodeHook = { kind: 'hook'; id: string; title: string; desc?: string; author?: string; codeLen: number }
-type ANode = ANodeModule | ANodeVisual | ANodeField | ANodeHook
-interface AiNodeGraph {
-  modules: ANodeModule[]
-  visuals: ANodeVisual[]
-  fields: ANodeField[]
-  hooks: ANodeHook[]
-  edges: { from: string; to: string; kind: 'paints' | 'composes' | 'drives' }[]
-}
-
-const NODE_KIND_STYLE: Record<ANode['kind'], { dot: string; ring: string; text: string; label: string }> = {
-  module: { dot: '#34d399', ring: 'rgba(52,211,153,0.45)', text: '#a7f3d0', label: 'MODULES' },
-  visual: { dot: '#fbbf24', ring: 'rgba(251,191,36,0.5)', text: '#fde68a', label: 'VISUALS' },
-  field: { dot: '#38bdf8', ring: 'rgba(56,189,248,0.45)', text: '#bae6fd', label: 'FIELDS' },
-  hook: { dot: '#a78bfa', ring: 'rgba(167,139,250,0.45)', text: '#ddd6fe', label: 'HOOKS' },
-}
-const EDGE_STYLE: Record<string, string> = { paints: 'rgba(56,189,248,0.5)', composes: 'rgba(52,211,153,0.28)', drives: 'rgba(167,139,250,0.3)' }
-
-/** The expanded architecture graph + inspector. A layered left→right DAG:
- *  modules & hooks (inputs) → visuals → fields, drawn in SVG with a click-to-inspect
- *  side panel. Read-only in Tier-1; the node model is built to become draggable next. */
-function NodeGraphOverlay({ graph, onClose }: { graph: AiNodeGraph; onClose: () => void }) {
-  const [sel, setSel] = useState<string | null>(null)
-  const NODE_W = 168, NODE_H = 30, VGAP = 12, TOP = 44
-  const COLX: Record<string, number> = { module: 24, hook: 236, visual: 448, field: 672 }
-  // lay each kind out as a vertical stack in its column
-  const place = (nodes: ANode[], x: number) => nodes.map((n, i) => ({ node: n, x, y: TOP + i * (NODE_H + VGAP) }))
-  const laid = [
-    ...place(graph.modules, COLX.module),
-    ...place(graph.hooks, COLX.hook),
-    ...place(graph.visuals, COLX.visual),
-    ...place(graph.fields, COLX.field),
-  ]
-  const pos = new Map(laid.map(l => [l.node.id, l]))
-  const rows = Math.max(graph.modules.length, graph.hooks.length, graph.visuals.length, graph.fields.length, 1)
-  const H = TOP + rows * (NODE_H + VGAP) + 24
-  const W = COLX.field + NODE_W + 24
-  const selNode = laid.find(l => l.node.id === sel)?.node || null
-  const edgeTouchesSel = (e: { from: string; to: string }) => sel && (e.from === sel || e.to === sel)
-  const total = graph.modules.length + graph.visuals.length + graph.fields.length + graph.hooks.length
-  return (
-    <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6" onClick={onClose}>
-      <div className="w-full max-w-[1100px] h-[80vh] rounded-xl border border-white/15 bg-[#0a0b10] overflow-hidden flex flex-col shadow-[0_10px_60px_rgba(0,0,0,0.6)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/45">
-          <span>◇ WORLD ARCHITECTURE · {total} nodes</span>
-          <div className="flex items-center gap-3 text-[12px]">
-            {(['module', 'visual', 'field', 'hook'] as const).map(k => (
-              <span key={k} className="inline-flex items-center gap-1" style={{ color: NODE_KIND_STYLE[k].text }}>
-                <span className="inline-block w-2 h-2 rounded-full" style={{ background: NODE_KIND_STYLE[k].dot }} />{NODE_KIND_STYLE[k].label}
-              </span>
-            ))}
-            <button onClick={onClose} className="text-white/40 hover:text-white text-[15px] leading-none ml-1">✕</button>
-          </div>
-        </div>
-        <div className="flex-1 min-h-0 flex">
-          {/* graph */}
-          <div className="flex-1 min-h-0 overflow-auto p-2">
-            <svg width={W} height={H} className="min-w-full">
-              {graph.edges.map((e, i) => {
-                const a = pos.get(e.from), b = pos.get(e.to)
-                if (!a || !b) return null
-                const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2
-                const mx = (x1 + x2) / 2
-                const on = edgeTouchesSel(e)
-                return <path key={i} d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none" stroke={on ? '#ffffff' : EDGE_STYLE[e.kind]} strokeWidth={on ? 1.6 : 1} opacity={sel && !on ? 0.15 : 1} />
-              })}
-              {laid.map(({ node, x, y }) => {
-                const st = NODE_KIND_STYLE[node.kind]
-                const isSel = node.id === sel
-                return (
-                  <g key={node.id} transform={`translate(${x},${y})`} className="cursor-pointer" onClick={() => setSel(isSel ? null : node.id)}>
-                    <rect width={NODE_W} height={NODE_H} rx={7} fill={isSel ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.035)'} stroke={isSel ? '#fff' : st.ring} strokeWidth={isSel ? 1.5 : 1} />
-                    <circle cx={13} cy={NODE_H / 2} r={4} fill={st.dot} />
-                    <text x={24} y={NODE_H / 2 + 4} fontFamily="ui-monospace, monospace" fontSize={12} fill={st.text}>{node.title.length > 19 ? node.title.slice(0, 18) + '…' : node.title}</text>
-                  </g>
-                )
-              })}
-            </svg>
-          </div>
-          {/* inspector */}
-          <div className="w-[300px] border-l border-white/10 p-3 overflow-auto font-mono text-[12px]">
-            {selNode ? <NodeInspector node={selNode} graph={graph} /> : (
-              <div className="text-white/30 leading-relaxed">click a node to inspect it.<br/><br/>modules compose into visuals, visuals paint fields, hooks drive the uniforms visuals read.</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph }) {
-  const st = NODE_KIND_STYLE[node.kind]
-  const ins = graph.edges.filter(e => e.to === node.id)
-  const outs = graph.edges.filter(e => e.from === node.id)
-  const idTitle = (id: string) => id.replace(/^[mvfh]:/, '')
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: st.dot }} />
-        <span className="tracking-[0.15em]" style={{ color: st.text }}>{st.label.slice(0, -1)}</span>
-      </div>
-      <div className="text-white/90 text-[14px] break-words mb-2">{node.title}</div>
-      <div className="space-y-1 text-white/55">
-        {node.kind === 'module' && <div>WGSL source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
-        {node.kind === 'visual' && <div>shader source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
-        {node.kind === 'field' && <><div>shape · <span className="text-white/80">{node.shape || '—'}</span></div><div>painted by · <span className="text-white/80">{node.visual || '(none)'}</span></div></>}
-        {node.kind === 'hook' && <><div>author · <span className="text-white/80">{node.author || '—'}</span></div><div>JS · <span className="text-white/80">{(node.codeLen / 1024).toFixed(1)} KB</span></div>{node.desc && <div className="text-white/45 mt-1 leading-relaxed">{node.desc}</div>}</>}
-      </div>
-      {(ins.length > 0 || outs.length > 0) && (
-        <div className="mt-3 pt-2 border-t border-white/10 space-y-1.5">
-          {ins.length > 0 && <div><div className="text-white/35 text-[11px] mb-0.5">← fed by ({ins.length})</div>{ins.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.from)}</div>)}{ins.length > 8 && <div className="text-white/30">+{ins.length - 8} more</div>}</div>}
-          {outs.length > 0 && <div><div className="text-white/35 text-[11px] mb-0.5">→ feeds ({outs.length})</div>{outs.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.to)}</div>)}{outs.length > 8 && <div className="text-white/30">+{outs.length - 8} more</div>}</div>}
-        </div>
-      )}
-      <div className="mt-3 pt-2 border-t border-white/10 text-white/25 text-[11px] leading-relaxed">
-        {(node.kind === 'module' || node.kind === 'visual' || node.kind === 'hook')
-          ? 'code node — AI-authored, human-openable. (edit wiring in Tier-2)'
-          : 'structural node — becomes draggable/wireable in Tier-2.'}
-      </div>
-    </div>
-  )
-}
 
 export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
@@ -1105,29 +923,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }, 1800)
     return () => clearInterval(iv)
   }, [spaceId, spaceSlug, playScene])
-  // Snapshot the live world into a node graph — read straight from the renderer +
-  // simulation the client already holds (no network). modules/visuals from the
-  // renderer registries, fields/hooks from the sim. Edges are the real data-flow:
-  // visual→field is SPECIFIC (field.visualTypeName); module→visual and hook→visual
-  // are the composition/uniform relationships (every module is in a visual's scope,
-  // every hook writes the worldData a visual samples).
-  const snapshotNodeGraph = useCallback((): AiNodeGraph => {
-    const r = rendererRef.current as unknown as { getAllModules?: () => { name: string; wgsl: string }[]; getAllVisualTypes?: () => { id: number; name: string; wgsl: string }[] } | null
-    const sim = simulationRef.current
-    const mods = (r?.getAllModules?.() ?? [])
-    const vis = (r?.getAllVisualTypes?.() ?? [])
-    const flds = sim ? Array.from(sim.fields.values()) : []
-    const hks = sim ? Array.from(sim.stepHooks.entries()) : []
-    const modules = mods.map(m => ({ kind: 'module' as const, id: 'm:' + m.name, title: m.name, wgslLen: (m.wgsl || '').length }))
-    const visuals = vis.map(v => ({ kind: 'visual' as const, id: 'v:' + v.name, title: v.name, wgslLen: (v.wgsl || '').length }))
-    const fields = flds.map((f) => ({ kind: 'field' as const, id: 'f:' + f.id, title: f.name || f.id, shape: f.shapeType, visual: f.visualTypeName }))
-    const hooks = hks.map(([id, h]) => ({ kind: 'hook' as const, id: 'h:' + id, title: id, desc: h.description, author: h.author, codeLen: (h.code || '').length }))
-    const edges: AiNodeGraph['edges'] = []
-    for (const f of flds) if (f.visualTypeName && visuals.some(v => v.id === 'v:' + f.visualTypeName)) edges.push({ from: 'v:' + f.visualTypeName, to: 'f:' + f.id, kind: 'paints' })
-    for (const m of modules) for (const v of visuals) edges.push({ from: m.id, to: v.id, kind: 'composes' })
-    for (const h of hooks) for (const v of visuals) edges.push({ from: h.id, to: v.id, kind: 'drives' })
-    return { modules, visuals, fields, hooks, edges }
-  }, [])
+  // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
+  const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current), [])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
   useEffect(() => {
     if (!buildConsoleOpen) return
