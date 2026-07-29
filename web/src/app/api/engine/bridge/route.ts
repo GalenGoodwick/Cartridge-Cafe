@@ -613,6 +613,13 @@ export async function POST(req: NextRequest) {
     const results: unknown[] = []
     const isSpaceScoped = !!auth.spaceId
     const isSceneScoped = !!auth.sceneName   // branch token: headless, isolated to one scene
+    // AI-VIEW scope key — one string the BuilderBox's ◈ AI VIEW panel polls for this
+    // world's focus/eye beacons. Spaces key by spaceId; house/scene worlds key by
+    // 'scene:<base-slug>' so the panel works on AI-built house content too. The UI
+    // derives the identical key from its own scene name (FieldEngine cellBase()).
+    const aiScope = auth.spaceId
+      ? auth.spaceId
+      : (auth.sceneName ? 'scene:' + auth.sceneName.split(' ⑂ ')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) : null)
 
     // #4 atomic batch: snapshot the world BEFORE the batch; if any command throws
     // mid-way, we revert to this so a half-applied batch never persists.
@@ -624,6 +631,11 @@ export async function POST(req: NextRequest) {
         : null
     let batchAbort: { cmd: unknown; error: string } | null = null
     let briefDoneAccepted = false
+    // Shader compile rejects surfaced by the live tab (define_visual/module that
+    // return 200 but fail the WGSL compile → a BLACK screen). Collected here so
+    // the failure is published to the human's ◈ AI VIEW panel, not just returned
+    // in the API response the headless builder may never read.
+    const shaderErrors: { name: string; type: string; error: string }[] = []
 
     // Provenance cross-check: stamp the User-Agent of the FIRST agent to post a
     // build command to this world (self-reported worldData.built_by is separate,
@@ -724,9 +736,9 @@ export async function POST(req: NextRequest) {
         const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input })
         results.push({ type: 'render_probe', ...out })
         // stash the eye image so the BuilderBox can show a human WHAT THE AI SEES
-        if (isSpaceScoped && auth.spaceId) {
+        if (aiScope) {
           const img = (out as { png?: string; image?: string })?.png || (out as { image?: string })?.image
-          if (img) { try { await saveGameSlot('ai_eye:' + auth.spaceId, { png: img, at: Date.now(), name: cmd.name ?? null }) } catch { /* courtesy, never blocks the probe */ } }
+          if (img) { try { await saveGameSlot('ai_eye:' + aiScope, { png: img, at: Date.now(), name: cmd.name ?? null }) } catch { /* courtesy, never blocks the probe */ } }
         }
         continue
       }
@@ -1293,6 +1305,9 @@ export async function POST(req: NextRequest) {
           if (compileResult) {
             const cr = compileResult as Record<string, unknown>
             ;(result as Record<string, unknown>).compileResult = cr
+            // a real compile error = the silent-black-screen trap; capture it to publish
+            const crErr = typeof cr.error === 'string' ? cr.error : (cr.ok === false && typeof cr.message === 'string' ? cr.message : null)
+            if (crErr) shaderErrors.push({ name: String(cmd.name ?? cmd.type), type: String(cmd.type), error: crErr })
           } else if ((result as Record<string, unknown>).listeners === 0) {
             // headless truth: nobody compiled this shader. Say so, or the builder
             // ships WGSL believing silence means success.
@@ -1332,7 +1347,7 @@ export async function POST(req: NextRequest) {
 
     // AI focus beacon: derive what the agent just touched and publish it so the
     // world UI can show "AI -> <thing>". Written to the snapshot AND relayed live.
-    if (isSpaceScoped && commands.length > 0) {
+    if (aiScope && commands.length > 0) {
       // roundtable_* commands are conversation, not world edits — don't let one
       // as the trailing command publish a bogus "AI -> roundtable_read" focus.
       const isRoundtable = (t: unknown) => t === 'roundtable_say' || t === 'roundtable_read' || t === 'roundtable_nominate' || t === 'main_say' || t === 'main_read'
@@ -1344,12 +1359,21 @@ export async function POST(req: NextRequest) {
           fieldId: last.fieldId ?? null,
           fieldName: last.name ?? null,
           at: Date.now(),
+          // shader compile reject → the panel shows a RED error state instead of a
+          // silent black screen. Latest error of the batch rides the focus beacon.
+          error: shaderErrors.length ? shaderErrors[shaderErrors.length - 1] : null,
         }
-        const beacon = { type: 'set_world_data', data: { ai_focus: focus } }
-        try {
-          await applyCommandToSnapshot(auth.spaceId!, beacon)
-          await pushToAgent(beacon, req, auth.spaceId)
-        } catch { /* the beacon must never break the bridge */ }
+        // durable slot the ◈ AI VIEW panel polls — works for BOTH spaces and
+        // house/scene worlds (the latter have no space snapshot to write into).
+        try { await saveGameSlot('ai_focus:' + aiScope, focus) } catch { /* courtesy */ }
+        // spaces ALSO get the live worldData push (instant, no poll latency).
+        if (isSpaceScoped) {
+          const beacon = { type: 'set_world_data', data: { ai_focus: focus } }
+          try {
+            await applyCommandToSnapshot(auth.spaceId!, beacon)
+            await pushToAgent(beacon, req, auth.spaceId)
+          } catch { /* the beacon must never break the bridge */ }
+        }
       }
     }
 
