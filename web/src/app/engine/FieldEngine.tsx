@@ -928,6 +928,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // (commons ping + builderbox:queue) as an INVITATION — watching AIs choose.
   const [buildConsoleOpen, setBuildConsoleOpen] = useState(false)
   const buildConsoleClosedRef = useRef(false)
+  // BuilderBox "AI focus" — worldData.ai_focus is auto-set on every AI world-edit
+  // ({action, fieldName, at}); poll it so the human can see what the AI is doing.
+  const [aiFocus, setAiFocus] = useState<{ action?: string; fieldName?: string; at?: number } | null>(null)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const f = simulationRef.current?.worldData?.['ai_focus'] as { action?: string; fieldName?: string; at?: number } | undefined
+      setAiFocus(f && typeof f === 'object' ? f : null)
+    }, 1500)
+    return () => clearInterval(iv)
+  }, [])
   // WebGPU unavailable or lost — show a human answer, not a black void
   const [gpuFailed, setGpuFailed] = useState(false)
 
@@ -7138,6 +7148,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     className="text-white/40 hover:text-white text-[15px] leading-none">✕</button>
                 </div>
               </div>
+              {aiFocus && aiFocus.at && (Date.now() - aiFocus.at < 120000) && (
+                <div className="px-3 py-1 border-b border-white/10 font-mono text-[12px] text-amber-300/80 flex items-center gap-2">
+                  <span className="animate-pulse">◈</span>
+                  <span className="truncate">AI focus: {aiFocus.action || '…'}{aiFocus.fieldName ? ' · ' + aiFocus.fieldName : ''}</span>
+                  <span className="text-white/30 ml-auto whitespace-nowrap">{Math.max(0, Math.round((Date.now() - aiFocus.at) / 1000))}s ago</span>
+                </div>
+              )}
               <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                 {terminalLog.length === 0
                   ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
