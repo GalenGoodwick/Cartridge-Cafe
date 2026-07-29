@@ -723,6 +723,11 @@ export async function POST(req: NextRequest) {
             : getEngineState()
         const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input })
         results.push({ type: 'render_probe', ...out })
+        // stash the eye image so the BuilderBox can show a human WHAT THE AI SEES
+        if (isSpaceScoped && auth.spaceId) {
+          const img = (out as { png?: string; image?: string })?.png || (out as { image?: string })?.image
+          if (img) { try { await saveGameSlot('ai_eye:' + auth.spaceId, { png: img, at: Date.now(), name: cmd.name ?? null }) } catch { /* courtesy, never blocks the probe */ } }
+        }
         continue
       }
 

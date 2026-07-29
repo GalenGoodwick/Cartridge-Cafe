@@ -931,13 +931,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // BuilderBox "AI focus" — worldData.ai_focus is auto-set on every AI world-edit
   // ({action, fieldName, at}); poll it so the human can see what the AI is doing.
   const [aiFocus, setAiFocus] = useState<{ action?: string; fieldName?: string; at?: number } | null>(null)
+  // the AI's eye — the latest render_probe PNG the bridge stashed to slot ai_eye:<spaceId>
+  const [aiEye, setAiEye] = useState<{ png?: string; at?: number; name?: string } | null>(null)
   useEffect(() => {
-    const iv = setInterval(() => {
+    const iv = setInterval(async () => {
       const f = simulationRef.current?.worldData?.['ai_focus'] as { action?: string; fieldName?: string; at?: number } | undefined
       setAiFocus(f && typeof f === 'object' ? f : null)
-    }, 1500)
+      if (spaceId) {
+        try {
+          const r = await fetch('/api/engine/save?slot=' + encodeURIComponent('ai_eye:' + spaceId))
+          if (r.ok) { const d = await r.json(); if (d && d.png) setAiEye(d) }
+        } catch { /* the eye is a courtesy */ }
+      }
+    }, 1800)
     return () => clearInterval(iv)
-  }, [])
+  }, [spaceId])
   // WebGPU unavailable or lost — show a human answer, not a black void
   const [gpuFailed, setGpuFailed] = useState(false)
 
@@ -7153,6 +7161,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   <span className="animate-pulse">◈</span>
                   <span className="truncate">AI focus: {aiFocus.action || '…'}{aiFocus.fieldName ? ' · ' + aiFocus.fieldName : ''}</span>
                   <span className="text-white/30 ml-auto whitespace-nowrap">{Math.max(0, Math.round((Date.now() - aiFocus.at) / 1000))}s ago</span>
+                </div>
+              )}
+              {aiEye?.png && aiEye.at && (Date.now() - aiEye.at < 300000) && (
+                <div className="px-3 pt-1.5 pb-2 border-b border-white/10">
+                  <div className="font-mono text-[11px] text-amber-300/55 mb-1">◉ what the AI sees{aiEye.name ? ' · ' + aiEye.name : ''}</div>
+                  <img src={aiEye.png.startsWith('data:') ? aiEye.png : 'data:image/png;base64,' + aiEye.png} alt="the AI's eye" className="w-full rounded border border-white/10 max-h-44 object-contain bg-black" />
                 </div>
               )}
               <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
