@@ -76,6 +76,8 @@ export class FieldSimulation {
   customCommands: Map<string, CustomCommand> = new Map()
   /** Agent-defined step hooks — JavaScript functions that run every simulation tick */
   stepHooks: Map<string, { author: string; description: string; code: string; fn: (sim: FieldSimulation, dt: number) => void }> = new Map()
+  // P0 telemetry — per-hook CPU cost (EMA ms) + batch total, sampled by the AI VIEW perf readout
+  hookPerf: { totalMs: number; perHook: Map<string, number> } = { totalMs: 0, perHook: new Map() }
   /** Spawn queue — fields created by step hooks are queued and processed after all hooks run */
   spawnQueue: Array<{ name: string; color: [number, number, number, number]; x: number; y: number }> = []
   /** Agent-defined interaction effects — WGSL shaders rendered at field overlap pixels */
@@ -468,13 +470,27 @@ export class FieldSimulation {
       this._randSeed = seed
       this._randState = seed | 0
     }
+    // P0 telemetry: time each hook (EMA per hook + batch total) so a hot hook is
+    // visible by ID instead of just "the frame is slow". Two perf.now() per hook
+    // is negligible next to the hook body.
+    let hookTotal = 0
     for (const [hookId, hook] of this.stepHooks) {
+      const t0 = performance.now()
       try {
         hook.fn(this, hookDt)
       } catch (e) {
         console.warn(`Step hook ${hookId} failed:`, e)
         this.reportHookError(hookId, e)
       }
+      const ms = performance.now() - t0
+      hookTotal += ms
+      const prev = this.hookPerf.perHook.get(hookId) ?? ms
+      this.hookPerf.perHook.set(hookId, prev * 0.9 + ms * 0.1)   // EMA
+    }
+    this.hookPerf.totalMs = this.hookPerf.totalMs * 0.9 + hookTotal * 0.1
+    // drop timings for hooks that no longer exist
+    if (this.hookPerf.perHook.size > this.stepHooks.size) {
+      for (const id of this.hookPerf.perHook.keys()) if (!this.stepHooks.has(id)) this.hookPerf.perHook.delete(id)
     }
 
     // Process spawn queue (fields created by step hooks)

@@ -342,6 +342,8 @@ export class FieldRenderer {
 
   // Shader module registry (reusable WGSL utility functions)
   private moduleRegistry: Map<string, ModuleEntry> = new Map()
+  // P0 telemetry — last WGSL compile latency, sampled by the AI VIEW perf readout
+  compilePerf: { lastMs: number; at: number; bytes: number; compiles: number } = { lastMs: 0, at: 0, bytes: 0, compiles: 0 }
 
   // GPU death latch: once the device is lost (a world hung/crashed the GPU),
   // stop ALL rendering. Submitting to a dead device every frame is what makes
@@ -1823,10 +1825,15 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       }
 
       try {
+        // P0 telemetry: WGSL compile latency (the stutter when an AI introduces a
+        // new visual). getCompilationInfo() resolves once the module is compiled.
+        const _c0 = performance.now()
         const fragModule = device.createShaderModule({ code: fragSrc })
 
         // Check for compilation errors
         const info = await fragModule.getCompilationInfo()
+        const _cms = performance.now() - _c0
+        this.compilePerf = { lastMs: _cms, at: Date.now(), bytes: fragSrc.length, compiles: this.compilePerf.compiles + 1 }
         const errors = info.messages.filter(m => m.type === 'error')
         if (errors.length > 0) {
           return { success: false, error: errors.map(e => e.message).join('\n') }

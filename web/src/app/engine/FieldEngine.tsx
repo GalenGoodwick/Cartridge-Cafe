@@ -13,6 +13,7 @@ import { resetPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
+import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
 import { WorldSandbox } from './world-sandbox'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -808,6 +809,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // GPU/frame budget meter — EMA of frame ms, published to worldData.__budget
   // every 2s so builders (human or AI, via the bridge) SEE cost before it hangs
   const frameMsEmaRef = useRef<number>(16)
+  const syncBytesRef = useRef<number>(0)   // P0: last owner-sync wire size (bytes)
+  // P1: name→hash of shaders the SERVER currently holds (per this session). Lets the
+  // 2s sync send hash-only {name,hash} for unchanged visuals/modules. Self-heals — a
+  // miss triggers a server `resync` and we resend full next tick.
+  const syncedHashesRef = useRef<{ vis: Map<string, string>; mod: Map<string, string> }>({ vis: new Map(), mod: new Map() })
   const budgetWroteRef = useRef<number>(0)
   const budgetWarnedRef = useRef<boolean>(false)
   // RENDER-SCALE GOVERNOR — an internal multiplier on the world's declared
@@ -1070,6 +1076,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [aiViewTab, setAiViewTab] = useState<'eye' | 'nodes'>('eye')
   const [nodeGraph, setNodeGraph] = useState<AiNodeGraph | null>(null)
   const [nodesExpanded, setNodesExpanded] = useState(false)
+  // P0 telemetry readout — frame/hook/compile budgets sampled from the live engine.
+  const [perf, setPerf] = useState<{ frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null>(null)
   useEffect(() => {
     const iv = setInterval(async () => {
       // scope key mirrors the bridge (route.ts `aiScope`): spaces key by spaceId,
@@ -1123,7 +1131,25 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
   useEffect(() => {
     if (!buildConsoleOpen) return
-    const tick = () => setNodeGraph(snapshotNodeGraph())
+    const tick = () => {
+      setNodeGraph(snapshotNodeGraph())
+      // P0 perf sample: frame ms (existing EMA) + hook ms (sim) + compile (renderer)
+      const sim = simulationRef.current
+      const r = rendererRef.current as unknown as { compilePerf?: { lastMs: number; at: number } } | null
+      const hp = sim?.hookPerf
+      let topHook: [string, number] | null = null
+      if (hp) for (const [id, ms] of hp.perHook) if (!topHook || ms > topHook[1]) topHook = [id, ms]
+      const cp = r?.compilePerf
+      setPerf({
+        frameMs: frameMsEmaRef.current || 0,
+        hookMs: hp?.totalMs || 0,
+        topHook,
+        compileMs: cp?.lastMs || 0,
+        compileAgeS: cp?.at ? (Date.now() - cp.at) / 1000 : Infinity,
+        fields: sim?.fields.size || 0,
+        syncKB: syncBytesRef.current / 1024,
+      })
+    }
     tick()
     const iv = setInterval(tick, 1500)
     return () => clearInterval(iv)
@@ -1597,36 +1623,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim) return null
-    const fields = sim.generateSnapshots()
-    const stepHooks = allStepHookSnapshots(sim)
-    // extraWorldData wins over the inherited sim.worldData — so a branch's
-    // `branchedFrom` is stamped to ITS immediate parent, not the grandparent it
-    // inherited (walk the chain for full genealogy; the name still flattens to root).
-    const worldData = { ...sim.worldData, ...(extraWorldData || {}) }
-    // ONLY the visuals THIS world uses. The renderer registry is GLOBAL — every
-    // visual from every world visited this session — so grabbing it whole scoops
-    // foreign visuals (fluid_base, garnet, …) into a branch snapshot (the ORCHID
-    // branch bug). Keep visuals attached to a field, or named in a hook/worldData
-    // (dynamic swaps); drop the rest.
-    const used = new Set<string>()
-    for (const f of fields) { const vn = (f as { visualTypeName?: string }).visualTypeName; if (vn) used.add(vn) }
-    const hay = JSON.stringify(stepHooks) + JSON.stringify(worldData)
-    const sceneData = {
+    // 'used' scope = the ORCHID fix: only visuals THIS world references (attached to a
+    // field or named in a hook/worldData), never the whole global renderer registry.
+    // extraWorldData wins over inherited sim.worldData so a branch's `branchedFrom` is
+    // stamped to its immediate parent.
+    const sceneData = serializeSceneDocument(sim, renderer, {
       name: sceneName,
-      fields,
-      worldParams: sim.getWorldParams(),
-      worldData,
-      stepHooks,
-      interactionRules: [...sim.interactionRules],
-      interactionEffects: [...sim.interactionEffects],
-      visualTypes: renderer
-        ? renderer.getAllVisualTypes()
-            .filter(vt => used.has(vt.name) || hay.includes(vt.name))
-            .map(vt => ({ name: vt.name, wgsl: vt.wgsl }))
-        : [],
-      modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-      timestamp: Date.now(),
-    }
+      stepHooks: allStepHookSnapshots(sim),
+      visualScope: 'used',
+      extraWorldData,
+    })
     // no blank submissions — a branch version must contain a world
     if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return null
     try {
@@ -1777,18 +1783,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const name = window.prompt('Scene name:')
     if (!name?.trim()) return
     const sceneName = name.trim()
-    const sceneData = {
+    const sceneData = serializeSceneDocument(sim, renderer, {
       name: sceneName,
-      fields: sim.generateSnapshots(),
-      worldParams: sim.getWorldParams(),
-      worldData: { ...sim.worldData },
       stepHooks: allStepHookSnapshots(sim),
-      interactionRules: [...sim.interactionRules],
-      interactionEffects: [...sim.interactionEffects],
-      visualTypes: renderer ? renderer.getAllVisualTypes().map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
-      modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-      timestamp: Date.now(),
-    }
+      visualScope: 'all',
+    })
     try {
       await fetch('/api/engine/scene', {
         method: 'POST',
@@ -5535,21 +5534,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             case 'save_scene': {
               const sceneName = cmd.name as string
               if (!sceneName) { pushTerminal('save_scene', undefined, 'ERROR: name required'); break }
-              const sceneData = {
+              // 'notBroken': quarantined visuals are not persisted — a broken shader
+              // must not circulate through the store forever.
+              const sceneData = serializeSceneDocument(sim, renderer, {
                 name: sceneName,
-                fields: sim.generateSnapshots(),
-                worldParams: sim.getWorldParams(),
-                worldData: { ...sim.worldData },
                 stepHooks: allStepHookSnapshots(sim),
-                interactionRules: [...sim.interactionRules],
-                interactionEffects: [...sim.interactionEffects],
-                // Quarantined visuals are not persisted — a broken shader must not
-            // circulate through the store forever, costing every fresh session
-            // an isolation sweep. A fixed re-register clears the flag.
-            visualTypes: renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
-                modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-                timestamp: Date.now(),
-              }
+                visualScope: 'notBroken',
+              })
               try {
                 await fetch('/api/engine/scene', {
                   method: 'POST',
@@ -6051,46 +6042,54 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // rebuilds it every frame, so persisting it only bloats the snapshot.
         // HUBWORLD visit: NEVER sync member content over the hub's snapshot
         if (visitingRef.current) return
-        const syncWorldData = Object.fromEntries(
-          Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation')
-        )
-        const syncFields = sim.generateSnapshots()
-        // Quarantined visuals are not persisted — a broken shader must not circulate
-        // through the store forever, costing every fresh session an isolation sweep.
-        const syncVisuals = renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : []
+        // Canonical serialization (P2 persistence module). excludeBroken: quarantined
+        // visuals must not circulate through the store forever, costing every fresh
+        // session an isolation sweep.
+        const snap = serializeWorld(sim, renderer, { stepHooks: allStepHookSnapshots(sim), excludeBroken: true })
         // TEARDOWN GUARD: a hot-reload leaves the renderer with 0 visuals for a beat.
-        // If our 2s sync fires in that window it persists an EMPTY world — everyone
-        // then reloads to nothing and it renders DARK. A snapshot with skinned fields
-        // but no visuals is never a real state; it's a transient teardown. Skip it.
-        const someSkinned = syncFields.some(f => { const o = f as { visualType?: unknown; visualTypeName?: unknown }; return o.visualType || o.visualTypeName })
-        if (syncVisuals.length === 0 && someSkinned) return
+        // Skinned fields but no visuals is a transient, not a real state — persisting it
+        // renders everyone DARK. Skip it.
+        if (isTeardownSnapshot(snap.fields, snap.visualTypes.length)) return
+        // P1: for a space sync, send hash-only for shaders the server already holds
+        // (content-addressed). Global (non-space) sync keeps sending full.
+        const known = syncedHashesRef.current
+        const wireShaders = spaceId
+          ? { visualTypes: diffShaders(snap.visualTypes, known.vis), modules: diffShaders(snap.modules, known.mod) }
+          : { visualTypes: snap.visualTypes, modules: snap.modules }
+        const syncBody = {
+          clientId: clientIdRef.current,
+          takeover: takeoverRef.current,
+          ...snap,
+          ...wireShaders,
+          renderedSamples: Object.fromEntries(renderedSamplesRef.current),
+          // Space-scoped sync
+          ...(spaceId ? { spaceId } : {}),
+        }
+        syncBytesRef.current = snapshotBytes(syncBody)   // P0: the ACTUAL (diffed) wire size
         const syncRes = await fetch('/api/engine/state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: clientIdRef.current,
-            takeover: takeoverRef.current,
-            fields: syncFields,
-            worldParams: sim.getWorldParams(),
-            stepHooks: allStepHookSnapshots(sim),
-            worldData: syncWorldData,
-            renderedSamples: Object.fromEntries(renderedSamplesRef.current),
-            interactionEffects: sim.interactionEffects,
-            visualTypes: syncVisuals,
-            modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-            // Space-scoped sync
-            ...(spaceId ? { spaceId } : {}),
-          }),
+          body: JSON.stringify(syncBody),
         })
+        const syncData = await syncRes.json().catch(() => null) as { deferred?: string; resync?: { visualTypes?: string[]; modules?: string[] } } | null
         if (syncRes.status === 409) {
           setWorldLocked(true)
+        } else if (syncData?.resync) {
+          // server lacks some shader content we sent hash-only — forget those so the
+          // next tick resends them in full (nothing was persisted this tick).
+          for (const n of syncData.resync.visualTypes || []) known.vis.delete(n)
+          for (const n of syncData.resync.modules || []) known.mod.delete(n)
         } else if (syncRes.ok) {
           takeoverRef.current = false
           setWorldLocked(false)
+          // stored successfully → the server now holds exactly these shader hashes,
+          // so the next tick may send them hash-only. (Skip on deferred: server unchanged.)
+          if (spaceId && !syncData?.deferred) {
+            syncedHashesRef.current = { vis: shaderHashes(snap.visualTypes), mod: shaderHashes(snap.modules) }
+          }
           // A deferred sync means an AI is writing this world over the bridge
           // RIGHT NOW (the server skipped our sync to protect that write).
           // A live hand in the world must be VISIBLE to the human in it.
-          const syncData = await syncRes.json().catch(() => null) as { deferred?: string } | null
           if (syncData?.deferred === 'bridge-write in flight') {
             aiLastEditRef.current = Date.now()
             setAiPulse(p => p + 1)
@@ -7419,6 +7418,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       className="m-2 px-3 py-1.5 rounded border border-amber-300/30 text-amber-200/80 hover:bg-amber-300/10 font-mono text-[12px] tracking-[0.15em] transition-colors">
                       ⤢ EXPAND GRAPH
                     </button>
+                  </div>
+                )}
+                {/* P0 PERF footer — live engine budgets, always visible. Green/amber/red
+                    on frame time = the 30/50/60fps cliffs the review said were invisible. */}
+                {perf && (
+                  <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[10.5px] flex items-center gap-2.5 flex-wrap">
+                    <span className={perf.frameMs > 33 ? 'text-red-300' : perf.frameMs > 20 ? 'text-amber-300' : 'text-emerald-300/80'} title="frame time (EMA)">
+                      ⧗ {perf.frameMs.toFixed(1)}ms{perf.frameMs > 0 ? ' · ' + Math.round(1000 / perf.frameMs) + 'fps' : ''}
+                    </span>
+                    <span className={perf.hookMs > 8 ? 'text-amber-300' : 'text-white/40'} title="total step-hook CPU per frame">hooks {perf.hookMs.toFixed(1)}ms</span>
+                    {perf.topHook && perf.topHook[1] > 1 && <span className="text-white/30" title="slowest hook by id">↳ {perf.topHook[0].length > 10 ? perf.topHook[0].slice(0, 9) + '…' : perf.topHook[0]} {perf.topHook[1].toFixed(1)}</span>}
+                    {perf.compileAgeS < 8 && <span className="text-sky-300/70" title="last WGSL compile latency">⚙ {perf.compileMs.toFixed(0)}ms</span>}
+                    {perf.syncKB > 0 && <span className={perf.syncKB > 512 ? 'text-amber-300' : 'text-white/40'} title="last owner-sync snapshot size (posted every 2s)">⇅ {perf.syncKB < 1024 ? perf.syncKB.toFixed(0) + 'KB' : (perf.syncKB / 1024).toFixed(1) + 'MB'}</span>}
+                    <span className="text-white/25 ml-auto" title="field count">{perf.fields}f</span>
                   </div>
                 )}
               </div>

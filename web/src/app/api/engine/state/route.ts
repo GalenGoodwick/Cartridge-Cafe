@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { setFieldSnapshots, getFieldSnapshot, getEngineState, claimWriter } from '../store'
 import { setSpaceSnapshot, getSpaceSnapshot, validateSpaceToken } from '../space-store'
 import type { FieldSnapshot, SceneSnapshot } from '@/app/engine/types'
+import { resolveShaders, type ShaderWire, type WgslEntry } from '@/app/engine/persistence/serialize'
 
 /** Writing a world's snapshot (fields, HOOKS, everything) demands authority
  *  for THAT world — never just "any logged-in session". Authority is:
@@ -121,13 +122,25 @@ export async function POST(req: NextRequest) {
       // watcher hot-reloads to the new rev, then syncs cleanly. Unlike the 4s time
       // window above, this holds no matter how long the tab has been stale or
       // whether its build-flag is stuck — the newer write always wins.
+      const current = await getSpaceSnapshot(body.spaceId, true)
       {
-        const current = await getSpaceSnapshot(body.spaceId, true)
         const serverRev = Number((current?.worldData as Record<string, unknown> | undefined)?.__bridge_rev) || 0
         const clientRev = Number((body.worldData as Record<string, unknown> | undefined)?.__bridge_rev) || 0
         if (clientRev < serverRev) {
           return NextResponse.json({ ok: true, deferred: 'stale-rev', serverRev, clientRev, spaceId: body.spaceId })
         }
+      }
+      // P1 content-addressed shaders: a hash-only entry {name,hash} (no wgsl) means the
+      // client believes the server already holds that content. Resolve it against the
+      // CURRENT snapshot; if a hash can't be matched, ask for a resync of JUST those —
+      // we never store a reference we can't fully materialize. Old full {name,wgsl}
+      // entries pass straight through, so old clients are unaffected.
+      const curVis = (current?.visualTypes || []) as WgslEntry[]
+      const curMod = (current?.modules || []) as WgslEntry[]
+      const visR = resolveShaders((body.visualTypes || []) as ShaderWire[], curVis)
+      const modR = resolveShaders((body.modules || []) as ShaderWire[], curMod)
+      if (visR.missing.length || modR.missing.length) {
+        return NextResponse.json({ ok: false, resync: { visualTypes: visR.missing, modules: modR.missing }, spaceId: body.spaceId })
       }
       const snapshot: SceneSnapshot = {
         name: body.spaceId,
@@ -137,8 +150,8 @@ export async function POST(req: NextRequest) {
         stepHooks: body.stepHooks || [],
         interactionRules: body.interactionRules || [],
         interactionEffects: body.interactionEffects || [],
-        visualTypes: body.visualTypes || [],
-        modules: body.modules || [],
+        visualTypes: visR.resolved,
+        modules: modR.resolved,
         timestamp: Date.now(),
       }
       await setSpaceSnapshot(body.spaceId, snapshot)
