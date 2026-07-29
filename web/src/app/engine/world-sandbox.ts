@@ -312,12 +312,17 @@ export class WorldSandbox {
         if (sim) {
           this.applyPending(sim)
           // bounded CHAIN-POST: if a whole tick quantum has already elapsed, don't
-          // idle until the next RAF — post now. The 7ms floor caps the hook near
-          // ~140Hz so a fast round-trip can never busy-loop a core. Determinism
-          // worlds (__fixedStep) stay strictly one-tick-per-rendered-frame.
+          // idle until the next RAF — post now. The floor is ADAPTIVE: ~0.85× the
+          // measured display interval, so a 120Hz screen keeps the fast (~7ms)
+          // floor this chain was built for, while a 60Hz screen ticks near 60Hz —
+          // not 140Hz of clone/serialize garbage per second (the tideglass
+          // progressive-slowdown amplifier). Hard 7ms minimum still guards the
+          // busy-loop case. Determinism worlds (__fixedStep) stay strictly
+          // one-tick-per-rendered-frame.
           const fs = (sim.worldData as Record<string, unknown>)['__fixedStep']
+          const floor = Math.max(7, this.rafIntervalEma * 0.85)
           if (!this.quarantined && !this.inFlight && !(typeof fs === 'number' && fs > 0) &&
-              (perfNow() - this.lastTickAt) >= 7) {
+              (perfNow() - this.lastTickAt) >= floor) {
             this.postTick(sim)
           }
         }
@@ -330,11 +335,22 @@ export class WorldSandbox {
   get active(): boolean { return !!this.worker }
   get error(): string | null { return this.compileError }
 
+  // measured display cadence (EMA of RAF intervals) — the chain-post floor tracks
+  // this so hook rate ≈ display rate on every screen (see the chain-post above)
+  private rafIntervalEma = 16.7
+  private lastRafAt = 0
+
   /** one frame: apply the worker's last reply, then post current sim state.
    *  Call this BEFORE sim.step so gpuUniforms/__play_sound land for this frame. */
   tick(sim: FieldSimulation, dt: number): void {
     void dt   // dt is now derived from wall-clock at post time (see postTick)
     this.lastSim = sim
+    const rafNow = perfNow()
+    if (this.lastRafAt > 0) {
+      const iv = rafNow - this.lastRafAt
+      if (iv > 2 && iv < 100) this.rafIntervalEma = this.rafIntervalEma * 0.9 + iv * 0.1
+    }
+    this.lastRafAt = rafNow
     if (this.quarantined || !this.worker || !this.ready) return
 
     // KILL-SWITCH ─ a tick posted but no reply for HANG_MS means a hook is
