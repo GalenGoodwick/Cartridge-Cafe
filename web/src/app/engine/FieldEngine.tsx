@@ -4728,6 +4728,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 if (cmd.noHit) {
                   newField.noHit = true
                 }
+                if (cmd.noCollide) newField.noCollide = true
+                // PIXEL-COLLIDE LAW — collision body = rendered pixels, not bounds
+                if (cmd.pixelCollide) newField.pixelCollide = true
               }
 
               setBrush(prev => ({ ...prev, activeFieldId: id }))

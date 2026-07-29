@@ -180,6 +180,7 @@ export class FieldSimulation {
       // Restore interaction flags (scene-shipped backdrops rely on these)
       if (snap.noHit) field.noHit = true
       if (snap.noCollide) field.noCollide = true
+      if (snap.pixelCollide) field.pixelCollide = true
       // Restore tags
       if (snap.tags?.length) {
         field.tags = [...snap.tags]
@@ -603,7 +604,20 @@ export class FieldSimulation {
 
       const overlapX = Math.min(boundsA.maxX, boundsB.maxX) - Math.max(boundsA.minX, boundsB.minX)
       const overlapY = Math.min(boundsA.maxY, boundsB.maxY) - Math.max(boundsA.minY, boundsB.minY)
-      const overlapping = overlapX > 0 && overlapY > 0
+      let overlapping = overlapX > 0 && overlapY > 0
+
+      // PIXEL-COLLIDE LAW: when either field declares pixelCollide, the bounds test
+      // above is only the broad-phase — the real body is the RENDERED PIXELS (GPU
+      // presence readback). Boxes touching but pixels not (a ball inside a ring's
+      // hole) = NO collision. Presence not read back yet → graceful bounds fallback.
+      let pixelContact: { cx: number; cy: number; count: number } | null = null
+      if (overlapping && (a.pixelCollide || b.pixelCollide)) {
+        const hit = this.presencePairOverlap(a, b, boundsA, boundsB)
+        if (hit) {
+          if (hit.count === 0) overlapping = false
+          else pixelContact = hit
+        }
+      }
 
       const wasColliding = this.collisionState.get(a.id)?.has(b.id) || false
 
@@ -638,19 +652,40 @@ export class FieldSimulation {
         const bCenterX = (boundsB.minX + boundsB.maxX) / 2
         const bCenterY = (boundsB.minY + boundsB.maxY) / 2
 
-        let dx = bCenterX - aCenterX
-        let dy = bCenterY - aCenterY
-        const len = Math.sqrt(dx * dx + dy * dy) || 1
-        dx /= len
-        dy /= len
+        if (pixelContact) {
+          // Pixel truth: push each body away from the ACTUAL contact region, not the
+          // box-to-box axis. Penetration proxy = sqrt(contact area) — grows with how
+          // deeply the rendered shapes interpenetrate.
+          const overlap = Math.sqrt(pixelContact.count)
+          const forceMag = wp.collisionForce * overlap * dt
+          // fx,fy: fallback axis for the FULL-EMBED degenerate case — a body entirely
+          // inside the other's pixels has its center AT the contact centroid (zero
+          // direction), so push along the center-to-center axis like bounds physics.
+          const push = (f: Field, cx: number, cy: number, fx: number, fy: number) => {
+            if (this.isStaticField(f)) return
+            let dx = cx - pixelContact!.cx, dy = cy - pixelContact!.cy
+            let len = Math.sqrt(dx * dx + dy * dy)
+            if (len < 1e-3) { dx = fx; dy = fy; len = Math.sqrt(dx * dx + dy * dy) || 1 }
+            f.transform.vx += (dx / len) * forceMag
+            f.transform.vy += (dy / len) * forceMag
+          }
+          push(a, aCenterX, aCenterY, aCenterX - bCenterX, aCenterY - bCenterY)
+          push(b, bCenterX, bCenterY, bCenterX - aCenterX, bCenterY - aCenterY)
+        } else {
+          let dx = bCenterX - aCenterX
+          let dy = bCenterY - aCenterY
+          const len = Math.sqrt(dx * dx + dy * dy) || 1
+          dx /= len
+          dy /= len
 
-        const overlap = Math.min(overlapX, overlapY)
-        const forceMag = wp.collisionForce * overlap * dt
+          const overlap = Math.min(overlapX, overlapY)
+          const forceMag = wp.collisionForce * overlap * dt
 
-        // a static backdrop pushes bodies OUT of itself but is never pushed —
-        // otherwise every overlapping body would shove the whole scene around
-        if (!this.isStaticField(a)) { a.transform.vx -= dx * forceMag; a.transform.vy -= dy * forceMag }
-        if (!this.isStaticField(b)) { b.transform.vx += dx * forceMag; b.transform.vy += dy * forceMag }
+          // a static backdrop pushes bodies OUT of itself but is never pushed —
+          // otherwise every overlapping body would shove the whole scene around
+          if (!this.isStaticField(a)) { a.transform.vx -= dx * forceMag; a.transform.vy -= dy * forceMag }
+          if (!this.isStaticField(b)) { b.transform.vx += dx * forceMag; b.transform.vy += dy * forceMag }
+        }
       }
     }
   }
@@ -1378,6 +1413,12 @@ export class FieldSimulation {
         ...(field.visualType !== undefined ? { visualType: field.visualType } : {}),
         ...(field.visualTypeName ? { visualTypeName: field.visualTypeName } : {}),
         ...(field.visualParams ? { visualParams: [...field.visualParams] as [number, number, number, number] } : {}),
+        // interaction flags — these were silently DROPPED on the 2s sync round-trip
+        // (restore reads them, generate never wrote them): a synced world lost its
+        // noHit/noCollide backdrops on the next reload. Persist all three.
+        ...(field.noHit ? { noHit: true } : {}),
+        ...(field.noCollide ? { noCollide: true } : {}),
+        ...(field.pixelCollide ? { pixelCollide: true } : {}),
       } as FieldSnapshot)
     }
     return snapshots
@@ -1594,6 +1635,43 @@ export class FieldSimulation {
   }
 
   /** Compute the overlap mask (intersection of two fields' bounds), optionally dilated by spread pixels. */
+  /** PIXEL-COLLIDE narrow phase: do the two fields' RENDERED pixels actually touch
+   *  inside their bounds intersection? A field with pixelCollide uses its presence
+   *  map (rendered footprint); a field without one contributes its whole rect (its
+   *  body is still its bounds — the law is per-field, opt-in).
+   *  Returns null when a required presence map hasn't been read back yet (caller
+   *  falls back to bounds — graceful before the first GPU readback lands), else
+   *  the contact centroid + approximate contact area in px² (0 = pixels never touch). */
+  private presencePairOverlap(
+    a: Field, b: Field,
+    boundsA: { minX: number; minY: number; maxX: number; maxY: number },
+    boundsB: { minX: number; minY: number; maxX: number; maxY: number },
+  ): { cx: number; cy: number; count: number } | null {
+    const presA = a.pixelCollide ? this.fieldPresence.get(a.id) : undefined
+    const presB = b.pixelCollide ? this.fieldPresence.get(b.id) : undefined
+    if ((a.pixelCollide && !presA) || (b.pixelCollide && !presB)) return null
+    const gs = this.gridSize
+    const minX = Math.max(0, Math.floor(Math.max(boundsA.minX, boundsB.minX)))
+    const minY = Math.max(0, Math.floor(Math.max(boundsA.minY, boundsB.minY)))
+    const maxX = Math.min(gs - 1, Math.ceil(Math.min(boundsA.maxX, boundsB.maxX)))
+    const maxY = Math.min(gs - 1, Math.ceil(Math.min(boundsA.maxY, boundsB.maxY)))
+    if (minX > maxX || minY > maxY) return { cx: 0, cy: 0, count: 0 }
+    // stride caps the worst case at ~64×64 samples per pair per step
+    const stride = Math.max(1, Math.ceil(Math.max(maxX - minX, maxY - minY) / 64))
+    let count = 0, sx = 0, sy = 0
+    for (let y = minY; y <= maxY; y += stride) {
+      const row = y * gs
+      for (let x = minX; x <= maxX; x += stride) {
+        const i = row + x
+        if (presA && !(presA[i] > 0)) continue
+        if (presB && !(presB[i] > 0)) continue
+        count++; sx += x; sy += y
+      }
+    }
+    if (count === 0) return { cx: 0, cy: 0, count: 0 }
+    return { cx: sx / count, cy: sy / count, count: count * stride * stride }
+  }
+
   computeOverlapMask(fieldAId: string, fieldBId: string, spread: number = 0): Uint8Array | null {
     const boundsA = this.getFieldBounds(fieldAId)
     const boundsB = this.getFieldBounds(fieldBId)

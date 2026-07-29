@@ -10,7 +10,7 @@ import type { FieldRenderer } from '../renderer'
 
 export type ANodeModule = { kind: 'module'; id: string; title: string; wgslLen: number }
 export type ANodeVisual = { kind: 'visual'; id: string; title: string; wgslLen: number }
-export type ANodeField = { kind: 'field'; id: string; title: string; shape?: string; visual?: string }
+export type ANodeField = { kind: 'field'; id: string; title: string; shape?: string; visual?: string; pixelCollide?: boolean }
 export type ANodeHook = { kind: 'hook'; id: string; title: string; desc?: string; author?: string; codeLen: number }
 export type ANode = ANodeModule | ANodeVisual | ANodeField | ANodeHook
 export interface AiNodeGraph {
@@ -42,7 +42,7 @@ export function buildNodeGraph(sim: FieldSimulation | null, renderer: FieldRende
   const hks = sim ? Array.from(sim.stepHooks.entries()) : []
   const modules = mods.map(m => ({ kind: 'module' as const, id: 'm:' + m.name, title: m.name, wgslLen: (m.wgsl || '').length }))
   const visuals = vis.map(v => ({ kind: 'visual' as const, id: 'v:' + v.name, title: v.name, wgslLen: (v.wgsl || '').length }))
-  const fields = flds.map((f) => ({ kind: 'field' as const, id: 'f:' + f.id, title: f.name || f.id, shape: f.shapeType, visual: f.visualTypeName }))
+  const fields = flds.map((f) => ({ kind: 'field' as const, id: 'f:' + f.id, title: f.name || f.id, shape: f.shapeType, visual: f.visualTypeName, pixelCollide: f.pixelCollide }))
   const hooks = hks.map(([id, h]) => ({ kind: 'hook' as const, id: 'h:' + id, title: id, desc: h.description, author: h.author, codeLen: (h.code || '').length }))
   const edges: AiNodeGraph['edges'] = []
   for (const f of flds) if (f.visualTypeName && visuals.some(v => v.id === 'v:' + f.visualTypeName)) edges.push({ from: 'v:' + f.visualTypeName, to: 'f:' + f.id, kind: 'paints' })
@@ -139,7 +139,7 @@ export function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph
       <div className="space-y-1 text-white/55">
         {node.kind === 'module' && <div>WGSL source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
         {node.kind === 'visual' && <div>shader source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
-        {node.kind === 'field' && <><div>shape · <span className="text-white/80">{node.shape || '—'}</span></div><div>painted by · <span className="text-white/80">{node.visual || '(none)'}</span></div></>}
+        {node.kind === 'field' && <><div>shape · <span className="text-white/80">{node.shape || '—'}</span></div><div>painted by · <span className="text-white/80">{node.visual || '(none)'}</span></div><div>body · <span className={node.pixelCollide ? 'text-emerald-300/90' : 'text-white/80'}>{node.pixelCollide ? 'rendered pixels ◉' : 'bounding rect'}</span></div></>}
         {node.kind === 'hook' && <><div>author · <span className="text-white/80">{node.author || '—'}</span></div><div>JS · <span className="text-white/80">{(node.codeLen / 1024).toFixed(1)} KB</span></div>{node.desc && <div className="text-white/45 mt-1 leading-relaxed">{node.desc}</div>}</>}
       </div>
       {(ins.length > 0 || outs.length > 0) && (

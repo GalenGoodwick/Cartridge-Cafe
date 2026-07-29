@@ -157,7 +157,7 @@ export function invalidateSpaceCache(spaceId: string): void {
 // #5b: curated known-params per command. Unknown keys are surfaced as a
 // (non-fatal) warning so a typo'd param stops silently vanishing.
 const KNOWN_PARAMS: Record<string, Set<string>> = {
-  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
+  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'noCollide', 'pixelCollide', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
   set_visual: new Set(['type', 'fieldId', 'visualType', 'visualParams', 'renderTarget', 'sampleTargets', 'renderOrder']),
   set_position: new Set(['type', 'fieldId', 'x', 'y', 'z', 'rotX', 'rotY']),
   set_color: new Set(['type', 'fieldId', 'color']),
@@ -297,6 +297,9 @@ export function applyCommandToSnapshotObject(
         visualParams: cmd.visualParams as [number, number, number, number] | undefined,
         tags: cmd.tags as string[] | undefined,
         noHit: cmd.noHit as boolean | undefined,
+        noCollide: cmd.noCollide as boolean | undefined,
+        // PIXEL-COLLIDE LAW: collision body = rendered pixels (appearance IS geometry)
+        pixelCollide: cmd.pixelCollide as boolean | undefined,
         properties: cmd.properties as Record<string, unknown> | undefined,
       })
       result.fieldId = fieldId
