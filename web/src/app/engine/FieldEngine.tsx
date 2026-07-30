@@ -7000,7 +7000,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 entries land in wd.__clicks for any connected AI to decode. */}
             {!isHub && (
               <button
-                onClick={() => { setInspectOn(v => { inspectOnRef.current = !v; return !v }); setInspectLog([]); setUiDockOpen(false); setEditCoach(false) /* dock backdrop + first-time coach would eat canvas clicks */ }}
+                onClick={() => { setInspectOn(v => { inspectOnRef.current = !v; return !v }); setInspectLog([]); setEditCoach(false) /* the first-open coach eats canvas clicks; the dock itself stays open (Galen) */ }}
                 title="Inspect mode — click anything to document it for the AI (game input is paused)"
                 className={inspectOn
                   ? 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-sky-500/25 backdrop-blur border border-sky-400/60 text-sky-100 transition-colors'
