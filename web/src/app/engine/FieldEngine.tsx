@@ -27,7 +27,7 @@ import SummonPrompt from './SummonPrompt'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, InteractionEffect, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
-import { worldBus } from './cafe-audio'
+import { worldBus, recordTap } from './cafe-audio'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
@@ -304,9 +304,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const recRef = useRef<MediaRecorder | null>(null)
   const recChunks = useRef<Blob[]>([])
   const recTimer = useRef<number | null>(null)
+  const recAudioTap = useRef<{ stream: MediaStream; stop: () => void } | null>(null)
   const recSupported = () => {
     if (typeof MediaRecorder === 'undefined') return ''
-    const c = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    // prefer codecs that carry BOTH video + audio (avc1+mp4a / vp9+opus)
+    const c = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
     return c.find(m => { try { return MediaRecorder.isTypeSupported(m) } catch { return false } }) || ''
   }
   const startRecording = () => {
@@ -315,6 +317,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const mime = recSupported(); if (!mime) { alert('This browser can’t record video. Try Chrome or Safari.'); return }
     let stream: MediaStream
     try { stream = (cv as HTMLCanvasElement & { captureStream: (fps?: number) => MediaStream }).captureStream(60) } catch { alert('Could not capture this canvas.'); return }
+    // mux the world's audio (music + sfx) into the recording, best-effort
+    try {
+      const tap = recordTap()
+      if (tap) { recAudioTap.current = tap; tap.stream.getAudioTracks().forEach(t => stream.addTrack(t)) }
+    } catch { /* record video-only if audio can't be tapped */ }
     let rec: MediaRecorder
     try { rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 }) } catch { return }
     recChunks.current = []
@@ -329,6 +336,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const a = document.createElement('a'); a.href = url; a.download = `${base}-${stamp}.${ext}`
       document.body.appendChild(a); a.click(); a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 5000)
+      try { recAudioTap.current?.stop() } catch { /* noop */ } recAudioTap.current = null
       if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
     }
     rec.start()
@@ -344,7 +352,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     setRecording(false)
   }
   // stop cleanly if the component unmounts mid-record
-  useEffect(() => () => { try { recRef.current?.stop() } catch { /* noop */ } if (recTimer.current) clearInterval(recTimer.current) }, [])
+  useEffect(() => () => { try { recRef.current?.stop() } catch { /* noop */ } try { recAudioTap.current?.stop() } catch { /* noop */ } if (recTimer.current) clearInterval(recTimer.current) }, [])
   useEffect(() => {
     if (!uiDockOpen) return
     try { if (localStorage.getItem('cc-edit-coached')) return } catch { return }

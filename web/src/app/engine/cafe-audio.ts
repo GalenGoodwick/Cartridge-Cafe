@@ -73,6 +73,24 @@ export function worldBus(): { ctx: AudioContext; dest: AudioNode } | null {
   return { ctx: c, dest: worldGain }
 }
 
+/** RECORD TAP — a MediaStream carrying EVERYTHING that plays (world music +
+ *  shell sfx), for muxing into a canvas recording. Taps both top-level buses
+ *  (master, worldGain) that feed ctx.destination, so nothing audible is missed.
+ *  Non-destructive: the tap runs in parallel with the speakers; call stop() to
+ *  detach. Returns null if there's no audio device/context yet. */
+export function recordTap(): { stream: MediaStream; stop: () => void } | null {
+  const c = ensureCtx()
+  if (!c || !master || !worldGain) return null
+  if (c.state === 'suspended') { c.resume().catch(() => {}) }
+  const dest = c.createMediaStreamDestination()
+  master.connect(dest)
+  worldGain.connect(dest)
+  return {
+    stream: dest.stream,
+    stop: () => { try { master?.disconnect(dest) } catch { /* noop */ } try { worldGain?.disconnect(dest) } catch { /* noop */ } },
+  }
+}
+
 function noiseBuffer(c: AudioContext): AudioBuffer {
   const len = c.sampleRate * 2
   const buf = c.createBuffer(1, len, c.sampleRate)
