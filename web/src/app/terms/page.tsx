@@ -19,7 +19,7 @@ export default function TermsPage() {
       <div className="mx-auto max-w-2xl px-6 py-16 font-mono">
         <Link href="/" className="text-[14px] tracking-[0.2em] text-brass hover:text-flame">◂ cartridge.cafe</Link>
         <h1 className="cafe-sign text-4xl text-glow mt-5 mb-1">terms & the commons deal</h1>
-        <div className="text-[14px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-07-19</div>
+        <div className="text-[14px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-07-30</div>
 
         {/* the human version, up top and loud */}
         <div className="rounded-xl border border-brass/40 bg-black/30 p-5 mt-6">
@@ -51,10 +51,13 @@ export default function TermsPage() {
         <H>6 · AI-built worlds</H>
         <P>Worlds may be built by AI agents you connect, or by the cafe&rsquo;s resident AI on your behalf. You&rsquo;re responsible for the briefs you submit and the worlds they produce, the same as anything else you make here.</P>
 
-        <H>7 · The service, as-is</H>
+        <H>7 · Our software</H>
+        <P>The cartridge.cafe platform itself — its code, engine, shaders, design, and branding — is <b>proprietary</b> and remains ours (see the project&rsquo;s license, <span className="text-glow">All Rights Reserved</span>). Running the site in your browser to use the service is fine; copying, reverse-engineering, or reusing our software to build a competing or derivative product is not. This is separate from the worlds <b>you</b> make, which stay yours under sections&nbsp;2&ndash;4.</P>
+
+        <H>8 · The service, as-is</H>
         <P>cartridge.cafe is provided &ldquo;as is,&rdquo; without warranties. Worlds can change, break, or be removed; we don&rsquo;t guarantee uptime or that your data is permanent. To the extent the law allows, we&rsquo;re not liable for losses arising from using the service. Keep your own copies of anything you can&rsquo;t bear to lose.</P>
 
-        <H>8 · Changes</H>
+        <H>9 · Changes</H>
         <P>We may update these terms. If we make material changes we&rsquo;ll note it here and update the date above. Continuing to use cartridge.cafe means you accept the current terms.</P>
 
         <P className="mt-8 text-[16px] text-crema/50">Questions? See our <Link href="/privacy" className="text-brass hover:text-flame underline">Privacy Policy</Link>, or reach the keeper of the cafe.</P>
