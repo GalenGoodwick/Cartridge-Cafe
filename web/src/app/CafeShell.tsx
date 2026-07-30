@@ -1032,7 +1032,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       // PRUNE-THE-DEAD flushes any already-seated stragglers from live docs.
       const flags = window as unknown as { __cafeMine?: { on?: boolean }; __cafePlayers?: boolean | string }
       if (sceneRef.current === 'CAFE' && !flags.__cafeMine?.on && !flags.__cafePlayers) {
-        const structural = (lm: string) => lm === 'players:' || lm === 'house:' || lm === 'orphanage:' || lm.startsWith('sub:') || lm.startsWith('maker:')
+        const structural = (lm: string) => lm === 'players:' || lm === 'house:' || lm === 'orphanage:' || lm === 'SUB-MAIN' || lm.startsWith('sub:') || lm.startsWith('maker:')   // 'SUB-MAIN' = the door bubble's literal launch (cafe-cartridge) — a door, not a world (Galen)
         const contenders = ps.filter(p => !structural(p.launch || ''))
         if (contenders.length > 1) setMainRoster(contenders.map(p => p.name))
       }

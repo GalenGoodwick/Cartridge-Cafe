@@ -1758,6 +1758,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
     // the multiplayer socket must not survive into a non-arena world
     try { arenaRef.current?.close(); arenaRef.current = null } catch { /* fine */ }
+    // ZOMBIE WORKERS (Galen: veilfire's sound started AFTER leaving it): the old
+    // world's sandbox was disposed only when the NEXT world had hooks — a
+    // hookless world or the hub let it keep ticking forever, its whitelisted
+    // __play_music writebacks re-scoring the new world (and stacking CPU cost
+    // across swaps). Dispose unconditionally; the next loader reinstalls its own.
+    try { sandboxRef.current?.dispose(); sandboxRef.current = null } catch { /* fine */ }
   }, [])
 
   const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
