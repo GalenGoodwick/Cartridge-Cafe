@@ -3492,9 +3492,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug) }
         const a = arenaRef.current
         const wd = sim.worldData as Record<string, unknown>
+        // discrete actions are LATCHED into counters so a tap survives lag —
+        // "latest input wins" would silently drop it (fairness, not just feel)
+        const spaceNow = !!wd['key_space']
+        if (spaceNow && !a.prevSpace) a.splitN++
+        a.prevSpace = spaceNow
         a.sendInput({
           mouse_x: wd['mouse_x'], mouse_y: wd['mouse_y'], mouse_down: wd['mouse_down'],
-          key_space: wd['key_space'], key_w: wd['key_w'], key_a: wd['key_a'], key_s: wd['key_s'], key_d: wd['key_d'],
+          key_space: wd['key_space'], split_n: a.splitN,
+          key_w: wd['key_w'], key_a: wd['key_a'], key_s: wd['key_s'], key_d: wd['key_d'],
           key_arrowup: wd['key_arrowup'], key_arrowdown: wd['key_arrowdown'], key_arrowleft: wd['key_arrowleft'], key_arrowright: wd['key_arrowright'],
         })
         const st = a.latest
@@ -3503,14 +3509,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const incoming = st.worldData || {}
           for (const k of Object.keys(incoming)) {
             // local afferents stay local — the server echoes every seat's inputs
-            // via wd.players; my raw mouse/keys must not be clobbered mid-frame
+            // via wd.players; my raw mouse/keys must not be clobbered mid-frame.
+            // gpuPopulation/gpuUniforms are handled by the interpolator below.
             if (k === 'mouse_x' || k === 'mouse_y' || k === 'mouse_down' || k.startsWith('key_')) continue
+            if (k === 'gpuPopulation' || k === 'gpuUniforms') continue
             wd[k] = incoming[k]
           }
           wd['__mySeat'] = a.seat   // so a shader/HUD can highlight "you" (client-local)
-          // uniform slot 15 is reserved for "my seat" — the shader's only way to know
-          const gu = wd['gpuUniforms']
-          if (Array.isArray(gu)) gu[15] = a.seat
+        }
+        // EVERY render frame: adopt the interpolated view (~80ms behind, lerped
+        // between the last two authoritative states) — motion stays continuous
+        // no matter the server tick rate
+        const view = a.frame(performance.now())
+        if (view) {
+          if (view.pop) wd['gpuPopulation'] = view.pop
+          if (view.uni) { const u = view.uni.slice(); u[15] = a.seat; wd['gpuUniforms'] = u }
         }
       } else {
         sandboxRef.current?.tick(sim, dt)
