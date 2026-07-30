@@ -96,8 +96,14 @@ export class GameAudio {
 
   /** Play a looping music track from a URL (fades in; replaces any current track).
    *  Buffers are cached per URL, so re-triggering the same track is a no-op. */
+  /** Generation stamp: stopMusic()/each new playMusic() bumps it, and any
+   *  in-flight load checks it after the awaits — a track that resolved late
+   *  (VEILFIRE's fetch+decode takes seconds) must NOT start over the world
+   *  that's now playing, or after a vote exit silenced everything. */
+  private musicGen = 0
   async playMusic(url: string, opts: { volume?: number; loop?: boolean; fadeSec?: number } = {}): Promise<void> {
     if (this.music?.url === url) return
+    const gen = ++this.musicGen
     const ctx = this.ensureContext()
     const cacheKey = '__music:' + url
     let buffer = this.sounds.get(cacheKey)
@@ -111,6 +117,7 @@ export class GameAudio {
         return
       }
     }
+    if (gen !== this.musicGen) return   // superseded or stopped while loading — stay silent
     this.stopMusic(0.3)
     const source = ctx.createBufferSource()
     source.buffer = buffer
@@ -128,6 +135,7 @@ export class GameAudio {
 
   /** Fade out and stop the current music track */
   stopMusic(fadeSec: number = 0.5): void {
+    this.musicGen++                       // kill any in-flight load too
     if (!this.music || !this.ctx) return
     const { source, gain } = this.music
     this.music = null

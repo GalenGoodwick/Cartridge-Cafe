@@ -2894,6 +2894,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
+  // vote/judge context: versionView (space vote-preview) or a cropped viewport
+  // (the reckoning stage). Mirrored into a ref so the frozen-dep pointer handler
+  // always reads the live value.
+  const judgeCtxRef = useRef(false)
+  useEffect(() => { judgeCtxRef.current = !!(versionView || viewport) }, [versionView, viewport])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current
@@ -2925,7 +2931,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
     // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
-    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+    // JUDGING is not playing: in a vote/preview the click votes and inspects —
+    // it must never trap the cursor (Galen: lock was automatic in voting mode)
+    if (sim && sim.worldData['__mouseLook'] && !judgeCtxRef.current && document.pointerLockElement !== canvas) {
       try { canvas.requestPointerLock() } catch { /* not supported */ }
     }
 
@@ -7639,7 +7647,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             </div>
           )}
           {instrOpen && (
-            <div className={`absolute right-36 z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}>
+            <div className={`absolute z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}
+              style={{ right: 'max(1rem, calc((100% - 100vh) / 2 + 1rem))' }}>{/* the GRID's top-right — the world square is aspect-fit; on wide screens right-36 sat by the chat rail (Galen) */}
               {/* anchored to the grid's top-right under its button — a reference
                   card, not a curtain: the vote rail and the world stay visible
                   and clickable while it's open (✕ or ESC closes) */}
