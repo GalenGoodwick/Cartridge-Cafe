@@ -499,6 +499,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // saved. The world just reads/writes worldData.save; everything else stays
   // shared/transient.
   const persistOn = () => !!simulationRef.current?.worldData?.['persist']
+  // 'save' is PER-PLAYER (engine persist) — it must NEVER ride a shared snapshot
+  // in either direction. One player's save syncing world-global was the Jul 30 leak.
+  const stripSave = (wd: Record<string, unknown> | undefined | null): Record<string, unknown> => {
+    const out = { ...(wd || {}) } as Record<string, unknown>
+    delete out['save']
+    return out
+  }
   const autoSaveSerRef = useRef('')
   const autoSaveAtRef = useRef(0)
   const autoSaveReadyRef = useRef(false)   // gate: don't persist until the load resolves (else the default overwrites the real save)
@@ -2520,7 +2527,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       if (snapshot.worldParams) sim.setWorldParams(snapshot.worldParams)
-      if (snapshot.worldData) Object.assign(sim.worldData, snapshot.worldData)
+      if (snapshot.worldData) Object.assign(sim.worldData, stripSave(snapshot.worldData))
       for (const k of Object.keys(sim.worldData)) {
         if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
       }
@@ -2614,7 +2621,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const extra = Array.isArray(snapshot.worldData.__resets) ? snapshot.worldData.__resets : []
             for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
           }
-          Object.assign(sim.worldData, snapshot.worldData)
+          Object.assign(sim.worldData, stripSave(snapshot.worldData))
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
         }
         // Transient input state must never survive a restore (stuck ghost keys)
@@ -3373,7 +3380,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
       // Restore world data
       if (data.worldData && typeof data.worldData === 'object') {
-        Object.assign(sim.worldData, data.worldData)
+        Object.assign(sim.worldData, stripSave(data.worldData as Record<string, unknown>))
       }
       setFields(new Map(sim.fields))
     } catch {
