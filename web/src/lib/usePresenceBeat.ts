@@ -28,7 +28,7 @@ export function presencePid(): string {
  */
 export function usePresenceBeat(
   getKey: () => string | null | undefined,
-  opts: { intervalMs?: number; byeOnCleanup?: boolean; enabled?: boolean; deps?: unknown[] } = {},
+  opts: { intervalMs?: number; byeOnCleanup?: boolean; enabled?: boolean; deps?: unknown[]; id?: string } = {},
 ): void {
   const getKeyRef = useRef(getKey)
   getKeyRef.current = getKey
@@ -39,7 +39,10 @@ export function usePresenceBeat(
     // (A version-snapshot view must not beacon `leave` for the shared pid and
     // transiently erase the person's real presence — adversarial review.)
     if (!enabled) return
-    const pid = presencePid()
+    // `id` override lets a caller beat a SECOND, purpose-built presence (e.g. an
+    // owner's `dev:<slug>` "developer live" flag) that is separate from the one
+    // body/one place cc-pid — so it never disturbs the head-count.
+    const pid = opts.id ?? presencePid()
     const beat = () => {
       const key = getKeyRef.current()
       if (!key) return
