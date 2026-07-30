@@ -43,11 +43,46 @@ export function visitorId(ip: string, ua: string): string {
   return createHash('sha256').update(`${day}|${salt}|${ip}|${ua}`).digest('hex').slice(0, 16)
 }
 
+/** Realign the bigserial id sequence to the table's real max. A DB branch/copy
+ *  (e.g. the Jul 2026 prod split) can leave "Visit_id_seq" behind max(id), so
+ *  nextval hands out ids that already exist and every INSERT dies on the pkey.
+ *  That is silent when swallowed — it dark-holed 2 days of analytics once. */
+async function resyncSeq() {
+  await prisma.$executeRawUnsafe(`SELECT setval('"Visit_id_seq"', (SELECT COALESCE(max(id), 1) FROM "Visit"))`)
+}
+
+// Rate-limit the error log so a persistently broken write path warns without
+// flooding — one shout per minute is enough to notice in the dashboard.
+let lastLoggedErrAt = 0
+
 export async function logVisit(v: { kind: 'page' | 'agent' | 'mcp'; path: string; ref?: string | null; ua?: string | null; ip?: string | null; who?: string | null }) {
+  const insert = () => {
+    const vid = visitorId(v.ip || '', v.ua || '')
+    return prisma.$executeRaw`INSERT INTO "Visit" (kind, path, ref, ua, vid, who)
+      VALUES (${v.kind}, ${v.path.slice(0, 300)}, ${(v.ref || '').slice(0, 300) || null}, ${(v.ua || '').slice(0, 300) || null}, ${vid}, ${v.who ?? null})`
+  }
   try {
     await ensureTable()
-    const vid = visitorId(v.ip || '', v.ua || '')
-    await prisma.$executeRaw`INSERT INTO "Visit" (kind, path, ref, ua, vid, who)
-      VALUES (${v.kind}, ${v.path.slice(0, 300)}, ${(v.ref || '').slice(0, 300) || null}, ${(v.ua || '').slice(0, 300) || null}, ${vid}, ${v.who ?? null})`
-  } catch { /* logging must never break the page */ }
+    try {
+      await insert()
+    } catch (e) {
+      // A desynced sequence surfaces as a duplicate-key violation (pg 23505).
+      // Self-heal: realign the sequence and retry once, so logging recovers on
+      // its own instead of going dark until someone notices the flat line.
+      if (String((e as { code?: string })?.code) === '23505' || /duplicate key/i.test(String(e))) {
+        await resyncSeq()
+        await insert()
+      } else {
+        throw e
+      }
+    }
+  } catch (e) {
+    // Logging must never break the page — but it must not fail SILENTLY either
+    // (that hid the Jul 2026 sequence break for two days). Shout, rate-limited.
+    const now = Date.now()
+    if (now - lastLoggedErrAt > 60_000) {
+      lastLoggedErrAt = now
+      console.error('[visits] logVisit failed:', (e as Error)?.message || e)
+    }
+  }
 }
