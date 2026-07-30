@@ -1672,6 +1672,60 @@ export class FieldSimulation {
     return { cx: sx / count, cy: sy / count, count: count * stride * stride }
   }
 
+  // ── SEMANTIC CHANNELS (open ontology, imagination-first) ──────────────────
+  // A field tagged 'ch:<name>' PUBLISHES that channel through its RENDERED pixels
+  // (SOLID is just the channel collision already reads). The engine STATES the
+  // intersection — for a field, the fraction of its pixels overlapped by each
+  // channel published by OTHER fields — and ships NO reactions. The world's hook
+  // decides what "heat on me" MEANS (melt, ignite, glow). Any channel name works;
+  // channels are derived deterministically from presence, so pixel-playback replays
+  // the semantic evolution, not just the pixels.
+  static readonly CHANNEL_TAG = 'ch:'
+
+  /** For `fieldId`, the fraction (0..1) of its rendered pixels overlapped by each
+   *  channel published by OTHER fields. `{}` until presence has been read back.
+   *  Bounded to the field's own bounds, so cost scales with the field, not the grid. */
+  fieldChannelReadings(fieldId: string): Record<string, number> {
+    const selfPres = this.fieldPresence.get(fieldId)
+    if (!selfPres) return {}
+    const b = this.boundsCache.get(fieldId) || this.getFieldBounds(fieldId)
+    if (!b) return {}
+    const gs = this.gridSize
+    const mnX = Math.max(0, Math.floor(b.minX)), mnY = Math.max(0, Math.floor(b.minY))
+    const mxX = Math.min(gs - 1, Math.ceil(b.maxX)), mxY = Math.min(gs - 1, Math.ceil(b.maxY))
+    if (mnX > mxX || mnY > mxY) return {}
+    // this field's pixel indices (the denominator), computed once
+    const self: number[] = []
+    for (let y = mnY; y <= mxY; y++) { const row = y * gs; for (let x = mnX; x <= mxX; x++) { const i = row + x; if (selfPres[i] > 0) self.push(i) } }
+    if (!self.length) return {}
+    const out: Record<string, number> = {}
+    for (const [tag, ids] of this.tagIndex) {
+      if (!tag.startsWith(FieldSimulation.CHANNEL_TAG)) continue
+      const others: Uint8Array[] = []
+      for (const id of ids) { if (id === fieldId) continue; const p = this.fieldPresence.get(id); if (p) others.push(p) }
+      if (!others.length) continue
+      let overlap = 0
+      for (const i of self) { for (const op of others) { if (op[i] > 0) { overlap++; break } } }
+      if (overlap > 0) out[tag.slice(FieldSimulation.CHANNEL_TAG.length)] = overlap / self.length
+    }
+    return out
+  }
+
+  /** Every field's channel readings this frame, keyed by field id — the host feeds
+   *  this to worldData so hooks can react. Only fields with a presence map appear. */
+  allChannelReadings(): Record<string, Record<string, number>> {
+    // no channels declared → nothing to compute
+    let anyChannel = false
+    for (const tag of this.tagIndex.keys()) { if (tag.startsWith(FieldSimulation.CHANNEL_TAG)) { anyChannel = true; break } }
+    if (!anyChannel) return {}
+    const out: Record<string, Record<string, number>> = {}
+    for (const id of this.fieldPresence.keys()) {
+      const r = this.fieldChannelReadings(id)
+      if (Object.keys(r).length) out[id] = r
+    }
+    return out
+  }
+
   computeOverlapMask(fieldAId: string, fieldBId: string, spread: number = 0): Uint8Array | null {
     const boundsA = this.getFieldBounds(fieldAId)
     const boundsB = this.getFieldBounds(fieldBId)

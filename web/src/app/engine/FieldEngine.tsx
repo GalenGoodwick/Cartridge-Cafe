@@ -4148,6 +4148,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             sim.fieldPresence.set(fieldId, presence)
           }
 
+          // SEMANTIC CHANNELS: derive per-field channel readings from the fresh
+          // presence maps and hand them to the world (wd.__channels[id] = {heat: 0.4}).
+          // The engine STATES the intersection; the world's hook decides what it means.
+          // Runs at the presence throttle (~4Hz), so it's cheap. Absent when no field
+          // publishes a 'ch:*' tag.
+          const channels = sim.allChannelReadings()
+          if (Object.keys(channels).length) sim.worldData['__channels'] = channels
+          else if (sim.worldData['__channels']) delete sim.worldData['__channels']
+
           // Pre-compute overlap masks for interaction effects (expensive dilation runs here at ~4fps, not 60fps)
           if (sim.interactionEffects.length > 0) {
             const activePairs = sim.getActiveInteractionPairs()
