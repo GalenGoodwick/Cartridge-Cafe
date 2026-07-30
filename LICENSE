@@ -1,0 +1,41 @@
+Cartridge Cafe — Proprietary Software License
+Copyright (c) 2026 Galen Goodwick. All Rights Reserved.
+
+This software and its associated source code, assets, designs, engine,
+shaders, and documentation (collectively, the "Software") are the exclusive
+property of Galen Goodwick ("the Owner"). The Software is proprietary and
+confidential.
+
+NO LICENSE IS GRANTED. Except where a separate written agreement signed by the
+Owner states otherwise, no permission is granted to any person or entity to
+use, copy, modify, merge, publish, distribute, sublicense, sell, host, or
+create derivative works from the Software, in whole or in part.
+
+Specifically, without the Owner's prior written permission, you may NOT:
+  - copy, reproduce, or redistribute the Software or any portion of it;
+  - reverse engineer, decompile, or disassemble the Software beyond what is
+    unavoidable when the Software runs in your own browser for ordinary use of
+    the cartridge.cafe service;
+  - use any portion of the Software's client-side code, engine, shaders, or
+    design to build, train, or operate a competing or derivative product;
+  - remove or alter any copyright, trademark, or attribution notice.
+
+CLIENT-SIDE CODE. Portions of the Software are, by the nature of the web,
+delivered to and executed within end users' browsers to provide the
+cartridge.cafe service. Such delivery is solely to enable ordinary use of the
+service and does NOT constitute a grant of any license, nor place the Software
+in the public domain, nor waive any of the Owner's rights in it.
+
+USER-CREATED WORLDS are not covered by this license. Content that members
+create using the service is governed by the cartridge.cafe Terms of Service
+(https://cartridge.cafe/terms), under which creators retain ownership of what
+they make.
+
+NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR
+IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+For licensing inquiries, contact: galen.goodwick@icloud.com
