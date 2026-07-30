@@ -345,6 +345,57 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     setPlayMode(false)
     window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: false }))
   }
+
+  // ── RECORD (client-side, never touches the server): captureStream() taps the
+  //    live WebGPU canvas → MediaRecorder → a Blob the browser downloads. Native
+  //    MP4/H.264 where supported (email-ready), WebM fallback. Captures the CANVAS
+  //    only — DOM chrome (this button, slider labels) is never in the file. ──
+  const [recording, setRecording] = useState(false)
+  const [recSecs, setRecSecs] = useState(0)
+  const recRef = useRef<MediaRecorder | null>(null)
+  const recChunks = useRef<Blob[]>([])
+  const recTimer = useRef<number | null>(null)
+  const recSupported = () => {
+    if (typeof MediaRecorder === 'undefined') return ''
+    const c = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+    return c.find(m => { try { return MediaRecorder.isTypeSupported(m) } catch { return false } }) || ''
+  }
+  const startRecording = () => {
+    const cv = canvasRef.current
+    if (!cv || recording) return
+    const mime = recSupported(); if (!mime) { alert('This browser can’t record video. Try Chrome or Safari.'); return }
+    let stream: MediaStream
+    try { stream = (cv as HTMLCanvasElement & { captureStream: (fps?: number) => MediaStream }).captureStream(60) } catch { alert('Could not capture this canvas.'); return }
+    let rec: MediaRecorder
+    try { rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 }) } catch { return }
+    recChunks.current = []
+    rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.current.push(e.data) }
+    rec.onstop = () => {
+      const type = mime.split(';')[0]
+      const ext = type === 'video/mp4' ? 'mp4' : 'webm'
+      const blob = new Blob(recChunks.current, { type })
+      const url = URL.createObjectURL(blob)
+      const base = (spaceId ? (spaceSlug || spaceName || 'world') : (cellBase() || 'world')).split(' ⑂ ')[0].replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'cartridge'
+      const d = new Date(); const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const a = document.createElement('a'); a.href = url; a.download = `${base}-${stamp}.${ext}`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+      if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
+    }
+    rec.start()
+    recRef.current = rec
+    setRecording(true); setRecSecs(0)
+    const t0 = Date.now()
+    recTimer.current = window.setInterval(() => setRecSecs(Math.floor((Date.now() - t0) / 1000)), 250)
+  }
+  const stopRecording = () => {
+    const rec = recRef.current
+    try { if (rec && rec.state !== 'inactive') rec.stop() } catch { /* already stopped */ }
+    recRef.current = null
+    setRecording(false)
+  }
+  // stop cleanly if the component unmounts mid-record
+  useEffect(() => () => { try { recRef.current?.stop() } catch { /* noop */ } if (recTimer.current) clearInterval(recTimer.current) }, [])
   useEffect(() => {
     if (!uiDockOpen) return
     try { if (localStorage.getItem('cc-edit-coached')) return } catch { return }
@@ -6709,8 +6760,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               (top-left, below) stays; here we add only the ▣ reopen so play is
               clean with exactly one way out + one way back to the UI. */}
           {playMode && (
-            <button onClick={exitPlayMode} title="show the UI again"
-              className="absolute right-3 top-3 z-[60] w-9 h-9 rounded-lg font-mono text-[16px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">▣</button>
+            <div className="absolute right-3 top-3 z-[60] flex items-center gap-2">
+              {/* RECORD → downloads a video of this world to your computer (canvas only,
+                  no UI in the frame). Native MP4 where the browser supports it. */}
+              <button onClick={recording ? stopRecording : startRecording}
+                title={recording ? 'stop & download the recording' : 'record this world to a video file (saves to your computer — nothing is uploaded)'}
+                className={`h-9 px-3 rounded-lg font-mono text-[14px] backdrop-blur border transition-colors inline-flex items-center gap-2 ${recording ? 'bg-red-500/30 border-red-400/60 text-red-50 hover:bg-red-500/40' : 'bg-black/50 border-white/10 text-white/70 hover:text-white hover:bg-black/70'}`}>
+                <span className={`inline-block w-2.5 h-2.5 rounded-full bg-red-500 ${recording ? 'animate-pulse' : ''}`} />
+                {recording ? `${Math.floor(recSecs / 60)}:${String(recSecs % 60).padStart(2, '0')}` : 'REC'}
+              </button>
+              <button onClick={exitPlayMode} title="show the UI again"
+                className="w-9 h-9 rounded-lg font-mono text-[16px] bg-black/50 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/70 transition-colors">▣</button>
+            </div>
           )}
 
           {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
