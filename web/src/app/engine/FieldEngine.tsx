@@ -4731,6 +4731,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 if (cmd.noCollide) newField.noCollide = true
                 // PIXEL-COLLIDE LAW — collision body = rendered pixels, not bounds
                 if (cmd.pixelCollide) newField.pixelCollide = true
+                // properties (e.g. {static:true}) — the client handler dropped these,
+                // so the owner tab's 2s sync then wrote EMPTY properties back over the
+                // server's, un-pinning static fields (KEYHOLE ring drifted). Copy them.
+                if (cmd.properties && typeof cmd.properties === 'object') {
+                  for (const [k, v] of Object.entries(cmd.properties as Record<string, unknown>)) newField.properties.set(k, v)
+                }
               }
 
               setBrush(prev => ({ ...prev, activeFieldId: id }))

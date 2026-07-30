@@ -62,7 +62,7 @@ self.onmessage = function (ev) {
     const before = new Map();   // remember each transform so we patch only what the hook MOVED
     for (const f of msg.fields) {
       fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties });
-      before.set(f.id, JSON.stringify(f.transform));
+      before.set(f.id, { ...f.transform });   // per-KEY baseline (not a whole-object string)
     }
     const sim = {
       worldData: msg.worldData,
@@ -137,12 +137,20 @@ self.onmessage = function (ev) {
       __runErr = __runErr ? (__runErr + ' | ' + m) : m;
     }
     const __ms = __now() - __t0;   // host watches this for a runaway-cost kill-switch
-    // only fields a hook actually changed — never hand the host a stale
-    // transform for a field it manages itself (that fight reads as jitter).
+    // patch back ONLY the transform KEYS the hook actually wrote — never the whole
+    // transform. THE BUG: a physics hook that sets t.vy (velocity) and leaves the
+    // host to integrate position had its stale x/y echoed back every tick, so the
+    // host's integrated position was overwritten with the spawn point every frame —
+    // velocity climbed, position never moved ("balls bounce in place, no clicking").
+    // Sending only changed keys lets the host keep the position it integrated.
     // Partial success still applies: a thrown hook doesn't void the others' work.
     const fieldPatches = [];
     for (const f of fields.values()) {
-      if (JSON.stringify(f.transform) !== before.get(f.id)) fieldPatches.push({ id: f.id, transform: f.transform });
+      const b = before.get(f.id);
+      const changed = {};
+      let any = false;
+      for (const k in f.transform) { if (f.transform[k] !== b[k]) { changed[k] = f.transform[k]; any = true; } }
+      if (any) fieldPatches.push({ id: f.id, transform: changed });
     }
     self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
