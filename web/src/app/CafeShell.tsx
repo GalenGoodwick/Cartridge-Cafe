@@ -1883,6 +1883,12 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                         sign out
                       </button>
                     )}
+                    <div className="my-1 border-t border-white/10" />
+                    <div className="px-3 py-1.5 text-[12px] tracking-[0.12em] text-steamer/40">
+                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-glow transition-colors">terms</a>
+                      <span className="mx-1.5">·</span>
+                      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-glow transition-colors">privacy</a>
+                    </div>
                   </div>
                 )}
               </div>

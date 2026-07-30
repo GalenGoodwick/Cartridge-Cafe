@@ -194,8 +194,8 @@ function SignInInner() {
             {/* clickwrap: continuing = agreeing, with the commons deal stated plainly */}
             <div className="pt-2 text-center font-mono text-[14px] leading-relaxed text-crema/40">
               by continuing you agree to the{' '}
-              <a href="/terms" className="text-brass hover:text-flame underline">terms</a> &amp;{' '}
-              <a href="/privacy" className="text-brass hover:text-flame underline">privacy</a>.
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-brass hover:text-flame underline">terms</a> &amp;{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-brass hover:text-flame underline">privacy</a>.
               <br />worlds you make public can be branched by others · private stays yours.
             </div>
             </>}
