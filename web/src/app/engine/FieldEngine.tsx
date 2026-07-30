@@ -16,6 +16,7 @@ import { FieldSimulation } from './simulation'
 import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
 import { NodeGraphOverlay, NODE_KIND_STYLE, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { WorldSandbox } from './world-sandbox'
+import { ArenaClient } from './arena-client'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
 import VersionScrubber from './VersionScrubber'
@@ -625,6 +626,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // a world flagged worldData.__sandbox runs its hook in a sealed Web Worker
   // instead of new Function on the main thread — no DOM, no network reach.
   const sandboxRef = useRef<WorldSandbox | null>(null)
+  // ARENA (multiplayer): when a world declares worldData.mpManifest, the tab
+  // becomes a window onto an authoritative room — hooks run server-side, we
+  // ship afferents up and adopt the broadcast worldData (see arena-client.ts)
+  const arenaRef = useRef<ArenaClient | null>(null)
   // mirror of the world's JS hooks so a LIVE add/remove/update during a build
   // (owner watching over SSE) can re-install the sandbox from the full set.
   const liveHooksRef = useRef<Map<string, { id: string; author: string; description: string; code: string }>>(new Map())
@@ -748,7 +753,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // unmounts, so leaving the page must close the context explicitly
   useEffect(() => {
     const audio = audioRef.current
-    return () => { audio.destroy(); sandboxRef.current?.dispose() }
+    return () => { audio.destroy(); sandboxRef.current?.dispose(); arenaRef.current?.close(); arenaRef.current = null }
   }, [])
   // no world's looping music/score outlives its scene. The full loadScene teardown
   // stops audio, but the VOTE RECKONING flicks between cached previews on a fast
@@ -3480,7 +3485,33 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
 
-      sandboxRef.current?.tick(sim, dt)
+      // ── NETWORKED MODE: mpManifest worlds run their hooks in the arena room,
+      //    not here. Send this player's afferents; adopt the authoritative state.
+      const mpManifest = sim.worldData['mpManifest']
+      if (mpManifest && spaceSlug) {
+        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug) }
+        const a = arenaRef.current
+        const wd = sim.worldData as Record<string, unknown>
+        a.sendInput({
+          mouse_x: wd['mouse_x'], mouse_y: wd['mouse_y'], mouse_down: wd['mouse_down'],
+          key_space: wd['key_space'], key_w: wd['key_w'], key_a: wd['key_a'], key_s: wd['key_s'], key_d: wd['key_d'],
+          key_arrowup: wd['key_arrowup'], key_arrowdown: wd['key_arrowdown'], key_arrowleft: wd['key_arrowleft'], key_arrowright: wd['key_arrowright'],
+        })
+        const st = a.latest
+        if (st) {
+          a.latest = null
+          const incoming = st.worldData || {}
+          for (const k of Object.keys(incoming)) {
+            // local afferents stay local — the server echoes every seat's inputs
+            // via wd.players; my raw mouse/keys must not be clobbered mid-frame
+            if (k === 'mouse_x' || k === 'mouse_y' || k === 'mouse_down' || k.startsWith('key_')) continue
+            wd[k] = incoming[k]
+          }
+          wd['__mySeat'] = a.seat   // so a shader/HUD can highlight "you" (client-local)
+        }
+      } else {
+        sandboxRef.current?.tick(sim, dt)
+      }
       sim.step(dt)
 
       // Process audio triggers from worldData (single event or an array per tick)
