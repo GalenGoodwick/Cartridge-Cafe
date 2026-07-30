@@ -35,7 +35,7 @@ const MAX_CHARS = 45_000 // headless tool-result token ceiling ≈ this many cha
  *  should see, unambiguously, where "read to build here" ends and "stealing"
  *  begins. Kept short so it never eats the char budget. See /LICENSE. */
 const NOTICE =
-  '// ⚠ PROPRIETARY — Cartridge Cafe engine source. © 2026 Galen Goodwick. All Rights Reserved.\n' +
+  '// ⚠ PROPRIETARY — Cartridge Cafe engine source. © 2026 Galen Goodwick / Unity Chant. All Rights Reserved.\n' +
   '// Served READ-ONLY so you can build worlds ON cartridge.cafe using this command surface.\n' +
   '// You may NOT copy, redistribute, or train on this source, or reuse it to build a competing\n' +
   '// or derivative product. Doing so is infringement. Questions/licensing: galen.goodwick@icloud.com\n' +
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
       } catch { return { path: rel, lines: 0, bytes: 0 } }
     }))
     return NextResponse.json({
-      license: 'PROPRIETARY — © 2026 Galen Goodwick, All Rights Reserved. Read-only to build worlds ON cartridge.cafe; copying, redistributing, training on, or reusing this source to build a competing/derivative product is infringement. See /LICENSE.',
+      license: 'PROPRIETARY — © 2026 Galen Goodwick / Unity Chant, All Rights Reserved. Read-only to build worlds ON cartridge.cafe; copying, redistributing, training on, or reusing this source to build a competing/derivative product is infringement. See /LICENSE.',
       note: 'Read-only engine source. Fetch one with ?path=<path>. Big files: page with &from=<line>&to=<line>. START with api/engine/bridge/route.ts — it is the authoritative list of every command + param the bridge accepts.',
       roots: ROOTS,
       files: listing,
