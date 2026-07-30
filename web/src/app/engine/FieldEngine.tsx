@@ -521,12 +521,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (stopped) return
       const sim = simulationRef.current
       if (!sim) { if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200); return }
-      if (!sim.worldData?.['persist']) return   // arcade-style: no persistence, fresh each visit
+      if (!sim.worldData?.['persist']) {
+        // the snapshot (which carries persist:true) may not have applied yet —
+        // keep checking; give up only after ~8s (then it's a real arcade world)
+        if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200)
+        return
+      }
       fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`)
         .then(r => r.json())
         .then(j => {
           const s = simulationRef.current
-          if (!stopped && s && j?.data != null) { s.worldData['save'] = j.data; autoSaveSerRef.current = JSON.stringify(j.data) }
+          if (!stopped && s && j?.data != null) {
+            s.worldData['save'] = j.data
+            sandboxRef.current?.injectSave(j.data)   // outrank the in-flight worker reply (pre-load fresh-init would clobber)
+            autoSaveSerRef.current = JSON.stringify(j.data)
+          }
         })
         .catch(() => {})
         .finally(() => { autoSaveReadyRef.current = true })   // now the frame loop may persist changes
