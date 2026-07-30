@@ -5,6 +5,15 @@ import { useEffect, useState } from 'react'
 type W = { name: string; private: boolean; timestamp: number; builtBy: string }
 type Branch = { base: string; label: string; versions: number; private: boolean; latest: string }
 type Root = { name: string; private: boolean; builtBy: string; branches: Branch[]; space?: string }
+type Talker = { who: string; hits: number; last: string }
+type Analytics = {
+  summary: { pages: number; strangerUniques: number; agents: number }
+  bridgePerHour: { hour: string; n: number }[]
+  topTalkers: Talker[]
+}
+// A non-house token doing more than this in 24h is worth a glance — well above
+// the normal per-token build cadence, the shape a runaway loop would take.
+const HOT_TALKER = 800
 
 /** The keeper's shelf — one row per WORLD, branches folded beneath their base,
  *  each toggle covering every version of what it names. */
@@ -13,6 +22,12 @@ export default function AdminPage() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState('')
   const [openRoot, setOpenRoot] = useState('')
+  const [analytics, setAnalytics] = useState<Analytics | null>(null)
+
+  useEffect(() => {
+    fetch('/api/admin/analytics').then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setAnalytics(d) }).catch(() => {})
+  }, [])
 
   const load = () => {
     fetch('/api/admin/worlds').then(r => r.ok ? r.json() : Promise.reject(r.status))
@@ -99,6 +114,53 @@ export default function AdminPage() {
     }}>✕ DELETE</button>
   )
 
+  const Stat = ({ label, value }: { label: string; value: number }) => (
+    <div style={{ padding: '8px 14px', border: '1px solid rgba(185,122,42,0.25)', borderRadius: 10, background: 'rgba(28,22,14,0.6)', minWidth: 96 }}>
+      <div style={{ fontSize: 22, color: '#ffdba8' }}>{value.toLocaleString()}</div>
+      <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89670' }}>{label}</div>
+    </div>
+  )
+
+  const BridgeWatch = () => {
+    if (!analytics) return null
+    const { summary, bridgePerHour, topTalkers } = analytics
+    const peak = Math.max(1, ...bridgePerHour.map(h => h.n))
+    return (
+      <div style={{ marginBottom: 30, padding: '16px 18px', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 12, background: 'rgba(20,14,10,0.55)' }}>
+        <div style={{ fontSize: 12, letterSpacing: '0.2em', color: '#ffb25a', marginBottom: 12 }}>TRAFFIC &amp; BRIDGE WATCH · LAST 48H</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+          <Stat label="PAGE VIEWS" value={summary.pages} />
+          <Stat label="UNIQUE STRANGERS" value={summary.strangerUniques} />
+          <Stat label="AGENT / BRIDGE HITS" value={summary.agents} />
+        </div>
+        <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 5 }}>BRIDGE HITS / HOUR (peak {peak.toLocaleString()})</div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 48, marginBottom: 16 }}>
+          {bridgePerHour.length === 0 && <div style={{ fontSize: 12, color: '#c9b89660' }}>no bridge traffic in the window</div>}
+          {bridgePerHour.map(h => (
+            <div key={h.hour} title={`${new Date(h.hour).toLocaleString()} — ${h.n.toLocaleString()} hits`}
+              style={{ flex: 1, minWidth: 2, height: `${Math.max(3, (h.n / peak) * 100)}%`,
+                background: h.n >= peak * 0.9 ? '#ff9a4a' : 'rgba(245,176,76,0.45)', borderRadius: 1 }} />
+          ))}
+        </div>
+        <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>TOP TALKERS · BY TOKEN · LAST 24H</div>
+        {topTalkers.length === 0 && <div style={{ fontSize: 12, color: '#c9b89660' }}>quiet — no agents in the last 24h</div>}
+        {topTalkers.map(t => {
+          const hot = t.hits >= HOT_TALKER && !t.who.startsWith('house')
+          return (
+            <div key={t.who} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
+              <span style={{ fontSize: 13, color: hot ? '#ff9a4a' : '#d8cbb2', width: 130 }}>{hot && '⚠ '}{t.who}</span>
+              <span style={{ flex: 1, fontSize: 13, color: hot ? '#ffb25a' : '#c9b896' }}>{t.hits.toLocaleString()} hits</span>
+              <span style={{ fontSize: 11, color: '#c9b89660' }}>last {new Date(t.last).toLocaleTimeString()}</span>
+            </div>
+          )
+        })}
+        <div style={{ fontSize: 10, color: '#c9b89650', marginTop: 8 }}>
+          tags are type:hash (never the raw token). ⚠ = a non-house token over {HOT_TALKER.toLocaleString()} hits/24h — worth a look.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#0b0908', color: '#e7dcc8', fontFamily: 'monospace', padding: '40px 24px' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -106,6 +168,7 @@ export default function AdminPage() {
         <div style={{ fontSize: 13, color: '#c9b89680', marginBottom: 28 }}>
           One row per world. A branch&rsquo;s switch covers all its versions. PRIVATE = unlisted everywhere; the direct /hub link still works.
         </div>
+        <BridgeWatch />
         {err && <div style={{ color: '#ff8080', fontSize: 16 }}>{err}</div>}
         {!err && !roots && <div style={{ color: '#c9b896', fontSize: 14 }}>fetching the shelf…</div>}
         {roots && roots.map(r => (
