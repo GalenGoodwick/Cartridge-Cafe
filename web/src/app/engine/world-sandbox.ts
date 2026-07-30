@@ -78,25 +78,35 @@ self.onmessage = function (ev) {
       // its own try/catch swallows it, and the world freezes with stale uniforms
       // (the TIDEGLASS/HELIOS freeze — a sandboxed world using chapters had NO
       // access to these). All are pure worldData ops, so they port verbatim.
-      trigger(id, cond) {
+      // PERSIST-AWARE LATCHES (Jul 30): triggers/edges/chapters are PROGRESS.
+      // On persist worlds they live in wd.save (per-player, synced, excluded from
+      // shared snapshots) — else one player's fired triggers and unlocked
+      // chapters leak to every visitor via the world snapshot (the second half
+      // of the Galen guest-leak). Arcade/house worlds keep world-global latches.
+      _latchRoot() {
         const wd = this.worldData;
-        if (!wd.__trig) wd.__trig = {};
-        const L = wd.__trig;
+        if (wd.persist) { if (!wd.save) wd.save = {}; return wd.save; }
+        return wd;
+      },
+      trigger(id, cond) {
+        const R = this._latchRoot();
+        if (!R.__trig) R.__trig = {};
+        const L = R.__trig;
         if (cond) { if (!L[id]) { L[id] = true; return true; } }
         return false;
       },
       edge(id, cond) {
-        const wd = this.worldData;
-        if (!wd.__edge) wd.__edge = {};
-        const L = wd.__edge;
+        const R = this._latchRoot();
+        if (!R.__edge) R.__edge = {};
+        const L = R.__edge;
         const was = !!L[id]; const now = !!cond; L[id] = now;
         return now && !was;
       },
-      resetTrigger(id) { const L = this.worldData.__trig; if (L) delete L[id]; },
+      resetTrigger(id) { const L = this._latchRoot().__trig; if (L) delete L[id]; },
       _ch() {
-        const wd = this.worldData;
-        let c = wd.__chapters;
-        if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; wd.__chapters = c; }
+        const R = this._latchRoot();
+        let c = R.__chapters;
+        if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; R.__chapters = c; }
         return c;
       },
       defineChapters(names) {

@@ -2052,9 +2052,18 @@ export class FieldSimulation {
   /** Fires TRUE exactly once — the first frame `cond` is truthy — latched by id.
    *  The reliable replacement for `if (x && !flag){flag=true;…}`.
    *  e.g. `if (sim.trigger('tree', allSixLit)) growTheTree()`. */
+  /** Latches are PROGRESS: on persist worlds they live in wd.save (per-player);
+   *  else world-global. Mirrors the sandbox's _latchRoot (Jul 30 leak fix). */
+  private _latchRoot(): Record<string, unknown> {
+    const wd = this.worldData as Record<string, unknown>
+    if (wd['persist']) { if (!wd['save']) wd['save'] = {}; return wd['save'] as Record<string, unknown> }
+    return wd
+  }
+
   trigger(id: string, cond: unknown): boolean {
-    if (!this.worldData.__trig) this.worldData.__trig = {}
-    const L = this.worldData.__trig as Record<string, boolean>
+    const R = this._latchRoot()
+    if (!R.__trig) R.__trig = {}
+    const L = R.__trig as Record<string, boolean>
     if (cond) { if (!L[id]) { L[id] = true; return true } }
     return false
   }
@@ -2062,21 +2071,23 @@ export class FieldSimulation {
   /** Fires TRUE on every false→true edge of `cond` (re-arms when it goes false).
    *  Use for repeatable events; `trigger` is the one-shot. */
   edge(id: string, cond: unknown): boolean {
-    if (!this.worldData.__edge) this.worldData.__edge = {}
-    const L = this.worldData.__edge as Record<string, boolean>
+    const R = this._latchRoot()
+    if (!R.__edge) R.__edge = {}
+    const L = R.__edge as Record<string, boolean>
     const was = !!L[id]; const now = !!cond; L[id] = now
     return now && !was
   }
 
   /** Re-arm a one-shot `trigger` so it may fire again. */
   resetTrigger(id: string): void {
-    const L = this.worldData.__trig as Record<string, boolean> | undefined
+    const L = this._latchRoot().__trig as Record<string, boolean> | undefined
     if (L) delete L[id]
   }
 
   private _ch(): { names: string[]; unlocked: number[]; cur: number } {
-    let c = this.worldData.__chapters as { names: string[]; unlocked: number[]; cur: number } | undefined
-    if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; this.worldData.__chapters = c }
+    const R = this._latchRoot()
+    let c = R.__chapters as { names: string[]; unlocked: number[]; cur: number } | undefined
+    if (!c) { c = { names: [''], unlocked: [1], cur: 1 }; R.__chapters = c }
     return c
   }
 
