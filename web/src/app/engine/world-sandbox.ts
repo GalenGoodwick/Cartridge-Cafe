@@ -59,10 +59,13 @@ self.onmessage = function (ev) {
     const ws = msg.worldData && msg.worldData.__seed;
     if (typeof ws === 'number' && ws !== __randSeed) { __randSeed = ws; __randState = ws | 0; }
     const fields = new Map();
-    const before = new Map();   // remember each transform so we patch only what the hook MOVED
+    const before = new Map();   // remember transform + visualParams so we patch only what the hook CHANGED
     for (const f of msg.fields) {
-      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties });
-      before.set(f.id, { ...f.transform });   // per-KEY baseline (not a whole-object string)
+      // visualParams IS exposed to the hook now: a sandboxed hook can animate a
+      // field's shader (melt, charge, glow) — previously it was silently dropped,
+      // so a hook that set field.visualParams had NO visible effect on space worlds.
+      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams });
+      before.set(f.id, { transform: { ...f.transform }, visualParams: Array.isArray(f.visualParams) ? [...f.visualParams] : null });
     }
     const sim = {
       worldData: msg.worldData,
@@ -149,8 +152,16 @@ self.onmessage = function (ev) {
       const b = before.get(f.id);
       const changed = {};
       let any = false;
-      for (const k in f.transform) { if (f.transform[k] !== b[k]) { changed[k] = f.transform[k]; any = true; } }
-      if (any) fieldPatches.push({ id: f.id, transform: changed });
+      for (const k in f.transform) { if (f.transform[k] !== b.transform[k]) { changed[k] = f.transform[k]; any = true; } }
+      const patch = any ? { id: f.id, transform: changed } : { id: f.id };
+      // visualParams the hook wrote (shader animation) — patched back so the host's
+      // renderer actually sees them
+      const vp = f.visualParams;
+      if (Array.isArray(vp)) {
+        const bv = b.visualParams;
+        if (!bv || vp.length !== bv.length || vp.some((x, i) => x !== bv[i])) { patch.visualParams = [...vp]; any = true; }
+      }
+      if (any) fieldPatches.push(patch);
     }
     self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
@@ -160,7 +171,7 @@ self.onmessage = function (ev) {
 interface SandboxReply {
   type: 'result'
   worldData?: Record<string, unknown>
-  fieldPatches?: { id: string; transform: Record<string, number> }[]
+  fieldPatches?: { id: string; transform?: Record<string, number>; visualParams?: number[] }[]
   events?: { type: string; detail: unknown }[]
   error?: string
   ms?: number
@@ -427,7 +438,10 @@ export class WorldSandbox {
       // field transforms the hook moved
       for (const p of this.pending.fieldPatches || []) {
         const f = sim.fields.get(p.id)
-        if (f && p.transform) f.transform = { ...f.transform, ...p.transform }
+        if (!f) continue
+        if (p.transform) f.transform = { ...f.transform, ...p.transform }
+        // shader animation the hook drove (melt, charge, glow…)
+        if (p.visualParams) f.visualParams = p.visualParams as [number, number, number, number]
       }
       // the whitelisted events the hook "dispatched"
       if (typeof window !== 'undefined') {
@@ -446,9 +460,9 @@ export class WorldSandbox {
    *  how many rendered frames a reply spans. __fixedStep keeps its exact quantum. */
   private postTick(sim: FieldSimulation): void {
     if (!this.worker) return
-    const fields: { id: string; name: string; transform: unknown; properties: unknown }[] = []
+    const fields: { id: string; name: string; transform: unknown; properties: unknown; visualParams: unknown }[] = []
     for (const f of sim.fields.values()) {
-      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties })
+      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams })
     }
     // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
     // one exact quantum — one tick per rendered frame, same sequence every run

@@ -897,6 +897,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // P0 telemetry readout — frame/hook/compile budgets sampled from the live engine.
   const [perf, setPerf] = useState<{ frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null>(null)
   useEffect(() => {
+    // ONLY poll while the AI VIEW panel is actually open. This was ungated and ran
+    // on EVERY visitor tab forever — two /api/engine/save function hits every 1.8s
+    // per tab — which spiked prod Function Invocations ~16×. The data is only shown
+    // inside the BuilderBox, so there's no reason to fetch it when it's closed.
+    if (!buildConsoleOpen) return
     const iv = setInterval(async () => {
       // scope key mirrors the bridge (route.ts `aiScope`): spaces key by spaceId,
       // house/scene worlds by 'scene:<base-slug>' so the panel works on house content.
@@ -922,7 +927,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
     }, 1800)
     return () => clearInterval(iv)
-  }, [spaceId, spaceSlug, playScene])
+  }, [buildConsoleOpen, spaceId, spaceSlug, playScene])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current), [])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
