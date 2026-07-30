@@ -91,6 +91,92 @@ export function recordTap(): { stream: MediaStream; stop: () => void } | null {
   }
 }
 
+// ── WORLD VOICE — sound AS the physics. An organic WATER voice any world's hook
+//    can drive per-frame: wd.tone = { flow, cutoff, bubble, dripRate, pitch, gain }.
+//    Modelled on real water (spectrograms of a waterfall + dripping): a brown-noise
+//    body + wandering resonant peaks (burble) + a granular swarm of tiny bubble
+//    chirps (the organic texture) + big droplet accents. Additive & isolated from
+//    the music path (feeds worldGain → captured by recordTap, muted with the world),
+//    so no other world can break. NOT a theremin. ──
+export type WorldTone = { flow?: number; cutoff?: number; bubble?: number; dripRate?: number; pitch?: number; gain?: number }
+let vInit = false
+let vCtx: AudioContext | null = null
+let vOut: GainNode | null = null, vFlowG: GainNode | null = null, vLp: BiquadFilterNode | null = null
+let vRes: { bp: BiquadFilterNode; g: GainNode; f: number }[] = []
+let vBrown: AudioBuffer | null = null, vClick: AudioBuffer | null = null
+const vBase = { flow: 0, cutoff: 1600, bubble: 0, dripRate: 0, pitch: 820, gain: 0 }
+const vClamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
+function brownNoise(c: AudioContext, sec: number): AudioBuffer {
+  const n = (c.sampleRate * sec) | 0, b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0)
+  let l = 0, mx = 1e-6
+  for (let i = 0; i < n; i++) { l = (l + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = l; if (Math.abs(l) > mx) mx = Math.abs(l) }
+  for (let i = 0; i < n; i++) d[i] = d[i] / mx * 0.9
+  return b
+}
+function vBubble(c: AudioContext) {   // one tiny organic bubble chirp
+  if (!vOut) return
+  const f = 500 + Math.random() * 1500, t0 = c.currentTime
+  const o = c.createOscillator(); o.type = 'sine'
+  o.frequency.setValueAtTime(f * 0.82, t0); o.frequency.exponentialRampToValueAtTime(f * 1.22, t0 + 0.015 + Math.random() * 0.025)
+  const g = c.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.02 + Math.random() * 0.03, t0 + 0.003); g.gain.exponentialRampToValueAtTime(0.0003, t0 + 0.02 + Math.random() * 0.03)
+  o.connect(g); g.connect(vOut); o.start(t0); o.stop(t0 + 0.08)
+}
+function vDrip(c: AudioContext) {     // a big droplet accent
+  if (!vOut) return
+  const f = vBase.pitch * (0.7 + Math.random() * 0.7), t0 = c.currentTime
+  const o = c.createOscillator(); o.type = 'sine'
+  o.frequency.setValueAtTime(f * 0.6, t0); o.frequency.exponentialRampToValueAtTime(f * 1.7, t0 + 0.05 + Math.random() * 0.04)
+  const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f * 1.3; bp.Q.value = 5
+  const g = c.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.32, t0 + 0.004); g.gain.exponentialRampToValueAtTime(0.0004, t0 + 0.14 + Math.random() * 0.08)
+  o.connect(bp); bp.connect(g); g.connect(vOut); o.start(t0); o.stop(t0 + 0.26)
+}
+function vTurb() {                     // slow turbulent wander of the flow body
+  const c = vCtx; if (!c || !vFlowG || !vLp) return
+  const t = c.currentTime, j = () => 0.7 + Math.random() * 0.6
+  vFlowG.gain.setTargetAtTime(vBase.flow * 0.13 * j(), t, 0.15)
+  vLp.frequency.setTargetAtTime(vClamp(vBase.cutoff * (0.85 + Math.random() * 0.3), 120, 12000), t, 0.18)
+  vRes.forEach(r => { r.g.gain.setTargetAtTime(vBase.flow * 0.05 * j(), t, 0.2); r.bp.frequency.setTargetAtTime(r.f * (0.8 + Math.random() * 0.4), t, 0.25) })
+  setTimeout(vTurb, 90 + Math.random() * 90)
+}
+function vBubbleTick() {
+  const c = vCtx; if (!c) return
+  if (vBase.bubble > 0 && !muted) vBubble(c)
+  const r = Math.max(0.5, vBase.bubble * 55)
+  setTimeout(vBubbleTick, (1 / r) * (0.4 + Math.random() * 1.2) * 1000)
+}
+function vDripTick() {
+  const c = vCtx; if (!c) return
+  if (vBase.dripRate > 0 && !muted) vDrip(c)
+  const r = Math.max(0.05, vBase.dripRate)
+  setTimeout(vDripTick, (1 / r) * (0.6 + Math.random() * 0.9) * 1000)
+}
+function initVoice(c: AudioContext, dest: AudioNode) {
+  vCtx = c; vBrown = brownNoise(c, 3); vClick = brownNoise(c, 0.05); void vClick
+  vOut = c.createGain(); vOut.gain.value = 0.9; vOut.connect(dest)
+  const flow = c.createBufferSource(); flow.buffer = vBrown; flow.loop = true
+  vLp = c.createBiquadFilter(); vLp.type = 'lowpass'; vLp.frequency.value = 1600; vLp.Q.value = 0.4
+  vFlowG = c.createGain(); vFlowG.gain.value = 0; flow.connect(vLp); vLp.connect(vFlowG); vFlowG.connect(vOut)
+  vRes = [420, 760, 1300].map(f => { const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 6; const g = c.createGain(); g.gain.value = 0; flow.connect(bp); bp.connect(g); g.connect(vOut!); return { bp, g, f } })
+  flow.start()
+  vInit = true
+  vTurb(); vBubbleTick(); vDripTick()
+}
+/** Drive the world voice. Pass the per-frame params, or null to fade it out.
+ *  null before the voice is ever used is a no-op (never builds nodes). */
+export function setWorldVoice(p: WorldTone | null): void {
+  const c = ensureCtx(); if (!c || !worldGain) return
+  if (!vInit) { if (p == null) return; if (c.state === 'suspended') c.resume().catch(() => {}); initVoice(c, worldGain) }
+  if (p == null || muted) { vBase.flow = 0; vBase.bubble = 0; vBase.dripRate = 0; vOut?.gain.setTargetAtTime(0, c.currentTime, 0.12); return }
+  vBase.flow = vClamp(p.flow ?? 0, 0, 1)
+  vBase.cutoff = vClamp(p.cutoff ?? 1600, 120, 12000)
+  vBase.bubble = vClamp(p.bubble ?? 0, 0, 1)
+  vBase.dripRate = vClamp(p.dripRate ?? 0, 0, 30)
+  vBase.pitch = vClamp(p.pitch ?? 820, 40, 4000)
+  vBase.gain = vClamp(p.gain ?? 0.9, 0, 1)
+  vOut?.gain.setTargetAtTime(vBase.gain * 0.9, c.currentTime, 0.05)
+}
+
 function noiseBuffer(c: AudioContext): AudioBuffer {
   const len = c.sampleRate * 2
   const buf = c.createBuffer(1, len, c.sampleRate)

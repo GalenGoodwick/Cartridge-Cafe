@@ -27,7 +27,7 @@ import SummonPrompt from './SummonPrompt'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, InteractionEffect, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
-import { worldBus, recordTap } from './cafe-audio'
+import { worldBus, recordTap, setWorldVoice, type WorldTone } from './cafe-audio'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
@@ -3488,6 +3488,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // one-shot command, so it's not deleted.
       const musicMod = sim.worldData['music_mod'] as { brightness?: number; gain?: number } | undefined
       if (musicMod) audioRef.current.setScoreMod(musicMod)
+
+      // World voice — a world sonifies its own state through the organic water
+      // voice (wd.tone). Read every frame; null when unset fades it out.
+      const tone = sim.worldData['tone'] as WorldTone | undefined
+      setWorldVoice(tone ?? null)
 
       // the EYE cuts a version when an AI edit-burst settles on a branch
       if (now - eyeCheckRef.current > 1000) {
