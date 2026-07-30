@@ -183,7 +183,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
     let ab = stRaw % 400;
     let st = ab % 200;
     let hue = fract(sv);
-    let rawHead00 = uni(9 + i * 4);
+    let rawHeadDL = uni(9 + i * 4);
+    let isDevLive = rawHeadDL > 15999.5;             // +16000 flags DEVELOPER LIVE — an AI builder is docked now
+    let rawHead00 = select(rawHeadDL, rawHeadDL - 16000.0, isDevLive);
     let isDocked = rawHead00 > 7999.5;               // +8000 flags THE DOCK — where the player is moored
     let rawHead0 = select(rawHead00, rawHead00 - 8000.0, isDocked);
     let isPlayerWorld = rawHead0 > 3999.5;           // +4000 flags a PLAYER WORLD (a space) → green rim
@@ -359,12 +361,21 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
       else if (bigBand == 4) { rim = vec3f(1.4, 0.75, 0.35); rimBase = 0.45; }
       if (isBranch) { rim = vec3f(0.30, 0.62, 1.75); rimBase = 0.6; }        // BRANCH — a blue outline on the round bubble
       if (isPlayerWorld) { rim = vec3f(0.40, 1.45, 0.65); rimBase = 0.5; }   // PLAYER WORLD — a green rim (matches the PLAYER WORLDS door)
+      // DEVELOPER LIVE — the rim itself goes red and pulses, winning over the
+      // green player rim, so a world being built NOW is unmistakable at a glance.
+      if (isDevLive) { let rp = 0.6 + 0.4 * sin(t * 4.0); rim = vec3f(1.9, 0.2, 0.2); rimBase = 0.5 + rp * 0.5; }
       col += rim * exp(-pow((length(q) - 0.97) * 9.0, 2.0)) * (rimBase + hov * 1.3);
       // THE DOCK ⚓ — a slow-breathing double ring outside the rim: you are moored here
       if (isDocked) {
         let breathe = 0.6 + 0.4 * sin(t * 1.6);
         col += vec3f(0.55, 0.95, 1.05) * exp(-pow((length(q) - 1.12) * 24.0, 2.0)) * breathe * 0.9;
         col += vec3f(0.35, 0.80, 0.95) * exp(-pow((length(q) - 1.24) * 30.0, 2.0)) * breathe * 0.5;
+      }
+      // DEVELOPER LIVE 🔴 — a quick red pulse on the rim: an AI is building here NOW.
+      // Faster than the dock's breathe (t*4) so it reads as active work, not mooring.
+      if (isDevLive) {
+        let pulse = 0.55 + 0.45 * sin(t * 4.0);
+        col += vec3f(1.7, 0.22, 0.22) * exp(-pow((length(q) - 1.05) * 20.0, 2.0)) * pulse;
       }
     } else {
       // halo when hovered
@@ -397,6 +408,30 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
             col = mix(col, vec3f(1.0, 1.0, 1.0), cov * (0.7 + hov * 0.3));
           }
         }
+      }
+    }
+    // DEVELOPER-LIVE chip — a small "DEV" tag box just to the RIGHT of a live
+    // bubble, dark fill + red pulsing border + bright letters. Drawn outside the
+    // face mask (it sits off the rim), keyed to the same isDevLive flag, so it
+    // appears and clears with the AI builder's dock.
+    if (isDevLive) {
+      let pulse = 0.6 + 0.4 * sin(t * 4.0);
+      let halfW = R * 0.52;
+      let halfH = R * 0.19;
+      let tagC = ctr + vec2f(rr + halfW + R * 0.10, 0.0);   // just off the right rim
+      let p = uv - tagC;
+      if (abs(p.x) <= halfW && abs(p.y) <= halfH) {
+        let inset = min(halfW - abs(p.x), halfH - abs(p.y));
+        col = mix(col, vec3f(0.05, 0.02, 0.02), 0.9);                          // dark chip fill
+        col += vec3f(1.7, 0.2, 0.2) * pulse * smoothstep(R * 0.05, 0.0, inset); // red border glow
+        let tx = (p.x + halfW) / (2.0 * halfW);
+        let ty = (p.y + halfH) / (2.0 * halfH);              // +y down → row 0 = top ✓
+        let cell = i32(floor(tx * 3.0));
+        let gp = (vec2f(fract(tx * 3.0), ty) - vec2f(0.15, 0.12)) / 0.72;      // pad inside each cell
+        var code = 68;                                        // D
+        if (cell == 1) { code = 69; }                         // E
+        if (cell == 2) { code = 86; }                         // V
+        col = mix(col, vec3f(1.8, 0.9, 0.9), char5x7(gp, code));               // bright letters
       }
     }
     // presence players HOVER at the edge — half inside, half out — so they draw
@@ -1408,7 +1443,12 @@ try {
     // THIS level. NEST off → legacy (main only, keyed by bubble name).
     const nestOff = typeof window !== 'undefined' && window.__ccNestOff
     const showHeads = nestOff ? ((!MF && !SUB && !PL) ? (heads[n] || 0) : 0) : rollup(childPathOf(lz))
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0) + (n === U.dockName ? 8000 : 0))
+    // +16000 flags DEVELOPER LIVE — a world whose AI builder is docked right now
+    // (its space slug is in window.__cafeDevLive); the shader pulses a red ring.
+    const devLiveSet = (typeof window !== 'undefined' && window.__cafeDevLive) || null
+    const dlSlug = lz.startsWith('space:') ? lz.slice(6) : null
+    const devLive = !!(devLiveSet && dlSlug && devLiveSet.has(dlSlug))
+    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0) + (n === U.dockName ? 8000 : 0) + (devLive ? 16000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride

@@ -82,6 +82,15 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     return 'main/players/space:' + spaceSlug
   }, { intervalMs: 10_000, byeOnCleanup: true, enabled: !versionView, deps: [name, spaceSlug, versionView] })
 
+  // DEVELOPER LIVE — the world's OWNER being present IS the developer at work, so
+  // flag it (alongside the AI builder's ai:<slug> dock) with a separate dev:<slug>
+  // presence in a non-counted scene. The bridge/hub read `ai:` OR `dev:` as live,
+  // so the world shows "developer live" when its maker — human or AI — is on it.
+  usePresenceBeat(
+    () => (isOwner && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) ? 'builders' : null,
+    { id: 'dev:' + spaceSlug, intervalMs: 10_000, byeOnCleanup: true, enabled: isOwner && !versionView, deps: [spaceSlug, isOwner, versionView] },
+  )
+
   // The arena competes BRANCHES (forked child spaces), never versions (Galen:
   // versions are one branch's private history; the vote decides between works).
   const loadBranches = useCallback(async () => {
