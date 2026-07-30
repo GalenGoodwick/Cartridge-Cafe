@@ -13,7 +13,7 @@ import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
 import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
-import { checkRateLimit } from '@/lib/rate-limit'
+import { bridgeOverLimit } from '@/lib/bridge-rate'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
@@ -603,11 +603,11 @@ export async function POST(req: NextRequest) {
       const _tag = tokenTag(_auth)
       const _ua = req.headers.get('user-agent')
       logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0], who: _tag })
-      // Generous per-token throttle: a single token can't spam the bridge (and
-      // its AI spend) relentlessly. House token exempt — the swarm builds at
-      // volume. Per-instance/in-memory: a speed bump for a runaway loop, not a
-      // distributed-DDoS wall (Vercel's edge handles volumetric floods).
-      if (!_tag.startsWith('house:') && await checkRateLimit('bridge', _tag)) {
+      // Generous GLOBAL per-token throttle: a single token can't spam the bridge
+      // (and its AI spend) relentlessly. One shared DB tally across all Vercel
+      // instances, so it holds even when requests fan out. House token exempt —
+      // the swarm builds at volume. Self-clearing per minute (see bridge-rate).
+      if (!_tag.startsWith('house:') && await bridgeOverLimit(_tag)) {
         return NextResponse.json({ error: 'Too many bridge requests — slow down (max ~180/min per token).' }, { status: 429 })
       }
     }
