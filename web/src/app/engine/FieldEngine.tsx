@@ -3508,6 +3508,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             wd[k] = incoming[k]
           }
           wd['__mySeat'] = a.seat   // so a shader/HUD can highlight "you" (client-local)
+          // uniform slot 15 is reserved for "my seat" — the shader's only way to know
+          const gu = wd['gpuUniforms']
+          if (Array.isArray(gu)) gu[15] = a.seat
         }
       } else {
         sandboxRef.current?.tick(sim, dt)
