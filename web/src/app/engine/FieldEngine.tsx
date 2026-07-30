@@ -1736,7 +1736,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // config keys the next world re-declares if it wants them
       for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
                        '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
-                       '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels']) {
+                       '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels',
+                       '__play_music', '__play_sound', 'music_mod', 'tone']) {
         if (k in wd) delete wd[k]
       }
     }
@@ -1748,6 +1749,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       r.setRenderScale(1.0)
       r.maxBufferPixels = 2_200_000
     }
+    // AUDIO is world identity too (Galen): the composed score + hosted track must
+    // not outlive the world. Stopping here on EVERY swap also fixes the vote's
+    // iffy audio — each candidate preview cleanly silences the last.
+    try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12) } catch { /* fine */ }
     // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
     // outlive the world (the vote→main cursor-trap bug).
     try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
