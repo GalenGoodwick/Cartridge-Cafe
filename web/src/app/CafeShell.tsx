@@ -335,7 +335,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const [brewAi, setBrewAi] = useState(false)
   const [brewNameOk, setBrewNameOk] = useState<boolean | null>(null)   // null = unchecked/too short · true/false = unique?
   const [brewChecking, setBrewChecking] = useState(false)
-  const [houseAiUp, setHouseAiUp] = useState(false)   // a swarm builder is online → offer "have the house AI build it"
   const brewSlugRef = useRef('')
   const brewFinalizedRef = useRef(false)
   const activeTabRef = useRef(true)
@@ -756,17 +755,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     if (brewAi && connectReady) finalizeBrief()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brewAi, connectReady])
-  // is a swarm builder (house AI or a volunteer) online right now? gates the
-  // "have the house AI build it" button so a player with no AI can still ship.
-  useEffect(() => {
-    if (brewStep < 1) { setHouseAiUp(false); return }
-    let alive = true
-    const check = () => fetch('/api/builds/availability').then(r => r.json())
-      .then(d => { if (alive) setHouseAiUp(!!d.available) }).catch(() => {})
-    check()
-    const iv = setInterval(check, 15_000)
-    return () => { alive = false; clearInterval(iv) }
-  }, [brewStep])
   // draft autosave: keep the name + brief so a mistaken exit (close, reload,
   // navigate away) restores them on reopen. Cleared on world-made or manual wipe.
   useEffect(() => {
@@ -795,18 +783,16 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     }
     window.location.href = '/space/' + brewSlugRef.current
   }
-  /** Deliver the brief and open the world — fired either by the player's OWN AI
-   *  logging in (brewAi), or by "have the house AI build it": setting the brief
-   *  enqueues it, and a resident/volunteer builder picks it up and builds live. */
-  const finalizeBrief = async (houseAi = false) => {
+  /** Deliver the brief and open the world — fired when the player's OWN AI logs
+   *  in (brewAi). Every world is built by an AI the player brings; the cafe no
+   *  longer plugs a house/borrowed AI in to build games for people. */
+  const finalizeBrief = async () => {
     if (brewFinalizedRef.current || !connectReady) return
     brewFinalizedRef.current = true
     setBrewErr('')
     const r = await fetch('/api/spaces/' + brewSlugRef.current, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      // houseAi:true ONLY when they chose "have the house AI build it" — that's the
-      // one consent that lets the daemon claim this world. Own-AI connect leaves it off.
-      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim(), houseAi }),
+      body: JSON.stringify({ name: brewName.trim(), slugFromName: true, brief: brewBrief.trim() }),
     }).catch(() => null)
     const d = await r?.json().catch(() => null)
     if (!r || !r.ok) { brewFinalizedRef.current = false; setBrewErr(d?.error || 'could not open the world'); return }
@@ -1587,7 +1573,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       {brewStep > 0 && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/80 backdrop-blur-sm"
           onClick={brewCancel}>
-          <div className="relative w-[480px] max-w-[94vw] border border-brass/40 rounded-xl px-7 py-6 bg-void/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]"
+          <div className="relative w-[480px] max-w-[94vw] border border-brass/60 rounded-xl px-7 py-6 bg-gradient-to-b from-[#2a2016] to-[#1a130b] ring-1 ring-glow/10 shadow-[0_0_90px_rgba(255,178,90,0.28)]"
             onClick={e => e.stopPropagation()}>
             <button onClick={brewCancel} aria-label="back out"
               className="absolute top-2.5 right-3.5 font-mono text-sm text-crema/70 hover:text-glow transition-colors">✕</button>
@@ -1668,16 +1654,6 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
                 COPY CONNECTION PROMPT
               </button>
-              <div className="font-mono text-[14px] tracking-[0.2em] text-crema/70 text-center my-2">— or —</div>
-              <button disabled={!connectReady} onClick={() => finalizeBrief(true)}
-                className="w-full rounded-lg bg-brass/90 hover:bg-glow py-2.5 font-mono text-[14px] tracking-[0.15em] text-void transition-colors disabled:opacity-35">
-                ☕ HAVE THE HOUSE AI BUILD IT
-              </button>
-              <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
-                {houseAiUp
-                  ? <span className="text-glow/70">a resident AI is online — it builds your brief live while you watch.</span>
-                  : 'no AI of your own? leave it to the house — your brief queues and an AI builds it as soon as one is free.'}
-              </div>
               <div className="font-mono text-[14px] tracking-[0.15em] mt-2 text-crema/70">
                 {brewAi && connectReady
                   ? <span className="text-glow animate-pulse">your AI connected — delivering the brief and opening your world…</span>
@@ -1884,13 +1860,20 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                     ))}
                     <div className="my-1 border-t border-white/10" />
                     {who.guest ? (
-                      // a guest has no account to sign out of — offer to KEEP their
-                      // work. The auth page claims their guest-built worlds onto the
-                      // real account they create / sign in to.
-                      <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
-                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
-                        ◆ CREATE ACCOUNT
-                      </button>
+                      // a guest has no real account, but two ways out: KEEP their
+                      // work (the auth page claims their guest-built worlds onto the
+                      // account they create / sign in to), or just LEAVE — sign out
+                      // of the guest session and go back to being a stranger.
+                      <>
+                        <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
+                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
+                          ◆ CREATE ACCOUNT
+                        </button>
+                        <button onClick={() => signOut({ callbackUrl: '/' })}
+                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
+                          sign out of guest
+                        </button>
+                      </>
                     ) : (
                       <button onClick={() => signOut({ callbackUrl: '/' })}
                         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">

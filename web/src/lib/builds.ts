@@ -59,42 +59,15 @@ export function hist(prev: unknown, e: HistEntry): HistEntry[] {
 
 /** Enqueue a pending BuildJob for every world with an unfinished creation
  *  brief that has no live job. Idempotent — safe to call on every poll. */
-export async function reconcile(now: Date): Promise<number> {
+export async function reconcile(_now: Date): Promise<number> {
+  // DISABLED: the cafe no longer auto-builds player worlds. Every world is built
+  // by an AI the player brings (their own connect). This scavenge — creation_brief
+  // → BuildJob for the house daemon — is the "plug an AI in to build FOR people"
+  // mechanism Galen removed, so it never enqueues, and no legacy __house_requested
+  // flag can revive it. The swarm/BuildJob framework itself stays for dynamic agents
+  // (they enqueue via /api/builds/enqueue-scene or the API, not this scavenge).
   await ensureBuilderTables()
-  const spaces = await prisma.playerSpace.findMany({
-    select: { id: true, slug: true, name: true, snapshot: true },
-    orderBy: { updatedAt: 'desc' },
-    take: 200,
-  })
-  let made = 0
-  for (const s of spaces) {
-    const wd = (s.snapshot as { worldData?: { creation_brief?: { prompt?: string }; brief_done?: unknown; __house_requested?: unknown } } | null)?.worldData
-    const brief = wd?.creation_brief?.prompt
-    if (!brief || wd?.brief_done) continue
-    // The house AI only builds what was EXPLICITLY handed to it ("have the house AI
-    // build it"). A brief alone is NOT consent — a player may be building the world
-    // themselves or with their own connected AI (it reads the brief too). Without
-    // this the daemon scavenged every brief and collided with the real builder.
-    if (!wd.__house_requested) continue
-    // Dedup on (space, brief text) including `done` — so a finished build whose
-    // brief_done didn't persist can't spawn a rebuild loop, while a genuinely
-    // new/edited brief (different text) still enqueues fresh.
-    const seen = await prisma.buildJob.findFirst({
-      where: { spaceId: s.id, brief, status: { in: ['pending', 'leased', 'building', 'needs_review', 'done'] } },
-      select: { id: true },
-    })
-    if (seen) continue
-    await prisma.buildJob.create({
-      data: {
-        spaceId: s.id,
-        spaceSlug: s.slug,
-        brief,
-        history: [{ at: now.toISOString(), by: 'system', event: 'enqueued' }],
-      },
-    })
-    made++
-  }
-  return made
+  return 0
 }
 
 /** Cancel queued SPACE jobs whose consent evaporated: the brief got finished by

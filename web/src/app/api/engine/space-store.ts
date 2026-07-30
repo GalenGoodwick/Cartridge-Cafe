@@ -157,7 +157,7 @@ export function invalidateSpaceCache(spaceId: string): void {
 // #5b: curated known-params per command. Unknown keys are surfaced as a
 // (non-fatal) warning so a typo'd param stops silently vanishing.
 const KNOWN_PARAMS: Record<string, Set<string>> = {
-  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
+  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'noCollide', 'pixelCollide', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
   set_visual: new Set(['type', 'fieldId', 'visualType', 'visualParams', 'renderTarget', 'sampleTargets', 'renderOrder']),
   set_position: new Set(['type', 'fieldId', 'x', 'y', 'z', 'rotX', 'rotY']),
   set_color: new Set(['type', 'fieldId', 'color']),
@@ -257,7 +257,12 @@ export function applyCommandToSnapshotObject(
 
   switch (cmd.type) {
     case 'create_field': {
-      const fieldId = `field_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      // honor a caller-supplied fieldId (headless builders address fields
+      // deterministically — hooks/effects reference them by id); fall back to a
+      // generated one. Collisions refuse loudly instead of silently forking.
+      const wantedId = typeof cmd.fieldId === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(cmd.fieldId) ? cmd.fieldId : null
+      if (wantedId && snap.fields.some(f => f.id === wantedId)) { result.error = `create_field: field id "${wantedId}" already exists`; return result }
+      const fieldId = wantedId ?? `field_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const color = (cmd.color as [number, number, number, number]) ?? [1, 1, 1, 1]
       // Shape default follows what the field IS. This is a shader-composition
       // engine: a skinned field's real shape is its visual's ALPHA (the engine
@@ -297,6 +302,9 @@ export function applyCommandToSnapshotObject(
         visualParams: cmd.visualParams as [number, number, number, number] | undefined,
         tags: cmd.tags as string[] | undefined,
         noHit: cmd.noHit as boolean | undefined,
+        noCollide: cmd.noCollide as boolean | undefined,
+        // PIXEL-COLLIDE LAW: collision body = rendered pixels (appearance IS geometry)
+        pixelCollide: cmd.pixelCollide as boolean | undefined,
         properties: cmd.properties as Record<string, unknown> | undefined,
       })
       result.fieldId = fieldId
@@ -504,6 +512,9 @@ export function applyCommandToSnapshotObject(
 
     case 'add_effect': {
       const f = snap.fields.find(f => f.id === cmd.fieldId)
+      // a miss must be LOUD — this silently 200'd for months (effects targeting a
+      // wrong/generated id vanished; the world rendered dark with no signal)
+      if (!f) { result.error = `add_effect: no field with id "${cmd.fieldId}" — ids are returned by create_field (fieldId), or pass your own fieldId at create`; return result }
       if (f) {
         f.effects.push({
           id: `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,

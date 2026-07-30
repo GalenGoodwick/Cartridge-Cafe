@@ -9,7 +9,12 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   const pool = globalForPrisma.pool ?? new Pool({
-    connectionString: process.env.DATABASE_URL,
+    // CAFE_DATABASE_URL is the cafe's OWN database (its own Neon branch), split
+    // out from the Unity-Chant-shared DB that the Vercel/Neon Storage integration
+    // manages as DATABASE_URL. We read our own var first so the integration can
+    // never silently revert the cutover; unset → falls back to the shared DB, i.e.
+    // exactly the pre-split behavior.
+    connectionString: process.env.CAFE_DATABASE_URL || process.env.DATABASE_URL,
     max: 5,
     idleTimeoutMillis: 30000,
     // Neon over home networks: connects can take seconds after an idle window,

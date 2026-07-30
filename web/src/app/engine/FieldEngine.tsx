@@ -5,7 +5,7 @@ import { copyText } from '@/lib/copyText'
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
-import { useWorldChat } from '@/lib/useWorldChat'
+import { BuilderBoxChat } from './builderbox/BuilderBoxChat'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
@@ -13,6 +13,8 @@ import { resetPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
+import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
+import { NodeGraphOverlay, NODE_KIND_STYLE, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { WorldSandbox } from './world-sandbox'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -209,59 +211,6 @@ const wrapOtherGlyph = (wgsl: string, slot: number): string => {
 }
 
 
-/** BUILDERBOX CHAT — the world chat, living inside the BuilderBox (Galen: chat
- *  and build console are ONE surface; every entry is an INVITATION the AI
- *  network hears). Same slot + notify path as ChatWorld — literally: both run
- *  the shared useWorldChat core, so the server-side builderbox wire pings the
- *  bus on each post. verifyPost/noStore keep this skin's stricter posting
- *  (read-back confirm, no-store reads); only the compact layout is unique. */
-function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; channel: string; onFullChat: () => void }) {
-  const { msgs, who, draft, setDraft, say, postErr, scrollRef, snapToBottom } =
-    useWorldChat('world-chat:' + slotKey, { channel, verifyPost: true, noStore: true })
-  // no auto-snap — manual ▼ CURRENT only (Galen)
-  const [atBottom, setAtBottom] = useState(true)
-  const checkBottom = () => { const el = scrollRef.current; if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 8) }
-  useEffect(() => { checkBottom() }, [msgs])
-  // CHAT IS CHAT (Galen): a chat entry NOTIFIES the maker — it does NOT summon
-  // the AI network; summoning builders is the SUMMON bar's job (an explicit
-  // rally). The maker-notify, the read-back post confirm, and say() itself
-  // live in the shared useWorldChat core — no builderbox invite, no queue
-  // confirm. AIs still read and post to this chat; they're just not
-  // auto-summoned by it.
-  return (
-    <div className="border-t border-white/10 flex flex-col h-[280px]">
-      <div className="flex items-center justify-between px-3 pt-1.5 font-mono text-[12px] tracking-[0.2em] text-white/35">
-        <span>⌁ WORLD CHAT — the room hears you (chat is chat)</span>
-        <div className="flex items-center gap-2">
-          <button onClick={() => { snapToBottom(); setAtBottom(true) }} disabled={atBottom}
-            title={atBottom ? 'at the newest message' : 'jump to the newest message'}
-            className={atBottom ? 'text-white/20 cursor-default' : 'text-amber-300 animate-pulse'}>▼ CURRENT</button>
-          <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
-        </div>
-      </div>
-      <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/30">
-        ⚑ SUMMON (the bar below, owners) = the explicit rally — it calls AI builders. CHAT = just talk: the maker and the room hear you; nothing is auto-summoned.
-      </div>
-      <div ref={scrollRef} onScroll={checkBottom} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
-        {msgs.length === 0
-          ? <div className="text-white/30">say something — the maker and the room hear it.</div>
-          : msgs.slice(-40).map((m, i) => (
-            <div key={m.at + '-' + i} className="text-white/75">
-              <span className={m.ai ? 'text-amber-300/90' : 'text-emerald-300/80'}>{m.who}</span>
-              <span className="text-white/30"> · </span>{m.text}
-            </div>
-          ))}
-      </div>
-      {postErr && <div className="px-3 pb-1 font-mono text-[12px] text-red-400/90">{postErr}</div>}
-      <div className="flex gap-1.5 px-2 pb-2">
-        <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void say() }}
-          placeholder={who ? 'say something — the maker hears' : 'sign in to speak'}
-          className="flex-1 bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 font-mono text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-white/30" />
-        <button onClick={() => void say()} className="px-3 rounded-md bg-white/10 hover:bg-white/20 font-mono text-[13px] text-white/70">➤</button>
-      </div>
-    </div>
-  )
-}
 
 export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
@@ -729,6 +678,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // GPU/frame budget meter — EMA of frame ms, published to worldData.__budget
   // every 2s so builders (human or AI, via the bridge) SEE cost before it hangs
   const frameMsEmaRef = useRef<number>(16)
+  const syncBytesRef = useRef<number>(0)   // P0: last owner-sync wire size (bytes)
+  // P1: name→hash of shaders the SERVER currently holds (per this session). Lets the
+  // 2s sync send hash-only {name,hash} for unchanged visuals/modules. Self-heals — a
+  // miss triggers a server `resync` and we resend full next tick.
+  const syncedHashesRef = useRef<{ vis: Map<string, string>; mod: Map<string, string> }>({ vis: new Map(), mod: new Map() })
   const budgetWroteRef = useRef<number>(0)
   const budgetWarnedRef = useRef<boolean>(false)
   // RENDER-SCALE GOVERNOR — an internal multiplier on the world's declared
@@ -774,6 +728,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const audio = audioRef.current
     return () => { audio.destroy(); sandboxRef.current?.dispose() }
   }, [])
+  // no world's looping music/score outlives its scene. The full loadScene teardown
+  // stops audio, but the VOTE RECKONING flicks between cached previews on a fast
+  // path that bypasses it — so closing the reckoning (playScene: preview → hub)
+  // left the previewed world's loop playing. Stop on EVERY playScene change; the
+  // incoming scene re-triggers its own music, and stopMusic/stopScore are idempotent.
+  useEffect(() => {
+    const audio = audioRef.current
+    return () => { audio.stopScore(); audio.stopMusic(0.25) }
+  }, [playScene])
   // ── fault surface: when the world goes down, SAY WHY on screen ──
   const [fault, setFault] = useState<{ kind: string; message: string } | null>(null)
   const frameCrashRef = useRef(false)
@@ -970,6 +933,80 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // (commons ping + builderbox:queue) as an INVITATION — watching AIs choose.
   const [buildConsoleOpen, setBuildConsoleOpen] = useState(false)
   const buildConsoleClosedRef = useRef(false)
+  // BuilderBox "AI focus" — worldData.ai_focus is auto-set on every AI world-edit
+  // ({action, fieldName, at}); poll it so the human can see what the AI is doing.
+  const [aiFocus, setAiFocus] = useState<{ action?: string; fieldName?: string; at?: number; error?: { name: string; type: string; error: string } | null } | null>(null)
+  // the AI's eye — the latest render_probe PNG the bridge stashed to slot ai_eye:<scope>
+  const [aiEye, setAiEye] = useState<{ png?: string; at?: number; name?: string; stats?: { meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: number; hookErrors?: number; dominantColors?: number[][] } } | null>(null)
+  // ◈ AI VIEW tabs — EYE (focus + render) and NODES (the world's architecture graph).
+  // The whole world IS a node graph: modules → visuals → fields, with hooks driving the
+  // uniforms the visuals read. Tier-1 is read-only + inspector; the same nodes are built
+  // to become draggable/wireable in Tier-2 (structural nodes are human-editable).
+  const [aiViewTab, setAiViewTab] = useState<'eye' | 'nodes'>('eye')
+  const [nodeGraph, setNodeGraph] = useState<AiNodeGraph | null>(null)
+  const [nodesExpanded, setNodesExpanded] = useState(false)
+  // P0 telemetry readout — frame/hook/compile budgets sampled from the live engine.
+  const [perf, setPerf] = useState<{ frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null>(null)
+  useEffect(() => {
+    // ONLY poll while the AI VIEW panel is actually open. This was ungated and ran
+    // on EVERY visitor tab forever — two /api/engine/save function hits every 1.8s
+    // per tab — which spiked prod Function Invocations ~16×. The data is only shown
+    // inside the BuilderBox, so there's no reason to fetch it when it's closed.
+    if (!buildConsoleOpen) return
+    const iv = setInterval(async () => {
+      // scope key mirrors the bridge (route.ts `aiScope`): spaces key by spaceId,
+      // house/scene worlds by 'scene:<base-slug>' so the panel works on house content.
+      const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+      const scope = spaceId
+        ? spaceId
+        : (base ? 'scene:' + base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) : null)
+      // FOCUS — spaces get it live in worldData; house worlds read the durable slot.
+      const wdFocus = simulationRef.current?.worldData?.['ai_focus'] as { action?: string; fieldName?: string; at?: number; error?: { name: string; type: string; error: string } | null } | undefined
+      if (wdFocus && typeof wdFocus === 'object') setAiFocus(wdFocus)
+      else if (scope) {
+        try {
+          const r = await fetch('/api/engine/save?slot=' + encodeURIComponent('ai_focus:' + scope))
+          if (r.ok) { const d = await r.json(); setAiFocus(d && d.data && typeof d.data === 'object' ? d.data : null) }
+        } catch { /* focus is a courtesy */ }
+      } else setAiFocus(null)
+      // EYE — the render_probe snapshot, keyed by the same scope.
+      if (scope) {
+        try {
+          const r = await fetch('/api/engine/save?slot=' + encodeURIComponent('ai_eye:' + scope))
+          if (r.ok) { const d = await r.json(); const eye = d && d.data && d.data.png ? d.data : (d && d.png ? d : null); if (eye) setAiEye(eye) }
+        } catch { /* the eye is a courtesy */ }
+      }
+    }, 1800)
+    return () => clearInterval(iv)
+  }, [buildConsoleOpen, spaceId, spaceSlug, playScene])
+  // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
+  const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current), [])
+  // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
+  useEffect(() => {
+    if (!buildConsoleOpen) return
+    const tick = () => {
+      setNodeGraph(snapshotNodeGraph())
+      // P0 perf sample: frame ms (existing EMA) + hook ms (sim) + compile (renderer)
+      const sim = simulationRef.current
+      const r = rendererRef.current as unknown as { compilePerf?: { lastMs: number; at: number } } | null
+      const hp = sim?.hookPerf
+      let topHook: [string, number] | null = null
+      if (hp) for (const [id, ms] of hp.perHook) if (!topHook || ms > topHook[1]) topHook = [id, ms]
+      const cp = r?.compilePerf
+      setPerf({
+        frameMs: frameMsEmaRef.current || 0,
+        hookMs: hp?.totalMs || 0,
+        topHook,
+        compileMs: cp?.lastMs || 0,
+        compileAgeS: cp?.at ? (Date.now() - cp.at) / 1000 : Infinity,
+        fields: sim?.fields.size || 0,
+        syncKB: syncBytesRef.current / 1024,
+      })
+    }
+    tick()
+    const iv = setInterval(tick, 1500)
+    return () => clearInterval(iv)
+  }, [buildConsoleOpen, snapshotNodeGraph])
   // WebGPU unavailable or lost — show a human answer, not a black void
   const [gpuFailed, setGpuFailed] = useState(false)
 
@@ -1439,36 +1476,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim) return null
-    const fields = sim.generateSnapshots()
-    const stepHooks = allStepHookSnapshots(sim)
-    // extraWorldData wins over the inherited sim.worldData — so a branch's
-    // `branchedFrom` is stamped to ITS immediate parent, not the grandparent it
-    // inherited (walk the chain for full genealogy; the name still flattens to root).
-    const worldData = { ...sim.worldData, ...(extraWorldData || {}) }
-    // ONLY the visuals THIS world uses. The renderer registry is GLOBAL — every
-    // visual from every world visited this session — so grabbing it whole scoops
-    // foreign visuals (fluid_base, garnet, …) into a branch snapshot (the ORCHID
-    // branch bug). Keep visuals attached to a field, or named in a hook/worldData
-    // (dynamic swaps); drop the rest.
-    const used = new Set<string>()
-    for (const f of fields) { const vn = (f as { visualTypeName?: string }).visualTypeName; if (vn) used.add(vn) }
-    const hay = JSON.stringify(stepHooks) + JSON.stringify(worldData)
-    const sceneData = {
+    // 'used' scope = the ORCHID fix: only visuals THIS world references (attached to a
+    // field or named in a hook/worldData), never the whole global renderer registry.
+    // extraWorldData wins over inherited sim.worldData so a branch's `branchedFrom` is
+    // stamped to its immediate parent.
+    const sceneData = serializeSceneDocument(sim, renderer, {
       name: sceneName,
-      fields,
-      worldParams: sim.getWorldParams(),
-      worldData,
-      stepHooks,
-      interactionRules: [...sim.interactionRules],
-      interactionEffects: [...sim.interactionEffects],
-      visualTypes: renderer
-        ? renderer.getAllVisualTypes()
-            .filter(vt => used.has(vt.name) || hay.includes(vt.name))
-            .map(vt => ({ name: vt.name, wgsl: vt.wgsl }))
-        : [],
-      modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-      timestamp: Date.now(),
-    }
+      stepHooks: allStepHookSnapshots(sim),
+      visualScope: 'used',
+      extraWorldData,
+    })
     // no blank submissions — a branch version must contain a world
     if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return null
     try {
@@ -1586,37 +1603,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
-  /** CREATE BRANCH + hand it to the house AI: fork the branch (so it exists and
-   *  the owner can write it), then queue its brief for the swarm. Branches are
-   *  scenes, so this goes through /api/builds/enqueue-scene (uc_sc_), not the
-   *  world creation_brief path. */
-  const branchWithHouseAi = useCallback(async (labelRaw: string, briefRaw: string) => {
-    if (!me) { window.location.href = '/auth/signin'; return }
-    const brief = briefRaw.trim()
-    if (brief.length < 20) { showToast('write a longer brief first (what should it build?)', 'error'); return }
-    const src = lastSceneRef.current || playScene || spaceSlug || ''
-    if (!src) { showToast('load a world first', 'error'); return }
-    const base = src.split(' ⑂ ')[0]
-    const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
-    const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-    const savedAs = await saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
-    if (!savedAs) { showToast('could not open the branch', 'error'); return }
-    lastSceneRef.current = savedAs
-    const r = await fetch('/api/builds/enqueue-scene', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sceneName: savedAs, brief }),
-    }).then(x => x.json()).catch(() => null)
-    setBranchCreateOpen(false)
-    if (r?.ok) {
-      showToast(`house AI building your branch — opening it live`, 'success')
-      // move the owner to the NEW branch view so they watch it build (the branch
-      // exists now; without this they were left on the world they branched from).
-      window.location.href = '/hub/' + encodeURIComponent(savedAs)
-    } else showToast(r?.error || 'could not queue the house AI', 'error')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, spaceSlug, saveSceneAs])
-
   /** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
    *  the live-scoped token, open the plug box. The altered world IS main — the
    *  save point is the way back. */
@@ -1650,18 +1636,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const name = window.prompt('Scene name:')
     if (!name?.trim()) return
     const sceneName = name.trim()
-    const sceneData = {
+    const sceneData = serializeSceneDocument(sim, renderer, {
       name: sceneName,
-      fields: sim.generateSnapshots(),
-      worldParams: sim.getWorldParams(),
-      worldData: { ...sim.worldData },
       stepHooks: allStepHookSnapshots(sim),
-      interactionRules: [...sim.interactionRules],
-      interactionEffects: [...sim.interactionEffects],
-      visualTypes: renderer ? renderer.getAllVisualTypes().map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
-      modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-      timestamp: Date.now(),
-    }
+      visualScope: 'all',
+    })
     try {
       await fetch('/api/engine/scene', {
         method: 'POST',
@@ -3369,6 +3348,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // Render loop — crash-guarded: an exception must not silently freeze
     // the canvas to black. The first crash is surfaced as a fault.
     function frame() {
+      // Zombie-loop guard: once this effect run has been torn down (cleanup set
+      // `cancelled`), a frame already in flight must NOT reschedule itself, or it
+      // survives cancellation and keeps driving the (re-created) renderer, stacking a
+      // second live loop on every re-init and degrading performance over a session.
+      if (cancelled) return
       try { frameBody() } catch (e) {
         const msg = String((e as Error)?.message || e)
         // The vote reckoning insets the canvas; mid-resize the browser can throw a
@@ -3391,14 +3375,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     function frameBody() {
       const now = performance.now()
-      // Cap at ~60fps: ProMotion displays otherwise drive the full compute
-      // pipeline at 120Hz — double the GPU load (and laptop heat) for no
-      // perceptible gain in a shader-driven scene. Watching IS using, focused
-      // or not — the usual posture is the engine visible beside a chat window,
-      // and a 10fps unfocused throttle read as "the scene is choppy" (Jul 12
-      // 2026, measured: every dropped frame was an unfocused one). Full rate
-      // whenever visible; hidden tabs still pause free via rAF.
-      const minFrameMs = 15
+      // Frame budget by attention state:
+      //  · FOCUSED, visible → ~60fps (cap ProMotion's 120Hz — double GPU load
+      //    and laptop heat for no perceptible gain in a shader scene).
+      //  · UNFOCUSED but visible (engine beside a chat/terminal window) → ~30fps.
+      //    A prior 10fps unfocused throttle read as "choppy" (Jul 12 2026), so
+      //    that was reverted to full rate — but full rate pins ~20% CPU + the GPU
+      //    the whole time another app is on top. 30fps is the middle: it roughly
+      //    halves the render+sim cost of the beside-a-window posture and still
+      //    reads smooth (30 ≠ the old 10). Tune UNFOCUSED_MS to taste.
+      //  · HIDDEN tab → rAF pauses for free (browser), so this never runs.
+      const UNFOCUSED_MS = 33
+      const minFrameMs = windowFocusedRef.current ? 15 : UNFOCUSED_MS
       if (now - lastFrameRef.current < minFrameMs) {
         animFrameRef.current = requestAnimationFrame(frame)
         return
@@ -4144,8 +4132,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         renderer.render(camera, camera.zoom, time, fieldEffects, superFields, activeInteractions, mode3D ? { pos: mode3D.pos, pitch: mode3D.pitch, yaw: mode3D.yaw, fov: mode3D.fov } : undefined, stepHookData)
       }
 
-      // Trigger async readback of hit ID map for pixel-perfect hit testing
-      if (superFields.length > 0) {
+      // Trigger async readback of hit ID map for pixel-perfect hit testing —
+      // only when a field is actually hittable (skipped for noHit worlds like the
+      // raymarched 3D scenes, whose hit map is always empty).
+      if (superFields.length > 0 && renderer.hitReadbackNeeded) {
         renderer.readbackHitMap()
         // Update simulation with latest hit map and grid-to-pixel converters
         sim.superHitMap = renderer.hitMap
@@ -4213,6 +4203,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           for (const [fieldId, presence] of presenceMaps) {
             sim.fieldPresence.set(fieldId, presence)
           }
+
+          // SEMANTIC CHANNELS: derive per-field channel readings from the fresh
+          // presence maps and hand them to the world (wd.__channels[id] = {heat: 0.4}).
+          // The engine STATES the intersection; the world's hook decides what it means.
+          // Runs at the presence throttle (~4Hz), so it's cheap. Absent when no field
+          // publishes a 'ch:*' tag.
+          const channels = sim.allChannelReadings()
+          if (Object.keys(channels).length) sim.worldData['__channels'] = channels
+          else if (sim.worldData['__channels']) delete sim.worldData['__channels']
 
           // Pre-compute overlap masks for interaction effects (expensive dilation runs here at ~4fps, not 60fps)
           if (sim.interactionEffects.length > 0) {
@@ -4793,6 +4792,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 // NoHit — field renders but doesn't capture mouse clicks
                 if (cmd.noHit) {
                   newField.noHit = true
+                }
+                if (cmd.noCollide) newField.noCollide = true
+                // PIXEL-COLLIDE LAW — collision body = rendered pixels, not bounds
+                if (cmd.pixelCollide) newField.pixelCollide = true
+                // properties (e.g. {static:true}) — the client handler dropped these,
+                // so the owner tab's 2s sync then wrote EMPTY properties back over the
+                // server's, un-pinning static fields (KEYHOLE ring drifted). Copy them.
+                if (cmd.properties && typeof cmd.properties === 'object') {
+                  for (const [k, v] of Object.entries(cmd.properties as Record<string, unknown>)) newField.properties.set(k, v)
                 }
               }
 
@@ -5397,21 +5405,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             case 'save_scene': {
               const sceneName = cmd.name as string
               if (!sceneName) { pushTerminal('save_scene', undefined, 'ERROR: name required'); break }
-              const sceneData = {
+              // 'notBroken': quarantined visuals are not persisted — a broken shader
+              // must not circulate through the store forever.
+              const sceneData = serializeSceneDocument(sim, renderer, {
                 name: sceneName,
-                fields: sim.generateSnapshots(),
-                worldParams: sim.getWorldParams(),
-                worldData: { ...sim.worldData },
                 stepHooks: allStepHookSnapshots(sim),
-                interactionRules: [...sim.interactionRules],
-                interactionEffects: [...sim.interactionEffects],
-                // Quarantined visuals are not persisted — a broken shader must not
-            // circulate through the store forever, costing every fresh session
-            // an isolation sweep. A fixed re-register clears the flag.
-            visualTypes: renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : [],
-                modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-                timestamp: Date.now(),
-              }
+                visualScope: 'notBroken',
+              })
               try {
                 await fetch('/api/engine/scene', {
                   method: 'POST',
@@ -5913,46 +5913,54 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // rebuilds it every frame, so persisting it only bloats the snapshot.
         // HUBWORLD visit: NEVER sync member content over the hub's snapshot
         if (visitingRef.current) return
-        const syncWorldData = Object.fromEntries(
-          Object.entries(sim.worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation')
-        )
-        const syncFields = sim.generateSnapshots()
-        // Quarantined visuals are not persisted — a broken shader must not circulate
-        // through the store forever, costing every fresh session an isolation sweep.
-        const syncVisuals = renderer ? renderer.getAllVisualTypes().filter(vt => !vt.broken).map(vt => ({ name: vt.name, wgsl: vt.wgsl })) : []
+        // Canonical serialization (P2 persistence module). excludeBroken: quarantined
+        // visuals must not circulate through the store forever, costing every fresh
+        // session an isolation sweep.
+        const snap = serializeWorld(sim, renderer, { stepHooks: allStepHookSnapshots(sim), excludeBroken: true })
         // TEARDOWN GUARD: a hot-reload leaves the renderer with 0 visuals for a beat.
-        // If our 2s sync fires in that window it persists an EMPTY world — everyone
-        // then reloads to nothing and it renders DARK. A snapshot with skinned fields
-        // but no visuals is never a real state; it's a transient teardown. Skip it.
-        const someSkinned = syncFields.some(f => { const o = f as { visualType?: unknown; visualTypeName?: unknown }; return o.visualType || o.visualTypeName })
-        if (syncVisuals.length === 0 && someSkinned) return
+        // Skinned fields but no visuals is a transient, not a real state — persisting it
+        // renders everyone DARK. Skip it.
+        if (isTeardownSnapshot(snap.fields, snap.visualTypes.length)) return
+        // P1: for a space sync, send hash-only for shaders the server already holds
+        // (content-addressed). Global (non-space) sync keeps sending full.
+        const known = syncedHashesRef.current
+        const wireShaders = spaceId
+          ? { visualTypes: diffShaders(snap.visualTypes, known.vis), modules: diffShaders(snap.modules, known.mod) }
+          : { visualTypes: snap.visualTypes, modules: snap.modules }
+        const syncBody = {
+          clientId: clientIdRef.current,
+          takeover: takeoverRef.current,
+          ...snap,
+          ...wireShaders,
+          renderedSamples: Object.fromEntries(renderedSamplesRef.current),
+          // Space-scoped sync
+          ...(spaceId ? { spaceId } : {}),
+        }
+        syncBytesRef.current = snapshotBytes(syncBody)   // P0: the ACTUAL (diffed) wire size
         const syncRes = await fetch('/api/engine/state', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: clientIdRef.current,
-            takeover: takeoverRef.current,
-            fields: syncFields,
-            worldParams: sim.getWorldParams(),
-            stepHooks: allStepHookSnapshots(sim),
-            worldData: syncWorldData,
-            renderedSamples: Object.fromEntries(renderedSamplesRef.current),
-            interactionEffects: sim.interactionEffects,
-            visualTypes: syncVisuals,
-            modules: renderer ? renderer.getAllModules().map(m => ({ name: m.name, wgsl: m.wgsl })) : [],
-            // Space-scoped sync
-            ...(spaceId ? { spaceId } : {}),
-          }),
+          body: JSON.stringify(syncBody),
         })
+        const syncData = await syncRes.json().catch(() => null) as { deferred?: string; resync?: { visualTypes?: string[]; modules?: string[] } } | null
         if (syncRes.status === 409) {
           setWorldLocked(true)
+        } else if (syncData?.resync) {
+          // server lacks some shader content we sent hash-only — forget those so the
+          // next tick resends them in full (nothing was persisted this tick).
+          for (const n of syncData.resync.visualTypes || []) known.vis.delete(n)
+          for (const n of syncData.resync.modules || []) known.mod.delete(n)
         } else if (syncRes.ok) {
           takeoverRef.current = false
           setWorldLocked(false)
+          // stored successfully → the server now holds exactly these shader hashes,
+          // so the next tick may send them hash-only. (Skip on deferred: server unchanged.)
+          if (spaceId && !syncData?.deferred) {
+            syncedHashesRef.current = { vis: shaderHashes(snap.visualTypes), mod: shaderHashes(snap.modules) }
+          }
           // A deferred sync means an AI is writing this world over the bridge
           // RIGHT NOW (the server skipped our sync to protect that write).
           // A live hand in the world must be VISIBLE to the human in it.
-          const syncData = await syncRes.json().catch(() => null) as { deferred?: string } | null
           if (syncData?.deferred === 'bridge-write in flight') {
             aiLastEditRef.current = Date.now()
             setAiPulse(p => p + 1)
@@ -6065,17 +6073,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // player actually SEES it, then we never fight their toggle again.
   const buildConsoleRef = useRef<HTMLDivElement>(null)
   // NO auto-snap (Galen): the panel's own ▼ CURRENT button is the one way down.
-  // auto-open the build console once a build starts producing log lines — unless
-  // the reader manually closed it. When the log clears (a fresh build), re-arm.
+  // Galen: an AI edit must NOT hijack whoever is watching. The BuilderBox is
+  // HUMAN-CHOICE ONLY — the build log still flows into it, but it only opens on a
+  // deliberate click of the ⌁ BUILDERBOX button, never an auto-pop on a build.
   useEffect(() => {
     if (terminalLog.length === 0) { buildConsoleClosedRef.current = false; return }
-    if (buildConsoleClosedRef.current) return
-    // Only pop for a LIVE build. A world that was built before still has its old
-    // console lines sitting in its build:console slot; without this recency gate,
-    // revisiting it re-opened the console with stale output. Auto-open only when
-    // the newest line is fresh (a build actively producing).
-    const newest = terminalLog[terminalLog.length - 1]?.timestamp || 0
-    if (Date.now() - newest < 120_000) setBuildConsoleOpen(true)
+    // no auto-open — a build (esp. an AI edit via the bridge) must not steal the view
   }, [terminalLog.length])
 
   // WORLD CHAT liveness — poll the world's shared chat so the ⌁ door shows if
@@ -6868,12 +6871,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       {/* GATE 3 — BUILD (locked until brief) */}
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
                         <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
-                          className="w-full mb-1.5 px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
+                          className="w-full px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
                           OPEN + CONNECT AI
-                        </button>
-                        <button onClick={() => branchWithHouseAi(branchLabel, branchBrief)} disabled={!briefOk}
-                          className="w-full px-2 py-1.5 rounded bg-brass/80 hover:bg-glow text-void text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
-                          ☕ HAVE THE HOUSE AI BUILD IT
                         </button>
                       </div>
                     </>)
@@ -7203,12 +7202,155 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </div>
             )
           })()}
+          {/* ◈ AI VIEW — a STANDALONE companion panel docked to the LEFT of the
+              BuilderBox (Galen: "an independent ai view/focus panel … to the left
+              of the builderbox"). Shows what the connected AI is doing (ai_focus,
+              auto-set on every AI world-edit) and what it SEES (the latest
+              render_probe PNG the bridge stashed to slot ai_eye:<spaceId>). Renders
+              under the SAME open condition as the BuilderBox so they travel together;
+              always shows its chrome + graceful empty states so it's never invisible. */}
+          {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (() => {
+            const focusFresh = !!(aiFocus && aiFocus.at && (Date.now() - aiFocus.at < 120000))
+            const eyeFresh = !!(aiEye?.png && aiEye.at && (Date.now() - aiEye.at < 300000))
+            return (
+              <div
+                className="absolute bottom-6 z-50 pointer-events-auto w-[272px] max-w-[40vw] h-[560px] max-h-[82vh] rounded-xl border border-amber-300/20 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
+                style={{ right: 'calc(50% + 147px)' }}>
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-amber-300/15 font-mono text-[13px] tracking-[0.2em] text-amber-300/50">
+                  <span>◈ AI VIEW</span>
+                  <span className={focusFresh ? 'text-amber-300/80 animate-pulse' : 'text-white/20'}>{focusFresh ? '● live' : '○ idle'}</span>
+                </div>
+                {/* TABS — EYE (focus + render) | NODES (architecture graph) */}
+                <div className="flex border-b border-white/10 font-mono text-[12px]">
+                  {(['eye', 'nodes'] as const).map(t => (
+                    <button key={t} onClick={() => setAiViewTab(t)}
+                      className={`flex-1 px-3 py-1.5 tracking-[0.15em] transition-colors ${aiViewTab === t ? 'text-amber-200 bg-white/5 border-b-2 border-amber-300/60' : 'text-white/35 hover:text-white/60 border-b-2 border-transparent'}`}>
+                      {t === 'eye' ? '◉ EYE' : '◇ NODES'}
+                    </button>
+                  ))}
+                </div>
+                {aiViewTab === 'eye' ? (
+                  <>
+                    {/* FOCUS — what the AI is working on right now */}
+                    <div className="px-3 py-2 border-b border-white/10 font-mono text-[12px]">
+                      {focusFresh ? (
+                        <div className="flex items-start gap-2 text-amber-300/85">
+                          <span className="animate-pulse leading-5">◈</span>
+                          <span className="flex-1">
+                            {aiFocus!.action || '…'}{aiFocus!.fieldName ? ' · ' + aiFocus!.fieldName : ''}
+                            <span className="block text-white/30 text-[11px] mt-0.5">{Math.max(0, Math.round((Date.now() - aiFocus!.at!) / 1000))}s ago</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-white/30 leading-relaxed">no AI editing this world right now.<br/>when one does, its focus lands here live.</div>
+                      )}
+                    </div>
+                    {/* SHADER REJECT — the silent-black-screen trap, made loud */}
+                    {focusFresh && aiFocus!.error && (
+                      <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/[0.07] font-mono text-[11px]">
+                        <div className="text-red-300/90 tracking-[0.1em] mb-1">⚠ SHADER REJECTED · {aiFocus!.error.name}</div>
+                        <div className="text-red-200/70 leading-relaxed break-words max-h-24 overflow-auto">{aiFocus!.error.error}</div>
+                      </div>
+                    )}
+                    {/* EYE — the AI's render_probe snapshot */}
+                    <div className="px-3 pt-2 pb-2.5 flex-1 min-h-0 overflow-auto">
+                      <div className="font-mono text-[11px] text-amber-300/45 mb-1.5">◉ what the AI sees{eyeFresh && aiEye!.name ? ' · ' + aiEye!.name : ''}</div>
+                      {eyeFresh ? (
+                        <>
+                          <img src={aiEye!.png!.startsWith('data:') ? aiEye!.png! : 'data:image/png;base64,' + aiEye!.png!} alt="the AI's eye" className="w-full rounded border border-white/10 object-contain bg-black" />
+                          {/* the renderer's SELF-REPORT (#7) — what the probe measured, not
+                              just what it drew. Red flags surface first. */}
+                          {aiEye!.stats && (
+                            <div className="mt-1.5 font-mono text-[10.5px] leading-relaxed">
+                              {(aiEye!.stats.errors || 0) > 0 && <div className="text-red-300/90">⚠ {aiEye!.stats.errors} shader error{aiEye!.stats.errors === 1 ? '' : 's'} in probe</div>}
+                              {(aiEye!.stats.hookErrors || 0) > 0 && <div className="text-amber-300/90">⚠ {aiEye!.stats.hookErrors} hook error{aiEye!.stats.hookErrors === 1 ? '' : 's'} (budget/throw) during probe</div>}
+                              {aiEye!.stats.visible === false && <div className="text-red-300/90">⚠ probe target not visible</div>}
+                              <div className="text-white/35 flex flex-wrap gap-x-2.5">
+                                {typeof aiEye!.stats.coveragePct === 'number' && <span title="pixels the visual covered">cover {Math.round(aiEye!.stats.coveragePct)}%</span>}
+                                {typeof aiEye!.stats.meanLum === 'number' && <span className={aiEye!.stats.meanLum < 8 ? 'text-amber-300/80' : ''} title="mean luminance — very low = near-black">lum {Math.round(aiEye!.stats.meanLum)}</span>}
+                                {typeof aiEye!.stats.motion === 'number' && <span title="frame-to-frame change">motion {Math.round(aiEye!.stats.motion)}</span>}
+                                {aiEye!.stats.visual && <span title="visual sampled">· {aiEye!.stats.visual}</span>}
+                              </div>
+                              {Array.isArray(aiEye!.stats.dominantColors) && aiEye!.stats.dominantColors.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1" title="dominant colors">
+                                  {aiEye!.stats.dominantColors.map((c, i) => Array.isArray(c) && c.length >= 3 ? (
+                                    <span key={i} className="inline-block w-3.5 h-3.5 rounded-sm border border-white/15" style={{ background: `rgb(${c[0]},${c[1]},${c[2]})` }} />
+                                  ) : null)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="w-full aspect-square rounded border border-dashed border-white/12 bg-black/50 flex items-center justify-center text-center px-3">
+                          <span className="font-mono text-[11px] text-white/25 leading-relaxed">no eye yet.<br/>appears when the AI takes a render_probe snapshot of the scene.</span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* NODES — the world's architecture, compact; ⤢ opens the full graph */
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    <div className="px-3 py-2 border-b border-white/10 grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+                      {(['module', 'visual', 'field', 'hook'] as const).map(k => {
+                        const n = nodeGraph ? (k === 'module' ? nodeGraph.modules.length : k === 'visual' ? nodeGraph.visuals.length : k === 'field' ? nodeGraph.fields.length : nodeGraph.hooks.length) : 0
+                        return (
+                          <div key={k} className="flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full" style={{ background: NODE_KIND_STYLE[k].dot }} />
+                            <span style={{ color: NODE_KIND_STYLE[k].text }}>{n}</span>
+                            <span className="text-white/30">{NODE_KIND_STYLE[k].label.toLowerCase()}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 space-y-2.5 font-mono text-[11px]">
+                      {nodeGraph && (nodeGraph.modules.length + nodeGraph.visuals.length + nodeGraph.fields.length + nodeGraph.hooks.length) > 0 ? (
+                        ([['visual', nodeGraph.visuals], ['field', nodeGraph.fields], ['module', nodeGraph.modules], ['hook', nodeGraph.hooks]] as const).map(([k, list]) => list.length === 0 ? null : (
+                          <div key={k}>
+                            <div className="text-white/30 tracking-[0.15em] mb-1">{NODE_KIND_STYLE[k].label}</div>
+                            <div className="flex flex-wrap gap-1">
+                              {list.map(nd => (
+                                <span key={nd.id} className="px-1.5 py-0.5 rounded border truncate max-w-full" style={{ borderColor: NODE_KIND_STYLE[k].ring, color: NODE_KIND_STYLE[k].text }} title={nd.title}>{nd.title.length > 22 ? nd.title.slice(0, 21) + '…' : nd.title}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-white/30 leading-relaxed">no nodes yet — this world has no modules, visuals, fields, or hooks loaded.</div>
+                      )}
+                    </div>
+                    <button onClick={() => setNodesExpanded(true)}
+                      className="m-2 px-3 py-1.5 rounded border border-amber-300/30 text-amber-200/80 hover:bg-amber-300/10 font-mono text-[12px] tracking-[0.15em] transition-colors">
+                      ⤢ EXPAND GRAPH
+                    </button>
+                  </div>
+                )}
+                {/* P0 PERF footer — live engine budgets, always visible. Green/amber/red
+                    on frame time = the 30/50/60fps cliffs the review said were invisible. */}
+                {perf && (
+                  <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[10.5px] flex items-center gap-2.5 flex-wrap">
+                    <span className={perf.frameMs > 33 ? 'text-red-300' : perf.frameMs > 20 ? 'text-amber-300' : 'text-emerald-300/80'} title="frame time (EMA)">
+                      ⧗ {perf.frameMs.toFixed(1)}ms{perf.frameMs > 0 ? ' · ' + Math.round(1000 / perf.frameMs) + 'fps' : ''}
+                    </span>
+                    <span className={perf.hookMs > 8 ? 'text-amber-300' : 'text-white/40'} title="total step-hook CPU per frame">hooks {perf.hookMs.toFixed(1)}ms</span>
+                    {perf.topHook && perf.topHook[1] > 1 && <span className="text-white/30" title="slowest hook by id">↳ {perf.topHook[0].length > 10 ? perf.topHook[0].slice(0, 9) + '…' : perf.topHook[0]} {perf.topHook[1].toFixed(1)}</span>}
+                    {perf.compileAgeS < 8 && <span className="text-sky-300/70" title="last WGSL compile latency">⚙ {perf.compileMs.toFixed(0)}ms</span>}
+                    {perf.syncKB > 0 && <span className={perf.syncKB > 512 ? 'text-amber-300' : 'text-white/40'} title="last owner-sync snapshot size (posted every 2s)">⇅ {perf.syncKB < 1024 ? perf.syncKB.toFixed(0) + 'KB' : (perf.syncKB / 1024).toFixed(1) + 'MB'}</span>}
+                    <span className="text-white/25 ml-auto" title="field count">{perf.fields}f</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}
+          {nodesExpanded && nodeGraph && <NodeGraphOverlay graph={nodeGraph} onClose={() => setNodesExpanded(false)} />}
           {/* ⌁ BUILDERBOX — the merged panel: AI build log + this world's chat.
               Auto-opens while a build runs (see the terminalLog effect). ANY chat
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]">
+            <div className="absolute -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
+              style={{ left: 'calc(50% + 145px)' }}>
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
                 <span>⌁ BUILDERBOX</span>
                 <div className="flex items-center gap-2.5">
@@ -7626,25 +7768,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                         }}
                       >
                         ✓ SAVE VERSION
-                      </button>
-                    )}
-                    {alter && spaceSlug && (
-                      <button
-                        disabled={!plugBrief.trim()}
-                        className="text-[14px] tracking-[0.15em] bg-brass/80 hover:bg-glow text-void rounded px-3 py-1 transition-colors disabled:opacity-40"
-                        title="hand your brief to the house AI — it alters your LIVE world"
-                        onClick={async () => {
-                          try {
-                            const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
-                              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ brief: plugBrief.trim(), houseAi: true }),
-                            })
-                            if (r.ok) { showToast('house AI queued — it will alter your live world as one comes free', 'success'); setPlugOpen(false) }
-                            else showToast('could not queue the house AI', 'error')
-                          } catch { showToast('could not queue the house AI', 'error') }
-                        }}
-                      >
-                        ☕ HAVE THE HOUSE AI DO IT
                       </button>
                     )}
                     {!mintFailed && (

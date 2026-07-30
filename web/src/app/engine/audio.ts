@@ -70,6 +70,7 @@ export class GameAudio {
     gain.connect(this.masterGain!)
 
     source.start(0)
+    this.reap(source, [source, gain])
   }
 
   /** Play a synthesized beep/tone */
@@ -90,6 +91,7 @@ export class GameAudio {
 
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + duration + 0.05)
+    this.reap(osc, [osc, gain])
   }
 
   /** Play a looping music track from a URL (fades in; replaces any current track).
@@ -129,6 +131,8 @@ export class GameAudio {
     if (!this.music || !this.ctx) return
     const { source, gain } = this.music
     this.music = null
+    // reap the music chain once the fade-out completes (was left connected forever)
+    source.onended = () => { try { source.disconnect() } catch { } try { gain.disconnect() } catch { } }
     try {
       gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), this.ctx.currentTime)
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + fadeSec)
@@ -196,11 +200,36 @@ export class GameAudio {
     return 440 * Math.pow(2, (midi - 69) / 12)
   }
 
+  // ── voice reaping (the tideglass slow-leak fix) ─────────────────────────
+  // One-shot voices STOPPED but never DISCONNECTED — every note left its gain/
+  // filter chain attached to the score bus, so a persistent score grew the audio
+  // graph by ~20 chains/sec forever (smooth at first → increasingly slow → only
+  // a reload recovered). Every one-shot now reaps its whole chain on 'ended'.
+  private voicesLive = 0
+  private voicesReaped = 0
+  private reap(src: AudioScheduledSourceNode, nodes: AudioNode[]): void {
+    this.voicesLive++
+    src.onended = () => {
+      this.voicesLive--
+      this.voicesReaped++
+      for (const n of nodes) { try { n.disconnect() } catch { /* already gone */ } }
+    }
+  }
+  /** live one-shot voice count + total reaped — telemetry for the perf readout */
+  voiceStats(): { live: number; reaped: number } { return { live: this.voicesLive, reaped: this.voicesReaped } }
+
+  // percussion noise — CACHED per duration (was a fresh AudioBuffer every hit;
+  // reusing one buffer across simultaneous sources is safe in Web Audio)
+  private noiseCache: Map<string, AudioBuffer> = new Map()
   private noiseBuf(ctx: AudioContext, dur: number): AudioBuffer {
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur))
+    const key = ctx.sampleRate + ':' + len
+    const hit = this.noiseCache.get(key)
+    if (hit) return hit
     const b = ctx.createBuffer(1, len, ctx.sampleRate)
     const d = b.getChannelData(0)
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1
+    this.noiseCache.set(key, b)
     return b
   }
 
@@ -213,6 +242,7 @@ export class GameAudio {
         o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.11)
         env.gain.setValueAtTime(g, t); env.gain.exponentialRampToValueAtTime(0.001, t + 0.13)
         o.connect(env); o.start(t); o.stop(t + 0.15)
+        this.reap(o, [o, env])
       } else {
         const dur = inst === 'hat' ? 0.03 : inst === 'clap' ? 0.09 : 0.12
         const src = ctx.createBufferSource(); src.buffer = this.noiseBuf(ctx, dur)
@@ -220,10 +250,12 @@ export class GameAudio {
         f.type = inst === 'hat' ? 'highpass' : 'bandpass'; f.frequency.value = inst === 'hat' ? 8000 : 1600
         env.gain.setValueAtTime(g, t); env.gain.exponentialRampToValueAtTime(0.001, t + dur)
         src.connect(f); f.connect(env); src.start(t); src.stop(t + dur + 0.02)
+        this.reap(src, [src, f, env])
         if (inst === 'snare') {
           const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 180
           const g2 = ctx.createGain(); g2.gain.setValueAtTime(g * 0.4, t); g2.gain.exponentialRampToValueAtTime(0.001, t + dur)
           o.connect(g2); g2.connect(out); o.start(t); o.stop(t + dur + 0.02)
+          this.reap(o, [o, g2])
         }
       }
       return
@@ -239,6 +271,7 @@ export class GameAudio {
       if (cutoff) { const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = cutoff; o.connect(flt); last = flt }
       last.connect(env); env.connect(out)
       o.start(t); o.stop(t + a + dec + 0.05)
+      this.reap(o, cutoff ? [o, last, env] : [o, env])
     }
   }
 

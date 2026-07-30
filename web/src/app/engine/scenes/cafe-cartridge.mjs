@@ -618,6 +618,12 @@ try {
   const STYLE_OF = { 'FABRIC': 0, 'ORRERY': 1, 'GARNET': 2, 'ONE DAY': 3, 'SAIL': 4, 'SOLSTICE': 5, 'TIDERUNNER': 6, 'SIGNAL': 7 }
   const hueOf = n => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 100) / 100 }
   const angOf = n => { let h = 0; for (const c of n) h = (h * 37 + c.charCodeAt(0)) % 9973; return (h % 628) / 100 }
+  // the maker caption on a bubble's rim. Prefer the real display name, fall back
+  // to the handle, and split run-together words — camelCase and separators — so
+  // "galenGoodwick"/"galen-goodwick" read "GALEN GOODWICK" once uppercased. A
+  // guest-made (unclaimed) world has no handle → it's attributed to GUEST.
+  const spaceWords = s => String(s || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const authorOf = o => (!o || o.isGuest) ? 'guest' : spaceWords(o.name || o.handle)
 
   // ── the universe breathes: poll the shelf; newborns arrive at the edge ──
   U.pollT -= dt2
@@ -730,7 +736,7 @@ try {
             if (!best[base] || v > best[base].v) best[base] = { v, scene: n, style: STYLE_OF[n.slice(0, f)] ?? 8 }
           }
           for (const base of Object.keys(best)) {
-            want[base] = { launch: best[base].scene, style: best[base].style, square: 1, author: (best[base].scene.split(' ⑂ ')[1] || '').split(' · ')[0].trim() }   // a BRANCH reads as a square, distinct from a round world
+            want[base] = { launch: best[base].scene, style: best[base].style, square: 1, author: spaceWords((best[base].scene.split(' ⑂ ')[1] || '').split(' · ')[0].trim()) }   // a BRANCH reads as a square, distinct from a round world
           }
           // canonical worlds ASSIGNED to me (scene-makers) belong on my deed too
           const mineAttr = (sp && sp.sceneMakers) || {}
@@ -748,7 +754,7 @@ try {
             // still carry the "YYYY-MM-DD HH:MM" stamp. Named or built worlds show.
             if (s.blank && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s.name || '')) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: authorOf(s.owner) }
           }
         } else if (HOUSE) {
           // THE HOUSE — everything unassigned to a real maker: the canonical
@@ -765,7 +771,7 @@ try {
             const o = s.owner
             if (o && o.handle && !o.isGuest) continue   // a claimed world belongs to its maker, not the house
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: authorOf(s.owner) }
           }
         } else if (ORPHAN) {
           // THE ORPHANAGE — the hidden worlds, on their own shelf. Same shape as
@@ -776,7 +782,7 @@ try {
           for (const s of (sp.spaces || [])) {
             if (!(s.blank || s.building || s.isPublic === false)) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: authorOf(s.owner) }
           }
         } else if (PL) {
           // PLAYER WORLDS — a MAKERS directory: one bubble per player who has
@@ -790,22 +796,26 @@ try {
             // fx 0-4 = a brewed preset avatar (rendered as the bubble face);
             // otherwise a living emblem in the player's own hue.
             const style = (typeof m.fx === 'number' && m.fx >= 0 && m.fx <= 4) ? (30 + m.fx) : 8
-            want[disp] = { launch: 'maker:' + m.handle, style, hue: m.hue != null ? m.hue : hueOf(m.handle), author: m.handle }
+            want[disp] = { launch: 'maker:' + m.handle, style, hue: m.hue != null ? m.hue : hueOf(m.handle), author: spaceWords(m.name || m.handle) }
           }
           // THE HOUSE always stands — it holds the canonical AI-made worlds too
           want['THE HOUSE'] = { launch: 'house:', style: 8, hue: 0.09, big: 1, cat: 4 }
         } else {
+          // canonical scenes credited to a maker (the scene-makers slot) carry
+          // that name on their MAIN bubble too \u2014 not just in PLAYER WORLDS.
+          const credited = (sp && sp.sceneMakers) || {}
           for (const n of (sc.scenes || [])) {
             if (n === 'CAFE' || n === 'SUB-MAIN' || n.includes('\u2402')) continue
             if (n.includes(' \u2442 ')) continue
-            want[n] = { launch: n, style: STYLE_OF[n] ?? 8 }
+            const cred = credited[n]
+            want[n] = { launch: n, style: STYLE_OF[n] ?? 8, ...(cred ? { author: spaceWords(cred.name || cred.handle) } : {}) }
           }
           // player-made worlds surface directly on main too, right alongside the
           // canonical worlds and the three big front-door bubbles.
           for (const s of (sp.spaces || [])) {
             if (s.blank || s.building || s.isPublic === false) continue
             const disp = (s.name || s.slug).toUpperCase()
-            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: (s.owner && s.owner.handle) || '' }
+            if (!want[disp]) want[disp] = { launch: 'space:' + s.slug, style: 8, hue: s.hue, author: authorOf(s.owner) }
           }
           // SUMMONED bubbles — worlds absent from main (private / building /
           // pressure-hidden) that someone summoned via search. Time-boxed by the

@@ -106,6 +106,12 @@ export interface Field {
   noHit?: boolean
   /** If true, field is exempt from field-field collision forces (world-sized backdrops) */
   noCollide?: boolean
+  /** PIXEL-COLLIDE LAW: if true, this field's collision body is its RENDERED PIXELS
+   *  (the GPU presence readback), not its bounding rect — appearance IS geometry.
+   *  The shader becomes the single authority for both look and body: a hole burned
+   *  in the picture is a hole in the physics. Falls back to bounds until the first
+   *  presence readback lands. First brick of executable semantic fields (SOLID). */
+  pixelCollide?: boolean
 }
 
 /** Drawing tool state */
@@ -229,6 +235,8 @@ export interface FieldSnapshot {
   noHit?: boolean
   /** If true, field is exempt from field-field collision forces */
   noCollide?: boolean
+  /** PIXEL-COLLIDE LAW: collision body = rendered pixels (see Field.pixelCollide) */
+  pixelCollide?: boolean
 }
 
 /** Full world state snapshot (sent via bridge to agents) */

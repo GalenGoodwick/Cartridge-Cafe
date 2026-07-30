@@ -59,10 +59,13 @@ self.onmessage = function (ev) {
     const ws = msg.worldData && msg.worldData.__seed;
     if (typeof ws === 'number' && ws !== __randSeed) { __randSeed = ws; __randState = ws | 0; }
     const fields = new Map();
-    const before = new Map();   // remember each transform so we patch only what the hook MOVED
+    const before = new Map();   // remember transform + visualParams so we patch only what the hook CHANGED
     for (const f of msg.fields) {
-      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties });
-      before.set(f.id, JSON.stringify(f.transform));
+      // visualParams IS exposed to the hook now: a sandboxed hook can animate a
+      // field's shader (melt, charge, glow) — previously it was silently dropped,
+      // so a hook that set field.visualParams had NO visible effect on space worlds.
+      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams });
+      before.set(f.id, { transform: { ...f.transform }, visualParams: Array.isArray(f.visualParams) ? [...f.visualParams] : null });
     }
     const sim = {
       worldData: msg.worldData,
@@ -137,12 +140,28 @@ self.onmessage = function (ev) {
       __runErr = __runErr ? (__runErr + ' | ' + m) : m;
     }
     const __ms = __now() - __t0;   // host watches this for a runaway-cost kill-switch
-    // only fields a hook actually changed — never hand the host a stale
-    // transform for a field it manages itself (that fight reads as jitter).
+    // patch back ONLY the transform KEYS the hook actually wrote — never the whole
+    // transform. THE BUG: a physics hook that sets t.vy (velocity) and leaves the
+    // host to integrate position had its stale x/y echoed back every tick, so the
+    // host's integrated position was overwritten with the spawn point every frame —
+    // velocity climbed, position never moved ("balls bounce in place, no clicking").
+    // Sending only changed keys lets the host keep the position it integrated.
     // Partial success still applies: a thrown hook doesn't void the others' work.
     const fieldPatches = [];
     for (const f of fields.values()) {
-      if (JSON.stringify(f.transform) !== before.get(f.id)) fieldPatches.push({ id: f.id, transform: f.transform });
+      const b = before.get(f.id);
+      const changed = {};
+      let any = false;
+      for (const k in f.transform) { if (f.transform[k] !== b.transform[k]) { changed[k] = f.transform[k]; any = true; } }
+      const patch = any ? { id: f.id, transform: changed } : { id: f.id };
+      // visualParams the hook wrote (shader animation) — patched back so the host's
+      // renderer actually sees them
+      const vp = f.visualParams;
+      if (Array.isArray(vp)) {
+        const bv = b.visualParams;
+        if (!bv || vp.length !== bv.length || vp.some((x, i) => x !== bv[i])) { patch.visualParams = [...vp]; any = true; }
+      }
+      if (any) fieldPatches.push(patch);
     }
     self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
@@ -152,7 +171,7 @@ self.onmessage = function (ev) {
 interface SandboxReply {
   type: 'result'
   worldData?: Record<string, unknown>
-  fieldPatches?: { id: string; transform: Record<string, number> }[]
+  fieldPatches?: { id: string; transform?: Record<string, number>; visualParams?: number[] }[]
   events?: { type: string; detail: unknown }[]
   error?: string
   ms?: number
@@ -312,12 +331,17 @@ export class WorldSandbox {
         if (sim) {
           this.applyPending(sim)
           // bounded CHAIN-POST: if a whole tick quantum has already elapsed, don't
-          // idle until the next RAF — post now. The 7ms floor caps the hook near
-          // ~140Hz so a fast round-trip can never busy-loop a core. Determinism
-          // worlds (__fixedStep) stay strictly one-tick-per-rendered-frame.
+          // idle until the next RAF — post now. The floor is ADAPTIVE: ~0.85× the
+          // measured display interval, so a 120Hz screen keeps the fast (~7ms)
+          // floor this chain was built for, while a 60Hz screen ticks near 60Hz —
+          // not 140Hz of clone/serialize garbage per second (the tideglass
+          // progressive-slowdown amplifier). Hard 7ms minimum still guards the
+          // busy-loop case. Determinism worlds (__fixedStep) stay strictly
+          // one-tick-per-rendered-frame.
           const fs = (sim.worldData as Record<string, unknown>)['__fixedStep']
+          const floor = Math.max(7, this.rafIntervalEma * 0.85)
           if (!this.quarantined && !this.inFlight && !(typeof fs === 'number' && fs > 0) &&
-              (perfNow() - this.lastTickAt) >= 7) {
+              (perfNow() - this.lastTickAt) >= floor) {
             this.postTick(sim)
           }
         }
@@ -330,11 +354,22 @@ export class WorldSandbox {
   get active(): boolean { return !!this.worker }
   get error(): string | null { return this.compileError }
 
+  // measured display cadence (EMA of RAF intervals) — the chain-post floor tracks
+  // this so hook rate ≈ display rate on every screen (see the chain-post above)
+  private rafIntervalEma = 16.7
+  private lastRafAt = 0
+
   /** one frame: apply the worker's last reply, then post current sim state.
    *  Call this BEFORE sim.step so gpuUniforms/__play_sound land for this frame. */
   tick(sim: FieldSimulation, dt: number): void {
     void dt   // dt is now derived from wall-clock at post time (see postTick)
     this.lastSim = sim
+    const rafNow = perfNow()
+    if (this.lastRafAt > 0) {
+      const iv = rafNow - this.lastRafAt
+      if (iv > 2 && iv < 100) this.rafIntervalEma = this.rafIntervalEma * 0.9 + iv * 0.1
+    }
+    this.lastRafAt = rafNow
     if (this.quarantined || !this.worker || !this.ready) return
 
     // KILL-SWITCH ─ a tick posted but no reply for HANG_MS means a hook is
@@ -403,7 +438,10 @@ export class WorldSandbox {
       // field transforms the hook moved
       for (const p of this.pending.fieldPatches || []) {
         const f = sim.fields.get(p.id)
-        if (f && p.transform) f.transform = { ...f.transform, ...p.transform }
+        if (!f) continue
+        if (p.transform) f.transform = { ...f.transform, ...p.transform }
+        // shader animation the hook drove (melt, charge, glow…)
+        if (p.visualParams) f.visualParams = p.visualParams as [number, number, number, number]
       }
       // the whitelisted events the hook "dispatched"
       if (typeof window !== 'undefined') {
@@ -422,9 +460,9 @@ export class WorldSandbox {
    *  how many rendered frames a reply spans. __fixedStep keeps its exact quantum. */
   private postTick(sim: FieldSimulation): void {
     if (!this.worker) return
-    const fields: { id: string; name: string; transform: unknown; properties: unknown }[] = []
+    const fields: { id: string; name: string; transform: unknown; properties: unknown; visualParams: unknown }[] = []
     for (const f of sim.fields.values()) {
-      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties })
+      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams })
     }
     // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
     // one exact quantum — one tick per rendered frame, same sequence every run

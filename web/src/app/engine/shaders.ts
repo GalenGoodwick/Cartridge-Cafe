@@ -1039,6 +1039,26 @@ ${FRAME_UNIFORM_STRUCT}
 
 ${EFFECT_UNIFORM_STRUCT}
 
+// the whiteboard, readable from the compute layer too (parity with the fragment
+// effect path). Input a step hook writes to worldData.gpuUniforms — cursor/keys,
+// a moving field's position — reaches FEEDBACK effects here via uni(). The bind
+// group layout (effectUniformBindGroupLayout, group 2) already binds these buffers
+// with COMPUTE visibility; only these declarations were missing, so feedback
+// effects silently couldn't read hook data ("unresolved call target 'uni'").
+@group(2) @binding(1) var<storage, read> effWorldUni: array<vec4f>;
+fn uni(i: i32) -> f32 {
+  let v = effWorldUni[clamp(i, 0, 255) / 4];
+  let c = clamp(i, 0, 255) % 4;
+  if (c == 0) { return v.x; }
+  if (c == 1) { return v.y; }
+  if (c == 2) { return v.z; }
+  return v.w;
+}
+fn uni4(i: i32) -> vec4f { return effWorldUni[clamp(i, 0, 63)]; }
+@group(2) @binding(2) var<uniform> effPopBuf: array<vec4f, 4096>;
+fn pop(i: i32) -> vec4f { return effPopBuf[1 + clamp(i, 0, 4094)]; }
+fn popCount() -> i32 { return i32(effPopBuf[0].x); }
+
 struct DispatchRegion {
   offset: vec2f,
   size: vec2f,
