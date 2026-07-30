@@ -408,6 +408,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ icon: icon ?? null, scope: 'player-icon' })
   }
 
+  // ADMIN + ?slug= — the arena-service's world loader: an authoritative server
+  // (ARENA_SECRET = admin token) reads ANY space's snapshot by slug to boot a
+  // room. Admin auth is the only path where every scope field is null, so this
+  // can never widen a player/space/scene token's reach.
+  {
+    const slugParam = req.nextUrl.searchParams.get('slug')
+    if (slugParam && !auth.spaceId && !auth.sceneName && !auth.playerId) {
+      const sp = await prisma.playerSpace.findUnique({ where: { slug: slugParam }, select: { id: true, name: true } }).catch(() => null)
+      if (!sp) return NextResponse.json({ error: 'space not found' }, { status: 404 })
+      const snapshot = await getSpaceSnapshot(sp.id)
+      return NextResponse.json({
+        space: { slug: slugParam, name: sp.name, viewUrl: req.nextUrl.origin + '/space/' + slugParam },
+        spaceId: sp.id,
+        fields: snapshot?.fields ?? [],
+        fieldCount: snapshot?.fields?.length ?? 0,
+        worldParams: snapshot?.worldParams ?? {},
+        worldData: snapshot?.worldData ?? {},
+        interactionRules: snapshot?.interactionRules ?? [],
+        interactionEffects: snapshot?.interactionEffects ?? [],
+        visualTypes: snapshot?.visualTypes ?? [],
+        modules: snapshot?.modules ?? [],
+        stepHooks: snapshot?.stepHooks ?? [],
+      })
+    }
+  }
+
   // Space-scoped: return snapshot from DB
   if (auth.spaceId) {
     const snapshot = await getSpaceSnapshot(auth.spaceId)
