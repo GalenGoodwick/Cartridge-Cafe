@@ -280,6 +280,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
   const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
+  // ── INSPECT MODE (universal — Galen Jul 30): a toggle in the EDIT dropdown.
+  //    While on: blue overlay + grid, clicks are DOCUMENTED (never gameplay),
+  //    each entry = coords · field · visual · color, mirrored to wd.__clicks so
+  //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
+  const [inspectOn, setInspectOn] = useState(false)
+  const inspectOnRef = useRef(false)
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -492,6 +499,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // saved. The world just reads/writes worldData.save; everything else stays
   // shared/transient.
   const persistOn = () => !!simulationRef.current?.worldData?.['persist']
+  // 'save' is PER-PLAYER (engine persist) — it must NEVER ride a shared snapshot
+  // in either direction. One player's save syncing world-global was the Jul 30 leak.
+  const stripSave = (wd: Record<string, unknown> | undefined | null): Record<string, unknown> => {
+    const out = { ...(wd || {}) } as Record<string, unknown>
+    delete out['save']
+    return out
+  }
   const autoSaveSerRef = useRef('')
   const autoSaveAtRef = useRef(0)
   const autoSaveReadyRef = useRef(false)   // gate: don't persist until the load resolves (else the default overwrites the real save)
@@ -2513,7 +2527,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         }
       }
       if (snapshot.worldParams) sim.setWorldParams(snapshot.worldParams)
-      if (snapshot.worldData) Object.assign(sim.worldData, snapshot.worldData)
+      if (snapshot.worldData) Object.assign(sim.worldData, stripSave(snapshot.worldData))
       for (const k of Object.keys(sim.worldData)) {
         if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
       }
@@ -2607,7 +2621,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             const extra = Array.isArray(snapshot.worldData.__resets) ? snapshot.worldData.__resets : []
             for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
           }
-          Object.assign(sim.worldData, snapshot.worldData)
+          Object.assign(sim.worldData, stripSave(snapshot.worldData))
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
         }
         // Transient input state must never survive a restore (stuck ghost keys)
@@ -2825,6 +2839,30 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const canvas = canvasRef.current
     const sim = simulationRef.current
     if (!canvas) return
+
+    // INSPECT MODE eats every click: document it (grid coords + field + visual +
+    // base color), ring it into wd.__clicks for the AIs, and never let it reach
+    // gameplay, dragging, or the hooks' mouse_down.
+    if (inspectOnRef.current) {
+      const rectI = canvas.getBoundingClientRect()
+      const camI = cameraRef.current
+      const gI = screenToGrid(e.clientX, e.clientY, rectI, camI, camI.zoom)
+      let hfI: ReturnType<NonNullable<typeof sim>['getFieldAtPoint']> | null = null
+      try { hfI = sim ? sim.getFieldAtPoint(gI.x, gI.y) : null } catch { /* never break input */ }
+      let colI: string | null = null
+      try {
+        const cArr = hfI ? Array.from(hfI.color as ArrayLike<number>).slice(0, 3) : null
+        if (cArr && cArr.length === 3) colI = '#' + cArr.map(v => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 255).toString(16).padStart(2, '0')).join('')
+      } catch { /* color is a bonus, not a dependency */ }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: (hfI?.visualType as string | undefined) ?? null, color: colI }
+      setInspectLog(l => [...l.slice(-7), entry])
+      if (sim) {
+        const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
+        sim.worldData['__clicks'] = [...ring.slice(-7), entry]
+      }
+      e.preventDefault(); e.stopPropagation()
+      return
+    }
 
     // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
@@ -3342,7 +3380,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
       // Restore world data
       if (data.worldData && typeof data.worldData === 'object') {
-        Object.assign(sim.worldData, data.worldData)
+        Object.assign(sim.worldData, stripSave(data.worldData as Record<string, unknown>))
       }
       setFields(new Map(sim.fields))
     } catch {
@@ -6772,6 +6810,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             style={{ fontFamily: 'monospace' }}
           />
 
+          {/* INSPECT overlay: blue cast + 64-unit grid + click console. The tint is
+              pointer-events-none; the console panel is interactive (click = copy). */}
+          {inspectOn && (
+            <div className="fixed inset-0 z-[80] pointer-events-none"
+              style={{ background: 'rgba(56,110,190,0.10)', boxShadow: 'inset 0 0 0 3px rgba(90,160,255,0.55)',
+                backgroundImage: 'repeating-linear-gradient(0deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%), repeating-linear-gradient(90deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%)' }} />
+          )}
+          {inspectOn && (
+            <div className="fixed top-14 left-3 z-[999] pointer-events-auto font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-sky-400/40 p-2.5 max-w-[380px]">
+              <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)</div>
+              {inspectLog.length === 0 && <div className="text-white/40">click anything…</div>}
+              {[...inspectLog].reverse().map((en, i) => (
+                <button key={en.at + '-' + i}
+                  onClick={() => { try { navigator.clipboard.writeText(JSON.stringify(en)) } catch { /* fine */ } }}
+                  title="click to copy"
+                  className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
+                  ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* GAMEPLAY MODE overlay — total-UI-close. The engine's OWN back button
               (top-left, below) stays; here we add only the ▣ reopen so play is
               clean with exactly one way out + one way back to the UI. */}
@@ -6934,6 +6994,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
+              </button>
+            )}
+            {/* INSPECT — AI click telling: clicks become documentation (never gameplay);
+                entries land in wd.__clicks for any connected AI to decode. */}
+            {!isHub && (
+              <button
+                onClick={() => { setInspectOn(v => { inspectOnRef.current = !v; return !v }); setInspectLog([]); setEditCoach(false) /* the first-open coach eats canvas clicks; the dock itself stays open (Galen) */ }}
+                title="Inspect mode — click anything to document it for the AI (game input is paused)"
+                className={inspectOn
+                  ? 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-sky-500/25 backdrop-blur border border-sky-400/60 text-sky-100 transition-colors'
+                  : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
+              >
+                {inspectOn ? '◉ INSPECT ON' : '◎ INSPECT'}
               </button>
             )}
             {/* build-console link removed from EDIT — the BuilderBox door
@@ -7904,7 +7977,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <button onClick={back} title="back"
                   className="pointer-events-auto px-2.5 rounded-lg font-mono text-white/70 hover:text-white bg-black/55 backdrop-blur border border-white/10 hover:bg-black/80 transition-colors">◂</button>
                 {/* the title (world name) hides in gameplay mode — the back arrow stays */}
-                {!playMode && <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} inline />}
+                {!playMode && <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} liveSlug={spaceId ? spaceSlug : undefined} viewerIsOwner={isOwner} inline />}
                 {branchy && playScene && !playMode && (
                   <button
                     title="players joining this world see the version you're looking at"

@@ -14,7 +14,7 @@ export interface StepHookSnap { id: string; author: string; description: string;
  *  persisting it only bloats the payload). */
 export function filterSyncWorldData(worldData: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation'),
+    Object.entries(worldData).filter(([k]) => !k.startsWith('key_') && !k.startsWith('mouse_') && k !== 'gpuPopulation' && k !== 'save'),   // 'save' is PER-PLAYER (engine persist) — syncing it made one player's progress world-global (the Jul 30 leak)
   )
 }
 

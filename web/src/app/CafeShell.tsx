@@ -1156,6 +1156,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           setCounts(d.counts || {})
           // the door shader draws head-counts IN the bubbles — hand it the map
           ;(window as unknown as { __cafeCounts?: Record<string, number> }).__cafeCounts = d.counts || {}
+          // worlds with an AI builder docked right now → the door pulses a red
+          // "developer live" ring on their bubbles (a Set of space slugs)
+          ;(window as unknown as { __cafeDevLive?: Set<string> }).__cafeDevLive = new Set(d.devLive || [])
         }).catch(() => {})
     }
     poll()

@@ -430,7 +430,7 @@ export class WorldSandbox {
       // reads as warping and jitter. The host owns everything else.
       for (const k of Object.keys(incoming)) {
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
-            k === 'instructions' || k === 'tone' || k === 'music_mod' ||
+            k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'save' ||
             (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
           wd[k] = incoming[k]
         }
