@@ -20,6 +20,20 @@ import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatche
 
 export const maxDuration = 30
 
+/** A stable, non-reversible tag for the caller's token — its TYPE plus an 8-char
+ *  hash of the token itself. Lets the admin bridge-watch see per-token volume
+ *  ("who is hammering") WITHOUT storing the raw token. Computed pre-auth (cheap),
+ *  so it also tags callers whose token later fails validation. */
+function tokenTag(authHeader: string): string {
+  const token = authHeader.slice(7)
+  const type = token.startsWith('uc_st_') ? 'space'
+    : token.startsWith('uc_pt_') ? 'player'
+    : token.startsWith('uc_it_') ? 'icon'
+    : token === process.env.ENGINE_AGENT_TOKEN ? 'house'
+    : 'other'
+  return `${type}:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 8)}`
+}
+
 interface BridgeAuth {
   authorized: boolean
   spaceId: string | null    // null = legacy global mode
@@ -395,7 +409,7 @@ async function renderViaService(
 }
 
 export async function GET(req: NextRequest) {
-  if (req.headers.get('authorization')) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:GET', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0] }) }
+  { const _auth = req.headers.get('authorization'); if (_auth) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:GET', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0], who: tokenTag(_auth) }) } }
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -583,7 +597,7 @@ const REGION_TURN_TTL = 12_000
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
 
 export async function POST(req: NextRequest) {
-  if (req.headers.get('authorization')) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0] }) }
+  { const _auth = req.headers.get('authorization'); if (_auth) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0], who: tokenTag(_auth) }) } }
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
