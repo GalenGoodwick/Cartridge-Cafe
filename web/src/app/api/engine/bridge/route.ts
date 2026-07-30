@@ -13,6 +13,7 @@ import { commonsPost, commonsRead, commonsSystemSay } from '@/lib/commons'
 import { prisma } from '@/lib/prisma'
 import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
@@ -597,7 +598,20 @@ const REGION_TURN_TTL = 12_000
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
 
 export async function POST(req: NextRequest) {
-  { const _auth = req.headers.get('authorization'); if (_auth) { const _ua = req.headers.get('user-agent'); logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0], who: tokenTag(_auth) }) } }
+  { const _auth = req.headers.get('authorization')
+    if (_auth) {
+      const _tag = tokenTag(_auth)
+      const _ua = req.headers.get('user-agent')
+      logVisit({ kind: _ua?.includes('cartridge-mcp') ? 'mcp' : 'agent', path: '/api/engine/bridge:POST', ua: _ua, ip: req.headers.get('x-forwarded-for')?.split(',')[0], who: _tag })
+      // Generous per-token throttle: a single token can't spam the bridge (and
+      // its AI spend) relentlessly. House token exempt — the swarm builds at
+      // volume. Per-instance/in-memory: a speed bump for a runaway loop, not a
+      // distributed-DDoS wall (Vercel's edge handles volumetric floods).
+      if (!_tag.startsWith('house:') && await checkRateLimit('bridge', _tag)) {
+        return NextResponse.json({ error: 'Too many bridge requests — slow down (max ~180/min per token).' }, { status: 429 })
+      }
+    }
+  }
   const auth = await authorize(req)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
