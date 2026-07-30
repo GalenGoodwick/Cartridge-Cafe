@@ -1720,7 +1720,43 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [])
 
   // Load a saved scene (replaces current state)
+  // ═══ WORLD-SWAP HYGIENE (Galen Jul 30 audit): a swap SWITCHES OUT the whole
+  //     node — it must not MERGE the new world onto the old one's identity.
+  //     Object.assign(worldData, incoming) only ADDS keys, so config that the
+  //     new world doesn't declare leaks (heavy bloom bleeds; __mouseLook traps
+  //     the cursor; a persist flag auto-saves a fresh world; mpManifest joins a
+  //     lobby). Plus non-worldData identity: the pointer lock, the arena socket.
+  //     Call this BEFORE applying any incoming snapshot at every swap site;
+  //     incoming re-adds the keys the new world actually declares. NOT for live
+  //     same-world updates (the bridge set_world_data / the 2s delta sync). ═══
+  const resetWorldIdentity = useCallback(() => {
+    const sim = simulationRef.current
+    if (sim) {
+      const wd = sim.worldData as Record<string, unknown>
+      // config keys the next world re-declares if it wants them
+      for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
+                       '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
+                       '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels']) {
+        if (k in wd) delete wd[k]
+      }
+    }
+    // renderer config back to defaults (else the prior world's grade/scale persists)
+    const r = rendererRef.current
+    if (r) {
+      r.setPostProcess({ enabled: true, bloomIntensity: 0.3, bloomThreshold: 0.8,
+        vignetteStrength: 0.3, vignetteRadius: 0.8, exposure: 1.0, lightDir: [0.5, 0.7], lightIntensity: 0.0 })
+      r.setRenderScale(1.0)
+      r.maxBufferPixels = 2_200_000
+    }
+    // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
+    // outlive the world (the vote→main cursor-trap bug).
+    try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
+    // the multiplayer socket must not survive into a non-arena world
+    try { arenaRef.current?.close(); arenaRef.current = null } catch { /* fine */ }
+  }, [])
+
   const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
+    resetWorldIdentity()
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer) return
@@ -1893,6 +1929,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  are trusted; a visitor keeps the server-rendered reload path so an
    *  untrusted version's JS never auto-installs. */
   const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
+    resetWorldIdentity()
     if (!spaceSlug) return
     // Already mid-load: queue this request (latest wins) instead of interleaving
     // a second clear+restore over the first — that interleave tears the grid.
@@ -2254,6 +2291,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     playLoadedRef.current = playScene
 
     const loadPlayScene = async () => {
+      resetWorldIdentity()
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
@@ -2516,6 +2554,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // member content over the hub's snapshot (the one catastrophic failure mode).
   const visitingRef = useRef<string | null>(null)
   const hotSwapSpace = useCallback(async (targetSlug: string) => {
+    resetWorldIdentity()
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer || !targetSlug) return
@@ -2576,6 +2615,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     spaceLoadedRef.current = true
 
     const loadSpaceSnapshot = async () => {
+      resetWorldIdentity()
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) {
