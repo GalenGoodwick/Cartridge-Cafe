@@ -345,7 +345,10 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const [vp, setVp] = useState({ w: 0, h: 0 })
   const [mine, setMine] = useState<string | null>(null)   // display name while in your submain
   const [ownShelf, setOwnShelf] = useState(false)         // true only on YOUR /u/<you> shelf (not another maker's)
-  const [manageOpen, setManageOpen] = useState(false)     // ⚙ MANAGE modal — worlds & branches to open/rename/delete
+  const [manageOpen, setManageOpen] = useState(false)     // ⚙ MANAGE sidebar — worlds & branches to open/rename/delete
+  // MANAGE hover-preview (Galen): hovering a branch row renders that snapshot
+  // live in the engine — vote-style recognition instead of guessing from names.
+  const [managePreview, setManagePreview] = useState<string | null>(null)
   const [players, setPlayers] = useState(false)           // in the PLAYER WORLDS filter (big-bubble view)
   const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1291,7 +1294,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           </div>
         </div>
       )}
-      <FieldEngine playScene={voting && previewScene ? previewScene : scene}
+      <FieldEngine playScene={voting && previewScene ? previewScene : (managePreview || scene)}
         onDockRect={setDockBottom}
         presenceKey={scene === 'CAFE' ? presenceRoom : undefined}
         viewport={voting && stageRect ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left } : null} />
@@ -1929,7 +1932,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
 
           {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
-          {manageOpen && <ManagePanel onClose={() => setManageOpen(false)} />}
+          {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview} />}
 
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 type World = { slug: string; name: string; isPublic: boolean; updatedAt: number }
 type Branch = { name: string; base: string; label: string | null; version: number }
@@ -10,7 +10,7 @@ type Branch = { name: string; base: string; label: string | null; version: numbe
  *  rows; branches are the `BASE ⑂ you · [label ·] vN` challenger scenes scattered
  *  across every world you've branched. Each row: open · rename · delete. Reads
  *  /api/spaces/mine (owner-scoped) and mutates through the existing auth'd routes. */
-export default function ManagePanel({ onClose }: { onClose: () => void }) {
+export default function ManagePanel({ onClose, onPreview }: { onClose: () => void; onPreview?: (scene: string | null) => void }) {
   const [handle, setHandle] = useState<string>('')
   const [worlds, setWorlds] = useState<World[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
@@ -25,6 +25,17 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null)
   const toggleSel = (k: string) => setSel(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  // HOVER PREVIEW — settle on a branch row for a beat and the engine renders it
+  // live behind the sidebar (the reckoning's previewScene machinery). Debounced
+  // so skimming the list doesn't thrash full world swaps; leaving the list
+  // restores the shelf.
+  const pvT = useRef(0)
+  const hoverPreview = (scene: string | null) => {
+    if (!onPreview) return
+    window.clearTimeout(pvT.current)
+    pvT.current = window.setTimeout(() => onPreview(scene), scene === null ? 250 : 350)
+  }
+  useEffect(() => () => { window.clearTimeout(pvT.current); onPreview?.(null) }, [onPreview])
   const toggleAll = (keys: string[]) => setSel(s => {
     const n = new Set(s)
     const allIn = keys.every(k => n.has(k))
@@ -64,6 +75,7 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
   }
   const deleteBranch = async (b: Branch) => {
     if (!confirm(`Delete branch “${b.base} ⑂ ${b.label ? b.label + ' · ' : ''}v${b.version}”? This can’t be undone.`)) return
+    onPreview?.(null)   // never keep rendering a snapshot being deleted
     setBusy(b.name)
     try {
       const r = await fetch('/api/engine/scene', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: b.name }) })
@@ -109,6 +121,7 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
     const picks = [...sel]
     if (picks.length === 0) return
     if (!confirm(`Delete ${picks.length} item${picks.length === 1 ? '' : 's'} (worlds and/or branches)? This can’t be undone.`)) return
+    onPreview?.(null)   // never keep rendering a snapshot being deleted
     setBulk({ done: 0, total: picks.length })
     const failed: string[] = []
     for (const k of picks) {
@@ -142,8 +155,11 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
   )
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-mono" onClick={onClose}>
-      <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl border border-white/15 bg-[#0c0a09]/95 p-5 text-white/85 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-y-0 right-0 z-[80] font-mono pointer-events-none">
+      {/* SIDEBAR, not modal (Galen): the shelf stays visible and the engine can
+          live-preview a hovered branch behind the list — vote-style quick view. */}
+      <div className="h-full w-[380px] max-w-[90vw] overflow-y-auto border-l border-white/15 bg-[#0c0a09]/92 backdrop-blur-sm p-5 text-white/85 shadow-2xl pointer-events-auto"
+        onClick={e => e.stopPropagation()} onMouseLeave={() => hoverPreview(null)}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[15px] tracking-[0.25em] text-white/55">⚙ MY WORLDS &amp; BRANCHES</div>
           <button onClick={onClose} className="text-white/40 hover:text-white text-[16px] leading-none px-1">✕</button>
@@ -164,7 +180,8 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
                 {worlds.map(w => {
                   const k = 'w:' + w.slug
                   return (
-                    <div key={k} className="flex items-center gap-2 py-1.5">
+                    <div key={k} className="flex items-center gap-2 py-1.5"
+                      onMouseEnter={() => hoverPreview(null)}>
                       {selBox(k)}
                       {editing === k ? (
                         <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} maxLength={60}
@@ -208,7 +225,8 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
                       {list.map(b => {
                         const k = 'b:' + b.name
                         return (
-                          <div key={k} className="flex items-center gap-2 py-1.5">
+                          <div key={k} className="flex items-center gap-2 py-1.5"
+                            onMouseEnter={() => hoverPreview(b.name)}>
                             {selBox(k)}
                             {editing === k ? (
                               <div className="flex-1 min-w-0 flex items-center gap-1 text-[13px] text-white/40">
