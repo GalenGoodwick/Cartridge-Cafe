@@ -424,7 +424,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200)
         return
       }
-      fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`)
+      // no-store is LOAD-BEARING: without it a NORMAL reload serves the browser-
+      // cached (stale) save while only a HARD reload bypasses cache — the player
+      // sees their progress "revert" on reload (Galen, Jul 31). The save changes
+      // every few seconds; it must never be read from cache.
+      fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`, { cache: 'no-store' })
         .then(r => r.json())
         .then(j => {
           const s = simulationRef.current
@@ -3694,7 +3698,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const loadReq = sim.worldData['__load_game'] as { slot?: string } | undefined
       if (loadReq && typeof loadReq.slot === 'string') {
         delete sim.worldData['__load_game']
-        fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(`${cellBase()}:${loadReq.slot}`)}`)
+        fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(`${cellBase()}:${loadReq.slot}`)}`, { cache: 'no-store' })
           .then(r => r.json())
           .then(j => {
             const s = simulationRef.current

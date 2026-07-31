@@ -144,9 +144,13 @@ export async function GET(req: NextRequest) {
   const key = searchParams.get('scope') === 'user'
     ? await userScopedSlot(slot, searchParams.get('anon'))
     : slot
-  if (key === null) return NextResponse.json({ slot, data: null, unscoped: true })  // weak guest token → no shared bucket
+  // a per-user save changes constantly — it must NEVER be cached, or a normal
+  // reload serves a stale save and the player's progress appears to revert
+  // (only a hard reload bypasses the browser cache). Declare it explicitly.
+  const noStore = { 'Cache-Control': 'no-store, max-age=0' }
+  if (key === null) return NextResponse.json({ slot, data: null, unscoped: true }, { headers: noStore })  // weak guest token → no shared bucket
   const data = await loadGameSlot(key)
-  return NextResponse.json({ slot, data: data ?? null })
+  return NextResponse.json({ slot, data: data ?? null }, { headers: noStore })
 }
 
 /** POST /api/engine/save  Body: { slot: string, data: unknown } */
