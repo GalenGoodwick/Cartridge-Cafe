@@ -1428,8 +1428,13 @@ try {
   // "player worlds don't have the same basic logic as main" he spotted. Cap the
   // PACKED bubbles so the self-icon always lands in range (top-N by score; the
   // rest were already broken-stacked at uni(255), so nothing real is lost — and
-  // the full list still lives in ⚙ MANAGE). 58 leaves room for self + ~3 peers.
-  const MAXBUB = 58
+  // the full list still lives in ⚙ MANAGE). 61 is the EXACT safe max: self-icon
+  // lands at 6+61*4=250, size at 252 ≤ 255 (in range). 58 was over-conservative
+  // and clipped low-score worlds off MAIN — it "lost" Stephen's + Thor's worlds
+  // from view (never from the DB) since main sits right at this boundary. 61
+  // shows every bubble main actually has while keeping Galen's 60+ shelf cursor
+  // in range. Peers yield to worlds when the buffer is full (worlds matter more).
+  const MAXBUB = 61
   const packOrder = U.order.length > MAXBUB ? U.order.slice(0, MAXBUB) : U.order
   const u = [U.cam.x, U.cam.y, U.cam.z, packOrder.length, (mgx - 256) / 256, (mgy - 256) / 256]
   // author captions: pack each bubble's maker handle (16 chars = 4 vec4f) into the
