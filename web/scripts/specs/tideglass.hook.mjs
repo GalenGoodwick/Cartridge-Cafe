@@ -182,13 +182,34 @@ export default function ({ runWorld, hookCode, asserter }) {
     eq('reset: fresh progress inside the window survives', G(w).view, 1)
     for (let i = 0; i < 800; i++) w.tick()                   // ride past the 12s window
     eq('reset: the fresh run STILL stands once the window closes', G(w).view, 1)
-    eq('reset: window closes and cleans up after itself', typeof w.wd.__tgWipe, 'undefined')
+    eq('reset: window closes to exactly 0 and stays (deletion would not round-trip)', w.wd.__tgWipe, 0)
   }
   {
     const w = runWorld(hookCode); const g = G(w)
     g.act = 2; g.view = 9; g.t = 900                          // NO __fresh: a normal session
     for (let i = 0; i < 30; i++) w.tick()
     eq('no reset: a normal session never wipes the save', G(w).view, 9)
+  }
+  // ── SNAPSHOT POLLUTION (the "random resets", Jul 31): a live capture leaked
+  //    __tgWipe/__tgFreshSeen/__fresh into the world snapshot, so every player
+  //    inherited an open wipe window + a pre-set latch. The hook must shrug both off. ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.act = 2; g.view = 9; g.t = 900
+    w.wd.__tgWipe = 0.0013; w.wd.__tgFreshSeen = 1            // inherited poison, NO __fresh
+    for (let i = 0; i < 30; i++) w.tick()
+    eq('pollution: an inherited stale window never wipes a veteran save', G(w).view, 9)
+    eq('pollution: the stale latch is cleared by a normal session', w.wd.__tgFreshSeen, 0)
+    w.wd.__fresh = true                                        // ...so the NEXT legit R still lands
+    w.tick()
+    eq('pollution: R after a poisoned load still resets', G(w).view, 0)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 9; g.t = 900
+    w.wd.__fresh = true; w.tick()                              // reset session: window armed
+    for (let i = 0; i < 800; i++) w.tick()                     // ride past the 12s window
+    eq('window: decays to exactly 0 and STAYS (a deletion would not round-trip)', w.wd.__tgWipe, 0)
   }
 
   // ── GRANDFATHER: a save that flew Act I before the pearl-beam existed keeps
