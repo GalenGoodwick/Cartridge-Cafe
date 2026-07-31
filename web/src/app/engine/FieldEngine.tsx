@@ -1730,6 +1730,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //     incoming re-adds the keys the new world actually declares. NOT for live
   //     same-world updates (the bridge set_world_data / the 2s delta sync). ═══
   const resetWorldIdentity = useCallback(() => {
+    swapAtRef.current = performance.now()
     const sim = simulationRef.current
     if (sim) {
       const wd = sim.worldData as Record<string, unknown>
@@ -2900,11 +2901,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
-  // vote/judge context: versionView (space vote-preview) or a cropped viewport
-  // (the reckoning stage). Mirrored into a ref so the frozen-dep pointer handler
-  // always reads the live value.
-  const judgeCtxRef = useRef(false)
-  useEffect(() => { judgeCtxRef.current = !!(versionView || viewport) }, [versionView, viewport])
+  // pointer-lock entry gate (Galen): the click that ENTERS a world (staging a
+  //  vote candidate, opening a scene) must never lock the cursor — but the next
+  //  deliberate click inside the world must. Time-gate on the last swap.
+  const swapAtRef = useRef(0)
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
@@ -2937,9 +2937,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
     // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
-    // JUDGING is not playing: in a vote/preview the click votes and inspects —
-    // it must never trap the cursor (Galen: lock was automatic in voting mode)
-    if (sim && sim.worldData['__mouseLook'] && !judgeCtxRef.current && document.pointerLockElement !== canvas) {
+    // the ENTRY click can't lock (it just swapped the world in); a deliberate
+    // click ≥600ms after the swap does — click-to-lock, never lock-on-entry
+    if (sim && sim.worldData['__mouseLook'] && (performance.now() - swapAtRef.current) > 600 && document.pointerLockElement !== canvas) {
       try { canvas.requestPointerLock() } catch { /* not supported */ }
     }
 

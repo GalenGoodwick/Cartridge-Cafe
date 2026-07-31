@@ -101,8 +101,14 @@ export class GameAudio {
    *  (VEILFIRE's fetch+decode takes seconds) must NOT start over the world
    *  that's now playing, or after a vote exit silenced everything. */
   private musicGen = 0
+  private musicPending: string | null = null   // url currently loading — same-url re-asserts must NOT invalidate it
   async playMusic(url: string, opts: { volume?: number; loop?: boolean; fadeSec?: number } = {}): Promise<void> {
     if (this.music?.url === url) return
+    // hooks re-assert __play_music every frame: without this, each re-assert
+    // bumped the generation and killed the previous in-flight load — no load
+    // ever survived to play (the 'no music at all' regression, Jul 30 night)
+    if (this.musicPending === url) return
+    this.musicPending = url
     const gen = ++this.musicGen
     const ctx = this.ensureContext()
     const cacheKey = '__music:' + url
@@ -114,10 +120,11 @@ export class GameAudio {
         this.sounds.set(cacheKey, buffer)
       } catch (e) {
         console.warn(`[GameAudio] Failed to load music from ${url}:`, e)
+        if (this.musicPending === url) this.musicPending = null
         return
       }
     }
-    if (gen !== this.musicGen) return   // superseded or stopped while loading — stay silent
+    if (gen !== this.musicGen) { if (this.musicPending === url) this.musicPending = null; return }   // superseded/stopped while loading — stay silent
     this.stopMusic(0.3)
     const source = ctx.createBufferSource()
     source.buffer = buffer
@@ -131,11 +138,13 @@ export class GameAudio {
     gain.connect(this.masterGain!)
     source.start(0)
     this.music = { source, gain, url }
+    if (this.musicPending === url) this.musicPending = null
   }
 
   /** Fade out and stop the current music track */
   stopMusic(fadeSec: number = 0.5): void {
     this.musicGen++                       // kill any in-flight load too
+    this.musicPending = null              // a future same-url play may start fresh
     if (!this.music || !this.ctx) return
     const { source, gain } = this.music
     this.music = null
