@@ -3570,6 +3570,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (spaceNow && !a.prevSpace) a.splitN++
         a.prevSpace = spaceNow
         a.sendInput({
+          // the designed hull rides along until the room has seen it (small JSON)
+          design: (typeof wd['__sendDesign'] === 'string' ? wd['__sendDesign'] : undefined),
           mouse_x: wd['mouse_x'], mouse_y: wd['mouse_y'], mouse_down: wd['mouse_down'],
           key_space: wd['key_space'], split_n: a.splitN,
           key_w: wd['key_w'], key_a: wd['key_a'], key_s: wd['key_s'], key_d: wd['key_d'],
