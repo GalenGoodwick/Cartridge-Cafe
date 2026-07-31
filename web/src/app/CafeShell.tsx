@@ -11,6 +11,7 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import ConnectAiPanel from '@/app/ConnectAiPanel'
+import ManagePanel from '@/app/engine/ManagePanel'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
 const BLURBS: Record<string, string> = {
@@ -343,6 +344,8 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [vp, setVp] = useState({ w: 0, h: 0 })
   const [mine, setMine] = useState<string | null>(null)   // display name while in your submain
+  const [ownShelf, setOwnShelf] = useState(false)         // true only on YOUR /u/<you> shelf (not another maker's)
+  const [manageOpen, setManageOpen] = useState(false)     // ⚙ MANAGE modal — worlds & branches to open/rename/delete
   const [players, setPlayers] = useState(false)           // in the PLAYER WORLDS filter (big-bubble view)
   const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -443,6 +446,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     const handle = String(sess.user.email || '').split('@')[0].replace(/[^a-z0-9_-]/gi, '') || null
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '', handle }
     setMine(sess.user.name || 'your')
+    setOwnShelf(true)
     try { sessionStorage.setItem('cafe-mine', '1') } catch { /* private mode */ }
     // MY WORLDS lives at your own handle — /u/<you>, bookmarkable and reload-safe
     if (push && typeof window !== 'undefined' && handle && window.location.pathname !== '/u/' + handle) {
@@ -452,7 +456,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const commons = (push = true) => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
     ;(window as unknown as { __cafePlayers?: unknown }).__cafePlayers = false
-    setMine(null); setPlayers(false)
+    setMine(null); setPlayers(false); setOwnShelf(false)
     try { sessionStorage.removeItem('cafe-mine') } catch { /* private mode */ }
     if (push && typeof window !== 'undefined' && (/^\/(mine$|u\/)/.test(window.location.pathname) || /[?&](players|house)\b/.test(window.location.search))) {
       window.history.pushState({}, '', '/')
@@ -464,7 +468,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const enterPlayers = (mode?: 'house' | 'orphanage', push = true) => {
     ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: false }
     ;(window as unknown as { __cafePlayers?: boolean | string }).__cafePlayers = mode === 'house' ? 'house' : mode === 'orphanage' ? 'orphanage' : true
-    setMine(null); setPlayers(true)
+    setMine(null); setPlayers(true); setOwnShelf(false)
     if (push && typeof window !== 'undefined') {
       const url = mode === 'house' ? '/?house' : mode === 'orphanage' ? '/?orphanage' : '/?players'
       window.history.pushState({ players: mode || true }, '', url)
@@ -936,6 +940,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       // roster populates in place.
       ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true }
       setMine('your')
+      setOwnShelf(true)
       myWorlds(false)   // the /u/<you> shelf — the URL is already set
     } else if (initialMineHandle) {
       // viewing ANOTHER maker's deed — the SAME spatial shelf, filtered to their
@@ -972,6 +977,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
             if (sess?.user) {
               ;(window as unknown as { __cafeMine?: unknown }).__cafeMine = { on: true, ownerId: sess.user.id, who: sess.user.name || '' }
               setMine(sess.user.name || 'your')
+              setOwnShelf(true)
             } else sessionStorage.removeItem('cafe-mine')
           }).catch(() => { /* offline is fine */ })
         }
@@ -1893,6 +1899,13 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                 )}
               </div>
             )}
+            {/* ⚙ MANAGE — owner-only, lives on YOUR /u/<you> shelf now (moved off
+                each world page). Opens the list of every world + branch you own to
+                open/rename/delete. */}
+            {who && mine && ownShelf && (
+              <button onClick={() => setManageOpen(true)} title="manage your worlds & branches"
+                className={`${hubBtn} opacity-70 hover:opacity-100`}>⚙ MANAGE</button>
+            )}
             <button onClick={brew}
               className="rounded-lg bg-flame hover:bg-glow px-5 py-2.5 font-mono text-[16px] tracking-[0.2em] text-void font-bold transition-all shadow-[0_0_28px_rgba(245,176,76,0.45)] hover:shadow-[0_0_40px_rgba(245,176,76,0.65)] hover:scale-[1.03]">
               ☕ BREW YOUR WORLD
@@ -1902,6 +1915,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
 
           {/* CONNECT AI — mint your personal player key (chat commons + build your worlds) */}
           {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
+
+          {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
+          {manageOpen && <ManagePanel onClose={() => setManageOpen(false)} />}
 
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
