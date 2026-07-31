@@ -102,6 +102,10 @@ export class GameAudio {
    *  that's now playing, or after a vote exit silenced everything. */
   private musicGen = 0
   private musicPending: string | null = null   // url currently loading — same-url re-asserts must NOT invalidate it
+  /** bumped on every world swap: lazy SFX loads (loadSound→play) captured before
+   *  the swap must not fire after it (the 'clicking leave played the sound once' ghost) */
+  worldGen = 0
+  onWorldSwap(): void { this.worldGen++ }
   async playMusic(url: string, opts: { volume?: number; loop?: boolean; fadeSec?: number } = {}): Promise<void> {
     if (this.music?.url === url) return
     // hooks re-assert __play_music every frame: without this, each re-assert

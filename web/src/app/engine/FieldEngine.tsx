@@ -1738,7 +1738,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
                        '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
                        '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels',
-                       '__play_music', '__play_sound', 'music_mod', 'tone']) {
+                       '__play_music', '__play_sound', 'music_mod', 'tone',
+                       'gpuUniforms', 'gpuPopulation']) {   // per-frame GPU state: the NEXT world's shader must never read the departed world's buffer (the yellow-flash-on-main ghost)
         if (k in wd) delete wd[k]
       }
     }
@@ -1753,7 +1754,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // AUDIO is world identity too (Galen): the composed score + hosted track must
     // not outlive the world. Stopping here on EVERY swap also fixes the vote's
     // iffy audio — each candidate preview cleanly silences the last.
-    try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12) } catch { /* fine */ }
+    try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12); audioRef.current?.onWorldSwap() } catch { /* fine */ }
     // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
     // outlive the world (the vote→main cursor-trap bug).
     try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
@@ -3619,7 +3620,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           } else if (playSound.id && playSound.url && audioUrlOk(playSound.url)) {
             // first strike lazy-loads (one fetch of latency); replays are instant
             const { id, url, volume, pitch } = playSound
-            void audio.loadSound(id, url).then(ok => { if (ok) audio.play(id!, volume ?? 1.0, pitch ?? 1.0) })
+            const wgen = audio.worldGen
+            void audio.loadSound(id, url).then(ok => { if (ok && audio.worldGen === wgen) audio.play(id!, volume ?? 1.0, pitch ?? 1.0) })   // a load that outlived its world stays silent
           } else if (playSound.frequency) {
             audio.beep(playSound.frequency, playSound.duration ?? 0.2, playSound.volume ?? 0.5, playSound.type)
           }
