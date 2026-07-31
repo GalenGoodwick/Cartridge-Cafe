@@ -1153,19 +1153,31 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
 
   // presence poll — the door counts (a read concern, separate from the beat)
   useEffect(() => {
+    // EMBALMED COUNTS (Galen, Jul 30: "6 people in each"): a failed/skipped poll
+    // used to keep the last counts forever — a day-old tab showed dead visitors
+    // as live heads. Presence truth expires server-side in 30s; the client copy
+    // must decay too: no fresh OK read for 45s → the counts are a lie, clear them.
+    let lastOkAt = Date.now()
+    const decay = () => {
+      if (Date.now() - lastOkAt < 45_000) return
+      setCounts({})
+      ;(window as unknown as { __cafeCounts?: Record<string, number> }).__cafeCounts = {}
+      ;(window as unknown as { __cafeDevLive?: Set<string> }).__cafeDevLive = new Set()
+    }
     const poll = () => {
       // chips live on any hub, not just the main cafe
-      if (sceneRef.current !== 'CAFE' && portalsRef.current.length === 0) return
+      if (sceneRef.current !== 'CAFE' && portalsRef.current.length === 0) { decay(); return }
       fetch('/api/presence').then(r => r.ok ? r.json() : null)
         .then(d => {
-          if (!d) return
+          if (!d) { decay(); return }
+          lastOkAt = Date.now()
           setCounts(d.counts || {})
           // the door shader draws head-counts IN the bubbles — hand it the map
           ;(window as unknown as { __cafeCounts?: Record<string, number> }).__cafeCounts = d.counts || {}
           // worlds with an AI builder docked right now → the door pulses a red
           // "developer live" ring on their bubbles (a Set of space slugs)
           ;(window as unknown as { __cafeDevLive?: Set<string> }).__cafeDevLive = new Set(d.devLive || [])
-        }).catch(() => {})
+        }).catch(() => decay())
     }
     poll()
     const pt = setTimeout(poll, 1500)   // chips refresh right after arriving

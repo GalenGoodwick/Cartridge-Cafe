@@ -507,7 +507,7 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   // truncation folded -1 back to 0 and the comet haunted the glyph.
   let selfFx = i32(round(uni(sb)));
   let selfHue = uni(sb + 1);
-  let selfSize = clamp(uni(sb + 2), 0.25, 4.0);   // ceiling too — an unclamped size veils the whole frame
+  let selfSize = clamp(uni(sb + 2), 0.25, 2.0);   // ceiling = the bridge's legal max (set_player_icon clamps 0.5..2) — an unclamped size veils the whole frame
   let selfTint = 0.5 + 0.5 * cos(6.2831 * (selfHue + vec3f(0.0, 0.33, 0.67)));
   if (selfFx == 5) {
     // DEFAULT CURSOR — nothing brewed yet: a small stylized pointer whose TIP
@@ -1461,7 +1461,7 @@ try {
   // (an AI sending "40" meaning pixels) otherwise scales the cursor past the
   // whole frame — every pixel samples the icon's center = a uniform additive
   // veil over the entire universe (the Jul 30 mint-wash on Galen's shelf)
-  u.push(wd.__glyphOn === 1 ? -1 : (typeof ic.fx === 'number' ? ic.fx | 0 : 5), typeof ic.hue === 'number' ? ic.hue : 0.55, Math.min(Math.max(typeof ic.size === 'number' ? ic.size : 1.0, 0.25), 4.0))
+  u.push(wd.__glyphOn === 1 ? -1 : (typeof ic.fx === 'number' ? ic.fx | 0 : 5), typeof ic.hue === 'number' ? ic.hue : 0.55, Math.min(Math.max(typeof ic.size === 'number' ? ic.size : 1.0, 0.25), 2.0))
   // On MAIN the dancing shader orbs ARE the presence — suppress the DOM pips so
   // they don't double up. On the directory / sub-mains we do the OPPOSITE: no
   // docked orbs (heads packed 0 above), and let the DOM pips draw LIVE cursors.
