@@ -12,7 +12,7 @@ import { resetPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
-import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
+import { serializeWorld, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
 import { NodeGraphOverlay, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
 import { BuilderBoxPanel } from './builderbox/BuilderBoxPanel'
@@ -37,6 +37,7 @@ import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
 import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, hueToRgba, wrapInteractionWgsl, ENGINE_BUILD, scenePreloadCache, playerGlyphWgsl, wrapPlayerGlyph, wrapOtherGlyph } from './engine-utils'
 import { applyBridgeCommand } from './bridge-commands'
+import * as sceneIO from './scene-io'
 import { TouchControls } from './TouchControls'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
 
@@ -1443,67 +1444,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [showToast])
 
   // Refresh saved scenes list from server
-  const refreshSceneList = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/engine/scene?action=list')
-      const { scenes } = await resp.json()
-      const next = Array.isArray(scenes) ? scenes : []
-      // Only touch state when the list actually changed — this refresh polls
-      setSavedScenes(prev => (prev.length === next.length && prev.every((n, i) => n === next[i])) ? prev : next)
-    } catch { /* ignore */ }
-  }, [])
+  // scene list / save / load / branch / version IO lives in scene-io.ts (carve
+  // Phase 3). Wrappers keep the ORIGINAL dep arrays — memoization + the stale-
+  // closure semantics are unchanged; deps bags are built at call time.
+  const refreshSceneList = useCallback(async () => sceneIO.refreshSceneList({ setSavedScenes }), [])
 
-  // Save entire scene (all fields, effects, rules, hooks, world params)
-  /** Snapshot the live world under a given name — the branch/version writer */
-  // Returns the name the scene was ACTUALLY saved under (the store forks on
-  // overwrite, so a save onto an existing branch lands as its next version), or
-  // null on failure. Callers use it to follow the real branch, not a guessed one.
-  const saveSceneAs = useCallback(async (sceneName: string, extraWorldData?: Record<string, unknown>): Promise<string | null> => {
-    const sim = simulationRef.current
-    const renderer = rendererRef.current
-    if (!sim) return null
-    // 'used' scope = the ORCHID fix: only visuals THIS world references (attached to a
-    // field or named in a hook/worldData), never the whole global renderer registry.
-    // extraWorldData wins over inherited sim.worldData so a branch's `branchedFrom` is
-    // stamped to its immediate parent.
-    const sceneData = serializeSceneDocument(sim, renderer, {
-      name: sceneName,
-      stepHooks: allStepHookSnapshots(sim),
-      visualScope: 'used',
-      extraWorldData,
-    })
-    // no blank submissions — a branch version must contain a world
-    if (!sceneData.fields.length && !sceneData.stepHooks.length && !sceneData.visualTypes.length) return null
-    try {
-      const r = await fetch('/api/engine/scene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', name: sceneName, scene: sceneData }),
-      })
-      if (!r.ok) return null
-      const d = await r.json().catch(() => ({} as { savedAs?: string }))
-      return (d.savedAs as string) || sceneName   // fork-on-overwrite may bump the version
-    } catch { return null }
-  }, [])
+  /** Snapshot the live world under a given name — scene-io.saveSceneAs (returns
+   *  the name ACTUALLY saved under; the store forks on overwrite) */
+  const saveSceneAs = useCallback((sceneName: string, extraWorldData?: Record<string, unknown>): Promise<string | null> =>
+    sceneIO.saveSceneAs({ simulationRef, rendererRef, allStepHookSnapshots }, sceneName, extraWorldData), [])
 
-  /** Mint a BRANCH-scoped token for a scene branch (`BASE ⑂ handle · vN`). This is
-   *  the fix for "the AI overwrote main + the branch": a scoped token binds a
-   *  connected AI to THIS one branch — the bridge reads/writes only its snapshot,
-   *  never main or the global registry. Space worlds mint a uc_st_ token instead;
-   *  branches, being file-store scenes, get a stateless uc_sc_ token here. */
-  const mintBranchToken = useCallback(async (sceneName: string) => {
-    if (!sceneName.includes(' ⑂ ')) return null
-    setPlugBusy(true)
-    try {
-      const r = await fetch('/api/engine/scene/token', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: sceneName }),
-      })
-      const d = await r.json()
-      if (r.ok && d.token) { setPlugToken(d.token); return d.token as string }
-    } catch { /* ignore — briefing shows a minting-failed hint */ } finally { setPlugBusy(false) }
-    return null
-  }, [])
+  /** Mint a BRANCH-scoped token for a scene branch — scene-io.mintBranchToken */
+  const mintBranchToken = useCallback((sceneName: string) => sceneIO.mintBranchToken({ setPlugBusy, setPlugToken }, sceneName), [])
 
   // (branch-key copy lives in WORLD TOOLS → DIRECT EDIT KEYS now, via mintBranchToken)
 
@@ -1522,20 +1474,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [lineageTrail, setLineageTrail] = useState<null | { name: string; by?: string | null; kind: string; slug?: string }[]>(null)
   const [lineageRemixes, setLineageRemixes] = useState<{ name: string; slug: string }[]>([])
   const [lineageBusy, setLineageBusy] = useState(false)
-  const loadLineage = useCallback(async () => {
-    setLineageBusy(true)
-    try {
-      const cur = lastSceneRef.current || playScene || ''
-      const q = cur.includes(' ⑂ ') ? `scene=${encodeURIComponent(cur)}`
-              : spaceSlug ? `space=${encodeURIComponent(spaceSlug)}`
-              : cur ? `scene=${encodeURIComponent(cur)}` : ''
-      if (!q) { setLineageTrail([]); setLineageRemixes([]); return }
-      const r = await fetch(`/api/engine/lineage/trail?${q}`)
-      const d = await r.json().catch(() => ({}))
-      setLineageTrail(Array.isArray(d.trail) ? d.trail : [])
-      setLineageRemixes(Array.isArray(d.remixes) ? d.remixes : [])
-    } catch { setLineageTrail([]); setLineageRemixes([]) } finally { setLineageBusy(false) }
-  }, [playScene, spaceSlug])
+  const loadLineage = useCallback(() => sceneIO.loadLineage({ lastSceneRef, playScene, spaceSlug, setLineageBusy, setLineageTrail, setLineageRemixes }), [playScene, spaceSlug])
   /** UNIFIED prompt-open — the CONNECT-AI window MUST be seen by every user, so
    *  opening it dismisses whatever could cover or compete with it. Root cause of
    *  "the user didn't see the prompt": the edit coach sits at z-[58], ABOVE the
@@ -1549,26 +1488,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     setVersionsOpen(false)
     setPlugOpen(true)
   }, [])
-  const createBranch = useCallback(async (labelRaw: string) => {
-    if (!me) { window.location.href = '/auth/signin'; return }
-    const src = lastSceneRef.current || playScene || spaceSlug || ''
-    if (!src) { showToast('load a world first', 'error'); return }
-    const base = src.split(' ⑂ ')[0]
-    const user = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
-    const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-    // stamp the IMMEDIATE parent (src), not the flattened root — full genealogy
-    const savedAs = await saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
-    if (savedAs) {
-      lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
-      setPlugToken(null)                  // fresh branch → fresh scoped key
-      await mintBranchToken(savedAs)      // AWAIT: the scoped key is present the moment the box opens (no tokenless flash)
-      setBranchCreateOpen(false)
-      showToast(`branch opened: ${savedAs} — the eye is watching`, 'success')
-      openPlug()   // step 2 of the method: connect your AI — top-most, competitors closed
-    }
+  const createBranch = useCallback((labelRaw: string) => sceneIO.createBranch({
+    me, playScene, spaceSlug, lastSceneRef, saveSceneAs, mintBranchToken, setPlugToken, setBranchCreateOpen, showToast, openPlug,
+  }, labelRaw),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, playScene, spaceSlug, saveSceneAs, mintBranchToken, openPlug])
+  [me, playScene, spaceSlug, saveSceneAs, mintBranchToken, openPlug])
   const handleBranch = useCallback(() => {
     if (!me) { window.location.href = '/auth/signin'; return }
     setBranchLabel(''); setBranchBrief('')
@@ -1589,56 +1513,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
-  /** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
-   *  the live-scoped token, open the plug box. The altered world IS main — the
-   *  save point is the way back. */
-  const beginAlter = useCallback(async () => {
-    if (!spaceSlug) return
-    setAlterWarnOpen(false)
-    try {
-      await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: 'before alter' }),
-      })
-    } catch { /* the save point is a courtesy, not a gate */ }
-    if (!plugToken) {
-      setPlugBusy(true)
-      try {
-        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'live alter' }),
-        })
-        const d = await r.json()
-        if (r.ok) setPlugToken(d.token)
-      } finally { setPlugBusy(false) }
-    }
-    openPlug()   // unified: top-most, competitors (edit coach / console) closed
-  }, [spaceSlug, plugToken, openPlug])
+  /** ALTER, confirmed — scene-io.beginAlter */
+  const beginAlter = useCallback(() => sceneIO.beginAlter({ spaceSlug, plugToken, setAlterWarnOpen, setPlugBusy, setPlugToken, openPlug }), [spaceSlug, plugToken, openPlug])
 
-  const handleSaveScene = useCallback(async () => {
-    const sim = simulationRef.current
-    const renderer = rendererRef.current
-    if (!sim) return
-    const name = window.prompt('Scene name:')
-    if (!name?.trim()) return
-    const sceneName = name.trim()
-    const sceneData = serializeSceneDocument(sim, renderer, {
-      name: sceneName,
-      stepHooks: allStepHookSnapshots(sim),
-      visualScope: 'all',
-    })
-    try {
-      await fetch('/api/engine/scene', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', name: sceneName, scene: sceneData }),
-      })
-      showToast(`Scene "${sceneName}" saved (${sceneData.fields.length} fields)`, 'success')
-      refreshSceneList()
-    } catch {
-      showToast('Failed to save scene', 'error')
-    }
-  }, [showToast, refreshSceneList])
+  const handleSaveScene = useCallback(() => sceneIO.saveScenePrompted({ simulationRef, rendererRef, allStepHookSnapshots, showToast, refreshSceneList }), [showToast, refreshSceneList])
 
   // The threshold: every world swap fades to BLACK first, travels under black,
   // and fades back in only when the new pipeline is ready. A designed moment of
@@ -1670,211 +1548,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [])
 
   // Load a saved scene (replaces current state)
-  // ═══ WORLD-SWAP HYGIENE (Galen Jul 30 audit): a swap SWITCHES OUT the whole
-  //     node — it must not MERGE the new world onto the old one's identity.
-  //     Object.assign(worldData, incoming) only ADDS keys, so config that the
-  //     new world doesn't declare leaks (heavy bloom bleeds; __mouseLook traps
-  //     the cursor; a persist flag auto-saves a fresh world; mpManifest joins a
-  //     lobby). Plus non-worldData identity: the pointer lock, the arena socket.
-  //     Call this BEFORE applying any incoming snapshot at every swap site;
-  //     incoming re-adds the keys the new world actually declares. NOT for live
-  //     same-world updates (the bridge set_world_data / the 2s delta sync). ═══
-  const resetWorldIdentity = useCallback(() => {
-    swapAtRef.current = performance.now()
-    const sim = simulationRef.current
-    if (sim) {
-      const wd = sim.worldData as Record<string, unknown>
-      // config keys the next world re-declares if it wants them
-      for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
-                       '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
-                       '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels',
-                       '__play_music', '__play_sound', 'music_mod', 'tone', 'sounds',
-                       'gpuUniforms', 'gpuPopulation']) {   // per-frame GPU state: the NEXT world's shader must never read the departed world's buffer (the yellow-flash-on-main ghost)
-        if (k in wd) delete wd[k]
-      }
-    }
-    // renderer config back to defaults (else the prior world's grade/scale persists)
-    const r = rendererRef.current
-    if (r) {
-      r.setPostProcess({ enabled: true, bloomIntensity: 0.3, bloomThreshold: 0.8,
-        vignetteStrength: 0.3, vignetteRadius: 0.8, exposure: 1.0, lightDir: [0.5, 0.7], lightIntensity: 0.0 })
-      r.setRenderScale(1.0)
-      r.maxBufferPixels = 2_200_000
-    }
-    // AUDIO is world identity too (Galen): the composed score + hosted track must
-    // not outlive the world. Stopping here on EVERY swap also fixes the vote's
-    // iffy audio — each candidate preview cleanly silences the last.
-    try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12); audioRef.current?.onWorldSwap() } catch { /* fine */ }
-    // the WATER VOICE finally has a silencer at the swap (it was silenced by ZERO
-    // of the teardown sites — only by the frame loop reading an absent wd.tone,
-    // which a crashed/unmounted loop never does).
-    try { setWorldVoice(null) } catch { /* fine */ }
-    // next world declares its own manifest; stale id->url bookkeeping must not
-    // block a same-name different-url reload
-    lastSoundsDeclRef.current = null; soundsLoadedRef.current.clear(); warnedSoundsRef.current.clear()
-    // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
-    // outlive the world (the vote→main cursor-trap bug).
-    try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
-    // the multiplayer socket must not survive into a non-arena world
-    try { arenaRef.current?.close(); arenaRef.current = null } catch { /* fine */ }
-    // ZOMBIE WORKERS (Galen: veilfire's sound started AFTER leaving it): the old
-    // world's sandbox was disposed only when the NEXT world had hooks — a
-    // hookless world or the hub let it keep ticking forever, its whitelisted
-    // __play_music writebacks re-scoring the new world (and stacking CPU cost
-    // across swaps). Dispose unconditionally; the next loader reinstalls its own.
-    try { sandboxRef.current?.dispose(); sandboxRef.current = null } catch { /* fine */ }
-  }, [])
+  // WORLD-SWAP HYGIENE — scene-io.resetWorldIdentity (carve Phase 3): a swap
+  // SWITCHES OUT the whole node. Call BEFORE applying any incoming snapshot at
+  // every swap site; NOT for live same-world updates.
+  const resetWorldIdentity = useCallback(() => sceneIO.resetWorldIdentity({
+    simulationRef, rendererRef, swapAtRef, audioRef, lastSoundsDeclRef, soundsLoadedRef, warnedSoundsRef, arenaRef, sandboxRef,
+  }), [])
 
-  const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
-    resetWorldIdentity()
-    const sim = simulationRef.current
-    const renderer = rendererRef.current
-    if (!sim || !renderer) return
-    // Verify the target EXISTS before switching to it. The version scroller can ask
-    // for v(n+1); if there is no such version we must NOT advance the counter to a
-    // scene that isn't there ("a version number can't count up with nothing to
-    // switch to"). Fetch first; mutate refs only once the scene is confirmed.
-    // preScene: main's version scroller hands in a timestamped backup snapshot
-    // directly (it has no scene NAME to fetch by) — skip the fetch and use it.
-    // It may arrive AS the snapshot object (version scroller) OR wrapped in an
-    // envelope { snapshot } / { scene } (the space snapshot endpoint, via
-    // hotLoadSpaceVersion). Unwrap either — a raw envelope has no .fields, so it
-    // silently loads a 0-field world and the tab goes BLACK on every live reload.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let scene: any = preScene
-      ? ((preScene as { scene?: unknown; snapshot?: unknown }).scene || (preScene as { snapshot?: unknown }).snapshot || preScene)
-      : preScene
-    if (!scene) {
-      try {
-        const resp = await fetch(`/api/engine/scene?name=${encodeURIComponent(sceneName)}`)
-        scene = (await resp.json()).scene
-      } catch { showToast('Failed to load scene', 'error'); return }
-    }
-    if (!scene) {
-      // A deep link to a deleted/renamed scene (orphan) — don't leave the visitor
-      // staring at black. Signal the shell to show a soft "gone" landing. This is
-      // the SAME fetch a valid world succeeds on, so it never fires for a real one.
-      showToast(`Scene "${sceneName}" not found`, 'error')
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('cafe:scene-gone', { detail: sceneName }))
-      return
-    }
-
-    // Confirmed — now switch. Navigating to a DIFFERENT scene/version invalidates
-    // any minted connect token (HMAC-bound to the scene you left); drop it so the
-    // next CONNECT AI mints one for where you are now.
-    if (sceneName !== lastSceneRef.current) setPlugToken(null)
-    lastSceneRef.current = sceneName
-    setRiding(sceneName.includes(' ⑂ ') ? sceneName : null)
-    // Veil the swap: until the NEW uber-shader compiles, the old pipeline would
-    // paint the incoming fields with the departed world's shaders.
-    setWorldLoading(true)
-    await fadeToBlack()   // dim the departing world first — travel happens under black
-    try {
-      // Clear current state — including the old world's audio
-      audioRef.current.stopScore()
-      audioRef.current.stopMusic(0.2)
-      delete sim.worldData['__play_sound']
-      delete sim.worldData['__play_music']
-      for (const field of sim.fields.values()) {
-        renderer.removeAllFieldEffects(field.id)
-      }
-      for (const key of Array.from(renderer.getFieldEffectKeys())) {
-        if (key.startsWith('ix_')) { renderer.removeFieldEffect(key); renderer.removeFieldMask(key) }
-      }
-      sim.clearAll()
-      sim.fields.clear()
-      rendererRef.current?.resetWorldUniforms()   // a new world starts with a clean uniform whiteboard — no bleed from the last scene
-      sim.interactionRules = []
-      sim.interactionEffects = []
-      sim.stepHooks.clear()
-      sim.tweens.clear()
-      sim.timers.clear()
-      sim.collisionCallbacks.clear()
-      cachedOverlapMasksRef.current = new Map()
-
-      // A scene is a complete world — reset the shader registries so visuals
-      // from previously loaded scenes don't accumulate forever (every stale
-      // visual bloats the uber-shader and slows each recompile).
-      renderer.clearRegistries()
-
-      // Restore MODULES first, then visuals. Registering a visual kicks off a
-      // recompile; if its modules aren't in the registry yet, the compile fails
-      // and the isolation sweep QUARANTINES the visual for calling module
-      // functions that were still in flight ("unresolved call target mod_*" on
-      // every reload of a module-built world — the bare-rectangle bug).
-      if (scene.modules) {
-        for (const m of scene.modules) {
-          renderer.registerModule(m.name, m.wgsl)
-        }
-      }
-      if (scene.visualTypes) {
-        for (const vt of scene.visualTypes) {
-          renderer.registerVisualType(vt.name, vt.wgsl)
-        }
-      }
-
-      // Restore scene
-      sim.restoreFromSnapshots(scene.fields || [])
-      // Name is authoritative — resolve visual types against this session's
-      // registry (numeric IDs shift between sessions)
-      for (const field of sim.fields.values()) {
-        if (field.visualTypeName) {
-          const runtimeId = renderer.resolveVisualType(field.visualTypeName)
-          if (runtimeId !== undefined) field.visualType = runtimeId
-        }
-      }
-      if (scene.worldParams) sim.setWorldParams(scene.worldParams)
-      if (scene.worldData) Object.assign(sim.worldData, scene.worldData)
-      // Transient input state must never arrive via a scene
-      for (const k of Object.keys(sim.worldData)) {
-        if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
-      }
-      if (scene.interactionRules) sim.interactionRules = scene.interactionRules
-      if (scene.interactionEffects) {
-        for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
-      }
-      if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
-      // Any world with RENDERABLE content boots running — not just ones with
-      // hooks. A visual-only world (fields with visuals, no stepHook) otherwise
-      // draws a single frame and idles to black. Content, not logic, is the test.
-      const hasContent = (scene.stepHooks?.length ?? 0) > 0 || (scene.fields || []).some((f: { visualTypeName?: string }) => f.visualTypeName)
-      if (hasContent && !sim.running) {
-        sim.running = true
-        setRunning(true)
-      }
-
-      // Recompile effects
-      for (const field of sim.fields.values()) {
-        for (const effect of field.effects) {
-          await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
-        }
-      }
-
-      updateSelectionMask(null)
-      syncFields()
-      showToast(`Scene "${sceneName}" loaded (${scene.fields?.length || 0} fields)`, 'success')
-    } catch {
-      showToast(`Failed to load "${sceneName}"`, 'error')
-    } finally {
-      liftWhenSettled()
-    }
-  }, [showToast, getModCode, syncFields, updateSelectionMask, fadeToBlack, liftWhenSettled])
+  // Load a saved scene (replaces current state) — scene-io.loadScene
+  const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => sceneIO.loadScene({
+    resetWorldIdentity, simulationRef, rendererRef, lastSceneRef, setPlugToken, setRiding, setWorldLoading,
+    fadeToBlack, liftWhenSettled, audioRef, cachedOverlapMasksRef, installHooks, setRunning,
+    getModCode, updateSelectionMask, syncFields, showToast,
+  }, sceneName, preScene), [showToast, getModCode, syncFields, updateSelectionMask, fadeToBlack, liftWhenSettled])
   const handleLoadSceneRef = useRef(handleLoadScene)
   handleLoadSceneRef.current = handleLoadScene
 
-  /** MAIN version scroller step: pos 0 = LIVE, 1..N = backups (newest→oldest).
-   *  Loads a timestamped backup snapshot in place (via handleLoadScene's preScene)
-   *  — non-destructive: browsing an old version never overwrites the live world. */
-  const goBaseVer = useCallback(async (pos: number) => {
-    const cur = playScene || ''
-    if (!cur || pos < 0 || pos > baseVers.length) return
-    if (pos === 0) { await handleLoadScene(cur); setBaseVerPos(0); return }   // back to LIVE
-    const ts = baseVers[pos - 1]   // pos 1 → newest backup
-    try {
-      const j = await fetch(`/api/engine/scene?action=version&name=${encodeURIComponent(cur)}&timestamp=${ts}`).then(r => r.json())
-      if (j?.scene) { await handleLoadScene(cur, j.scene); setBaseVerPos(pos) }
-    } catch { /* offline — leave where we are */ }
-  }, [playScene, baseVers, handleLoadScene])
+  /** MAIN version scroller step — scene-io.goBaseVer */
+  const goBaseVer = useCallback((pos: number) => sceneIO.goBaseVer({ playScene, baseVers, handleLoadScene, setBaseVerPos }, pos), [playScene, baseVers, handleLoadScene])
 
   // true while a hot-reload is tearing down + recompiling — the 2s sync must not
   // fire in this window or it persists a half-built (empty/hookless) world.
@@ -1894,75 +1585,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // doesn't reliably re-stamp), so it can't drift into a reload-every-10s loop.
   const renderedRevRef = useRef(-1)
 
-  /** #3 — hot-swap a SPACE version in place (no reload), the same way the vote
-   *  reckoning previews a `space:` snapshot: fetch it, hand it to the proven
-   *  clear+restore (handleLoadScene), and mark the client version so ctx.view
-   *  (and thus the read-only gates) follow. Owner-only — the owner's own hooks
-   *  are trusted; a visitor keeps the server-rendered reload path so an
-   *  untrusted version's JS never auto-installs. */
-  const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
-    resetWorldIdentity()
-    if (!spaceSlug) return
-    // Already mid-load: queue this request (latest wins) instead of interleaving
-    // a second clear+restore over the first — that interleave tears the grid.
-    if (reloadingRef.current) { pendingReloadRef.current = { v }; return }
-    // Pause the 2s sync while the reload settles: handleLoadScene tears the renderer
-    // down (0 visuals) and reinstalls hooks over several frames; a sync firing in
-    // that window persists an empty/hookless world and renders it dark for everyone.
-    reloadingRef.current = true
-    try {
-      const q = v === undefined ? '' : `?version=${v}`
-      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${q}`, { cache: 'no-store' })
-      if (!r.ok) return
-      const data = await r.json()          // { snapshot: {...} }
-      // Viewing a SAVE POINT presents the world FRESH, not mid-game: a version
-      // snapshot carries the live worldData — chapters, triggers, whatever the
-      // hook persisted — so vote previews resumed someone's half-finished run.
-      // Engine state (__chapters/__trig) always resets; a world lists its own
-      // game-state keys in worldData.__resets (e.g. TIDEGLASS resets '__tg').
-      // A RESTART (R) reloads the page with a one-shot sessionStorage flag so the
-      // live snapshot's saved game-state is stripped on the way back in — a plain
-      // reload alone re-fetches __tg intact ("reset didn't purge the save").
-      let resetFlag = false
-      try {
-        if (sessionStorage.getItem('cc-reset:' + spaceSlug)) { resetFlag = true; sessionStorage.removeItem('cc-reset:' + spaceSlug) }
-      } catch { /* private mode */ }
-      if (v !== undefined || resetFlag) {
-        const wd = (data?.snapshot as { worldData?: Record<string, unknown> } | undefined)?.worldData
-        if (wd) {
-          if (resetFlag) {
-            // RESTART (R): return to ORIGINAL — restore from wd.__original where the
-            // world captured one, else delete so the hook re-inits. Same resetPatch
-            // the server reset uses, so R and reset_world behave identically.
-            const patch = resetPatch(wd)
-            for (const [k, val] of Object.entries(patch)) { if (val === null) delete wd[k]; else wd[k] = val }
-          } else {
-            // a version VIEW only clears transient engine progress so the saved state shows
-            const extra = Array.isArray(wd.__resets) ? wd.__resets as string[] : []
-            for (const k of ['__chapters', '__trig', ...extra]) delete wd[k]
-          }
-        }
-      }
-      await handleLoadScene(`space:${spaceSlug}`, data)
-      // record the rev we just rendered so the auto-load poll baselines on what's
-      // actually on screen (this is the SAME __bridge_rev the snapshot?rev=1 poll reads)
-      renderedRevRef.current = Number((data?.snapshot as { worldData?: { __bridge_rev?: unknown } } | undefined)?.worldData?.__bridge_rev) || 0
-      greetInstructions(`space:${spaceSlug}`)   // pop instructions on first entry to this space
-      setSpaceVer(v)
-      window.history.replaceState(null, '', v === undefined ? `/space/${spaceSlug}` : `/space/${spaceSlug}?version=${v}`)
-    } catch { /* leave where we are */ }
-    finally {
-      // release AFTER the load actually finished (not a fixed timer from entry):
-      // hold the sync-pause a beat for the recompile to settle, then run the
-      // newest queued request, if any — so a legit follow-up edit still adopts.
-      setTimeout(() => {
-        reloadingRef.current = false
-        const p = pendingReloadRef.current
-        pendingReloadRef.current = null
-        if (p) hotLoadSpaceVersionRef.current?.(p.v)
-      }, 1500)
-    }
-  }, [spaceSlug, handleLoadScene])
+  /** hot-swap a SPACE version in place — scene-io.hotLoadSpaceVersion */
+  const hotLoadSpaceVersion = useCallback((v: number | undefined) => sceneIO.hotLoadSpaceVersion({
+    resetWorldIdentity, spaceSlug, reloadingRef, pendingReloadRef, renderedRevRef, hotLoadSpaceVersionRef,
+    handleLoadScene, greetInstructions, setSpaceVer,
+  }, v), [spaceSlug, handleLoadScene])
   hotLoadSpaceVersionRef.current = hotLoadSpaceVersion
 
   // AUTO-LOAD — the eye's counterpart in the tab. Every bridge write bumps the
@@ -2004,48 +1631,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     return () => clearInterval(iv)
   }, [spaceSlug, spaceVer, hotLoadSpaceVersion, showToast])
 
-  // Delete a saved scene
-  const handleDeleteScene = useCallback(async (sceneName: string) => {
-    try {
-      await fetch('/api/engine/scene', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: sceneName }),
-      })
-      showToast(`Scene "${sceneName}" deleted`, 'success')
-      refreshSceneList()
-    } catch {
-      showToast(`Failed to delete "${sceneName}"`, 'error')
-    }
-  }, [showToast, refreshSceneList])
+  const handleDeleteScene = useCallback((sceneName: string) => sceneIO.deleteScene({ showToast, refreshSceneList }, sceneName), [showToast, refreshSceneList])
 
-  /** The branch heads of the current base world — one entry per branch (its
-   *  newest version). Shared by the ≡ BRANCHES panel and the ◂/▸ quick-browse
-   *  arrows on ⑂ BRANCH. */
-  const loadBranchHeads = useCallback(async () => {
-    const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
-    if (!base) return [] as Array<{ name: string; author: string; v: number }>
-    try {
-      const { scenes } = await fetch('/api/engine/scene?action=list').then(r => r.json())
-      const heads = new Map<string, { name: string; author: string; v: number }>()
-      for (const n of scenes as string[]) {
-        const m = n.match(/^(.+) ⑂ (.+) · v(\d+)$/)
-        if (!m || m[1] !== base) continue
-        if (m[2] === 'main' || m[2].startsWith('main · ')) continue   // legacy throne copies aren't browsable branches
-        const cur = heads.get(m[2])
-        if (!cur || +m[3] > cur.v) heads.set(m[2], { name: n, author: m[2], v: +m[3] })
-      }
-      // the WINNER'S PODIUM rides first — the elected copy stands before main
-      // and the branches (main itself always stays the original maker's)
-      const list = [...heads.values()].sort((a, b) => {
-        const aw = a.author === 'winner' ? 1 : 0, bw = b.author === 'winner' ? 1 : 0
-        if (aw !== bw) return bw - aw
-        return b.v - a.v
-      })
-      setBranchList(list)
-      return list
-    } catch { setBranchList([]); return [] }
-  }, [playScene, spaceSlug])
+  /** branch heads of the current base world — scene-io.loadBranchHeads */
+  const loadBranchHeads = useCallback(() => sceneIO.loadBranchHeads({ lastSceneRef, playScene, spaceSlug, setBranchList }), [playScene, spaceSlug])
 
   /** ◂/▸ on the BRANCH button: step the ring [main, branch, branch, …] — quick
    *  browsing for everyone, owner or visitor. Looking is free. */
@@ -2057,21 +1646,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceSlug, riding])
 
-  const stepBranch = useCallback(async (dir: 1 | -1) => {
-    const list = await loadBranchHeads()
-    if (list.length === 0) { showToast('no branches yet — ⑂ BRANCH to open one', 'info'); return }
-    const ring = ['main', ...list.map(b => b.name)]
-    const cur = lastSceneRef.current || ''
-    const curAuthor = cur.match(/^.+ ⑂ (.+) · v\d+$/)?.[1] ?? ''
-    // riding a branch that vanished → findIndex -1 → idx 0 → treated as main
-    const idx = curAuthor ? Math.max(0, 1 + list.findIndex(b => b.author === curAuthor)) : 0
-    const next = ring[(idx + dir + ring.length) % ring.length]
-    if (next === 'main') {
-      // on a space, main is the space's own snapshot — not a scene by that name
-      if (spaceSlug) window.location.href = `/space/${encodeURIComponent(spaceSlug)}`
-      else handleLoadScene(cur.split(' ⑂ ')[0] || (playScene || ''))
-    } else handleLoadScene(next)
-  }, [loadBranchHeads, spaceSlug, playScene, handleLoadScene, showToast])
+  const stepBranch = useCallback((dir: 1 | -1) => sceneIO.stepBranch({ loadBranchHeads, lastSceneRef, spaceSlug, playScene, handleLoadScene, showToast }, dir), [loadBranchHeads, spaceSlug, playScene, handleLoadScene, showToast])
 
   // Play mode: the screen, heard. Every ~600ms sample the rendered frame at
   // 8x8 and dispatch its mood (brightness, warmth, busy-ness) for the audio
