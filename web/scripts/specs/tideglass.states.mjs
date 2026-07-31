@@ -17,4 +17,11 @@ export default {
   'mirror-valve-open': at(G => { G.view = 11; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05 }),
   'shore-lowtide': at(G => { G.view = 0; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05 }),
   'deck-hatch': at(G => { G.view = 9; G.inv.spanner = true; G.held = 1 }),
+  'cave-carry': at(G => { G.view = 8; G.pearl = 1; G.pearlSet = 0 }),         // carrying the pearl, socket empty
+  'cave-powered': at(G => { G.view = 8; G.pearl = 1; G.pearlSet = 1; G.crystalPowered = 1 }),  // seated → beam fires
+  'cave-night': at(G => { G.view = 8; G.pearl = 1; G.pearlSet = 1 }),        // check the moon in the mouth
+  'shore-crystal-off': at(G => { G.view = 0; G.dawn = 1; G.crystalPowered = 0 }),  // airship in sky, keel crystal dark
+  'shore-crystal-on': at(G => { G.view = 0; G.dawn = 1; G.crystalPowered = 1 }),   // beam lit → crystal glows
+  'deck-live': at(G => { G.view = 9; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.seats = [2, 3, 5]; G.crystalPowered = 1 }),  // helm takeable
+  'deck-nopower': at(G => { G.view = 9; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.seats = [2, 3, 5]; G.crystalPowered = 0 }),  // gears in, crystal dark
 }

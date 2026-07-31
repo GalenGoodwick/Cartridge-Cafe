@@ -82,11 +82,41 @@ export default function ({ runWorld, hookCode, asserter }) {
     const w = runWorld(hookCode); const g = G(w)
     g.view = 13; g.inv.gear20 = true; g.sluiceOpen = 1  // drained
     for (let i = 0; i < 500; i++) w.tick()
-    w.click(256, 226)
+    w.click(256, 266)
     eq('pearl: before the toll → nothing', G(w).pearl, 0)
     w.click(256, 316)
     eq('bell: drained → THE TOLL', G(w).bellRung, 1)
-    w.click(256, 226)
+    w.click(256, 266)
     eq('pearl: after the toll → taken', G(w).pearl, 1)
+  }
+
+  // ── THE FINALE CHAIN: pearl → cave socket → crystal → the helm goes live ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 8; g.pearl = 0
+    w.settle(); w.click(256, 300)
+    eq('socket: no pearl → stays empty', G(w).pearlSet, 0)
+    eq('socket: no pearl → crystal stays dark', G(w).crystalPowered, 0)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 8; g.pearl = 1                             // carrying the pearl
+    w.settle(); w.click(256, 300)
+    eq('socket: seat the pearl → socket set', G(w).pearlSet, 1)
+    eq('socket: seat the pearl → the beam powers the crystal', G(w).crystalPowered, 1)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    // a genuinely solved engine (engineOK is recomputed each tick from the seats)
+    g.view = 9; g.inv.gear8 = true; g.inv.gear12 = true; g.inv.gear20 = true; g.seats = [2, 3, 5]
+    g.crystalPowered = 0; g.act = 0
+    w.settle()
+    eq('helm: seats [2,4,3] → engine reads OK', G(w).engineOK, 1)
+    w.click(256, 120)
+    eq('helm: gears in but crystal dark → the wheel will not turn', G(w).fly, 0)
+    G(w).crystalPowered = 1
+    w.click(256, 120)
+    eq('helm: gears in AND crystal lit → take the wheel, FLY', G(w).fly, 1)
+    eq('helm: flying → Act I complete (act advances)', G(w).act >= 2, true)
   }
 }
