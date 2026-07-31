@@ -24,4 +24,7 @@ export default {
   'shore-crystal-on': at(G => { G.view = 0; G.dawn = 1; G.crystalPowered = 1 }),   // beam lit → crystal glows
   'deck-live': at(G => { G.view = 9; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.seats = [2, 3, 5]; G.crystalPowered = 1 }),  // helm takeable
   'deck-nopower': at(G => { G.view = 9; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.seats = [2, 3, 5]; G.crystalPowered = 0 }),  // gears in, crystal dark
+  'sluice-moon': at(G => { G.view = 11; G.inv.gear20 = true }),
+  'shore-owngear': at(G => { G.view = 0; G.inv.gear16 = true; G.inv.gear8 = true }),
+  'satchel-pearl': at(G => { G.view = 0; G.dawn = 1; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.pearl = 1; G.pearlSet = 0 }),
 }

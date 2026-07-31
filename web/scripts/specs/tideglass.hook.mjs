@@ -52,6 +52,22 @@ export default function ({ runWorld, hookCode, asserter }) {
     eq('kiln passage: thicket burned → walks to the kiln (view 14)', G(w).view, 14)
   }
 
+  // ── GEARS: no gear on the shore; the cave plank yields the useful 8t; the
+  //    unused 16t is gone; the pearl gets its own slot (Galen, Jul 31) ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 0; g.tideLevel = 0.05; g.inv.gear8 = false
+    w.settle(); w.click(140, 414)
+    eq('shore: no gear pickup there anymore', G(w).inv.gear8 || false, false)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 8; g.inv.gear8 = false
+    w.settle(); w.click(150, 420)
+    eq('cave plank: yields the useful 8t gear now', G(w).inv.gear8, true)
+    eq('cave plank: the unused 16t is never granted', G(w).inv.gear16 || false, false)
+  }
+
   // ── THE TIDE VALVE: the freed sluice wheel drives the tide (Galen, Jul 31) ──
   {
     const w = runWorld(hookCode); const g = G(w)
