@@ -38,7 +38,7 @@ function SwarmRows({ nodes, depth = 0 }: { nodes: SwarmNodeView[]; depth?: numbe
   ))}</>
 }
 
-export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph, setNodesExpanded, perf, swarm }: {
+export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph, setNodesExpanded, perf, swarm, onClose }: {
   aiFocus: { action?: string; fieldName?: string; at?: number; error?: { name: string; type: string; error: string } | null } | null
   aiEye: { png?: string; at?: number; name?: string; stats?: { meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: number; hookErrors?: number; dominantColors?: number[][] } } | null
   aiViewTab: 'eye' | 'nodes' | 'swarm'
@@ -47,6 +47,7 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
   setNodesExpanded: Dispatch<SetStateAction<boolean>>
   perf: { frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null
   swarm: { project: string; done: number; total: number; nodes: SwarmNodeView[] } | null
+  onClose?: () => void
 }) {
             const focusFresh = !!(aiFocus && aiFocus.at && (Date.now() - aiFocus.at < 120000))
             const eyeFresh = !!(aiEye?.png && aiEye.at && (Date.now() - aiEye.at < 300000))
@@ -56,7 +57,11 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                 style={{ right: 'calc(50% + 147px)' }}>
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-amber-300/15 font-mono text-[13px] tracking-[0.2em] text-amber-300/50">
                   <span>◈ AI VIEW</span>
-                  <span className={focusFresh ? 'text-amber-300/80 animate-pulse' : 'text-white/20'}>{focusFresh ? '● live' : '○ idle'}</span>
+                  <span className="flex items-center gap-2">
+                    <span className={focusFresh ? 'text-amber-300/80 animate-pulse' : 'text-white/20'}>{focusFresh ? '● live' : '○ idle'}</span>
+                    {onClose && <button onClick={onClose} aria-label="close ai view"
+                      className="text-white/35 hover:text-white text-[14px] leading-none px-0.5">✕</button>}
+                  </span>
                 </div>
                 {/* TABS — EYE (focus + render) | NODES (architecture graph) */}
                 <div className="flex border-b border-white/10 font-mono text-[12px]">

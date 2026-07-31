@@ -866,6 +866,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // log with the world's chat: ANY entry posted here also lands on the network
   // (commons ping + builderbox:queue) as an INVITATION — watching AIs choose.
   const [buildConsoleOpen, setBuildConsoleOpen] = useState(false)
+  // ◈ AI VIEW dismiss (Galen: "ai view is stuck open"): a parked swarm map keeps
+  // (buildConsoleOpen || !!swarm) true forever, so the panel had no OFF. The ✕
+  // dismisses it for the session; opening the BuilderBox brings it back.
+  const [aiViewDismissed, setAiViewDismissed] = useState(false)
+  useEffect(() => { if (buildConsoleOpen) setAiViewDismissed(false) }, [buildConsoleOpen])
   const buildConsoleClosedRef = useRef(false)
   // BuilderBox "AI focus" — worldData.ai_focus is auto-set on every AI world-edit
   // ({action, fieldName, at}); poll it so the human can see what the AI is doing.
@@ -5757,8 +5762,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               render_probe PNG the bridge stashed to slot ai_eye:<spaceId>). Renders
               under the SAME open condition as the BuilderBox so they travel together;
               always shows its chrome + graceful empty states so it's never invisible. */}
-          {(buildConsoleOpen || !!swarm) && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} />
+          {(buildConsoleOpen || !!swarm) && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+            <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}
           {nodesExpanded && nodeGraph && <NodeGraphOverlay graph={nodeGraph} onClose={() => setNodesExpanded(false)} />}
