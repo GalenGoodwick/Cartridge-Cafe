@@ -1903,6 +1903,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       liftWhenSettled()
     }
   }, [showToast, getModCode, syncFields, updateSelectionMask, fadeToBlack, liftWhenSettled])
+  const handleLoadSceneRef = useRef(handleLoadScene)
+  handleLoadSceneRef.current = handleLoadScene
 
   /** MAIN version scroller step: pos 0 = LIVE, 1..N = backups (newest→oldest).
    *  Loads a timestamped backup snapshot in place (via handleLoadScene's preScene)
@@ -2621,6 +2623,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [spaceSlug, installHooks, getModCode])
   const hotSwapSpaceRef = useRef(hotSwapSpace)
   hotSwapSpaceRef.current = hotSwapSpace
+
+  // ⚙ MANAGE (Galen: "worlds don't load from sidebar"): a world is a SPACE, not a
+  // hub scene, so go(name) can't reach it — load its snapshot IN PLACE via the
+  // same HUBWORLD swap the portals use, so clicking a world row opens it in the
+  // engine you're already looking at instead of a page nav. cafe:closespace
+  // returns to the shelf by reloading the CAFE hub (the swap removed the hub's
+  // own fields, and its leave-dialog only arms in-game, so WITHOUT this the back
+  // button would be dead — a stranded world. The shell shows a ◂ while open).
+  useEffect(() => {
+    const onOpenSpace = (e: Event) => {
+      const slug = (e as CustomEvent).detail
+      if (typeof slug === 'string' && slug) void hotSwapSpaceRef.current?.(slug)
+    }
+    const onCloseSpace = () => {
+      visitingRef.current = null
+      try { const u = new URL(window.location.href); u.searchParams.delete('at'); history.replaceState(null, '', u.toString()) } catch { /* cosmetic */ }
+      void handleLoadSceneRef.current?.('CAFE')   // rebuild the hub shelf in place
+    }
+    window.addEventListener('cafe:openspace', onOpenSpace)
+    window.addEventListener('cafe:closespace', onCloseSpace)
+    return () => { window.removeEventListener('cafe:openspace', onOpenSpace); window.removeEventListener('cafe:closespace', onCloseSpace) }
+  }, [])
 
   // Load space snapshot on mount (for space mode)
   const spaceLoadedRef = useRef(false)

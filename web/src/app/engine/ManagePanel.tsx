@@ -10,7 +10,7 @@ type Branch = { name: string; base: string; label: string | null; version: numbe
  *  rows; branches are the `BASE ⑂ you · [label ·] vN` challenger scenes scattered
  *  across every world you've branched. Each row: open · rename · delete. Reads
  *  /api/spaces/mine (owner-scoped) and mutates through the existing auth'd routes. */
-export default function ManagePanel({ onClose, onPreview, onOpenScene }: { onClose: () => void; onPreview?: (scene: string | null) => void; onOpenScene?: (scene: string) => void }) {
+export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpace }: { onClose: () => void; onPreview?: (scene: string | null) => void; onOpenScene?: (scene: string) => void; onOpenSpace?: (slug: string, name: string) => void }) {
   const [handle, setHandle] = useState<string>('')
   const [worlds, setWorlds] = useState<World[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
@@ -61,7 +61,13 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene }: { onClo
     return () => window.removeEventListener('keydown', onKey)
   }, [editing, onClose])
 
-  const openWorld = (slug: string) => { window.location.href = '/space/' + encodeURIComponent(slug) }
+  // WORLD open = load its snapshot IN PLACE (Galen: parity with branches). A
+  // world is a space, not a hub scene, so it rides the HUBWORLD swap instead of
+  // go(). Falls back to a /space nav if the panel is used without the callback.
+  const openWorld = (slug: string, name: string) => {
+    if (onOpenSpace) onOpenSpace(slug, name)
+    else window.location.href = '/space/' + encodeURIComponent(slug)
+  }
   // BRANCH open = load it IN PLACE in the engine you're already looking at
   // (Galen: "like vote mode does" — don't navigate to /hub/<name>). onOpenScene
   // commits the same scene the hover was previewing. Falls back to nav if the
@@ -196,7 +202,7 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene }: { onClo
                           onKeyDown={e => { if (e.key === 'Enter') renameWorld(w); if (e.key === 'Escape') setEditing(null) }}
                           className="flex-1 min-w-0 bg-black/50 border border-white/20 rounded px-2 py-1 text-[14px] text-white/90 outline-none focus:border-emerald-300/50" />
                       ) : (
-                        <button onClick={() => openWorld(w.slug)} className="flex-1 min-w-0 text-left text-[14px] text-white/85 hover:text-emerald-200 truncate" title="open">
+                        <button onClick={() => openWorld(w.slug, w.name)} className="flex-1 min-w-0 text-left text-[14px] text-white/85 hover:text-emerald-200 truncate" title="open">
                           {w.name}{!w.isPublic && <span className="text-white/30"> · private</span>}
                         </button>
                       )}

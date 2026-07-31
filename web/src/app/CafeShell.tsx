@@ -349,6 +349,10 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // MANAGE hover-preview (Galen): hovering a branch row renders that snapshot
   // live in the engine — vote-style recognition instead of guessing from names.
   const [managePreview, setManagePreview] = useState<string | null>(null)
+  // MANAGE world open: a world is a SPACE loaded IN PLACE (hotSwapSpace) — the
+  // swap strips the hub's own back button, so the shell owns a ◂ that reloads
+  // the shelf (cafe:closespace). Holds {slug,name} of the world showing now.
+  const [openedSpace, setOpenedSpace] = useState<{ slug: string; name: string } | null>(null)
   const [players, setPlayers] = useState(false)           // in the PLAYER WORLDS filter (big-bubble view)
   const [modalUp, setModalUp] = useState(false)           // an engine panel is open; overlays duck
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1933,7 +1937,20 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
 
           {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
           {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview}
-            onOpenScene={(s) => { setManageOpen(false); setManagePreview(null); go(s) }} />}
+            onOpenScene={(s) => { setManageOpen(false); setManagePreview(null); go(s) }}
+            onOpenSpace={(slug, name) => { setManageOpen(false); setManagePreview(null); setOpenedSpace({ slug, name }); window.dispatchEvent(new CustomEvent('cafe:openspace', { detail: slug })) }} />}
+
+          {/* ◂ back to the shelf — only while a MANAGE-opened world is showing in
+              place (hotSwapSpace stripped the hub's own back button). */}
+          {openedSpace && (
+            <div className="fixed top-5 left-6 z-[70]">
+              <button onClick={() => { setOpenedSpace(null); window.dispatchEvent(new CustomEvent('cafe:closespace')) }}
+                className="flex items-center gap-2 rounded-lg border border-brass/40 bg-void/85 backdrop-blur px-3 py-2 font-mono text-[14px] tracking-[0.12em] text-crema/85 hover:text-glow hover:border-glow/50 transition-colors">
+                <span className="text-[18px] leading-none">◂</span>
+                <span className="truncate max-w-[220px]">{openedSpace.name || 'my worlds'}</span>
+              </button>
+            </div>
+          )}
 
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}
