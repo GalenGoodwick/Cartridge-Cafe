@@ -19,6 +19,18 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)      // name/slug currently mutating
   const [editing, setEditing] = useState<string | null>(null) // row key being renamed
   const [draft, setDraft] = useState('')
+  // BULK SELECT (Galen: "I have a ton of old worlds and branches") — checkboxes
+  // + one confirm, so clearing years of drafts isn't thirty dialogs. Keys match
+  // the row keys: 'w:<slug>' / 'b:<name>'.
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null)
+  const toggleSel = (k: string) => setSel(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const toggleAll = (keys: string[]) => setSel(s => {
+    const n = new Set(s)
+    const allIn = keys.every(k => n.has(k))
+    for (const k of keys) { if (allIn) n.delete(k); else n.add(k) }
+    return n
+  })
 
   const load = useCallback(async () => {
     try {
@@ -89,8 +101,45 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
     } catch { setErr('could not rename') } finally { setBusy(null); setEditing(null) }
   }
 
+  // BULK DELETE — one confirm for the whole selection, then sequential deletes
+  // through the same auth'd routes (server authority per item, never a new
+  // bulk endpoint). Failures stay selected and are reported; successes leave
+  // the list live as they land.
+  const deleteSelected = async () => {
+    const picks = [...sel]
+    if (picks.length === 0) return
+    if (!confirm(`Delete ${picks.length} item${picks.length === 1 ? '' : 's'} (worlds and/or branches)? This can’t be undone.`)) return
+    setBulk({ done: 0, total: picks.length })
+    const failed: string[] = []
+    for (const k of picks) {
+      try {
+        let ok = false
+        if (k.startsWith('w:')) {
+          const slug = k.slice(2)
+          const r = await fetch('/api/spaces/' + encodeURIComponent(slug), { method: 'DELETE' })
+          ok = r.ok
+          if (ok) setWorlds(ws => ws.filter(x => x.slug !== slug))
+        } else {
+          const name = k.slice(2)
+          const r = await fetch('/api/engine/scene', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+          ok = r.ok
+          if (ok) setBranches(bs => bs.filter(x => x.name !== name))
+        }
+        if (!ok) failed.push(k)
+      } catch { failed.push(k) }
+      setBulk(p => p ? { ...p, done: p.done + 1 } : p)
+    }
+    setBulk(null)
+    setSel(new Set(failed))
+    setErr(failed.length ? `${failed.length} of ${picks.length} could not be deleted — they stay selected` : null)
+  }
+
   // group branches by base world so the list reads as "my challengers of X"
   const byBase = branches.reduce<Record<string, Branch[]>>((m, b) => { (m[b.base] ||= []).push(b); return m }, {})
+  const selBox = (k: string) => (
+    <button onClick={() => toggleSel(k)} aria-label="select" disabled={!!bulk}
+      className={`shrink-0 w-4 h-4 rounded border text-[10px] leading-none flex items-center justify-center transition-colors ${sel.has(k) ? 'border-red-400/80 bg-red-500/25 text-red-200' : 'border-white/25 text-transparent hover:border-white/50'}`}>✓</button>
+  )
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-mono" onClick={onClose}>
@@ -105,13 +154,18 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             {/* WORLDS */}
-            <div className="text-[13px] tracking-[0.2em] text-white/35 mb-1.5">WORLDS ({worlds.length}) — spaces you own</div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[13px] tracking-[0.2em] text-white/35">WORLDS ({worlds.length}) — spaces you own</div>
+              {worlds.length > 1 && <button onClick={() => toggleAll(worlds.map(w => 'w:' + w.slug))} disabled={!!bulk}
+                className="text-[11px] tracking-[0.15em] text-white/35 hover:text-white/70 px-1">select all</button>}
+            </div>
             {worlds.length === 0 ? <div className="text-white/30 text-[13px] mb-4">no worlds yet.</div> : (
               <div className="mb-4 divide-y divide-white/5">
                 {worlds.map(w => {
                   const k = 'w:' + w.slug
                   return (
                     <div key={k} className="flex items-center gap-2 py-1.5">
+                      {selBox(k)}
                       {editing === k ? (
                         <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} maxLength={60}
                           onKeyDown={e => { if (e.key === 'Enter') renameWorld(w); if (e.key === 'Escape') setEditing(null) }}
@@ -136,17 +190,26 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
             )}
 
             {/* BRANCHES */}
-            <div className="text-[13px] tracking-[0.2em] text-white/35 mb-1.5">BRANCHES ({branches.length}) — your challengers</div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[13px] tracking-[0.2em] text-white/35">BRANCHES ({branches.length}) — your challengers</div>
+              {branches.length > 1 && <button onClick={() => toggleAll(branches.map(b => 'b:' + b.name))} disabled={!!bulk}
+                className="text-[11px] tracking-[0.15em] text-white/35 hover:text-white/70 px-1">select all</button>}
+            </div>
             {branches.length === 0 ? <div className="text-white/30 text-[13px]">no branches yet — ⑂ CREATE BRANCH on any world.</div> : (
               <div className="space-y-3">
                 {Object.entries(byBase).map(([base, list]) => (
                   <div key={base}>
-                    <div className="text-[12px] text-white/30 tracking-[0.15em] mb-0.5">{base.toUpperCase()}</div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="text-[12px] text-white/30 tracking-[0.15em]">{base.toUpperCase()}</div>
+                      {list.length > 1 && <button onClick={() => toggleAll(list.map(b => 'b:' + b.name))} disabled={!!bulk}
+                        className="text-[10px] tracking-[0.15em] text-white/25 hover:text-white/60 px-1">all</button>}
+                    </div>
                     <div className="divide-y divide-white/5">
                       {list.map(b => {
                         const k = 'b:' + b.name
                         return (
                           <div key={k} className="flex items-center gap-2 py-1.5">
+                            {selBox(k)}
                             {editing === k ? (
                               <div className="flex-1 min-w-0 flex items-center gap-1 text-[13px] text-white/40">
                                 <span className="shrink-0">⑂ {handle} ·</span>
@@ -175,6 +238,22 @@ export default function ManagePanel({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {/* BULK BAR — appears with a selection; one confirm, sequential deletes */}
+            {(sel.size > 0 || bulk) && (
+              <div className="sticky bottom-0 mt-4 -mx-5 -mb-5 px-5 py-3 bg-[#0c0a09]/95 border-t border-white/10 flex items-center justify-between gap-3">
+                {bulk ? (
+                  <div className="text-[13px] text-white/60 tracking-[0.1em]">deleting… {bulk.done}/{bulk.total}</div>
+                ) : (
+                  <>
+                    <button onClick={() => setSel(new Set())} className="text-[12px] tracking-[0.15em] text-white/40 hover:text-white/70">clear ({sel.size})</button>
+                    <button onClick={deleteSelected}
+                      className="px-3 py-1.5 rounded-lg border border-red-400/50 text-red-300 hover:bg-red-500/15 text-[13px] tracking-[0.15em]">
+                      🗑 DELETE {sel.size} SELECTED
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </>
