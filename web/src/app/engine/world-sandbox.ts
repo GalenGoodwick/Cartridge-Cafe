@@ -361,6 +361,14 @@ export class WorldSandbox {
     this.worker.postMessage({ type: 'load', hooks: specs })
   }
 
+  /** The persist system hands the player's LOADED save here: for the next few
+   *  replies the worker's 'save' writeback is overridden (an in-flight reply
+   *  carries the hook's PRE-LOAD fresh-init save and would clobber the real
+   *  one — certain, not rare: replies land every frame). The payload carries
+   *  the injected save into the worker, whose hook adopts it (v-check passes). */
+  private saveInject: { data: unknown; frames: number } | null = null
+  injectSave(data: unknown): void { this.saveInject = { data, frames: 4 } }
+
   get active(): boolean { return !!this.worker }
   get error(): string | null { return this.compileError }
 
@@ -439,11 +447,17 @@ export class WorldSandbox {
       // (presence, pixel samples, live input) with a stale frame — which
       // reads as warping and jitter. The host owns everything else.
       for (const k of Object.keys(incoming)) {
+        if (k === 'save' && this.saveInject) continue   // the loaded save outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'save' ||
             (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
           wd[k] = incoming[k]
         }
+      }
+      if (this.saveInject) {
+        wd['save'] = this.saveInject.data              // assert the loaded save host-side
+        this.saveInject.frames -= 1
+        if (this.saveInject.frames <= 0) this.saveInject = null
       }
       // field transforms the hook moved
       for (const p of this.pending.fieldPatches || []) {

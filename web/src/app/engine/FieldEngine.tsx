@@ -521,12 +521,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (stopped) return
       const sim = simulationRef.current
       if (!sim) { if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200); return }
-      if (!sim.worldData?.['persist']) return   // arcade-style: no persistence, fresh each visit
+      if (!sim.worldData?.['persist']) {
+        // the snapshot (which carries persist:true) may not have applied yet —
+        // keep checking; give up only after ~8s (then it's a real arcade world)
+        if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200)
+        return
+      }
       fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`)
         .then(r => r.json())
         .then(j => {
           const s = simulationRef.current
-          if (!stopped && s && j?.data != null) { s.worldData['save'] = j.data; autoSaveSerRef.current = JSON.stringify(j.data) }
+          if (!stopped && s && j?.data != null) {
+            s.worldData['save'] = j.data
+            sandboxRef.current?.injectSave(j.data)   // outrank the in-flight worker reply (pre-load fresh-init would clobber)
+            autoSaveSerRef.current = JSON.stringify(j.data)
+          }
         })
         .catch(() => {})
         .finally(() => { autoSaveReadyRef.current = true })   // now the frame loop may persist changes
@@ -1712,7 +1721,55 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [])
 
   // Load a saved scene (replaces current state)
+  // ═══ WORLD-SWAP HYGIENE (Galen Jul 30 audit): a swap SWITCHES OUT the whole
+  //     node — it must not MERGE the new world onto the old one's identity.
+  //     Object.assign(worldData, incoming) only ADDS keys, so config that the
+  //     new world doesn't declare leaks (heavy bloom bleeds; __mouseLook traps
+  //     the cursor; a persist flag auto-saves a fresh world; mpManifest joins a
+  //     lobby). Plus non-worldData identity: the pointer lock, the arena socket.
+  //     Call this BEFORE applying any incoming snapshot at every swap site;
+  //     incoming re-adds the keys the new world actually declares. NOT for live
+  //     same-world updates (the bridge set_world_data / the 2s delta sync). ═══
+  const resetWorldIdentity = useCallback(() => {
+    swapAtRef.current = performance.now()
+    const sim = simulationRef.current
+    if (sim) {
+      const wd = sim.worldData as Record<string, unknown>
+      // config keys the next world re-declares if it wants them
+      for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
+                       '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
+                       '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels',
+                       '__play_music', '__play_sound', 'music_mod', 'tone']) {
+        if (k in wd) delete wd[k]
+      }
+    }
+    // renderer config back to defaults (else the prior world's grade/scale persists)
+    const r = rendererRef.current
+    if (r) {
+      r.setPostProcess({ enabled: true, bloomIntensity: 0.3, bloomThreshold: 0.8,
+        vignetteStrength: 0.3, vignetteRadius: 0.8, exposure: 1.0, lightDir: [0.5, 0.7], lightIntensity: 0.0 })
+      r.setRenderScale(1.0)
+      r.maxBufferPixels = 2_200_000
+    }
+    // AUDIO is world identity too (Galen): the composed score + hosted track must
+    // not outlive the world. Stopping here on EVERY swap also fixes the vote's
+    // iffy audio — each candidate preview cleanly silences the last.
+    try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12) } catch { /* fine */ }
+    // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
+    // outlive the world (the vote→main cursor-trap bug).
+    try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
+    // the multiplayer socket must not survive into a non-arena world
+    try { arenaRef.current?.close(); arenaRef.current = null } catch { /* fine */ }
+    // ZOMBIE WORKERS (Galen: veilfire's sound started AFTER leaving it): the old
+    // world's sandbox was disposed only when the NEXT world had hooks — a
+    // hookless world or the hub let it keep ticking forever, its whitelisted
+    // __play_music writebacks re-scoring the new world (and stacking CPU cost
+    // across swaps). Dispose unconditionally; the next loader reinstalls its own.
+    try { sandboxRef.current?.dispose(); sandboxRef.current = null } catch { /* fine */ }
+  }, [])
+
   const handleLoadScene = useCallback(async (sceneName: string, preScene?: unknown) => {
+    resetWorldIdentity()
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer) return
@@ -1885,6 +1942,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
    *  are trusted; a visitor keeps the server-rendered reload path so an
    *  untrusted version's JS never auto-installs. */
   const hotLoadSpaceVersion = useCallback(async (v: number | undefined) => {
+    resetWorldIdentity()
     if (!spaceSlug) return
     // Already mid-load: queue this request (latest wins) instead of interleaving
     // a second clear+restore over the first — that interleave tears the grid.
@@ -2246,6 +2304,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     playLoadedRef.current = playScene
 
     const loadPlayScene = async () => {
+      resetWorldIdentity()
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) { setTimeout(loadPlayScene, 500); return }
@@ -2508,6 +2567,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // member content over the hub's snapshot (the one catastrophic failure mode).
   const visitingRef = useRef<string | null>(null)
   const hotSwapSpace = useCallback(async (targetSlug: string) => {
+    resetWorldIdentity()
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer || !targetSlug) return
@@ -2568,6 +2628,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     spaceLoadedRef.current = true
 
     const loadSpaceSnapshot = async () => {
+      resetWorldIdentity()
       const sim = simulationRef.current
       const renderer = rendererRef.current
       if (!sim || !renderer) {
@@ -2841,6 +2902,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
   }, [])
 
+  // pointer-lock entry gate (Galen): the click that ENTERS a world (staging a
+  //  vote candidate, opening a scene) must never lock the cursor — but the next
+  //  deliberate click inside the world must. Time-gate on the last swap.
+  const swapAtRef = useRef(0)
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current
@@ -2872,7 +2938,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
     // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
-    if (sim && sim.worldData['__mouseLook'] && document.pointerLockElement !== canvas) {
+    // the ENTRY click can't lock (it just swapped the world in); a deliberate
+    // click ≥600ms after the swap does — click-to-lock, never lock-on-entry
+    if (sim && sim.worldData['__mouseLook'] && (performance.now() - swapAtRef.current) > 600 && document.pointerLockElement !== canvas) {
       try { canvas.requestPointerLock() } catch { /* not supported */ }
     }
 
@@ -3555,12 +3623,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           return h.protocol === 'https:' && (h.hostname.endsWith('.public.blob.vercel-storage.com') || h.origin === location.origin)
         } catch { return false }
       }
-      type PlaySoundCmd = { id?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
+      type PlaySoundCmd = { id?: string; name?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
       const playSoundRaw = sim.worldData['__play_sound'] as PlaySoundCmd | PlaySoundCmd[] | undefined
       if (playSoundRaw) {
         delete sim.worldData['__play_sound']
         const audio = audioRef.current
         for (const playSound of Array.isArray(playSoundRaw) ? playSoundRaw : [playSoundRaw]) {
+          if (playSound.name && !playSound.id) playSound.id = playSound.name   // VEILFIRE-era hooks say {name:} — alias of id
           if (playSound.id && audio.hasSound(playSound.id)) {
             audio.play(playSound.id, playSound.volume ?? 1.0, playSound.pitch ?? 1.0)
           } else if (playSound.id && playSound.url && audioUrlOk(playSound.url)) {
@@ -7601,7 +7670,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             </div>
           )}
           {instrOpen && (
-            <div className={`absolute right-36 z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}>
+            <div className={`absolute z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}
+              style={{ right: 'max(1rem, calc((100% - 100vh) / 2 + 1rem))' }}>{/* the GRID's top-right — the world square is aspect-fit; on wide screens right-36 sat by the chat rail (Galen) */}
               {/* anchored to the grid's top-right under its button — a reference
                   card, not a curtain: the vote rail and the world stay visible
                   and clickable while it's open (✕ or ESC closes) */}

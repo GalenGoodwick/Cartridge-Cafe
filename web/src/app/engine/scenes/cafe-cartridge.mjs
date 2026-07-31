@@ -178,10 +178,10 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
     let stRaw = i32(floor(sv));
-    let bigBand = stRaw / 400;          // 0 normal · 1 champion (big + its OWN icon) · 2 sub-mains · 3 player-worlds
+    let bigBand = stRaw / 4000;          // 0 normal · 1 champion (big + its OWN icon) · 2 sub-mains · 3 player-worlds
     let big = select(0, 1, bigBand > 0);
-    let ab = stRaw % 400;
-    let st = ab % 200;
+    let ab = stRaw % 4000;
+    let st = ab % 2000;
     let hue = fract(sv);
     let rawHeadDL = uni(9 + i * 4);
     let isDevLive = rawHeadDL > 15999.5;             // +16000 flags DEVELOPER LIVE — an AI builder is docked now
@@ -466,9 +466,9 @@ fn visual_cf_world(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, 
   for (var i = 0; i < i32(uni(3) + 0.5); i++) {
     let sv = uni(8 + i * 4);
     let sr = i32(floor(sv));
-    let abc = sr % 400;
-    if (abc < 200) { continue; }        // crown flag lives in the 200 band, under the big band
-    let bigc = sr / 400;
+    let abc = sr % 4000;
+    if (abc < 2000) { continue; }        // crown flag lives in the 2000 band, under the big band
+    let bigc = sr / 4000;
     let ctr = vec2f((uni(6 + i * 4) - cam.x) * zm / 256.0, (uni(7 + i * 4) - cam.y) * zm / 256.0);
     let R = 0.098 * zm * select(1.0, 1.25, bigc > 0);
     // SOLAR CROWN — a small sun-forged crown above the brow: molten gold body,
@@ -1429,9 +1429,9 @@ try {
     for (let c = 0; c < 16; c++) pop.push(c < au.length ? (au.charCodeAt(c) & 0xff) : 0)
     // st>=9 → the world's own visual, rendered into atlas slot (st-9). else the
     // house mini (0-7) or living emblem (8), tinted by the world's hue.
-    const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)
+    const styleInt = (!B.iconLoading && B.iconSlot != null && B.iconSlot >= 0 && B.iconSlot <= 1990) ? (9 + B.iconSlot) : (B.iconLoading ? 99 : B.style)   // >1990 slots: degrade to the styled emblem, never corrupt the packing
     const frac = (B.iconSlot != null && B.iconSlot >= 0) ? 0 : Math.min(0.999, B.hue != null ? B.hue : 0)
-    const band = B.cat ? B.cat * 400 : (B.big ? 400 : 0)   // 800 sub-mains · 1200 player-worlds · 400 champion-big · 0 normal
+    const band = B.cat ? B.cat * 4000 : (B.big ? 4000 : 0)   // 8000 sub-mains · 12000 player-worlds · 4000 champion-big · 0 normal (×10 Jul 30: 190 icon slots overflowed — Galen's shelf was first past it → rainbow bubbles)
     // a world bubble the browser hasn't entered gets a +1000 flag on its head
     // float → the shader draws a "new" pip. Nav bubbles (sub/maker/players/house)
     // and CAFE/SUB-MAIN never count as unvisited worlds.
@@ -1448,7 +1448,7 @@ try {
     const devLiveSet = (typeof window !== 'undefined' && window.__cafeDevLive) || null
     const dlSlug = lz.startsWith('space:') ? lz.slice(6) : null
     const devLive = !!(devLiveSet && dlSlug && devLiveSet.has(dlSlug))
-    u.push(B.x, B.y, band + (B.crown ? 200 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0) + (n === U.dockName ? 8000 : 0) + (devLive ? 16000 : 0))
+    u.push(B.x, B.y, band + (B.crown ? 2000 : 0) + styleInt + frac, Math.min(99, showHeads) + (unvis ? 1000 : 0) + (B.square ? 2000 : 0) + (B.playerWorld ? 4000 : 0) + (n === U.dockName ? 8000 : 0) + (devLive ? 16000 : 0))
   }
   // the local player's BREWED icon, packed at the tail (fx, hue, size) — read by
   // the shader at 6 + bubbleCount*4, so it never collides with the bubble stride

@@ -31,6 +31,10 @@ const DEFAULT_LIMITS: Record<string, { maxRequests: number; windowMs: number }> 
   // Engine
   engine_generate: { maxRequests: 3, windowMs: 60_000 },
   engine_icon: { maxRequests: 8, windowMs: 60_000 },
+  // Bridge — the AI/build command endpoint. GENEROUS on purpose: normal build
+  // agents burst 1-2/sec, so 180/min (3/sec sustained) is invisible to them and
+  // only ever bites a token spamming in a loop. Keyed per-token; house exempt.
+  bridge: { maxRequests: 180, windowMs: 60_000 },
   // Pages builder — owner autosave is frequent (debounced ~700ms), AI writes and
   // imagine invitations are looser but bounded.
   pages_write: { maxRequests: 60, windowMs: 60_000 },

@@ -177,7 +177,15 @@ function isPublicUniverseWrite(body: { slot?: unknown; data?: unknown }): boolea
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    if (!isPublicUniverseWrite(body) && !(await writeAllowed(req))) {
+    // Per-player saves (scope=user): a GUEST may write too — but ONLY into their
+    // own namespace. userScopedSlot enforces session-uid-or-strong-anon-token and
+    // the write key IS the scoped key, so no shared slot is reachable this way.
+    // (Without this, production guests 401'd on every auto-save: gear lost on
+    // re-entry — the Jul 30 'nothing persists' report.)
+    const userWrite = body?.scope === 'user' && typeof body.slot === 'string'
+      ? await userScopedSlot(body.slot, typeof body.anon === 'string' ? body.anon : null)
+      : null
+    if (!isPublicUniverseWrite(body) && !userWrite && !(await writeAllowed(req))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     if (typeof body.slot === 'string' && 'data' in body) {
@@ -193,9 +201,7 @@ export async function POST(req: NextRequest) {
       }
       // per-player game saves are namespaced by the SERVER's idea of who you are,
       // never the client's — so a player's save can't land in another's slot
-      const key = body.scope === 'user'
-        ? await userScopedSlot(body.slot, typeof body.anon === 'string' ? body.anon : null)
-        : body.slot
+      const key = body.scope === 'user' ? userWrite : body.slot
       if (key === null) return NextResponse.json({ ok: true, saved: false, unscoped: true })  // weak guest token → drop, don't pool
       await saveGameSlot(key, body.data)
       return NextResponse.json({ ok: true })
