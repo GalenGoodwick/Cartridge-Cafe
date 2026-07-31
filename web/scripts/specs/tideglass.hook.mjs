@@ -158,4 +158,80 @@ export default function ({ runWorld, hookCode, asserter }) {
     eq('card: the wheel ALWAYS flies — the crossing replays', G(w).flyCine > 0, true)
     eq('card: a replay does not advance the act again', G(w).act, 2)
   }
+
+  // ── R-RESET: __fresh wipes THIS world's save branch only — and holds the door
+  //    shut against the late server-restore clobber (Galen, Jul 31) ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.act = 2; g.view = 9; g.inv.spanner = true; g.t = 900   // an old run: deep clock
+    w.wd.save.other = { keep: 1 }                            // a NEIGHBOUR save branch
+    w.wd.__fresh = true
+    w.tick()
+    eq('reset: __fresh → the old run is wiped (view back to shore)', G(w).view, 0)
+    eq('reset: __fresh → act back to 1', G(w).act, 1)
+    eq('reset: __fresh → inventory empty', G(w).inv.spanner, false)
+    eq('reset: only tideglass is wiped — the neighbour save survives', w.wd.save.other.keep, 1)
+    // the server restore lands ~1s later and re-injects the OLD run
+    for (let i = 0; i < 60; i++) w.tick()
+    w.wd.save.tg = { v: 2, view: 9, t: 900, act: 2, fade: 0 }
+    w.tick(); w.tick()
+    eq('reset: a restored old run inside the window is wiped too', G(w).view, 0)
+    // fresh progress made inside the window SURVIVES (its clock is young)
+    w.settle(); w.click(487, 256)                            // shore → gate
+    for (let i = 0; i < 120; i++) w.tick()
+    eq('reset: fresh progress inside the window survives', G(w).view, 1)
+    for (let i = 0; i < 800; i++) w.tick()                   // ride past the 12s window
+    eq('reset: the fresh run STILL stands once the window closes', G(w).view, 1)
+    eq('reset: window closes and cleans up after itself', typeof w.wd.__tgWipe, 'undefined')
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.act = 2; g.view = 9; g.t = 900                          // NO __fresh: a normal session
+    for (let i = 0; i < 30; i++) w.tick()
+    eq('no reset: a normal session never wipes the save', G(w).view, 9)
+  }
+
+  // ── GRANDFATHER: a save that flew Act I before the pearl-beam existed keeps
+  //    its power — the wheel it earned still turns (Galen: HELM CLICK) ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.act = 2; g.crystalPowered = 0; g.view = 9
+    g.inv.gear8 = true; g.inv.gear12 = true; g.inv.gear20 = true; g.seats = [2, 3, 5]
+    w.settle()
+    eq('grandfather: act 2 + dark crystal → power restored', G(w).crystalPowered, 1)
+    w.click(256, 120)
+    eq('grandfather: the earned wheel FLIES', G(w).flyCine > 0, true)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.act = 1; g.crystalPowered = 0
+    w.settle()
+    eq('grandfather: a FRESH run stays gated on the pearl chain', G(w).crystalPowered, 0)
+  }
+
+  // ── NEW CHEVRONS: the two hidden diegetic doors get nav rows ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 0; g.dawn = 1
+    w.settle(); w.click(108, 128)
+    eq('chevron: shore + dawn → board the airship (view 9)', G(w).view, 9)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 0; g.dawn = 0
+    w.settle(); w.click(108, 128)
+    eq('chevron: no dawn, no airship — the shore holds', G(w).view, 0)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 1; g.dials = [1, 3, 0, 2]; g.notch = 1   // the REAL combo-B state (gate2 is derived per-tick)
+    w.settle(); w.click(256, 210)
+    eq('chevron: gate + combo set → down into the drowned quarter (view 13)', G(w).view, 13)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 1; g.gate2 = false
+    w.settle(); w.click(256, 210)
+    eq('chevron: combo unset → the doorway does not open', G(w).view === 13, false)
+  }
 }
