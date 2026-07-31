@@ -11,4 +11,10 @@ export default {
   'deck-flight': at(G => { G.view = 9; G.inv.spanner = true; G.engineOK = 1; G.act = 2; G.fly = 1 }),
   'mirror': at(G => { G.view = 11; G.inv.gear20 = true }),
   'shore': at(G => { G.view = 0 }),
+  'drowned-flooded': at(G => { G.view = 13; G.tideLevel = 0.65 }),
+  'drowned-drained': at(G => { G.view = 13; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05 }),
+  'drowned-pearl': at(G => { G.view = 13; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05; G.bellRung = 1 }),
+  'mirror-valve-open': at(G => { G.view = 11; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05 }),
+  'shore-lowtide': at(G => { G.view = 0; G.inv.gear20 = true; G.sluiceOpen = 1; G.tideLevel = 0.05 }),
+  'deck-hatch': at(G => { G.view = 9; G.inv.spanner = true; G.held = 1 }),
 }
