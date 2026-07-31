@@ -918,6 +918,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     pull(); const iv = setInterval(pull, 4000)
     return () => { alive = false; clearInterval(iv) }
   }, [spaceSlug])
+  // A world with a swarm graph shows the AI-VIEW panel even with the build console
+  // closed — the architecture is worth seeing on its own (one AI or ten). When it
+  // opens that way, default to the SWARM tab (once; the user can switch freely after).
+  const swarmAutoRef = useRef(false)
+  useEffect(() => {
+    if (swarm && !swarmAutoRef.current && !buildConsoleOpen) { swarmAutoRef.current = true; setAiViewTab('swarm') }
+  }, [swarm, buildConsoleOpen])
   // P0 telemetry readout — frame/hook/compile budgets sampled from the live engine.
   const [perf, setPerf] = useState<{ frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null>(null)
   useEffect(() => {
@@ -5921,7 +5928,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               render_probe PNG the bridge stashed to slot ai_eye:<spaceId>). Renders
               under the SAME open condition as the BuilderBox so they travel together;
               always shows its chrome + graceful empty states so it's never invisible. */}
-          {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (() => {
+          {(buildConsoleOpen || !!swarm) && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (() => {
             const focusFresh = !!(aiFocus && aiFocus.at && (Date.now() - aiFocus.at < 120000))
             const eyeFresh = !!(aiEye?.png && aiEye.at && (Date.now() - aiEye.at < 300000))
             return (
