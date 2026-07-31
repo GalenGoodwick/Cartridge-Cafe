@@ -462,7 +462,7 @@ export class WorldSandbox {
       for (const k of Object.keys(incoming)) {
         if (k === 'save' && this.saveInject) continue   // the loaded save outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
-            k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'save' ||
+            k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' ||
             (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
           wd[k] = incoming[k]
         }

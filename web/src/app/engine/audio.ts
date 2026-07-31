@@ -1,5 +1,7 @@
 // Game Audio — Web Audio API wrapper for sound effects, synthesized tones, and music
 
+import { worldBus } from './cafe-audio'
+
 export class GameAudio {
   private ctx: AudioContext | null = null
   private masterGain: GainNode | null = null
@@ -25,6 +27,13 @@ export class GameAudio {
 
   /** Lazily initialize AudioContext (must be called from user gesture or after first interaction) */
   private ensureContext(): AudioContext {
+    if (!this.ctx) {
+      // FIRST choice: adopt the cafe's shared context (one context, one mute law,
+      // REC captures everything). A sound firing before FieldEngine's attach
+      // effect used to birth a PRIVATE context here that escaped mute + recordTap
+      // forever (attach refuses to swap under live nodes) — the ordering race.
+      try { const bus = worldBus(); if (bus) this.attach(bus.ctx, bus.dest) } catch { /* no audio device */ }
+    }
     if (!this.ctx) {
       this.ctx = new AudioContext()
       this.masterGain = this.ctx.createGain()
@@ -105,7 +114,30 @@ export class GameAudio {
   /** bumped on every world swap: lazy SFX loads (loadSound→play) captured before
    *  the swap must not fire after it (the 'clicking leave played the sound once' ghost) */
   worldGen = 0
-  onWorldSwap(): void { this.worldGen++ }
+  onWorldSwap(): void { this.worldGen++; this.lastMusicAssert = null }
+
+  /** MUSIC AS DECLARED STATE (DESIGN-world-audio.md §2): `wd.__play_music` is no
+   *  longer a fire-and-delete event — the engine asserts it every frame and this
+   *  compare-by-value gate (re)plays only on CHANGE. Saved worlds carry their
+   *  music, so loading a world replays it: the no-restart bug dies here.
+   *  Per-frame re-asserts of the same payload are free (generalizes the url-dedupe
+   *  fix). A world that wants to RETRIGGER the same score includes a nonce field. */
+  private lastMusicAssert: string | null = null
+  assertMusic(payload: { url?: string; score?: object; volume?: number; loop?: boolean; stop?: boolean }, urlOk: (u: string) => boolean): void {
+    let j: string
+    try { j = JSON.stringify(payload) } catch { return }
+    if (j === this.lastMusicAssert) return
+    this.lastMusicAssert = j
+    if (payload.stop) { this.stopScore(); this.stopMusic() }
+    else if (payload.score) this.playScore(payload.score as Parameters<GameAudio['playScore']>[0])
+    else if (payload.url && urlOk(payload.url)) void this.playMusic(payload.url, { volume: payload.volume, loop: payload.loop })
+  }
+
+  /** Read-only debug surface — lets headless smokes assert "music is actually
+   *  running" without ears (exposed as window.__cafeAudio by FieldEngine). */
+  stats(): { ctxState: string; scorePlaying: boolean; musicPlaying: boolean; lastAssert: string | null } {
+    return { ctxState: this.ctx?.state ?? 'none', scorePlaying: !!this.score, musicPlaying: !!this.music, lastAssert: this.lastMusicAssert }
+  }
   async playMusic(url: string, opts: { volume?: number; loop?: boolean; fadeSec?: number } = {}): Promise<void> {
     if (this.music?.url === url) return
     // hooks re-assert __play_music every frame: without this, each re-assert
@@ -166,7 +198,19 @@ export class GameAudio {
   /** Call from inside a real user-gesture handler: browsers refuse to start
    *  an AudioContext born in a rAF loop, so the first click must adopt it. */
   unlock(): void {
-    try { this.ensureContext() } catch { /* no audio device */ }
+    try {
+      // If the context slept through the world's first music assert, the score's
+      // scheduled notes stacked silently against a frozen clock. Silence the
+      // half-started attempt and clear the assert cache — the frame loop
+      // re-asserts wd.__play_music next tick and music starts CLEAN on the
+      // gesture that woke us (the "no music until you click, then nothing" gap).
+      const wasSuspended = this.ctx?.state === 'suspended'
+      this.ensureContext()
+      if (wasSuspended && this.lastMusicAssert !== null) {
+        this.stopScore(); this.stopMusic(0)
+        this.lastMusicAssert = null
+      }
+    } catch { /* no audio device */ }
   }
 
   /** Set master volume (0-1) */
