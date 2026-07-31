@@ -16,7 +16,7 @@ import { FieldSimulation } from './simulation'
 import { serializeWorld, serializeSceneDocument, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
 import { NodeGraphOverlay, NODE_KIND_STYLE, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { WorldSandbox } from './world-sandbox'
-import { ArenaClient } from './arena-client'
+import { ArenaClient, fetchArenaRooms } from './arena-client'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
 import VersionScrubber from './VersionScrubber'
@@ -639,6 +639,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // becomes a window onto an authoritative room — hooks run server-side, we
   // ship afferents up and adopt the broadcast worldData (see arena-client.ts)
   const arenaRef = useRef<ArenaClient | null>(null)
+  const lobbyFetchRef = useRef(0)
   // mirror of the world's JS hooks so a LIVE add/remove/update during a build
   // (owner watching over SSE) can re-install the sandbox from the full set.
   const liveHooksRef = useRef<Map<string, { id: string; author: string; description: string; code: string }>>(new Map())
@@ -3556,9 +3557,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
       // ── NETWORKED MODE: mpManifest worlds run their hooks in the arena room,
       //    not here. Send this player's afferents; adopt the authoritative state.
-      const mpManifest = sim.worldData['mpManifest']
-      if (mpManifest && spaceSlug) {
-        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug) }
+      const mpManifest = sim.worldData['mpManifest'] as { lobby?: boolean } | undefined
+      const wantRoom = sim.worldData['__joinRoom']
+      if (mpManifest && spaceSlug && (!mpManifest.lobby || wantRoom)) {
+        // JOINED (or lobby-less world): the room is the authority
+        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main') }
         const a = arenaRef.current
         const wd = sim.worldData as Record<string, unknown>
         // discrete actions are LATCHED into counters so a tap survives lag —
@@ -3594,6 +3597,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (view.pop) wd['gpuPopulation'] = view.pop
           if (view.uni) { const u = view.uni.slice(); u[15] = a.seat; wd['gpuUniforms'] = u }
         }
+      } else if (mpManifest && mpManifest.lobby && spaceSlug) {
+        // LOBBY MODE: the world runs LOCALLY (its hook renders the server
+        // finder from wd.__lobby and sets wd.__joinRoom on click); we feed it
+        // the live room list every ~3s
+        const nowMs = Date.now()
+        if (nowMs - lobbyFetchRef.current > 3000) {
+          lobbyFetchRef.current = nowMs
+          fetchArenaRooms(spaceSlug).then(rooms => {
+            const s2 = simulationRef.current
+            if (s2) s2.worldData['__lobby'] = { rooms, at: Date.now() }
+          }).catch(() => {})
+        }
+        sandboxRef.current?.tick(sim, dt)
       } else {
         sandboxRef.current?.tick(sim, dt)
       }

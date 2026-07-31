@@ -36,10 +36,10 @@ export class ArenaClient {
   splitN = 0
   prevSpace = false
 
-  connect(slug: string, onJoined?: (j: ArenaJoined) => void): void {
+  connect(slug: string, room = 'main', onJoined?: (j: ArenaJoined) => void): void {
     const base = (process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^http/, 'ws')
     let ws: WebSocket
-    try { ws = new WebSocket(base + '/join?world=' + encodeURIComponent(slug)) } catch { return }
+    try { ws = new WebSocket(base + '/join?world=' + encodeURIComponent(slug) + '&room=' + encodeURIComponent(room)) } catch { return }
     this.ws = ws
     ws.onmessage = (ev) => {
       let m: { type?: string } & ArenaJoined & ArenaState
@@ -57,7 +57,7 @@ export class ArenaClient {
       }
     }
     // the room may hiccup (redeploy, idle-kill) — quietly rejoin the same world
-    ws.onclose = () => { if (!this.closed) setTimeout(() => { if (!this.closed) this.connect(slug, onJoined) }, 1500) }
+    ws.onclose = () => { if (!this.closed) setTimeout(() => { if (!this.closed) this.connect(slug, room, onJoined) }, 1500) }
   }
 
   /** the interpolated view for THIS render frame (null until two states exist) */
@@ -88,4 +88,14 @@ export class ArenaClient {
   }
 
   close(): void { this.closed = true; try { this.ws?.close() } catch { /* noop */ } this.ws = null }
+}
+
+/** the SERVER FINDER's data: live rooms for a world (lobby screens poll this) */
+export async function fetchArenaRooms(slug: string): Promise<{ room: string; players: number; capacity: number; started: boolean }[]> {
+  const base = (process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^ws/, 'http')
+  try {
+    const r = await fetch(base + '/rooms?world=' + encodeURIComponent(slug))
+    const j = await r.json()
+    return Array.isArray(j.rooms) ? j.rooms : []
+  } catch { return [] }
 }
