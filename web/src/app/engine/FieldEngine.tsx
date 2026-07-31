@@ -107,6 +107,35 @@ function iconCacheLoad(): typeof cafeIconCache {
 
 
 
+// A node in the SWARM work-graph (mirrors swarm-store mapSummary → NodeView).
+type SwarmNodeView = {
+  id: string; element: string; kind: string; status: string; claim: string | null; note?: string
+  pseudocode?: string; connects?: { to: string; via: string }[]; children?: SwarmNodeView[]
+}
+const SWARM_STATUS_COLOR: Record<string, string> = {
+  green: '#6ee7b7', claimed: '#7dd3fc', partial: '#fcd34d', red: '#fca5a5', gated: '#fde68a', open: 'rgba(255,255,255,0.32)', unknown: 'rgba(255,255,255,0.25)',
+}
+// The swarm tree, rendered recursively — an element, its status dot, who's docked
+// (◈), its connections (→ target), and its subnodes nested beneath.
+function SwarmRows({ nodes, depth = 0 }: { nodes: SwarmNodeView[]; depth?: number }) {
+  return <>{nodes.map(n => (
+    <div key={n.id} style={{ paddingLeft: depth * 10 }} className="py-0.5">
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: SWARM_STATUS_COLOR[n.status] || SWARM_STATUS_COLOR.unknown }} title={n.status} />
+        <span className="text-white/80 truncate" title={n.pseudocode || n.element}>{n.element}</span>
+        {n.claim && <span className="text-sky-300/80 shrink-0" title={'docked: ' + n.claim}>◈{n.claim.length > 8 ? n.claim.slice(0, 7) + '…' : n.claim}</span>}
+        <span className="text-white/20 shrink-0 ml-auto">{n.kind}</span>
+      </div>
+      {n.connects && n.connects.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-0.5" style={{ paddingLeft: 14 }}>
+          {n.connects.map((c, i) => <span key={i} className="px-1 rounded border border-white/10 text-white/35 text-[10px]" title={c.via}>→ {c.to}</span>)}
+        </div>
+      )}
+      {n.children && n.children.length > 0 && <SwarmRows nodes={n.children} depth={depth + 1} />}
+    </div>
+  ))}</>
+}
+
 export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
@@ -873,9 +902,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // The whole world IS a node graph: modules → visuals → fields, with hooks driving the
   // uniforms the visuals read. Tier-1 is read-only + inspector; the same nodes are built
   // to become draggable/wireable in Tier-2 (structural nodes are human-editable).
-  const [aiViewTab, setAiViewTab] = useState<'eye' | 'nodes'>('eye')
+  const [aiViewTab, setAiViewTab] = useState<'eye' | 'nodes' | 'swarm'>('eye')
   const [nodeGraph, setNodeGraph] = useState<AiNodeGraph | null>(null)
   const [nodesExpanded, setNodesExpanded] = useState(false)
+  // The SWARM work-graph for this world — the game-element tree (elements, subnodes,
+  // status, who's docked, connections). Polled live so the panel reflects progress
+  // as workers turn nodes green. Null on worlds with no swarm graph.
+  const [swarm, setSwarm] = useState<{ project: string; done: number; total: number; nodes: SwarmNodeView[] } | null>(null)
+  useEffect(() => {
+    if (!spaceSlug) { setSwarm(null); return }
+    let alive = true
+    const pull = async () => {
+      try { const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/swarm`); if (r.ok && alive) { const d = await r.json(); setSwarm(d.map || null) } } catch { /* offline is fine */ }
+    }
+    pull(); const iv = setInterval(pull, 4000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [spaceSlug])
   // P0 telemetry readout — frame/hook/compile budgets sampled from the live engine.
   const [perf, setPerf] = useState<{ frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null>(null)
   useEffect(() => {
@@ -5892,10 +5934,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 </div>
                 {/* TABS — EYE (focus + render) | NODES (architecture graph) */}
                 <div className="flex border-b border-white/10 font-mono text-[12px]">
-                  {(['eye', 'nodes'] as const).map(t => (
+                  {(['eye', 'nodes', 'swarm'] as const).filter(t => t !== 'swarm' || !!swarm).map(t => (
                     <button key={t} onClick={() => setAiViewTab(t)}
                       className={`flex-1 px-3 py-1.5 tracking-[0.15em] transition-colors ${aiViewTab === t ? 'text-amber-200 bg-white/5 border-b-2 border-amber-300/60' : 'text-white/35 hover:text-white/60 border-b-2 border-transparent'}`}>
-                      {t === 'eye' ? '◉ EYE' : '◇ NODES'}
+                      {t === 'eye' ? '◉ EYE' : t === 'nodes' ? '◇ NODES' : '⛓ SWARM'}
                     </button>
                   ))}
                 </div>
@@ -5958,6 +6000,33 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       )}
                     </div>
                   </>
+                ) : aiViewTab === 'swarm' ? (
+                  /* SWARM — the game-element work-graph: elements, subnodes, who's docked, progress, connections */
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    {swarm ? (
+                      <>
+                        <div className="px-3 py-2 border-b border-white/10 font-mono text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-amber-300/60 tracking-[0.15em] truncate" title={swarm.project}>⛓ {swarm.project}</span>
+                            <span className="text-white/40 shrink-0 ml-2">{swarm.done}/{swarm.total} green</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 rounded bg-white/10 overflow-hidden">
+                            <div className="h-full bg-emerald-400/70 transition-all" style={{ width: `${swarm.total ? Math.round((swarm.done / swarm.total) * 100) : 0}%` }} />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 font-mono text-[11px]">
+                          <SwarmRows nodes={swarm.nodes} />
+                        </div>
+                        <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[10px] text-white/25 flex flex-wrap gap-x-2 gap-y-0.5">
+                          {(['green', 'claimed', 'partial', 'open', 'red'] as const).map(s => (
+                            <span key={s}><span style={{ color: SWARM_STATUS_COLOR[s] }}>●</span> {s === 'claimed' ? 'docked' : s}</span>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="p-3 text-white/30 font-mono text-[11px] leading-relaxed">no swarm graph yet — predesign one over the bridge with <span className="text-amber-300/50">swarm_map {'{nodes:[…]}'}</span>.</div>
+                    )}
+                  </div>
                 ) : (
                   /* NODES — the world's architecture, compact; ⤢ opens the full graph */
                   <div className="flex-1 min-h-0 flex flex-col">

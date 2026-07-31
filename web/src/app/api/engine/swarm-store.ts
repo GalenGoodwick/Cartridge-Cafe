@@ -31,6 +31,12 @@ export interface SwarmNode {
   evidence: Record<string, unknown>  // key → proof (unit-tested:true, render-verified:{verdict}, …)
   needsHeal?: boolean                // a foundation changed its exports — re-verify
   statusNote?: string
+  // ── the game-element model (BuilderBox reads these) ──
+  element?: string                   // the element's name/label ("the ship-builder screen")
+  pseudocode?: string                // the orchestrator's design draft — a docking AI reads intent, not a blank file
+  seed?: { from?: string; note?: string }         // pre-populated working code to refine, not rewrite
+  connects?: Array<{ to: string; via: string }>   // orchestrator-indicated wiring: {to, via} = the contract that flows
+  children?: SwarmNode[]             // subnodes of a complex element (parent greens only when children + own keys green)
 }
 export interface SwarmMap { project: string; trunk: string; nodes: SwarmNode[]; seq: number; updatedAt: number }
 
@@ -56,32 +62,64 @@ const slot = (spaceId: string) => 'swarmmap:' + spaceId
 export function holderOf(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
 }
-const byId = (map: SwarmMap, id: string) => map.nodes.find(n => n.id === id)
+/** every node, flattened depth-first (the tree may nest via `children`). */
+export function allNodes(map: SwarmMap): SwarmNode[] {
+  const out: SwarmNode[] = []
+  const walk = (ns: SwarmNode[]) => { for (const n of ns) { out.push(n); if (n.children?.length) walk(n.children) } }
+  walk(map.nodes)
+  return out
+}
+const byId = (map: SwarmMap, id: string) => allNodes(map).find(n => n.id === id)
 const liveClaim = (c: SwarmClaim | null): SwarmClaim | null => (c && c.ttl > now() ? c : null)
 
 function keysOf(n: SwarmNode): string[] { return KEY_BY_KIND[n.kind] ?? ['unit-tested'] }
 
-/** derive one node's status from its keys' evidence (deps handled separately). */
+/** derive one node's status (recurses into children first, then rolls up). A
+ *  parent greens only when its own keys pass AND every child is green. */
 function deriveNode(n: SwarmNode): void {
+  const kids = n.children ?? []
+  if (kids.length) kids.forEach(deriveNode)   // post-order: children first
   if (n.needsHeal) { n.status = 'red'; n.statusNote = 'needs-heal — a foundation changed its exports; re-verify'; return }
   const keys = keysOf(n)
-  if (!keys.length) { n.status = 'green'; n.statusNote = 'no keys (contract/spec — verified by use)'; return }
   const states = keys.map(k => (n.evidence?.[k] === false ? 'fail' : n.evidence?.[k] != null ? 'pass' : 'pending'))
-  const note = keys.map((k, i) => `${states[i] === 'pass' ? '✓' : states[i] === 'fail' ? '✗' : '·'}${k}`).join('  ')
+  const keyNote = keys.length ? keys.map((k, i) => `${states[i] === 'pass' ? '✓' : states[i] === 'fail' ? '✗' : '·'}${k}`).join('  ') : ''
+  const ownFail = states.includes('fail')
+  const ownAllPass = keys.length === 0 || states.every(s => s === 'pass')
   const started = !!liveClaim(n.claim) || Object.keys(n.evidence || {}).length > 0
-  if (states.includes('fail')) n.status = 'red'
-  else if (states.every(s => s === 'pass')) n.status = 'green'
+  if (kids.length) {
+    const ks = kids.map(k => k.status)
+    if (ownFail || ks.includes('red')) n.status = 'red'
+    else if (ownAllPass && ks.every(s => s === 'green')) n.status = 'green'
+    else if (liveClaim(n.claim)) n.status = 'claimed'
+    else if (started || ks.some(s => ['partial', 'claimed', 'green'].includes(s))) n.status = 'partial'
+    else n.status = 'open'
+    n.statusNote = (keyNote ? keyNote + '  |  ' : '') + kids.map(k => k.id + '·' + k.status).join(' ')
+    return
+  }
+  if (!keys.length) { n.status = 'green'; n.statusNote = 'no keys (contract/spec — verified by use)'; return }
+  if (ownFail) n.status = 'red'
+  else if (ownAllPass) n.status = 'green'
   else if (liveClaim(n.claim)) n.status = 'claimed'
   else if (started) n.status = 'partial'
   else n.status = 'open'
-  n.statusNote = note
+  n.statusNote = keyNote
 }
 export function deriveAll(map: SwarmMap): SwarmMap {
-  for (const n of map.nodes) deriveNode(n)
+  for (const n of map.nodes) deriveNode(n)   // deriveNode recurses into children
   return map
 }
 export function depsGreen(map: SwarmMap, n: SwarmNode): boolean {
   return (n.dependsOn || []).every(d => byId(map, d)?.status === 'green')
+}
+/** the clobber guard: another LIVE-claimed node sharing any of this node's files. */
+function fileConflict(map: SwarmMap, n: SwarmNode): SwarmNode | null {
+  const mine = new Set(n.files || [])
+  if (!mine.size) return null
+  for (const o of allNodes(map)) {
+    if (o.id === n.id) continue
+    if (liveClaim(o.claim) && (o.files || []).some(f => mine.has(f))) return o
+  }
+  return null
 }
 
 export async function readSwarmMap(spaceId: string): Promise<SwarmMap | null> {
@@ -103,26 +141,40 @@ export async function setSwarmMap(
 ): Promise<{ ok: boolean; map?: SwarmMap; error?: string }> {
   if (!Array.isArray(input.nodes)) return { ok: false, error: 'swarm_map needs `nodes: [...]` (the work-graph). Read the current map with swarm_map {}.' }
   const prev = (await loadGameSlot(slot(spaceId))) as SwarmMap | undefined
-  const prevById = new Map((prev?.nodes || []).map(n => [n.id, n]))
-  const nodes: SwarmNode[] = []
-  for (const raw of input.nodes as Array<Record<string, unknown>>) {
+  // flatten the previous tree so claims + evidence survive a re-map at any depth
+  const prevFlat = new Map<string, SwarmNode>()
+  if (prev?.nodes) for (const n of allNodes(prev)) prevFlat.set(n.id, n)
+  const arr = (v: unknown, d: string[]) => (Array.isArray(v) ? v.map(String).slice(0, 40) : d)
+  const seed = (v: unknown, d: SwarmNode['seed']) => (v && typeof v === 'object'
+    ? { from: String((v as Record<string, unknown>).from ?? '').slice(0, 200), note: String((v as Record<string, unknown>).note ?? '').slice(0, 400) } : d)
+  const conns = (v: unknown, d: SwarmNode['connects']) => (Array.isArray(v)
+    ? v.slice(0, 24).map(c => ({ to: String((c as Record<string, unknown>)?.to ?? '').slice(0, 60), via: String((c as Record<string, unknown>)?.via ?? '').slice(0, 240) })) : d)
+  const build = (raw: Record<string, unknown>): SwarmNode => {
     const id = String(raw.id ?? '').trim().slice(0, 60)
-    if (!id) return { ok: false, error: 'every node needs an `id`' }
-    const keep = !input.reset ? prevById.get(id) : undefined
-    nodes.push({
+    if (!id) throw new Error('every node needs an `id`')
+    const keep = !input.reset ? prevFlat.get(id) : undefined
+    return {
       id,
-      area: String(raw.area ?? keep?.area ?? '').slice(0, 200),
+      area: String(raw.area ?? keep?.area ?? '').slice(0, 240),
+      element: raw.element != null ? String(raw.element).slice(0, 200) : keep?.element,
       kind: String(raw.kind ?? keep?.kind ?? 'lib').slice(0, 24),
-      files: Array.isArray(raw.files) ? raw.files.map(String).slice(0, 40) : keep?.files ?? [],
-      exports: Array.isArray(raw.exports) ? raw.exports.map(String).slice(0, 40) : keep?.exports ?? [],
-      dependsOn: Array.isArray(raw.dependsOn) ? raw.dependsOn.map(String).slice(0, 40) : keep?.dependsOn ?? [],
-      tests: Array.isArray(raw.tests) ? raw.tests.map(String).slice(0, 40) : keep?.tests ?? [],
+      pseudocode: raw.pseudocode != null ? String(raw.pseudocode).slice(0, 4000) : keep?.pseudocode,
+      seed: seed(raw.seed, keep?.seed),
+      connects: conns(raw.connects, keep?.connects),
+      files: arr(raw.files, keep?.files ?? []),
+      exports: arr(raw.exports, keep?.exports ?? []),
+      dependsOn: arr(raw.dependsOn, keep?.dependsOn ?? []),
+      tests: arr(raw.tests, keep?.tests ?? []),
       status: 'open',
       claim: keep?.claim ?? null,
       evidence: keep?.evidence ?? {},
       needsHeal: keep?.needsHeal,
-    })
+      children: Array.isArray(raw.children) ? (raw.children as Array<Record<string, unknown>>).map(build) : keep?.children,
+    }
   }
+  let nodes: SwarmNode[]
+  try { nodes = (input.nodes as Array<Record<string, unknown>>).map(build) }
+  catch (e) { return { ok: false, error: (e as Error).message } }
   const map: SwarmMap = {
     project: String(input.project ?? prev?.project ?? 'untitled').slice(0, 80),
     trunk: String(input.trunk ?? prev?.trunk ?? 'main').slice(0, 60),
@@ -142,13 +194,17 @@ export interface Situation {
 }
 function situation(map: SwarmMap, n: SwarmNode): Situation {
   const foundations = (n.dependsOn || []).map(d => byId(map, d)).filter(Boolean).map(d => ({ id: d!.id, status: d!.status, exports: d!.exports }))
-  const dependents = map.nodes.filter(x => (x.dependsOn || []).includes(n.id)).map(d => ({ id: d.id, status: d.status, open: ['open', 'partial'].includes(d.status) && !liveClaim(d.claim) }))
+  const dependents = allNodes(map).filter(x => (x.dependsOn || []).includes(n.id)).map(d => ({ id: d.id, status: d.status, open: ['open', 'partial'].includes(d.status) && !liveClaim(d.claim) }))
   return { node: n, foundations, foundationsGreen: depsGreen(map, n), dependents, jumpTo: jumpList(map, n.id) }
 }
+/** a node you can DOCK: a leaf (no children — dock at the file grain), foundations
+ *  green, unclaimed, and no live-claimed peer shares its files (the clobber law). */
+function dockable(map: SwarmMap, n: SwarmNode): boolean {
+  return !(n.children && n.children.length) && !liveClaim(n.claim)
+    && ['open', 'partial', 'red', 'unknown'].includes(n.status) && depsGreen(map, n) && !fileConflict(map, n)
+}
 function jumpList(map: SwarmMap, excludeId?: string): Array<{ id: string; area: string }> {
-  return map.nodes
-    .filter(n => n.id !== excludeId && !liveClaim(n.claim) && ['open', 'partial', 'red', 'unknown'].includes(n.status) && depsGreen(map, n))
-    .map(n => ({ id: n.id, area: n.area }))
+  return allNodes(map).filter(n => n.id !== excludeId && dockable(map, n)).map(n => ({ id: n.id, area: n.element || n.area }))
 }
 
 /** DOCK — claim an open node and get the situation. Guards: exists, foundations
@@ -162,7 +218,10 @@ export async function dockNode(
   if (!n) return { ok: false, error: `no node "${nodeId}". nodes: ${map.nodes.map(x => x.id).join(', ')}` }
   const held = liveClaim(n.claim)
   if (held && held.holder !== holder) return { ok: false, error: `"${nodeId}" is docked by ${held.by} (until ${new Date(held.ttl).toISOString()}). Take another: ${jumpList(map, nodeId).map(j => j.id).join(', ') || '(none open)'}` }
+  if (n.children && n.children.length) return { ok: false, error: `"${nodeId}" is a grouping element — dock one of its subnodes: ${n.children.map(c => c.id).join(', ')}` }
   if (!depsGreen(map, n)) return { ok: false, error: `"${nodeId}" foundations are not green: ${(n.dependsOn || []).map(d => `${d}=${byId(map, d)?.status ?? 'missing'}`).join(', ')} — heal one or take an open node` }
+  const clash = fileConflict(map, n)
+  if (clash) return { ok: false, error: `"${nodeId}" shares a file with "${clash.id}" which ${clash.claim?.by} is building — wait or take another. Files: ${(n.files || []).join(', ')}` }
   n.claim = { by: who, holder, at: held?.at ?? now(), ttl: now() + CLAIM_TTL }
   deriveAll(map)
   await write(spaceId, map)
@@ -174,7 +233,7 @@ export async function jumpTarget(spaceId: string): Promise<{ ok: boolean; next?:
   const map = await readSwarmMap(spaceId)
   if (!map) return { ok: false, error: 'no swarm map yet — swarm_map {nodes:[…]} first' }
   const open = jumpList(map)
-  const allGreen = map.nodes.every(n => n.status === 'green' || n.status === 'gated')
+  const allGreen = allNodes(map).every(n => n.status === 'green' || n.status === 'gated')
   return { ok: true, next: open[0] ?? null, done: !open.length && allGreen, open }
 }
 
@@ -227,11 +286,24 @@ export async function healDependents(
   return { ok: true, healed }
 }
 
-export function mapSummary(map: SwarmMap): { project: string; done: number; total: number; nodes: Array<{ id: string; status: NodeStatus; kind: string; claim: string | null; note?: string }> } {
+export function mapSummary(map: SwarmMap): { project: string; done: number; total: number; nodes: NodeView[] } {
+  const flat = allNodes(map)
   return {
     project: map.project,
-    done: map.nodes.filter(n => n.status === 'green').length,
-    total: map.nodes.length,
-    nodes: map.nodes.map(n => ({ id: n.id, status: n.status, kind: n.kind, claim: liveClaim(n.claim)?.by ?? null, note: n.statusNote })),
+    done: flat.filter(n => n.status === 'green').length,   // counts leaves + groupings that rolled up green
+    total: flat.length,
+    nodes: map.nodes.map(nodeView),
+  }
+}
+export interface NodeView {
+  id: string; element: string; kind: string; status: NodeStatus; claim: string | null; note?: string
+  pseudocode?: string; seed?: SwarmNode['seed']; connects?: SwarmNode['connects']; children?: NodeView[]
+}
+function nodeView(n: SwarmNode): NodeView {
+  return {
+    id: n.id, element: n.element || n.area, kind: n.kind, status: n.status,
+    claim: liveClaim(n.claim)?.by ?? null, note: n.statusNote,
+    pseudocode: n.pseudocode, seed: n.seed, connects: n.connects,
+    children: n.children?.length ? n.children.map(nodeView) : undefined,
   }
 }
