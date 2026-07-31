@@ -19,6 +19,7 @@ import { readFileSync, existsSync, readdirSync, writeFileSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { fileURLToPath } from 'url'
 import { dirname, join, basename } from 'path'
+import { tmpdir } from 'os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SHADERS_TS = join(HERE, '..', 'src', 'app', 'engine', 'shaders.ts')
@@ -89,7 +90,7 @@ pieces.push({ name: 'entry', src: `@fragment fn fs_check(@builtin(position) fc: 
 
 let full = ''; const lineMap = []
 for (const pc of pieces) { const ls = pc.src.split('\n'); for (const l of ls) { full += l + '\n'; lineMap.push({ name: pc.name, line: lineMap.filter(x => x.name === pc.name).length + 1 }) } }
-const tmp = join(HERE, '.wgsl-check.tmp.wgsl')
+const tmp = join(tmpdir(), 'wgsl-check-' + process.pid + '.wgsl')
 writeFileSync(tmp, full)
 
 console.log(`assembled ${(snap.modules || []).length} modules + ${visuals.length} visual(s)` + (overrides.size ? ` · ${overrides.size} local override(s): ${[...overrides.keys()].join(', ')}` : '') + ` → ${full.split('\n').length} lines`)

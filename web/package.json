@@ -16,6 +16,7 @@
     "test:e2e:headed": "playwright test --headed",
     "wgsl-check": "node scripts/wgsl-check.mjs",
     "hook-check": "node scripts/hook-check.mjs",
+    "render-local": "node scripts/render-local.mjs",
     "postinstall": "prisma generate",
     "prebuild": "node scripts/gen-cartridge-index.mjs"
   },

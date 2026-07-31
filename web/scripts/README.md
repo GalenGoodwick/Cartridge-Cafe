@@ -11,7 +11,10 @@ Three layers of verification, fast → slow:
 |-------|----------|------|-------|
 | compile | does the WGSL assemble? | `wgsl-check` | naga |
 | logic | do the game rules behave? | `hook-check` + a spec | node |
-| pixels | does it look right? | `render_probe` (bridge) | the cloud eye |
+| pixels | does it look right? | `render-local` (or `render_probe` on the bridge) | a browser · a GPU is optional |
+
+All three run **offline** — the cloud `render_probe` drops to an optional final
+confidence check instead of the primary loop.
 
 ## wgsl-check — does the shader compile?
 
@@ -49,3 +52,22 @@ A spec is an ES module default-exporting `(harness) => void`; `harness` provides
 `scripts/lib/hook-harness.mjs` and **must be kept in sync with world-sandbox.ts**
 (a method the real sandbox adds must be mirrored here, like the chapters/trigger
 primitives).
+
+## render-local — does it look right?
+
+Assembles a world's whole uber-shader (modules + visual, with optional local
+edits), runs its hook — via the same harness — at a forced state to get the
+uniforms, renders one frame, and writes a PNG. **No deploy, no cloud.** Prefers
+the machine's GPU for speed; `SW=1` forces SwiftShader (software — no GPU, works
+on any computer), so it also runs headless / in CI.
+
+```bash
+npm run render-local -- --slug tideglass --setup scripts/specs/tideglass.states.mjs --state kiln-bloom --out kiln.png
+npm run render-local -- --slug tideglass --override ./edits --state deck   # render local module edits
+SW=1 npm run render-local -- --slug tideglass                              # software (any computer)
+```
+
+A `--setup` module default-exports `{ <stateName>: (save) => void }` — each
+mutates the hook's save so the hook packs the right uniforms (see
+`scripts/specs/tideglass.states.mjs`). `--override <dir>` overlays local
+`<moduleName>.wgsl` edits, so you *see* a shader change before deploying it.
