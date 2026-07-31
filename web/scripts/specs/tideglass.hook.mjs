@@ -164,13 +164,13 @@ export default function ({ runWorld, hookCode, asserter }) {
   {
     const w = runWorld(hookCode); const g = G(w)
     g.act = 2; g.view = 9; g.inv.spanner = true; g.t = 900   // an old run: deep clock
-    w.wd.save.other = { keep: 1 }                            // a NEIGHBOUR save branch
+    w.sim.trigger('tg-lens', true)                           // the old run's latch
     w.wd.__fresh = true
     w.tick()
     eq('reset: __fresh → the old run is wiped (view back to shore)', G(w).view, 0)
     eq('reset: __fresh → act back to 1', G(w).act, 1)
     eq('reset: __fresh → inventory empty', G(w).inv.spanner, false)
-    eq('reset: only tideglass is wiped — the neighbour save survives', w.wd.save.other.keep, 1)
+    eq('reset: the trigger latches wipe with the slot (the lens can fire again)', !w.wd.save.__trig || !w.wd.save.__trig['tg-lens'], true)
     // the server restore lands ~1s later and re-injects the OLD run
     for (let i = 0; i < 60; i++) w.tick()
     w.wd.save.tg = { v: 2, view: 9, t: 900, act: 2, fade: 0 }
@@ -210,6 +210,25 @@ export default function ({ runWorld, hookCode, asserter }) {
     w.wd.__fresh = true; w.tick()                              // reset session: window armed
     for (let i = 0; i < 800; i++) w.tick()                     // ride past the 12s window
     eq('window: decays to exactly 0 and STAYS (a deletion would not round-trip)', w.wd.__tgWipe, 0)
+  }
+
+  // ── THE LENS actually completes — and a STALE LATCH (left by a pre-fix
+  //    reset) is healed so it completes AGAIN (Galen: light puzzle broken) ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 3; g.organ = 1; g.fin = 0; g.fade = 0
+    w.sim.trigger('tg-lens', true)                           // the stale latch: fired once, truth wiped
+    w.settle()
+    eq('heal: a latch without its truth-state is cleared', !w.wd.save.__trig || !w.wd.save.__trig['tg-lens'], true)
+    for (let i = 0; i < 400; i++) w.tick({ mx: 307, my: 230, down: true })   // hold the lens aligned (az ≈ 0.25)
+    eq('lens: held aligned → the light lands, fin blooms', G(w).fin > 0, true)
+  }
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 3; g.fin = 1
+    w.sim.trigger('tg-lens', true)                           // a LEGIT latch (truth present)
+    w.settle()
+    eq('heal: a latch WITH its truth is left alone', !!(w.wd.save.__trig && w.wd.save.__trig['tg-lens']), true)
   }
 
   // ── GRANDFATHER: a save that flew Act I before the pearl-beam existed keeps
