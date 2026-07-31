@@ -134,5 +134,27 @@ export default function ({ runWorld, hookCode, asserter }) {
     w.click(256, 120)
     eq('helm: gears in AND crystal lit → take the wheel, FLY', G(w).fly, 1)
     eq('helm: flying → Act I complete (act advances)', G(w).act >= 2, true)
+    eq('helm: the wheel starts THE CROSSING (finale cinematic)', G(w).flyCine > 0, true)
+  }
+
+  // ── THE CROSSING: plays ~10s, holds on the Act I card, tap dismisses ──
+  {
+    const w = runWorld(hookCode); const g = G(w)
+    g.view = 9; g.inv.gear8 = true; g.inv.gear12 = true; g.inv.gear20 = true; g.seats = [2, 3, 5]
+    g.crystalPowered = 1; g.act = 0
+    w.settle(); w.click(256, 120)
+    for (let i = 0; i < 300; i++) w.tick()               // ~5s in
+    const mid = G(w).flyCine
+    eq('crossing: mid-flight, the clock is running', mid > 0.1 && mid < 1, true)
+    w.click(256, 256)                                     // clicks pass like wind mid-flight
+    eq('crossing: mid-flight tap does not dismiss', G(w).flyCine > 0, true)
+    eq('crossing: mid-flight tap moves no view', G(w).view, 9)
+    for (let i = 0; i < 600; i++) w.tick()               // past 10s → the card holds
+    eq('crossing: the card HOLDS at 1', G(w).flyCine, 1)
+    w.click(256, 256)                                     // the tap on the card
+    eq('card: a tap returns the deck', G(w).flyCine, 0)
+    eq('card: still on the deck, act 2', G(w).view === 9 && G(w).act >= 2, true)
+    w.click(256, 120)                                     // the helm again
+    eq('card: the finale never replays (act-gated)', G(w).flyCine, 0)
   }
 }

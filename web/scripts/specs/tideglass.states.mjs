@@ -27,4 +27,8 @@ export default {
   'sluice-moon': at(G => { G.view = 11; G.inv.gear20 = true }),
   'shore-owngear': at(G => { G.view = 0; G.inv.gear16 = true; G.inv.gear8 = true }),
   'satchel-pearl': at(G => { G.view = 0; G.dawn = 1; G.inv.gear8 = true; G.inv.gear12 = true; G.inv.gear20 = true; G.pearl = 1; G.pearlSet = 0 }),
+  'cine-open': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 0.06 }),
+  'cine-cross': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 0.35 }),
+  'cine-far': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 0.75 }),
+  'cine-card': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 1.0 }),
 }
