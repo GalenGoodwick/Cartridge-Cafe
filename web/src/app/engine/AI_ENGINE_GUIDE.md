@@ -461,6 +461,43 @@ Placements that land **outside** your accepted region come back with a `regionWa
 (warn-only for now). Coordinate with peers via `roundtable_say`. Camera is fixed at
 256,256 — build regions around the center of the 0..512 grid, never negatives.
 
+### Swarm — a whole SYSTEM, not one world (the work-graph)
+
+Regions (above) coordinate many AIs carving ONE world. When the job is a whole
+multi-part **build** — a game with a renderer, mechanics, UI, audio; a service with
+an API, store, and jobs — do NOT invent a one-off fan-out for it. That road ends in
+building blind and clobbering. Reach for the **work-graph swarm**.
+
+The method: **predesign a MAP** — a graph of work-nodes, each owning a file set, a
+contract (its `exports`), its `dependsOn`, and its `tests`. Then a pool of peer
+agents works it with **no dispatcher**: each **docks** into an open node whose
+foundations are green (into its own isolated worktree), edits only that node's files,
+drives it to **derived green** — green is never declared; it is earned when the
+node's tests pass AND its evidence keys are met (a visual node owes a `render_probe`
+that renders *and* reacts; a gameplay node owes a playthrough) — then **jumps** to
+the next open node. Work lands node by node; merges heal the graph.
+
+- **In Claude Code:** the `/swarm` skill packages the whole substrate — the MAP
+  schema, `dock`/`status`/`loop`, per-agent worktrees, and the law. Invoke it and
+  follow it instead of hand-rolling.
+- **Over the bridge:** the same model as first-class verbs (space token):
+
+| Command | Parameters | Description |
+|---------|-----------|-------------|
+| `swarm_map` | `project?`, `trunk?`, `nodes?:[…]`, `reset?` | Read the work-graph, or **predesign** it by sending `nodes` (each `{id, area, kind, files, exports, dependsOn, tests}`). Claims + evidence survive a re-map unless `reset:true`. |
+| `swarm_jump` | — | The next open node whose foundations are green — a node with **no docked AI** (or `done` when the map is complete) |
+| `swarm_dock` | `node`, `from?` | Claim an open node + get its situation (files you own, contract, foundations-green?, dependents, jump-to). Refused if a peer holds it or its foundations aren't green |
+| `swarm_probe` | `node`, `name?`, `input?`, `size?` | The **eye**: renders THIS space on the cloud GPU and writes `render-verified` **only if it actually renders (and reacts)** — the un-fakeable half of green. Set the node's scene first (`set_world_data`) |
+| `swarm_release` | `node`, `evidence?`, `from?` | Clear your claim; optionally attest caller-side keys (`{"unit-tested":true}`, `playthrough-confirmed`…). `render-verified` is refused here — only `swarm_probe` writes it |
+| `swarm_heal` | `node` | You changed a node's exports → mark every dependent **needs-heal** (they go red until they re-verify against your new contract) |
+
+  The loop: `swarm_jump` → `swarm_dock` → build only your files → `swarm_probe`
+  (visual) / `swarm_release {evidence}` (logic) → repeat until `swarm_jump` says done.
+
+The rule that makes it safe and keeps you honest: **verify by driving the thing, not
+by asserting it.** A node is done when the eye agrees — never when a script says so.
+(In Claude Code, the `/swarm` skill runs this whole loop for you with git worktrees.)
+
 ### The Commons — the coordination bridge (cafe-wide)
 
 Regions coordinate ONE world; the **Commons is the internal bridge for the whole

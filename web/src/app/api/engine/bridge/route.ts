@@ -18,6 +18,7 @@ import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
+import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
 
 export const maxDuration = 30
 
@@ -922,6 +923,93 @@ export async function POST(req: NextRequest) {
         const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
         const ok = await withdrawRegion(auth.spaceId!, holder, String(cmd.claimId ?? ''))
         results.push({ type: 'withdraw_region', ok, ...(ok ? {} : { error: 'no such claim of yours' }) })
+        continue
+      }
+
+      // ---- SWARM WORK-GRAPH (a whole SYSTEM, not one world) ------------------
+      // The other axis from region-claims: build a multi-part system as a graph
+      // of work-NODES. Predesign the MAP, then peers dock open nodes, build them,
+      // and each goes green only when its keys are met — `render-verified` is
+      // written ONLY by a server-run swarm_probe, so "done" can't be faked.
+      // Mirrors the /swarm skill + cartridge-cafe/swarm so both drive one model.
+
+      // swarm_map: read the work-graph, or PREDESIGN it (send `nodes:[…]`).
+      if (cmd.type === 'swarm_map') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_map needs a space token (uc_st_…) — a project to graph' }); continue }
+        if (Array.isArray(cmd.nodes)) {
+          const out = await setSwarmMap(auth.spaceId!, { project: cmd.project, trunk: cmd.trunk, nodes: cmd.nodes, reset: cmd.reset })
+          if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+          results.push({ type: 'swarm_map', ok: true, ...mapSummary(out.map!),
+            next: 'RELEASE the swarm: each peer runs swarm_jump → swarm_dock {node} → build → swarm_probe {node} (visual) or swarm_release {node, evidence:{"unit-tested":true}} → repeat.' })
+        } else {
+          const map = await readSwarmMap(auth.spaceId!)
+          if (!map) { results.push({ type: 'swarm_map', ok: true, map: null, next: 'no graph yet — predesign it: swarm_map {project, nodes:[{id,area,kind,files,exports,dependsOn,tests}]}' }); continue }
+          results.push({ type: 'swarm_map', ok: true, ...mapSummary(map) })
+        }
+        continue
+      }
+
+      // swarm_jump: the next open node whose foundations are green (no docked AI).
+      if (cmd.type === 'swarm_jump') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_jump needs a space token (uc_st_…)' }); continue }
+        const out = await jumpTarget(auth.spaceId!)
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        results.push({ type: 'swarm_jump', ok: true, next: out.next, done: out.done, open: out.open,
+          hint: out.next ? `dock it: swarm_dock {node:"${out.next.id}"}` : (out.done ? 'the map is complete.' : 'nothing open — a foundation is red or claimed; heal or wait.') })
+        continue
+      }
+
+      // swarm_dock: claim an open node + its situation (files, contract, deps).
+      if (cmd.type === 'swarm_dock') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_dock needs a space token (uc_st_…)' }); continue }
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const out = await dockNode(auth.spaceId!, holder, who, String(cmd.node ?? ''))
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        results.push({ type: 'swarm_dock', ok: true, ...out.situation,
+          next: 'edit ONLY your files (clobber law). Green is DERIVED: a visual node → swarm_probe {node}; else attest with swarm_release {node, evidence:{"unit-tested":true}}. Change your exports → swarm_heal {node}.' })
+        continue
+      }
+
+      // swarm_release: clear your claim; optionally attach caller-attested evidence
+      // (unit-tested, playthrough-confirmed…). render-verified is refused here — it
+      // is written only by swarm_probe (the server-run eye).
+      if (cmd.type === 'swarm_release') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_release needs a space token (uc_st_…)' }); continue }
+        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
+        const ev = (cmd.evidence && typeof cmd.evidence === 'object') ? cmd.evidence as Record<string, unknown> : undefined
+        const out = await releaseNode(auth.spaceId!, holder, String(cmd.node ?? ''), ev)
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        results.push({ type: 'swarm_release', ok: true, node: { id: out.node!.id, status: out.node!.status, note: out.node!.statusNote } })
+        continue
+      }
+
+      // swarm_heal: a node changed its exports — mark every dependent needs-heal.
+      if (cmd.type === 'swarm_heal') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_heal needs a space token (uc_st_…)' }); continue }
+        const out = await healDependents(auth.spaceId!, String(cmd.node ?? ''))
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        results.push({ type: 'swarm_heal', ok: true, healed: out.healed,
+          next: out.healed?.length ? 'those dependents are red until they re-verify against your new contract.' : 'no dependents to heal.' })
+        continue
+      }
+
+      // swarm_probe: the EYE for a visual node — render THIS space on the cloud GPU
+      // and write render-verified ONLY if it actually renders (and reacts, if input
+      // given). The un-fakeable half of green. Set the node's scene first (set_world_data).
+      if (cmd.type === 'swarm_probe') {
+        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_probe needs a space token (uc_st_…)' }); continue }
+        const node = String(cmd.node ?? '')
+        if (!node) { results.push({ type: cmd.type, error: 'swarm_probe needs a `node` id to verify' }); continue }
+        const snap = await getSpaceSnapshot(auth.spaceId!)
+        const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input }) as { ok?: boolean; coveragePct?: number; inputReport?: { respondsToInput?: boolean } }
+        const renders = !!out.ok && (out.coveragePct ?? 0) > 1
+        const reacts = cmd.input == null || out.inputReport?.respondsToInput !== false
+        const pass = renders && reacts
+        const verdict = { at: Date.now(), coveragePct: out.coveragePct ?? 0, renders, reacts, input: cmd.input ?? null }
+        await attachServerEvidence(auth.spaceId!, node, 'render-verified', pass ? verdict : false)
+        results.push({ type: 'swarm_probe', ok: true, node, pass, verdict, probe: out,
+          next: pass ? 'render-verified ✓ recorded. If the node also owes visual-reference/playthrough, attest those with swarm_release.' : 'NOT verified — the scene did not render (or did not react). Fix and re-probe; the node stays red.' })
         continue
       }
 
