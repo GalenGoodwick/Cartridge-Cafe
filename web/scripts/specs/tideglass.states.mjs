@@ -31,4 +31,5 @@ export default {
   'cine-cross': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 0.35 }),
   'cine-far': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 0.75 }),
   'cine-card': at(G => { G.view = 9; G.fly = 1; G.act = 2; G.flyCine = 1.0 }),
+  'cave-gear-seated': at(G => { G.view = 8; G.inv.gear8 = true; G.seats = [2, 0, 0] }),
 }

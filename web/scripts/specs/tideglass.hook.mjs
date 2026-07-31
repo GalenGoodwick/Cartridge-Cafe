@@ -155,6 +155,7 @@ export default function ({ runWorld, hookCode, asserter }) {
     eq('card: a tap returns the deck', G(w).flyCine, 0)
     eq('card: still on the deck, act 2', G(w).view === 9 && G(w).act >= 2, true)
     w.click(256, 120)                                     // the helm again
-    eq('card: the finale never replays (act-gated)', G(w).flyCine, 0)
+    eq('card: the wheel ALWAYS flies — the crossing replays', G(w).flyCine > 0, true)
+    eq('card: a replay does not advance the act again', G(w).act, 2)
   }
 }
