@@ -3607,12 +3607,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           return h.protocol === 'https:' && (h.hostname.endsWith('.public.blob.vercel-storage.com') || h.origin === location.origin)
         } catch { return false }
       }
-      type PlaySoundCmd = { id?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
+      type PlaySoundCmd = { id?: string; name?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
       const playSoundRaw = sim.worldData['__play_sound'] as PlaySoundCmd | PlaySoundCmd[] | undefined
       if (playSoundRaw) {
         delete sim.worldData['__play_sound']
         const audio = audioRef.current
         for (const playSound of Array.isArray(playSoundRaw) ? playSoundRaw : [playSoundRaw]) {
+          if (playSound.name && !playSound.id) playSound.id = playSound.name   // VEILFIRE-era hooks say {name:} — alias of id
           if (playSound.id && audio.hasSound(playSound.id)) {
             audio.play(playSound.id, playSound.volume ?? 1.0, playSound.pitch ?? 1.0)
           } else if (playSound.id && playSound.url && audioUrlOk(playSound.url)) {
