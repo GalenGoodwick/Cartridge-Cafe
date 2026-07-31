@@ -1,6 +1,7 @@
 // Field Engine v3 — Simulation (CPU-side)
 
 import { DEFAULT_GRID_SIZE, type FieldWorld, type Field, type FieldTransform, type FieldEffect, type FieldMemoryEntry, type FieldSnapshot, type FieldProximity, type WorldParams, type InteractionRule, type InteractionEffect, type CustomCommand, type Projectile, type TweenDef, type TimerDef, type CollisionCallback, type GameStateDef } from './types'
+import { sceneDefine, type SceneConfig, type SceneHandle } from './scene-graph'
 
 /** Default render extent from field center (pixels). Not a "size" — just the shader execution area. */
 const FIELD_RENDER_EXTENT = 32
@@ -87,6 +88,7 @@ export class FieldSimulation {
   /** Seeded PRNG state for sim.rand() — armed when worldData.__seed is a number */
   private _randSeed: number | null = null
   private _randState = 0
+  private _sceneDt = 0.016   // current tick dt, handed to sim.defineScenes' crossfade
   /** Lightweight projectiles — rendered via effectData, not as fields */
   projectiles: Projectile[] = []
   /** Per-field pixel presence — populated from GPU readback of each field's rendered output.
@@ -466,6 +468,7 @@ export class FieldSimulation {
     // sequence every run. Pair with worldData.__seed + sim.rand() for replays.
     const fs = this.worldData['__fixedStep']
     const hookDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : dt
+    this._sceneDt = hookDt   // sim.defineScenes reads the current tick's dt for its crossfade
     const seed = this.worldData['__seed']
     if (typeof seed === 'number' && seed !== this._randSeed) {
       this._randSeed = seed
@@ -2123,6 +2126,16 @@ export class FieldSimulation {
     const c = this._ch(); const nx = c.cur + 1
     if (nx <= this.chapterCount()) { this.unlockChapter(nx); c.cur = nx; return true }
     return false
+  }
+
+  /** SCENE GRAPH (web/docs/scene-graph-primitive-spec.md): declare a world's
+   *  views/rooms and their exits as DATA. The engine owns view/prev/crossfade,
+   *  turns clicks into navigation (nearest-first — no overlap bug), gates exits
+   *  on named state, and hands back the exit rows to pack for the shader so the
+   *  drawn chevron and the click zone are the SAME source (no invisible doors).
+   *  Call every tick with the literal config. Mirrors world-sandbox.ts. */
+  defineScenes(config: SceneConfig): SceneHandle {
+    return sceneDefine(this, () => this._latchRoot(), config, this._sceneDt)
   }
 
   // ─── Collision Callbacks ───

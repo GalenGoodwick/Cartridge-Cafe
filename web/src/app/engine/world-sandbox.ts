@@ -13,6 +13,7 @@
 // cursor/physics worlds it is invisible.
 
 import type { FieldSimulation } from './simulation'
+import { sceneDefine } from './scene-graph'
 
 // ── the worker: sealed global, compiles the hook, runs it against a shim ──
 const WORKER_SRC = `
@@ -40,6 +41,13 @@ function __rand() {
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
+// SCENE GRAPH: the ONE tested implementation (scene-graph.ts) injected here by
+// source, so the sandbox and the host FieldSimulation can never drift (the
+// chapters/trigger mirror-drift trap, closed). sceneDefine is self-contained by
+// law — no imports, no module refs, no object spread (ES2017 helper) — so this
+// .toString() is standalone runnable JS. Bound to a fixed name so minification
+// renaming the original can't break the call site below.
+const __sceneDefine = ${sceneDefine.toString()};
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
@@ -122,6 +130,11 @@ self.onmessage = function (ev) {
       unlockChapter(n) { const c = this._ch(); if (n >= 1 && n <= this.chapterCount() && !c.unlocked.includes(n)) c.unlocked.push(n); },
       goChapter(n) { const c = this._ch(); if (c.unlocked.includes(n)) { c.cur = n; return true; } return false; },
       completeChapter() { const c = this._ch(); const nx = c.cur + 1; if (nx <= this.chapterCount()) { this.unlockChapter(nx); c.cur = nx; return true; } return false; },
+      // SCENE GRAPH — see scene-graph.ts. Delegates to the injected, host-shared
+      // implementation; getRoot closes over this same sim so persist-aware
+      // progress lands in wd.save exactly like triggers/chapters.
+      _sceneDt: (typeof msg.dt === 'number' ? msg.dt : 0.016),
+      defineScenes(config) { return __sceneDefine(this, () => this._latchRoot(), config, this._sceneDt); },
     };
     // A hook reaching for a sim member this sandbox doesn't provide (a new
     // FieldSimulation method not yet mirrored here) would throw — and many hooks
