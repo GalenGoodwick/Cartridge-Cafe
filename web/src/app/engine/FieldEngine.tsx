@@ -895,17 +895,34 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [nodeGraph, setNodeGraph] = useState<AiNodeGraph | null>(null)
   const [nodesExpanded, setNodesExpanded] = useState(false)
   // The SWARM work-graph for this world — the game-element tree (elements, subnodes,
-  // status, who's docked, connections). Polled live so the panel reflects progress
-  // as workers turn nodes green. Null on worlds with no swarm graph.
+  // status, who's docked, connections). Null on worlds with no swarm graph.
+  // ── POLL DISCIPLINE (the Jul 31 spike): the first version of this polled every
+  //    4s on EVERY space tab, panel or not, hidden or not — the same ungated-poll
+  //    bug class the perf poll below already documents. One forgotten tab was
+  //    ~21,600 function requests a night. Now: ONE discovery fetch per world, then
+  //    a poll that (a) skips hidden tabs entirely, (b) runs 8s only while the
+  //    swarm is ACTIVE (an agent docked somewhere), (c) idles at 60s otherwise.
   const [swarm, setSwarm] = useState<{ project: string; done: number; total: number; nodes: SwarmNodeView[] } | null>(null)
+  const swarmActiveRef = useRef(false)
   useEffect(() => {
     if (!spaceSlug) { setSwarm(null); return }
     let alive = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const anyClaim = (ns: SwarmNodeView[]): boolean => ns.some(n => !!(n as { claim?: unknown }).claim || anyClaim((n as { children?: SwarmNodeView[] }).children || []))
     const pull = async () => {
-      try { const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/swarm`); if (r.ok && alive) { const d = await r.json(); setSwarm(d.map || null) } } catch { /* offline is fine */ }
+      try {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/swarm`)
+        if (r.ok && alive) { const d = await r.json(); setSwarm(d.map || null); swarmActiveRef.current = !!d.map && anyClaim(d.map.nodes || []) }
+      } catch { /* offline is fine */ }
     }
-    pull(); const iv = setInterval(pull, 4000)
-    return () => { alive = false; clearInterval(iv) }
+    const loop = async () => {
+      if (!alive) return
+      if (!document.hidden) await pull()
+      if (!alive) return
+      timer = setTimeout(loop, swarmActiveRef.current ? 8000 : 60000)
+    }
+    pull().then(() => { if (alive) timer = setTimeout(loop, swarmActiveRef.current ? 8000 : 60000) })
+    return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [spaceSlug])
   // A world with a swarm graph shows the AI-VIEW panel even with the build console
   // closed — the architecture is worth seeing on its own (one AI or ten). When it
