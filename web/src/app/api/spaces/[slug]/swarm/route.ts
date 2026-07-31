@@ -17,5 +17,12 @@ export async function GET(
   const space = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
   if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   const map = await readSwarmMap(space.id)
-  return NextResponse.json({ map: map ? mapSummary(map) : null })
+  // EDGE CACHE (Jul 31 spike): stale tabs running the old ungated 4s poll keep
+  // hammering this route until they reload — s-maxage lets Vercel's edge absorb
+  // those hits without a function invocation. 10s staleness is invisible in the
+  // panel; the fixed client polls slower than this anyway.
+  return NextResponse.json(
+    { map: map ? mapSummary(map) : null },
+    { headers: { 'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30' } },
+  )
 }
