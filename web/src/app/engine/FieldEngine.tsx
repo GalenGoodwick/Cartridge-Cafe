@@ -656,6 +656,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   // Audio system
   const audioRef = useRef<GameAudio>(new GameAudio())
+  // WorldAudio Phase A (DESIGN-world-audio.md): manifest bookkeeping + warn-once
+  const lastSoundsDeclRef = useRef<unknown>(null)          // wd.sounds object identity — rescan on change
+  const soundsLoadedRef = useRef<Map<string, string>>(new Map())  // id -> url actually loaded
+  const warnedSoundsRef = useRef<Set<string>>(new Set())   // {name}-only misses already shouted
   // audio dies with its world: Web Audio sources keep playing after React
   // unmounts, so leaving the page must close the context explicitly
   useEffect(() => {
@@ -722,6 +726,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // ONE audio system: adopt the cafe's shared AudioContext so world music and
     // shell sfx live on a single context with a single mute + resume lifecycle.
     try { const bus = worldBus(); if (bus) audio.attach(bus.ctx, bus.dest) } catch { /* no audio device */ }
+    // read-only stats for headless smokes (DESIGN-world-audio.md §6)
+    ;(window as unknown as { __cafeAudio?: unknown }).__cafeAudio = () => audio.stats()
     // mute is now governed by the shared worldGain; this stays as belt-and-
     // suspenders for any world created before the shared bus existed.
     try { if (localStorage.getItem('cc-mute')) audio.setVolume(0) } catch { /* fine */ }
@@ -1661,7 +1667,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       for (const k of ['postProcess', 'renderScale', 'maxBufferPixels', 'noPixelSampling',
                        '__mouseLook', 'persist', 'save', 'mpManifest', 'cradleBridge',
                        '__seed', '__fixedStep', 'singlePlayer', 'multiplayer', '__glyphOn', '__channels',
-                       '__play_music', '__play_sound', 'music_mod', 'tone',
+                       '__play_music', '__play_sound', 'music_mod', 'tone', 'sounds',
                        'gpuUniforms', 'gpuPopulation']) {   // per-frame GPU state: the NEXT world's shader must never read the departed world's buffer (the yellow-flash-on-main ghost)
         if (k in wd) delete wd[k]
       }
@@ -1678,6 +1684,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // not outlive the world. Stopping here on EVERY swap also fixes the vote's
     // iffy audio — each candidate preview cleanly silences the last.
     try { audioRef.current?.stopScore(); audioRef.current?.stopMusic(0.12); audioRef.current?.onWorldSwap() } catch { /* fine */ }
+    // the WATER VOICE finally has a silencer at the swap (it was silenced by ZERO
+    // of the teardown sites — only by the frame loop reading an absent wd.tone,
+    // which a crashed/unmounted loop never does).
+    try { setWorldVoice(null) } catch { /* fine */ }
+    // next world declares its own manifest; stale id->url bookkeeping must not
+    // block a same-name different-url reload
+    lastSoundsDeclRef.current = null; soundsLoadedRef.current.clear(); warnedSoundsRef.current.clear()
     // browser pointer-lock: a __mouseLook world grabbed it; release so it can't
     // outlive the world (the vote→main cursor-trap bug).
     try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock() } catch { /* fine */ }
@@ -3572,6 +3585,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           return h.protocol === 'https:' && (h.hostname.endsWith('.public.blob.vercel-storage.com') || h.origin === location.origin)
         } catch { return false }
       }
+      // DECLARATIVE SOUND MANIFEST (DESIGN-world-audio.md §2): wd.sounds =
+      // { name: url } — preloaded here so {name:'x'} one-shots just work.
+      // Re-scanned only when the object identity changes; per-id url map makes
+      // a world redeclaring a name with a NEW url reload it.
+      const soundsDecl = sim.worldData['sounds'] as Record<string, string> | undefined
+      if (soundsDecl && soundsDecl !== lastSoundsDeclRef.current) {
+        lastSoundsDeclRef.current = soundsDecl
+        const audio = audioRef.current
+        for (const [sid, surl] of Object.entries(soundsDecl)) {
+          if (typeof surl !== 'string' || !audioUrlOk(surl) || soundsLoadedRef.current.get(sid) === surl) continue
+          soundsLoadedRef.current.set(sid, surl)
+          const wgen = audio.worldGen
+          void audio.loadSound(sid, surl).then(ok => { if (!ok && audio.worldGen === wgen) soundsLoadedRef.current.delete(sid) })
+        }
+      }
       type PlaySoundCmd = { id?: string; name?: string; url?: string; frequency?: number; duration?: number; volume?: number; pitch?: number; type?: OscillatorType }
       const playSoundRaw = sim.worldData['__play_sound'] as PlaySoundCmd | PlaySoundCmd[] | undefined
       if (playSoundRaw) {
@@ -3588,20 +3616,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             void audio.loadSound(id, url).then(ok => { if (ok && audio.worldGen === wgen) audio.play(id!, volume ?? 1.0, pitch ?? 1.0) })   // a load that outlived its world stays silent
           } else if (playSound.frequency) {
             audio.beep(playSound.frequency, playSound.duration ?? 0.2, playSound.volume ?? 0.5, playSound.type)
+          } else if (playSound.id) {
+            // {name}-only with nothing loaded used to VANISH silently (shooter3's
+            // silent gunfire). Say it loudly, once per name per world.
+            if (!warnedSoundsRef.current.has(playSound.id)) {
+              warnedSoundsRef.current.add(playSound.id)
+              console.warn(`[audio] sound "${playSound.id}" not loaded — declare wd.sounds = { "${playSound.id}": "<blob-store url>" } (or include frequency/url in __play_sound)`)
+            }
           }
         }
       }
 
       // Music: { score } plays a COMPOSED score (data, nothing hosted — the audio
       // equivalent of a shader); { url } plays a file track; { stop: true } fades out.
+      // DECLARED STATE, not an event (DESIGN-world-audio.md §2): the key persists
+      // in worldData (and so in saved scenes/snapshots), assertMusic's compare-by-
+      // value gate plays only on change — and loading a world REPLAYS its music.
       const playMusic = sim.worldData['__play_music'] as { url?: string; score?: object; volume?: number; loop?: boolean; stop?: boolean } | undefined
-      if (playMusic) {
-        delete sim.worldData['__play_music']
-        const audio = audioRef.current
-        if (playMusic.stop) { audio.stopScore(); audio.stopMusic() }
-        else if (playMusic.score) audio.playScore(playMusic.score as Parameters<typeof audio.playScore>[0])
-        else if (playMusic.url && audioUrlOk(playMusic.url)) void audio.playMusic(playMusic.url, { volume: playMusic.volume, loop: playMusic.loop })
-      }
+      if (playMusic) audioRef.current.assertMusic(playMusic, audioUrlOk)
 
       // Reactive score: the world sweeps its own music live (audio as a second
       // rendering of world state). Continuous value — read every frame, not a
