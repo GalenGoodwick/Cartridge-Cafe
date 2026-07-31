@@ -5794,7 +5794,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               render_probe PNG the bridge stashed to slot ai_eye:<spaceId>). Renders
               under the SAME open condition as the BuilderBox so they travel together;
               always shows its chrome + graceful empty states so it's never invisible. */}
-          {(buildConsoleOpen || !!swarm) && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+          {/* opens ONLY from human input — the BuilderBox (Galen: the swarm/AI
+              view must never auto-open just because a swarm map exists). The
+              swarm tab still surfaces INSIDE it once opened. */}
+          {buildConsoleOpen && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
             <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}
