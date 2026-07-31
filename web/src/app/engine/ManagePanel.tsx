@@ -10,7 +10,7 @@ type Branch = { name: string; base: string; label: string | null; version: numbe
  *  rows; branches are the `BASE ⑂ you · [label ·] vN` challenger scenes scattered
  *  across every world you've branched. Each row: open · rename · delete. Reads
  *  /api/spaces/mine (owner-scoped) and mutates through the existing auth'd routes. */
-export default function ManagePanel({ onClose, onPreview }: { onClose: () => void; onPreview?: (scene: string | null) => void }) {
+export default function ManagePanel({ onClose, onPreview, onOpenScene }: { onClose: () => void; onPreview?: (scene: string | null) => void; onOpenScene?: (scene: string) => void }) {
   const [handle, setHandle] = useState<string>('')
   const [worlds, setWorlds] = useState<World[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
@@ -62,7 +62,15 @@ export default function ManagePanel({ onClose, onPreview }: { onClose: () => voi
   }, [editing, onClose])
 
   const openWorld = (slug: string) => { window.location.href = '/space/' + encodeURIComponent(slug) }
-  const openBranch = (name: string) => { window.location.href = '/hub/' + encodeURIComponent(name) }
+  // BRANCH open = load it IN PLACE in the engine you're already looking at
+  // (Galen: "like vote mode does" — don't navigate to /hub/<name>). onOpenScene
+  // commits the same scene the hover was previewing. Falls back to nav if the
+  // panel is used without the callback.
+  const openBranch = (name: string) => {
+    window.clearTimeout(pvT.current)
+    if (onOpenScene) onOpenScene(name)
+    else window.location.href = '/hub/' + encodeURIComponent(name)
+  }
 
   const deleteWorld = async (w: World) => {
     if (!confirm(`Delete world “${w.name}”? This can’t be undone.`)) return

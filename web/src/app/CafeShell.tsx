@@ -1932,7 +1932,8 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
 
           {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
-          {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview} />}
+          {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview}
+            onOpenScene={(s) => { setManageOpen(false); setManagePreview(null); go(s) }} />}
 
 
           {/* BREW YOUR ICON — pick a look, hue, size; your dancing avatar updates live */}

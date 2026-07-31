@@ -1418,12 +1418,25 @@ try {
     return null
   }
   const rollup = (cp) => { if (!cp) return 0; let s = 0; for (const k of countKeys) if (k === cp || k.startsWith(cp + '/')) s += heads[k] || 0; return s }
-  const u = [U.cam.x, U.cam.y, U.cam.z, U.order.length, (mgx - 256) / 256, (mgy - 256) / 256]
+  // WHITEBOARD BUDGET (Galen, Jul 30 — "cursor is STILL NOT FIXED" on his huge
+  // shelf): the uniform whiteboard is 256 floats and WGSL uni() CLAMPS every read
+  // to index 255. Layout: 6 header + bubbles(4 each) + self-icon(3) + others-cap(1)
+  // + others(4 each). The self-icon sits at 6+count*4, so once count ≥ 62 that
+  // index passes 255 → uni() clamps it → selfFx/hue/SIZE read a garbage slot and
+  // the cursor balloons (reads the clamped max). Galen has 60+ worlds, so his
+  // MY WORLDS shelf overflowed while main (fewer in-order) didn't — the exact
+  // "player worlds don't have the same basic logic as main" he spotted. Cap the
+  // PACKED bubbles so the self-icon always lands in range (top-N by score; the
+  // rest were already broken-stacked at uni(255), so nothing real is lost — and
+  // the full list still lives in ⚙ MANAGE). 58 leaves room for self + ~3 peers.
+  const MAXBUB = 58
+  const packOrder = U.order.length > MAXBUB ? U.order.slice(0, MAXBUB) : U.order
+  const u = [U.cam.x, U.cam.y, U.cam.z, packOrder.length, (mgx - 256) / 256, (mgy - 256) / 256]
   // author captions: pack each bubble's maker handle (16 chars = 4 vec4f) into the
   // population buffer, in U.order — the shader reads pop(i*3..) and draws it curved
   // along the bubble's bottom rim (char5x7). System bubbles have no author → blank.
   const pop = []   // flat entities only (4 floats each) — the renderer adds the count header
-  for (const n of U.order) {
+  for (const n of packOrder) {
     const B = U.bubbles[n]
     const au = String(B.author || '').toUpperCase().slice(0, 16)
     for (let c = 0; c < 16; c++) pop.push(c < au.length ? (au.charCodeAt(c) & 0xff) : 0)
