@@ -32,87 +32,9 @@ import { worldBus, recordTap, setWorldVoice, type WorldTone } from './cafe-audio
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
+import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, hueToRgba, wrapInteractionWgsl, ENGINE_BUILD, scenePreloadCache, playerGlyphWgsl, wrapPlayerGlyph, wrapOtherGlyph } from './engine-utils'
+import { TouchControls } from './TouchControls'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
-
-let fieldCounter = 0
-function genFieldId() {
-  return `field_${++fieldCounter}_${Date.now()}`
-}
-
-let effectCounter = 0
-function genEffectId() {
-  return `effect_${++effectCounter}_${Date.now()}`
-}
-
-// Reusable Set for per-frame interaction key cleanup (avoids allocation every frame)
-const _reusableKeySet = new Set<string>()
-
-/** Convert screen pixel coordinates to float grid coordinates (no flooring) */
-function screenToGrid(
-  screenX: number, screenY: number,
-  canvasRect: DOMRect,
-  camera: { x: number; y: number },
-  zoom: number,
-  gridSize: number = DEFAULT_GRID_SIZE
-): { x: number; y: number } {
-  const normX = (screenX - canvasRect.left) / canvasRect.width
-  const normY = (screenY - canvasRect.top) / canvasRect.height
-  const aspect = canvasRect.width / canvasRect.height
-  const gridRange = gridSize / zoom
-
-  if (aspect > 1) {
-    return {
-      x: camera.x + (normX - 0.5) * gridRange * aspect,
-      y: camera.y + (normY - 0.5) * gridRange,
-    }
-  } else {
-    return {
-      x: camera.x + (normX - 0.5) * gridRange,
-      y: camera.y + (normY - 0.5) * gridRange / aspect,
-    }
-  }
-}
-
-const DEFAULT_HUES = [190, 30, 120, 280, 0, 60, 330, 210]
-
-function hueToRgba(hue: number): [number, number, number, number] {
-  const h = hue / 360
-  const s = 0.75
-  const l = 0.6
-  const c = (1 - Math.abs(2 * l - 1)) * s
-  const x = c * (1 - Math.abs(((h * 6) % 2) - 1))
-  const m = l - c / 2
-  let r = 0, g = 0, b = 0
-  if (h < 1/6) { r = c; g = x }
-  else if (h < 2/6) { r = x; g = c }
-  else if (h < 3/6) { g = c; b = x }
-  else if (h < 4/6) { g = x; b = c }
-  else if (h < 5/6) { r = x; b = c }
-  else { r = c; b = x }
-  return [r + m, g + m, b + m, 1.0]
-}
-
-/** Wrap interaction WGSL for the field effect pipeline.
- *  Interaction shaders define `fn interactionEffect(coord, regionMin, regionMax, time, params) → vec4f`.
- *  This wrapper adapts it to `fn fieldEffect(...)` expected by the field pipeline. */
-function wrapInteractionWgsl(interactionWgsl: string): string {
-  return `
-// Per-pixel overlap mask: 1.0 where both parent fields' dilated presence overlaps, 0.0 elsewhere.
-fn overlapMask(coord: vec2f) -> f32 {
-  // textureSampleLevel: field effects run in a COMPUTE pipeline, where
-  // textureSample (implicit derivatives) is illegal — this was the silent
-  // killer that blacked out any world with an interaction effect.
-  return textureSampleLevel(fieldMask, texSampler, coord / frame.gridSize, 0.0).r;
-}
-
-${interactionWgsl}
-
-fn fieldEffect(coord: vec2f, regionMin: vec2f, regionMax: vec2f, time: f32, params: vec4f) -> vec4f {
-  let eff = interactionEffect(coord, regionMin, regionMax, time, params);
-  let mask = overlapMask(coord);
-  return vec4f(eff.rgb, eff.a * mask);
-}`
-}
 
 interface FieldEngineProps {
   spaceId?: string
@@ -152,15 +74,6 @@ interface FieldEngineProps {
   presenceKey?: string
 }
 
-/** Engine build marker — bump when engine-level fixes land, so a running tab
- *  can PROVE which build it holds (shown in the fault banner + console). */
-const ENGINE_BUILD = 'e5-fx-dbg'
-
-// downloaded scenes, cached by playScene name — the vote reckoning flicks between
-// five candidates, and this spares the network/DB on every re-hover. It caches the
-// DOWNLOAD only; one scene runs at a time. Dev hot-reload deletes an entry on edit.
-const scenePreloadCache = new Map<string, unknown>()
-
 // the shelf's icon atlas, cached as plain pixels across visits to main — leaving
 // a world and coming back re-uploads this instead of re-fetching the roster and
 // re-rendering ~64 world shaders behind spinners. Survives client-side navigation.
@@ -190,26 +103,6 @@ function iconCacheLoad(): typeof cafeIconCache {
   } catch { return null }
 }
 
-// BREWED GLYPH — the player's cursor WGSL, wrapped to fill the hub shader's
-// mod_playerglyph container (a no-op until swapped). Shared by the scene
-// loader (overlay BEFORE the first compile — one compile per hub entry, no
-// second stall) and the cafe:icon watcher (recompile only on a real change).
-const playerGlyphWgsl = (): string | null => {
-  if (typeof window === 'undefined') return null
-  const ic = (window as unknown as { __cafeIcon?: { wgsl?: string } }).__cafeIcon
-  return typeof ic?.wgsl === 'string' && /fn\s+visual_glyph\s*\(/.test(ic.wgsl) ? ic.wgsl : null
-}
-const wrapPlayerGlyph = (wgsl: string): string =>
-  wgsl + '\nfn mod_playerglyph(uv: vec2f, t: f32) -> vec4f { return visual_glyph(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }'
-// OTHER players' glyphs arrive over presence and share ONE uber-shader — every
-// function a glyph declares is renamed into its slot's namespace so two
-// players' visual_glyph (and any helpers) can coexist. Slots pg0..pg2.
-const wrapOtherGlyph = (wgsl: string, slot: number): string => {
-  let code = wgsl
-  const names = new Set(Array.from(wgsl.matchAll(/\bfn\s+([A-Za-z_]\w*)\s*\(/g), m => m[1]))
-  for (const n of names) code = code.replace(new RegExp('\\b' + n + '\\b', 'g'), `${n}_pg${slot}`)
-  return code + `\nfn mod_pg${slot}(uv: vec2f, t: f32) -> vec4f { return visual_glyph_pg${slot}(uv, 0.0, vec4f(1.0), t, vec4f(0.0), vec4f(0.0)); }`
-}
 
 
 
@@ -8551,87 +8444,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         </div>
       </div>
       )}
-    </div>
-  )
-}
-/** Virtual touch controls — a left thumb-stick (arrows + WASD) and two action
- *  buttons (A = space, B = enter) writing the same worldData.key_* the keyboard
- *  writes, so every existing cartridge gains touch support unchanged.
- *  Renders only on touch devices; the stick nub is moved via style (no re-renders). */
-function TouchControls({ simRef }: { simRef: { current: FieldSimulation | null } }) {
-  const [isTouch] = useState(() =>
-    typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0))
-  const originRef = useRef<{ x: number; y: number } | null>(null)
-  const nubRef = useRef<HTMLDivElement>(null)
-
-  const setKeys = useCallback((dx: number, dy: number) => {
-    const wd = simRef.current?.worldData
-    if (!wd) return
-    const TH = 14
-    const L = dx < -TH, R = dx > TH, U = dy < -TH, D = dy > TH
-    wd.key_left = L; wd.key_a = L
-    wd.key_right = R; wd.key_d = R
-    wd.key_up = U; wd.key_w = U
-    wd.key_down = D; wd.key_s = D
-  }, [simRef])
-
-  const stickDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    originRef.current = { x: e.clientX, y: e.clientY }
-  }, [])
-  const stickMove = useCallback((e: React.PointerEvent) => {
-    const o = originRef.current
-    if (!o) return
-    const dx = Math.max(-40, Math.min(40, e.clientX - o.x))
-    const dy = Math.max(-40, Math.min(40, e.clientY - o.y))
-    if (nubRef.current) nubRef.current.style.transform = `translate(${dx}px, ${dy}px)`
-    setKeys(dx, dy)
-  }, [setKeys])
-  const stickUp = useCallback(() => {
-    originRef.current = null
-    if (nubRef.current) nubRef.current.style.transform = 'translate(0px, 0px)'
-    setKeys(0, 0)
-  }, [setKeys])
-
-  const btn = useCallback((key: string, down: boolean) => (e: React.PointerEvent) => {
-    e.preventDefault()
-    const wd = simRef.current?.worldData
-    if (wd) wd[key] = down
-  }, [simRef])
-
-  if (!isTouch) return null
-  return (
-    <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
-      <div
-        className="absolute bottom-8 left-8 w-28 h-28 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
-        style={{ touchAction: 'none' }}
-        onPointerDown={stickDown}
-        onPointerMove={stickMove}
-        onPointerUp={stickUp}
-        onPointerCancel={stickUp}
-      >
-        <div
-          ref={nubRef}
-          className="absolute left-1/2 top-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-white/20 border border-white/30 transition-transform duration-75"
-        />
-      </div>
-      <div className="absolute bottom-10 right-8 flex gap-4 pointer-events-auto">
-        <button
-          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
-          style={{ touchAction: 'none' }}
-          onPointerDown={btn('key_space', true)}
-          onPointerUp={btn('key_space', false)}
-          onPointerCancel={btn('key_space', false)}
-        >A</button>
-        <button
-          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
-          style={{ touchAction: 'none' }}
-          onPointerDown={btn('key_enter', true)}
-          onPointerUp={btn('key_enter', false)}
-          onPointerCancel={btn('key_enter', false)}
-        >B</button>
-      </div>
     </div>
   )
 }
