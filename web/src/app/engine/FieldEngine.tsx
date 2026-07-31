@@ -30,6 +30,9 @@ import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
 import { worldBus, recordTap, setWorldVoice, type WorldTone } from './cafe-audio'
 import { WorldToolsPanel } from './WorldToolsPanel'
+import { InstructionsPanel } from './InstructionsPanel'
+import { VersionsPanel } from './VersionsPanel'
+import { BranchesPanel } from './BranchesPanel'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
 import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, hueToRgba, wrapInteractionWgsl, ENGINE_BUILD, scenePreloadCache, playerGlyphWgsl, wrapPlayerGlyph, wrapOtherGlyph } from './engine-utils'
@@ -5790,227 +5793,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             </div>
           )}
           {instrOpen && (
-            <div className={`absolute z-50 ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-28' : 'top-14'}`}
-              style={{ right: 'max(1rem, calc((100% - 100vh) / 2 + 1rem))' }}>{/* the GRID's top-right — the world square is aspect-fit; on wide screens right-36 sat by the chat rail (Galen) */}
-              {/* anchored to the grid's top-right under its button — a reference
-                  card, not a curtain: the vote rail and the world stay visible
-                  and clickable while it's open (✕ or ESC closes) */}
-              {/* header bar (title + EDIT + ✕) is PINNED; the body below scrolls,
-                  so the title and close stay visible however long the text runs */}
-              <div
-                className="w-[380px] max-w-[80vw] max-h-[62vh] flex flex-col overflow-hidden rounded-xl border border-white/15 bg-black/90 backdrop-blur font-mono text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
-              >
-                <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-white/10 bg-black/90 flex-shrink-0">
-                  <div className="text-[16px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
-                  <div className="flex items-center gap-2">
-                    {can(ctx, 'editLaw') && !instrEdit && (
-                      <>
-                        <button
-                          className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
-                          onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
-                        >
-                          EDIT
-                        </button>
-                      </>
-                    )}
-                    <button
-                      aria-label="Close instructions"
-                      className="w-6 h-6 rounded text-white/60 hover:text-white hover:bg-white/10 text-[18px] leading-none transition-colors"
-                      onClick={() => { setInstrOpen(false); setInstrEdit(false) }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <div className="min-h-0 overflow-y-auto px-5 py-4 text-[18px] leading-relaxed">
-                {instrEdit ? (
-                  <>
-                    <textarea
-                      value={instrDraft}
-                      onChange={e => setInstrDraft(e.target.value)}
-                      rows={10}
-                      className="w-full bg-black/60 border border-white/15 rounded-lg p-3 text-[18px] font-mono text-white/85 outline-none focus:border-white/35"
-                      placeholder={'Key entry first, one per line:\nWASD — move · SPACE — dash · CLICK — select\n\nThen the point: what the player is trying to do, and what winning is.'}
-                    />
-                    <div className="flex gap-2 mt-3 justify-end">
-                      <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
-                      <button
-                        className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
-                        onClick={() => { const s = simulationRef.current; if (s) s.worldData.instructions = instrDraft; setInstrEdit(false) }}
-                      >
-                        SAVE
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="whitespace-pre-line">
-                    {String(simulationRef.current?.worldData?.instructions ||
-                      ((simulationRef.current?.fields?.size ?? 0) === 0
-                        ? 'This world is BLANK — here is how to make it real:\n\n1 · ⚡ CONNECT AI — copy the briefing to any AI and tell it what to build. It works over plain HTTP; the world updates live.\n2 · Or build by hand in the workshop tools (⚙).\n3 · The world saves itself as you make it. The moment it is not blank, it joins the cafe\u2019s main screen.\n\nWrite these instructions properly (EDIT, above) once your world knows what it is: key entry first, then the point.'
-                        : 'No instructions written for this world yet.'))}
-                  </div>
-                )}
-                </div>
-              </div>
-            </div>
+            <InstructionsPanel playScene={playScene} ctx={ctx} instrEdit={instrEdit} setInstrEdit={setInstrEdit} instrDraft={instrDraft} setInstrDraft={setInstrDraft} setInstrOpen={setInstrOpen} simulationRef={simulationRef} />
           )}
 
           {/* BRANCHES — the CELL: viewers gather, five unlock the vote, every branch has a table */}
           {versionsOpen && spaceSlug && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setVersionsOpen(false)}>
-              <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-[16px] tracking-[0.25em] text-white/50">⏱ VERSIONS OF {(playScene || spaceSlug || '').toUpperCase()}</div>
-                  <button aria-label="Close" className="text-white/40 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30" onClick={() => setVersionsOpen(false)}>✕</button>
-                </div>
-                {(isOwner || !spaceId) && (
-                  <button
-                    disabled={versionBusy}
-                    className="w-full text-left px-3 py-2 rounded-lg border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 transition-colors mb-3 disabled:opacity-40"
-                    onClick={async () => {
-                      setVersionBusy(true)
-                      try {
-                        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-                        }).then(x => x.json())
-                        showToast(r.deduped ? `no change since v${r.version?.version} — nothing to save` : `saved v${r.version?.version}`, 'success')
-                        await loadVersions()
-                      } catch { showToast('could not save version', 'error') } finally { setVersionBusy(false) }
-                    }}
-                  >
-                    ＋ SAVE A VERSION <span className="text-white/40 text-[14px]">— snapshot the world as it stands (identical saves are skipped)</span>
-                  </button>
-                )}
-                {versionList.length === 0 && <div className="text-white/35 text-[16px] px-1 py-2">no versions yet — save one, or the eye will as you build.</div>}
-                {versionList.map(v => (
-                  <div key={v.version} className="flex items-center gap-2 rounded-lg border border-white/10 mb-1.5 px-3 py-2">
-                    <span className="text-amber-200/90 tracking-[0.1em]">v{v.version}</span>
-                    <span className="flex-1 text-white/50 text-[14px] truncate">{v.note || (v.author?.name ? `by ${v.author.name}` : '—')}</span>
-                    <button
-                      className="text-[14px] text-white/50 hover:text-white px-1.5"
-                      title="preview this version in a new tab"
-                      onClick={() => window.open(`/space/${encodeURIComponent(spaceSlug)}?version=${v.version}`, '_blank')}
-                    >VIEW</button>
-                    {(isOwner || !spaceId) && (
-                      <button
-                        disabled={versionBusy}
-                        className="text-[14px] border border-white/15 rounded px-2 py-0.5 text-white/60 hover:text-white hover:border-white/40 disabled:opacity-40"
-                        title="set this version as MAIN — what everyone sees (current state is saved first)"
-                        onClick={async () => {
-                          if (!window.confirm(`Set v${v.version} as MAIN — the live world everyone sees? Your current state is saved as a new version first.`)) return
-                          setVersionBusy(true)
-                          try {
-                            await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions/${v.version}`, {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'apply' }),
-                            })
-                            showToast(`restored v${v.version} — reloading`, 'success')
-                            setTimeout(() => window.location.reload(), 600)
-                          } catch { showToast('restore failed', 'error') } finally { setVersionBusy(false) }
-                        }}
-                      >SET MAIN</button>
-                    )}
-                  </div>
-                ))}
-                <div className="text-[14px] text-white/30 mt-2">save points are versions · restoring never destroys — the live world is snapshotted first</div>
-              </div>
-            </div>
+            <VersionsPanel spaceSlug={spaceSlug} playScene={playScene} spaceId={spaceId} isOwner={isOwner} versionBusy={versionBusy} setVersionBusy={setVersionBusy} versionList={versionList} loadVersions={loadVersions} showToast={showToast} setVersionsOpen={setVersionsOpen} />
           )}
-          {branchesOpen && (() => {
-            const base = cellBase()
-            const viewers = Object.keys(cellData.viewers)   // presence only — the vote lives in the ⚔ reckoning
-            const say = (author: string) => {
-              const text = cellDraft.trim()
-              if (!text) return
-              const doc: CellDoc = JSON.parse(JSON.stringify(cellData))
-              doc.discussion[author] = [...(doc.discussion[author] || []), { who: whoRef.current, text, at: Date.now() }].slice(-50)
-              saveCellDoc(doc); setCellData(doc); setCellDraft('')
-            }
-            return (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBranchesOpen(false)}>
-                <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-[16px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
-                    <button aria-label="Close" className="text-white/40 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
-                  </div>
-                  <div className="flex items-center gap-2 mb-3 text-[14px] text-white/40">
-                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>{viewers.length} here now</span>
-                    <span className="text-white/25">· ride, discuss — cast your vote in the ⚔ reckoning</span>
-                  </div>
-                  {/* THE PODIUM — above main and the branches. The elected winner's
-                      frozen copy rides from here; main always stays the maker's. */}
-                  {(() => {
-                    const podium = branchList.find(bb => bb.author === 'winner' || bb.author.startsWith('winner · '))
-                    if (podium) {
-                      const of = String(podium.author.split(' · ').slice(1).join(' · ') || '')
-                      return (
-                        <button className="w-full text-left px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-400/10 hover:bg-amber-400/20 transition-colors mb-1.5"
-                          onClick={() => { setBranchesOpen(false); handleLoadScene(podium.name) }}>
-                          <span className="text-amber-200">⚔ WINNER</span>
-                          <span className="text-white/45 text-[14px]"> — the vote's champion{of ? ` (${of})` : ''} · v{podium.v} · ride it</span>
-                        </button>
-                      )
-                    }
-                    return (
-                      <div className="w-full px-3 py-2 rounded-lg border border-white/10 border-dashed mb-1.5">
-                        <span className="text-white/35">⚔ no winner yet</span>
-                        <span className="text-white/25 text-[14px]"> — the vote decides; the champion stands here</span>
-                      </div>
-                    )
-                  })()}
-                  <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => {
-                    setBranchesOpen(false)
-                    // on a space, "main" is the space's own snapshot, not a scene named
-                    // after the slug — the scene store has no such entry, so returning to
-                    // the space page reloads main. (Play worlds keep the scene load.)
-                    if (spaceSlug) { window.location.href = `/space/${encodeURIComponent(spaceSlug)}` }
-                    else { handleLoadScene(base) }
-                  }}>
-                    <span className="text-emerald-300/90">main</span>
-                    <span className="text-white/40 text-[14px]"> — the world as it stands</span>
-                  </button>
-                  {branchList.filter(bB => bB.author !== 'winner' && !bB.author.startsWith('winner · ')).map(bB => {
-                    const chat = cellData.discussion[bB.author] || []
-                    return (
-                      <div key={bB.name} className="rounded-lg border border-white/10 mb-1.5">
-                        <div className="flex items-center">
-                          <button className="flex-1 text-left px-3 py-2 hover:bg-white/5 transition-colors" onClick={() => { setBranchesOpen(false); handleLoadScene(bB.name) }}>
-                            <span className="text-amber-200/90">⑂ {bB.author}</span>
-                            <span className="text-white/40 text-[14px]"> — v{bB.v} · ride it</span>
-                          </button>
-                          <button className="mr-2 px-2 py-1 text-[14px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
-                            💬{chat.length > 0 ? chat.length : ''}
-                          </button>
-                        </div>
-                        {discOpen === bB.author && (
-                          <div className="border-t border-white/10 px-3 py-2">
-                            {chat.length === 0 && <div className="text-white/30 text-[14px] mb-1">no discussion yet — say why this branch should win</div>}
-                            {chat.slice(-8).map((m, i) => (
-                              <div key={i} className="text-[16px] mb-0.5"><span className="text-white/45">{m.who}:</span> {m.text}</div>
-                            ))}
-                            <div className="flex gap-1.5 mt-1.5">
-                              <input
-                                value={cellDraft}
-                                onChange={e => setCellDraft(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') say(bB.author) }}
-                                placeholder="speak in the cell…"
-                                className="flex-1 bg-black/60 border border-white/15 rounded px-2 py-1 text-[16px] outline-none focus:border-white/35"
-                              />
-                              <button className="text-[14px] px-2 border border-white/15 rounded hover:border-white/40" onClick={() => say(bB.author)}>SAY</button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                  {branchList.length === 0 && (
-                    <div className="text-white/35 text-[16px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
-                  )}
-                  <div className="text-[14px] text-white/30 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
-                </div>
-              </div>
-            )
-          })()}
+          {branchesOpen && (
+            <BranchesPanel cellBase={cellBase} cellData={cellData} setCellData={setCellData} cellDraft={cellDraft} setCellDraft={setCellDraft} saveCellDoc={saveCellDoc} whoRef={whoRef} setBranchesOpen={setBranchesOpen} branchList={branchList} handleLoadScene={handleLoadScene} spaceSlug={spaceSlug} discOpen={discOpen} setDiscOpen={setDiscOpen} />
+          )}
 
           {/* ALTER — the warning gate in front of the owner's live plug: no token
               until the owner has read what "live" means. BRANCH INSTEAD is the out. */}
