@@ -204,8 +204,20 @@ export class GameAudio {
       // half-started attempt and clear the assert cache — the frame loop
       // re-asserts wd.__play_music next tick and music starts CLEAN on the
       // gesture that woke us (the "no music until you click, then nothing" gap).
-      const wasSuspended = this.ctx?.state === 'suspended'
-      this.ensureContext()
+      // (Safari reports 'interrupted' where Chrome says 'suspended' — treat any
+      // not-running state as slept-through.)
+      const wasSuspended = !!this.ctx && this.ctx.state !== 'running'
+      const ctx = this.ensureContext()
+      // SAFARI: resume() alone inside the gesture is not reliably enough — the
+      // canonical unlock also PLAYS a silent buffer within the gesture handler.
+      // Harmless on Chrome/Firefox; only fires while the context isn't running.
+      if (ctx.state !== 'running') {
+        try {
+          const b = ctx.createBuffer(1, 1, 22050)
+          const s = ctx.createBufferSource()
+          s.buffer = b; s.connect(ctx.destination); s.start(0)
+        } catch { /* fine */ }
+      }
       if (wasSuspended && this.lastMusicAssert !== null) {
         this.stopScore(); this.stopMusic(0)
         this.lastMusicAssert = null
