@@ -1,0 +1,837 @@
+{
+  "project": "PENTARCH",
+  "trunk": "cafe-rec",
+  "model": "game-element tree. A node is a GAME ELEMENT the AI docks and builds — not an abstract task. Each carries `element` (what it is), `pseudocode` (the design draft — the orchestrator authors this), `seed` (existing working code to refine, not rewrite), `connects` (edges to other elements, {to, via} = the contract that flows across — the orchestrator indicates these), and `children` (subnodes when complex; a parent greens only when its children + its own keys are green). `dependsOn` = build-order gate (foundations must be green first). Green is DERIVED: leaf mechanic → unit-tested (`node --test`); a scene element → render-verified (swarm_probe eye).",
+  "connections_note": "ORCHESTRATOR-DEFINED WIRING (read `connects` on each node): shipyard --(a berth design)--> hull --(a spawned unit)--> battle --(win)--> debrief. finder --(join room)--> lobby --(host START)--> battle. Every scene --(entity codes)--> shader+chrome (the render layer). Every module --(SRC string)--> build --(one hook)--> integrate. An AI building one side of a connection may carry its context into the connected undocked node and build the other side (SWARM-GUIDE rule 5).",
+  "nodes": [
+    {
+      "id": "contracts",
+      "element": "the one truth — CONTRACT.md + STRUCTURE.md",
+      "kind": "spec",
+      "pseudocode": "data shapes (wd namespaces, entity-code registry), the hook-string assembly, PRELUDE helpers, the chrome law, the Istrolid UI reference. Every node imports this and may not diverge.",
+      "seed": {
+        "from": "CONTRACT.md + STRUCTURE.md",
+        "note": "already authored"
+      },
+      "connects": [],
+      "children": [],
+      "files": [
+        "CONTRACT.md",
+        "STRUCTURE.md"
+      ],
+      "exports": [
+        "contracts"
+      ],
+      "dependsOn": [],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {},
+      "statusNote": "no keys — scope it"
+    },
+    {
+      "id": "geometry",
+      "element": "pentagon-hull math + negative-space shape grammar",
+      "kind": "lib",
+      "pseudocode": "regular pentagons (side 1) attach edge-to-edge; chains curve, re-touch, enclose voids. layout(design)→tiles; freeEdges/voids/holes/classify for the shape grammar. DONE — 38 tests. Verify, never rewrite.",
+      "seed": {
+        "from": "penta-core.mjs + penta-holes.mjs",
+        "note": "proven — the whole game stands on it"
+      },
+      "connects": [
+        {
+          "to": "shipyard",
+          "via": "ghost placement + void detection"
+        },
+        {
+          "to": "hull",
+          "via": "design → tile poses + contact graph"
+        }
+      ],
+      "children": [],
+      "files": [
+        "penta-core.mjs",
+        "penta-holes.mjs"
+      ],
+      "exports": [
+        "layout",
+        "freeEdges",
+        "voids",
+        "contacts",
+        "holes",
+        "classify",
+        "attachPose",
+        "vertices",
+        "overlaps"
+      ],
+      "dependsOn": [
+        "contracts"
+      ],
+      "tests": [
+        "penta-core.test.mjs"
+      ],
+      "status": "green",
+      "claim": null,
+      "keyState": {
+        "unit-tested": "pass"
+      },
+      "statusNote": "✓unit-tested"
+    },
+    {
+      "id": "parts",
+      "element": "the part catalogue — HULL/ARMOR/GUN/ENGINE/GEN with stats + costs",
+      "kind": "lib",
+      "pseudocode": "PARTS[]: {key,name,category,hp,mass,thrust,energy,dps,color,paletteOrder}; statOf(part)→stats. Ported from the v9 STAT/COST tables. Feeds the palette (shipyard) and unit stats (hull/battle).",
+      "seed": {
+        "from": "backlog/parts/v9-parts.json (.hook STAT/COST) + parts.mjs (worker draft, unit-tested)",
+        "note": "a worker already greened parts.mjs — refine from there"
+      },
+      "connects": [
+        {
+          "to": "shipyard",
+          "via": "palette entries + their stat-cards"
+        },
+        {
+          "to": "hull",
+          "via": "per-tile hp/mass/thrust/energy/dps"
+        }
+      ],
+      "children": [],
+      "files": [
+        "parts.mjs"
+      ],
+      "exports": [
+        "PARTS",
+        "statOf"
+      ],
+      "dependsOn": [
+        "contracts"
+      ],
+      "tests": [
+        "test/parts.test.mjs"
+      ],
+      "status": "green",
+      "claim": null,
+      "keyState": {
+        "unit-tested": "pass"
+      },
+      "statusNote": "✓unit-tested"
+    },
+    {
+      "id": "shader",
+      "element": "the RENDER LAYER — visual_pentarch decodes every entity code",
+      "kind": "lib",
+      "pseudocode": "fn visual_pentarch(uv,...)->vec4f. Loop pop(i); branch on the code registry (tiles 0-5, ghosts 60-68, heartbeats 71-75, outlines 76-80, beams 100+, rings 200+, battle tiles, buttons 300+). Port the tile/ghost/outline/void decode from v9 .vis; add rings/beams/buttons.",
+      "seed": {
+        "from": "backlog/parts/v9-parts.json (.vis) + shader.mjs (worker partial)",
+        "note": "worker started shader.mjs — continue it"
+      },
+      "connects": [
+        {
+          "to": "chrome",
+          "via": "includes the Istrolid panel/button/card WGSL primitives"
+        },
+        {
+          "to": "ALL scenes",
+          "via": "renders whatever entities a scene pushes (the eye they all verify against)"
+        }
+      ],
+      "children": [],
+      "files": [
+        "shader.mjs"
+      ],
+      "exports": [
+        "visualSource"
+      ],
+      "dependsOn": [
+        "contracts",
+        "chrome"
+      ],
+      "tests": [
+        "test/shader.test.mjs"
+      ],
+      "status": "partial",
+      "claim": null,
+      "keyState": {
+        "render-verified": "pending",
+        "visual-reference": "pending"
+      },
+      "statusNote": "·render-verified  ·visual-reference"
+    },
+    {
+      "id": "chrome",
+      "element": "the Istrolid VISUAL SYSTEM — one look for every scene",
+      "kind": "lib",
+      "pseudocode": "reusable primitives (WGSL + PRELUDE helpers): translucent panel(), drawn button() (idle/hover/pressed), tooltip statCard(), red banner(), list row(), the palette, the persistent top-bar + design/fleet corner pads. Every scene calls ONE helper, never raw draws — so panels don't diverge.",
+      "seed": {
+        "from": "STRUCTURE.md §UI REFERENCE (Galen's 3 screenshots)",
+        "note": "no code yet — author from the screenshots"
+      },
+      "connects": [
+        {
+          "to": "shader",
+          "via": "the WGSL primitive functions"
+        },
+        {
+          "to": "build",
+          "via": "the PRELUDE chrome helpers (topBar/cornerPads/panel…)"
+        }
+      ],
+      "children": [],
+      "files": [
+        "chrome.mjs"
+      ],
+      "exports": [
+        "CHROME_WGSL",
+        "CHROME_PRELUDE"
+      ],
+      "dependsOn": [
+        "contracts"
+      ],
+      "tests": [
+        "test/chrome.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: chrome.mjs"
+    },
+    {
+      "id": "build",
+      "element": "the ASSEMBLER — composes the modules into one hook",
+      "kind": "lib",
+      "pseudocode": "assembleHook() = PRELUDE (inline geometry+parts+chrome, all §2 helpers) + DISPATCH (scene switch over each mod-*.mjs SRC). assembleVisual() = shader+chrome WGSL. main() writes dist/, runs node --test, wgsl-check; --push gates the bridge (never default).",
+      "seed": {
+        "from": "backlog/parts/push-yard-update.mjs (push pattern)",
+        "note": "assembler is new — build it"
+      },
+      "connects": [
+        {
+          "to": "ALL scene modules",
+          "via": "reads each SRC string and wires the DISPATCH"
+        },
+        {
+          "to": "integrate",
+          "via": "produces the dist hook+visual it pushes"
+        }
+      ],
+      "children": [],
+      "files": [
+        "build.mjs"
+      ],
+      "exports": [
+        "assembleHook",
+        "assembleVisual"
+      ],
+      "dependsOn": [
+        "contracts",
+        "geometry",
+        "parts",
+        "shader",
+        "chrome"
+      ],
+      "tests": [
+        "test/build.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: build.mjs"
+    },
+    {
+      "id": "harness",
+      "element": "the test harness — drive a scene hook against a fake sim",
+      "kind": "lib",
+      "pseudocode": "port backlog/tests/yard-sim.mjs to Node: assembleHook→new Function('sim','dt',hook); tick(mx,my,down); uvpx(ux,uy); a fresh fake sim {worldData, edge, trigger, getFieldByName, rand}. No Deno, no /tmp.",
+      "seed": {
+        "from": "backlog/tests/yard-sim.mjs",
+        "note": "port to Node"
+      },
+      "connects": [
+        {
+          "to": "ALL scene tests",
+          "via": "every scene's *.test.mjs imports it"
+        }
+      ],
+      "children": [],
+      "files": [
+        "test/harness.mjs"
+      ],
+      "exports": [
+        "tick",
+        "uvpx",
+        "freshSim"
+      ],
+      "dependsOn": [
+        "build"
+      ],
+      "tests": [
+        "test/harness.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: test/harness.mjs"
+    },
+    {
+      "id": "shipyard",
+      "element": "THE SHIP-BUILDER SCREEN — assemble a hull from pentagon tiles",
+      "kind": "spec",
+      "pseudocode": "hover near a free edge → SAT-gated GHOST (none if it would overlap); click ghost → selected BLANK; click a tile → select; palette category-tab click → fill/replace the selected tile's part; chains branch + re-touch. Live shape grammar seals voids → payouts. Live stats. Berths save designs. This is the v9 designer, modularized (rename wd.__pd → wd.__D).",
+      "seed": {
+        "from": "backlog/parts/v9-parts.json (.hook — the LIVE v9 designer)",
+        "note": "PRE-POPULATED working code — port + split into the children, don't rewrite from scratch"
+      },
+      "connects": [
+        {
+          "to": "hull",
+          "via": "a saved berth DESIGN becomes a fighting unit's tile layout"
+        },
+        {
+          "to": "parts",
+          "via": "the palette + the live stat-cards read PARTS/statOf"
+        },
+        {
+          "to": "shader",
+          "via": "pushes tile/ghost/outline/void entity codes"
+        },
+        {
+          "to": "chrome",
+          "via": "the palette strip, stat-card, red banner, top-bar"
+        }
+      ],
+      "children": [
+        {
+          "id": "sy-ghost",
+          "element": "ghost preview + blank placement",
+          "kind": "lib",
+          "pseudocode": "freeEdges→ghost at legal edges; click ghost → push a blank tile, select it.",
+          "connects": [
+            {
+              "to": "geometry",
+              "via": "freeEdges + overlaps oracle"
+            }
+          ],
+          "files": [
+            "mod-designer.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "geometry"
+          ],
+          "tests": [
+            "test/designer.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "sy-palette",
+          "element": "category-tab palette → fill/replace part",
+          "kind": "lib",
+          "pseudocode": "tabs HULL/ARMOR/GUN/ENGINE/GEN; click fills the selected tile or replaces its part; hover → stat-card.",
+          "connects": [
+            {
+              "to": "parts",
+              "via": "part list + stats"
+            },
+            {
+              "to": "chrome",
+              "via": "stat-card"
+            }
+          ],
+          "files": [
+            "mod-designer.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "parts"
+          ],
+          "tests": [
+            "test/designer.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "sy-grammar",
+          "element": "negative-space shape grammar → payouts",
+          "kind": "lib",
+          "pseudocode": "holes()/classify() → diamond/moon/star/bay with area+spike windows; construction cracks = 'gap' (no payout); seal flash tinted by shape; diamond +15% HP · moon +3 PWR · star arms SUPER-WEAPON · bay hangar.",
+          "connects": [
+            {
+              "to": "geometry",
+              "via": "holes+classify"
+            }
+          ],
+          "files": [
+            "mod-designer.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "geometry"
+          ],
+          "tests": [
+            "test/designer.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "sy-delete",
+          "element": "route-aware delete",
+          "kind": "lib",
+          "pseudocode": "double-click / ctrl → delete; contact-graph BFS + spanning-tree re-root so a ring survives a cut; deletion re-opens seals.",
+          "connects": [
+            {
+              "to": "geometry",
+              "via": "contacts graph"
+            }
+          ],
+          "files": [
+            "mod-designer.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "geometry"
+          ],
+          "tests": [
+            "test/designer.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "sy-stats",
+          "element": "live ship stats + berths",
+          "kind": "lib",
+          "pseudocode": "MASS/SPD/HP/DPS/PWR from parts; brownout halves guns without GEN; ladder payouts applied; save design to wd.__fleet berths.",
+          "connects": [
+            {
+              "to": "parts",
+              "via": "statOf"
+            },
+            {
+              "to": "hull",
+              "via": "berths feed battle spawns"
+            }
+          ],
+          "files": [
+            "mod-designer.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "parts"
+          ],
+          "tests": [
+            "test/designer.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        }
+      ],
+      "files": [
+        "mod-designer.mjs"
+      ],
+      "exports": [
+        "DESIGNER_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "geometry",
+        "parts",
+        "chrome"
+      ],
+      "tests": [
+        "test/designer.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-designer.mjs"
+    },
+    {
+      "id": "hull",
+      "element": "A HULL AS A FIGHTING UNIT — a design turned into a live ship",
+      "kind": "lib",
+      "pseudocode": "layout(design)→tiles with per-part hp/mass/thrust; speed/turn from thrust/mass; precompute the contact-graph route from tile 0 (for shed). Shape payouts baked in. This is the bridge between the designer and the battle.",
+      "seed": {
+        "from": "geometry.layout + parts.statOf",
+        "note": "compose the two — new glue code"
+      },
+      "connects": [
+        {
+          "to": "shipyard",
+          "via": "consumes a berth DESIGN"
+        },
+        {
+          "to": "battle",
+          "via": "produces a spawnable UNIT (tiles + stats + route graph)"
+        },
+        {
+          "to": "geometry",
+          "via": "layout + contacts"
+        }
+      ],
+      "children": [],
+      "files": [
+        "hull.mjs"
+      ],
+      "exports": [
+        "makeUnit",
+        "routeGraph"
+      ],
+      "dependsOn": [
+        "geometry",
+        "parts"
+      ],
+      "tests": [
+        "test/hull.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: hull.mjs"
+    },
+    {
+      "id": "battle",
+      "element": "THE WAR SCENE — fleets fight over capture points",
+      "kind": "spec",
+      "pseudocode": "each seat SPAWNS units from berths at COST from income; income from capture rings (sole-holder ticks ⬡). Units steer to the seat's cursor; GUN tiles fire beams along edge-normal arcs; GEN sustains energy (brownout halves fire). PER-TILE damage: beam→nearest enemy tile, dead tiles shed, route-BFS orphans shear, tile-0 death kills. Intact STAR = super-weapon. Win: hold all rings 30s or eliminate.",
+      "seed": {
+        "from": "backlog/parts/arena-v1-parts.json (.hook) + backlog/tests/yard-route-test.mjs",
+        "note": "PRE-POPULATED combat — port + split into children"
+      },
+      "connects": [
+        {
+          "to": "hull",
+          "via": "spawns UNITS from berth designs"
+        },
+        {
+          "to": "debrief",
+          "via": "win → scoreboard"
+        },
+        {
+          "to": "shader",
+          "via": "tile/ring/beam entity codes"
+        },
+        {
+          "to": "chrome",
+          "via": "income HUD, spawn strip, brownout marker"
+        }
+      ],
+      "children": [
+        {
+          "id": "bt-econ",
+          "element": "capture rings + income + spawn",
+          "kind": "lib",
+          "pseudocode": "rings: sole-holder ticks ⬡, contested=neutral, passive trickle; spend income to spawn a berth unit at its cost, at the home dock.",
+          "connects": [
+            {
+              "to": "hull",
+              "via": "unit cost + tiles"
+            }
+          ],
+          "files": [
+            "mod-battle.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "hull"
+          ],
+          "tests": [
+            "test/battle.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "bt-move",
+          "element": "steering + guns + energy",
+          "kind": "lib",
+          "pseudocode": "steer to seat cursor (BLOOP, latched); GUN tiles fire beams along edge-normal arcs; GEN sustains, brownout halves fire rate.",
+          "connects": [
+            {
+              "to": "hull",
+              "via": "thrust/mass/gun tiles"
+            }
+          ],
+          "files": [
+            "mod-battle.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "hull"
+          ],
+          "tests": [
+            "test/battle.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "bt-damage",
+          "element": "per-tile damage + route-shed + star",
+          "kind": "lib",
+          "pseudocode": "beam hits nearest enemy TILE; dead tiles shed; route-BFS from tile 0 over the contact graph shears orphans; tile-0 death kills the unit; intact STAR hole = charged AoE lance, disarms if broken.",
+          "connects": [
+            {
+              "to": "hull",
+              "via": "route graph + star payout"
+            }
+          ],
+          "files": [
+            "mod-battle.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "hull"
+          ],
+          "tests": [
+            "test/battle.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        },
+        {
+          "id": "bt-win",
+          "element": "win condition",
+          "kind": "lib",
+          "pseudocode": "hold ALL rings 30s OR eliminate all enemy units + income < cheapest spawn → PW.scene='debrief'.",
+          "connects": [
+            {
+              "to": "debrief",
+              "via": "scene transition"
+            }
+          ],
+          "files": [
+            "mod-battle.mjs"
+          ],
+          "exports": [],
+          "dependsOn": [
+            "bt-econ"
+          ],
+          "tests": [
+            "test/battle.test.mjs"
+          ],
+          "status": "open",
+          "claim": null
+        }
+      ],
+      "files": [
+        "mod-battle.mjs"
+      ],
+      "exports": [
+        "BATTLE_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "hull",
+        "chrome"
+      ],
+      "tests": [
+        "test/battle.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-battle.mjs"
+    },
+    {
+      "id": "finder",
+      "element": "THE SERVER BROWSER — Istrolid multiplayer list",
+      "kind": "lib",
+      "pseudocode": "render wd.__lobby rooms (Official/Community sections, '<mode> <Name>' naming, player counts, started flag); NEW SERVER; berth picker (which fleet you bring). Click a room → wd.__joinRoom + wd.__sendDesign. Translucent over a live starfield.",
+      "seed": {
+        "from": "STRUCTURE.md §UI REFERENCE (multiplayer screenshot)",
+        "note": "new — build from the screenshot"
+      },
+      "connects": [
+        {
+          "to": "shipyard",
+          "via": "the berth set you bring"
+        },
+        {
+          "to": "lobby",
+          "via": "join a room → enter the war room"
+        },
+        {
+          "to": "chrome",
+          "via": "server rows, sections, players column"
+        }
+      ],
+      "children": [],
+      "files": [
+        "mod-finder.mjs"
+      ],
+      "exports": [
+        "FINDER_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "parts",
+        "chrome"
+      ],
+      "tests": [
+        "test/finder.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-finder.mjs"
+    },
+    {
+      "id": "lobby",
+      "element": "THE WAR ROOM — seats, host, START",
+      "kind": "lib",
+      "pseudocode": "seat list from wd.players; host = lowest seat; host-only DRAWN start → PW.started + PW.scene='battle'; quickchat (number keys → canned lines in PW.chat); mode/map picker (host). Live map with capture circles behind a translucent panel (Istrolid battleroom).",
+      "seed": {
+        "from": "STRUCTURE.md §UI REFERENCE (battleroom screenshot)",
+        "note": "new — build from the screenshot"
+      },
+      "connects": [
+        {
+          "to": "finder",
+          "via": "arrived from a room join"
+        },
+        {
+          "to": "battle",
+          "via": "host START flips the scene"
+        },
+        {
+          "to": "chrome",
+          "via": "mode grid, team lists, START button"
+        }
+      ],
+      "children": [],
+      "files": [
+        "mod-lobby.mjs"
+      ],
+      "exports": [
+        "LOBBY_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "chrome"
+      ],
+      "tests": [
+        "test/lobby.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-lobby.mjs"
+    },
+    {
+      "id": "menu",
+      "element": "THE MENU — title, PLAY, berths summary",
+      "kind": "lib",
+      "pseudocode": "title; PLAY → wd.__scene='designer'; berths summary; persistent design/fleet corner pads.",
+      "seed": {
+        "from": "chrome (top-bar + corner pads)",
+        "note": "small — build on chrome"
+      },
+      "connects": [
+        {
+          "to": "shipyard",
+          "via": "PLAY opens the designer"
+        },
+        {
+          "to": "chrome",
+          "via": "title + corner pads"
+        }
+      ],
+      "children": [],
+      "files": [
+        "mod-menu.mjs"
+      ],
+      "exports": [
+        "MENU_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "chrome"
+      ],
+      "tests": [
+        "test/menu.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-menu.mjs"
+    },
+    {
+      "id": "debrief",
+      "element": "THE DEBRIEF — scoreboard, rematch/leave",
+      "kind": "lib",
+      "pseudocode": "scoreboard panel; REMATCH (host) → lobby; LEAVE → finder.",
+      "seed": {
+        "from": "chrome (panel + buttons)",
+        "note": "small"
+      },
+      "connects": [
+        {
+          "to": "battle",
+          "via": "arrived on win"
+        },
+        {
+          "to": "lobby",
+          "via": "rematch"
+        },
+        {
+          "to": "finder",
+          "via": "leave"
+        }
+      ],
+      "children": [],
+      "files": [
+        "mod-debrief.mjs"
+      ],
+      "exports": [
+        "DEBRIEF_SRC"
+      ],
+      "dependsOn": [
+        "build",
+        "harness",
+        "chrome"
+      ],
+      "tests": [
+        "test/debrief.test.mjs"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: mod-debrief.mjs"
+    },
+    {
+      "id": "integrate",
+      "element": "THE WHOLE GAME — assembled, pushed, every scene seen",
+      "kind": "scene",
+      "pseudocode": "node build.mjs → dist; push hook+visual to pentarch-stage; for each scene set __scene + swarm_probe until it renders + reacts. The render-verified eye for the full game. (Deploy to /space/pentarch is Galen's separate word.)",
+      "seed": {
+        "from": "backlog/parts/push-yard-update.mjs",
+        "note": "the push recipe"
+      },
+      "connects": [
+        {
+          "to": "ALL scenes",
+          "via": "assembles their SRC + probes each renders"
+        }
+      ],
+      "children": [],
+      "files": [
+        "deploy.mjs"
+      ],
+      "exports": [
+        "deploy"
+      ],
+      "dependsOn": [
+        "menu",
+        "shipyard",
+        "finder",
+        "lobby",
+        "battle",
+        "debrief"
+      ],
+      "tests": [],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: deploy.mjs"
+    }
+  ]
+}
