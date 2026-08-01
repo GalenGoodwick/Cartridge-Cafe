@@ -602,6 +602,18 @@ export function applyCommandToSnapshotObject(
       // update_step_hook is the live engine's explicit replace spelling — the
       // persisted semantics are identical (live also aliases `name` → hookId).
       const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+      // KNOWN LIVE-EDIT LIMITATION (live-hotswap, Aug 2026 — Galen/Fable pill
+      // experiment): the tab's in-place hot-swap (FieldEngine.hotSwapLive) can
+      // re-load hooks into an EXISTING Worker sandbox, but it cannot CREATE one.
+      // The sandbox is only spun up on world LOAD, and only when the world loads
+      // with stepHooks.length > 0 (FieldEngine ~line 623). So adding the FIRST
+      // hook to a world a player already has open HOOK-LESS does nothing live: the
+      // hook never runs, so anything it drives (e.g. gpuUniforms a shader reads via
+      // uni()) stays 0 — a uniform-driven visual then renders BLACK — until a
+      // reload creates the sandbox. New page loads are fine. FIX PATH: teach
+      // hotSwapLive to instantiate the sandbox in place when a snapshot adds hooks
+      // to a world that has none. Until then, WARN so the builder isn't surprised.
+      const wasHookless = snap.stepHooks.length === 0
       snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
       snap.stepHooks.push({
         id: hookId,
@@ -609,6 +621,9 @@ export function applyCommandToSnapshotObject(
         description: (cmd.description as string) ?? '',
         code: cmd.code as string,
       })
+      if (wasHookless) {
+        result.warning = 'added the FIRST hook to this world — a player who already has it OPEN must RELOAD for the hook to run. The live hot-swap re-loads hooks into an existing sandbox but cannot create one in place, so a uniform-driven shader will render BLACK live until reload. Fresh page loads are unaffected.'
+      }
       // A space token is an UNTRUSTED author (AI / player build). Flag the world
       // so every visitor runs its JS hooks in the sealed Worker sandbox, never on
       // the main thread. This is what makes "allow JS hooks" safe on a public site.

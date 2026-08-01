@@ -1592,6 +1592,63 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, v), [spaceSlug, handleLoadScene])
   hotLoadSpaceVersionRef.current = hotLoadSpaceVersion
 
+  // LIVE HOT-SWAP (live-hotswap experiment) — when an external edit bumps the rev
+  // but only the SHADERS / HOOKS / config-worldData changed (not the field
+  // structure), swap them in place: registerVisualType/registerModule rebuild
+  // ONLY the GPU pipeline, sandbox.load re-installs the hooks — with the sim STILL
+  // TICKING. No resetWorldIdentity, no field teardown, so the player's
+  // camera/position/pointer-lock/audio are untouched. Returns false if the change
+  // is structural (a field add/remove/rebind), in which case the caller takes the
+  // safe full reload. This is "edit the live state directly", per Galen.
+  const hotSwapLive = useCallback(async (rev: number): Promise<boolean> => {
+    const sim = simulationRef.current, renderer = rendererRef.current
+    if (!sim || !renderer || !spaceSlug) return false
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot`, { cache: 'no-store' })
+      if (!r.ok) return false
+      const { snapshot } = await r.json()
+      if (!snapshot) return false
+      // STRUCTURAL GUARD — hot-swap only when the field set is identical (same
+      // names + visualType bindings). Any field add/remove/rebind is a real scene
+      // change → false, so the caller full-reloads.
+      const sig = (fs: { name?: string; visualTypeName?: string }[]) =>
+        fs.map(f => `${f.name || ''}|${f.visualTypeName || ''}`).sort().join(',')
+      const cur = sig([...sim.fields.values()].map(f => ({ name: f.name, visualTypeName: f.visualTypeName })))
+      const next = sig((snapshot.fields || []) as { name?: string; visualTypeName?: string }[])
+      if (cur !== next) return false
+      // 1) SHADERS — re-register in place; the renderer swaps the pipeline object.
+      if (snapshot.modules) for (const m of snapshot.modules) renderer.registerModule(m.name, m.wgsl)
+      if (snapshot.visualTypes) for (const vt of snapshot.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
+      for (const f of sim.fields.values()) {
+        if (f.visualTypeName) { const id = renderer.resolveVisualType(f.visualTypeName); if (id !== undefined) f.visualType = id }
+      }
+      // 2) HOOKS — re-install in the EXISTING sandbox (run-state lives in worldData,
+      //    kept below). KNOWN GAP (documented in the bridge, space-store
+      //    add_step_hook): if this world loaded HOOK-LESS, sandboxRef.current is
+      //    null (the sandbox is only created on load when stepHooks.length>0), so a
+      //    hot-ADDED first hook can't be installed here and won't run until a
+      //    reload. TODO: instantiate the sandbox in place when snapshot.stepHooks
+      //    appear and sandboxRef.current is null.
+      if (Array.isArray(snapshot.stepHooks) && sandboxRef.current) {
+        liveHooksRef.current = new Map((snapshot.stepHooks as { id: string; author: string; description: string; code: string }[]).map(h => [h.id, h]))
+        sandboxRef.current.load((snapshot.stepHooks as { id: string; code: string }[]).map(h => ({ id: h.id, code: h.code })))
+      }
+      // 3) worldData — merge the server's CONFIG/shape keys; NEVER the live run-state
+      //    (save/presence/input/gpu*) or transient engine keys (__*, except the rev).
+      const KEEP_LOCAL = new Set(['save', 'presence', 'input', 'players', 'gpuUniforms', 'gpuPopulation', 'cellSample', 'fieldPixels'])
+      const wd = (snapshot as { worldData?: Record<string, unknown> }).worldData || {}
+      for (const [k, v] of Object.entries(wd)) {
+        if (KEEP_LOCAL.has(k)) continue
+        if (k.startsWith('__') && k !== '__bridge_rev') continue
+        ;(sim.worldData as Record<string, unknown>)[k] = v
+      }
+      renderedRevRef.current = rev
+      return true
+    } catch { return false }
+  }, [spaceSlug])
+  const hotSwapLiveRef = useRef<((rev: number) => Promise<boolean>) | null>(null)
+  hotSwapLiveRef.current = hotSwapLive
+
   // AUTO-LOAD — the eye's counterpart in the tab. Every bridge write bumps the
   // world's __bridge_rev; a tab's own 2s sync round-trips that number unchanged,
   // so server-ahead means exactly one thing: an AI wrote something this tab
@@ -1623,8 +1680,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // reload ONCE per real change, and only after edits settle. The reload
         // advances renderedRevRef to `rev`, so this same rev never fires twice.
         if (rev > renderedRevRef.current && Date.now() - aiLastEditRef.current > 4000) {
-          showToast('⚡ this world was just updated — reloading', 'success')
-          hotLoadSpaceVersion(undefined)
+          // Try the in-place hot-swap first — shaders/hooks/config change with the
+          // sim still ticking, no reload. Fall back to the full reload only when
+          // the field STRUCTURE changed (a real scene swap).
+          const swapped = await hotSwapLiveRef.current?.(rev)
+          if (!swapped) {
+            showToast('⚡ this world was just updated — reloading', 'success')
+            hotLoadSpaceVersion(undefined)
+          }
         }
       } catch { /* next heartbeat */ }
     }, 10000)
