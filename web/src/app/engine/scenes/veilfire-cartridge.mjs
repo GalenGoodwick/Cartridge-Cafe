@@ -28,6 +28,7 @@ export const HOOK = [
   'shooter3/hooks/movement.mjs', 'shooter3/hooks/enemies.mjs',
   'shooter3/hooks/projectiles.mjs', 'shooter3/hooks/combat.mjs',
   'shooter3/hooks/lifecycle.mjs', 'shooter3/hooks/deathfx.mjs', 'shooter3/hooks/audio.mjs',
+  'shooter3/hooks/entities.mjs',
 ].map(frag).join('\n') + `
 try {
   const wd = sim.worldData
@@ -43,6 +44,7 @@ try {
   deathfx(sim, dt)
   audio(sim, dt)
   wd.gpuPopulation = wd.__vf.pop
+  vfEntities(sim, dt)   // publish wd.__entities so inspect names the demons
 } catch (e) {}
 `
 
