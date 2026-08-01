@@ -1560,8 +1560,14 @@ export async function POST(req: NextRequest) {
     if (isSpaceScoped && commands.some(c => typeof c.type === 'string' && MUTATING.test(c.type))) {
       try {
         const d = describeWorld(await getSpaceSnapshot(auth.spaceId!) as unknown as DescribeSnap, {})
-        health = { fieldCount: d.fieldCount, skinnedFields: d.fields.filter(f => f.skinned).length, warnings: d.warnings }
-        if (d.warnings.length) health.next = 'Fix these, then {type:"render_probe"} to SEE the actual rendered pixels (struct + base64 PNG) before set_world_data brief_done.'
+        // Fold per-command warnings (e.g. the FIRST-hook live-edit caveat set by
+        // space-store's add_step_hook) into the flagged health channel, so a NEW AI
+        // reading the bridge response actually learns the path — not just the
+        // less-noticed results[].warning field.
+        const cmdWarnings = results.map(r => (r as Record<string, unknown>).warning).filter((w): w is string => typeof w === 'string')
+        const allWarnings = [...d.warnings, ...cmdWarnings]
+        health = { fieldCount: d.fieldCount, skinnedFields: d.fields.filter(f => f.skinned).length, warnings: allWarnings }
+        if (allWarnings.length) health.next = 'Fix these, then {type:"render_probe"} to SEE the actual rendered pixels (struct + base64 PNG) before set_world_data brief_done.'
       } catch { /* health is a courtesy */ }
     }
     // capture the ORIGINAL after brief_done lands: reset restores to this forever
