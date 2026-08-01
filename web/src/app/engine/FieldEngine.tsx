@@ -2421,7 +2421,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       draggingFieldId.current = null
       pendingPortalRef.current = null
       const sim = simulationRef.current
-      if (sim) sim.worldData['mouse_down'] = false
+      if (sim) { sim.worldData['mouse_down'] = false; sim.worldData['mouse_down_right'] = false }
       const canvas = canvasRef.current
       if (canvas) canvas.style.cursor = hubCursorRef.current ? 'none' : 'grab'
     }
@@ -2515,6 +2515,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       sim.worldData['mouse_down'] = true
       // pulse counter — a click shorter than one sim frame still lands once
       sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
+      // RIGHT-CLICK, exposed to hooks — purely additive (mouse_down above is
+      // UNCHANGED, still fires for any button, so no existing world's behavior
+      // shifts). The context menu is already suppressed on this canvas
+      // (onContextMenu preventDefault below), so right-click was previously
+      // inert for gameplay; this gives it a second, distinct button a hook can
+      // read (e.g. a strafe-modifier command) without touching the primary one.
+      if (e.button === 2) {
+        sim.worldData['mouse_down_right'] = true
+        sim.worldData['mouse_down_right_n'] = ((sim.worldData['mouse_down_right_n'] as number) || 0) + 1
+      }
     }
 
     // MOUSE-LOOK worlds: a click is FIRE here, not the lock trigger (Galen's
@@ -2712,6 +2722,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     // release must be visible to hooks even without a final move event
     { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
+    if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR) simUpR.worldData['mouse_down_right'] = false }
     // PLAY-mode portal: pressed on a door with the chrome closed — travel on a
     // clean click (not a drag). Both types page-nav for now; 'swap' becomes the
     // in-place hubworld travel when that lands.

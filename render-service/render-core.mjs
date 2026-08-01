@@ -144,7 +144,9 @@ export async function renderProbe(state, opts = {}) {
   // wants the hands moving the whole time — opts.inputStart overrides it.
   const INPUT_START = opts.inputStart != null ? Math.max(1, parseInt(opts.inputStart)) : Math.max(1, Math.floor(NTICKS / 3));
   function scriptAt(t) {
-    // returns { keys: string[], pointer: {x,y,down}|null } for tick t, or null
+    // returns { keys: string[], pointer: {x,y,down,button?}|null } for tick t,
+    // or null. pointer.button: "right" drives worldData.mouse_down_right
+    // instead of mouse_down (mirrors FieldEngine's e.button===2 exposure).
     if (!opts.input || t < INPUT_START) return null;
     const spec = opts.input;
     if (Array.isArray(spec)) {
@@ -152,7 +154,7 @@ export async function renderProbe(state, opts = {}) {
       for (const seg of spec) {
         if (t < (seg.from ?? 0) || t >= (seg.to ?? NTICKS)) continue;
         for (const k of (seg.keys || [])) keys.push(String(k));
-        if (seg.pointer) ptr.v = { x: +seg.pointer.x || 256, y: +seg.pointer.y || 256, down: !!seg.pointer.down };
+        if (seg.pointer) ptr.v = { x: +seg.pointer.x || 256, y: +seg.pointer.y || 256, down: !!seg.pointer.down, button: seg.pointer.button === "right" ? "right" : "left" };
       }
       return { keys, pointer: ptr.v };
     }
@@ -179,7 +181,11 @@ export async function renderProbe(state, opts = {}) {
     const scr = scriptAt(t);
     const active = new Set(scr ? scr.keys : []);
     for (const k of KEYNAMES) if (active.has(k) || ("key_" + k) in worldData) worldData["key_" + k] = active.has(k);
-    if (scr?.pointer) { worldData.mouse_x = scr.pointer.x; worldData.mouse_y = scr.pointer.y; worldData.mouse_down = scr.pointer.down; }
+    if (scr?.pointer) {
+      worldData.mouse_x = scr.pointer.x; worldData.mouse_y = scr.pointer.y;
+      if (scr.pointer.button === "right") { worldData.mouse_down_right = scr.pointer.down; if (!("mouse_down" in worldData)) worldData.mouse_down = false; }
+      else { worldData.mouse_down = scr.pointer.down; if (!("mouse_down_right" in worldData)) worldData.mouse_down_right = false; }
+    }
     const held = {}, pressed = {}, released = {}, now = {};
     for (const k of Object.keys(worldData)) {
       if (!k.startsWith("key_") || k.endsWith("_n")) continue;
