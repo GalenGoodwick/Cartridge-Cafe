@@ -185,7 +185,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
   const inspectOnRef = useRef(false)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null }[]>([])
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -2553,7 +2553,26 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const cArr = hfI ? Array.from(hfI.color as ArrayLike<number>).slice(0, 3) : null
         if (cArr && cArr.length === 3) colI = '#' + cArr.map(v => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 255).toString(16).padStart(2, '0')).join('')
       } catch { /* color is a bonus, not a dependency */ }
-      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: (hfI?.visualType as string | undefined) ?? null, color: colI }
+      // SUB-ENTITY resolution — a field may hold many objects the engine can't
+      // see (a raymarch scene, a population buffer). If the world publishes a
+      // worldData.__entities list (each {id, kind?, label?, sx, sy, r} in screen
+      // grid space — the WORLD does the projection, so inspect stays camera-
+      // agnostic), name the nearest one at the click. Purely additive: no list =
+      // exactly the old field-only behavior.
+      let entI: { id: number; kind?: number; label?: string } | null = null
+      try {
+        const ents = sim?.worldData?.['__entities']
+        if (Array.isArray(ents)) {
+          let bd = Infinity
+          for (const en of ents as Array<Record<string, number>>) {
+            const sx = Number(en.sx), sy = Number(en.sy), rr = Number(en.r) || 24
+            if (!Number.isFinite(sx) || !Number.isFinite(sy)) continue
+            const d = Math.hypot(sx - gI.x, sy - gI.y)
+            if (d <= rr && d < bd) { bd = d; entI = { id: Number(en.id), kind: en.kind != null ? Number(en.kind) : undefined, label: (en as Record<string, unknown>).label as string | undefined } }
+          }
+        }
+      } catch { /* entities are a bonus, never break inspect */ }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: (hfI?.visualType as string | undefined) ?? null, color: colI, entity: entI }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
         const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
@@ -5004,6 +5023,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   title="click to copy"
                   className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
                   ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
+                  {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
                 </button>
               ))}
             </div>
