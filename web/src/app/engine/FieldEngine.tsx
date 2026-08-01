@@ -1584,10 +1584,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // Set from the fetched SNAPSHOT (not the live sim's worldData, which a reload
   // doesn't reliably re-stamp), so it can't drift into a reload-every-10s loop.
   const renderedRevRef = useRef(-1)
+  // JSON of the fields in the snapshot this tab last RENDERED (full load OR hot-swap).
+  // hotSwapLive diffs the incoming snapshot's fields against this: identical ⇒ a pure
+  // shader/hook edit (safe to swap in place); ANY difference ⇒ a field edit the owner
+  // tab's 2s sync (fields+worldData+hooks, ~line 1604) could clobber — take the reload.
+  const lastFieldsRef = useRef<string>('')
 
-  /** hot-swap a SPACE version in place — scene-io.hotLoadSpaceVersion */
+  /** hot-swap a SPACE version in place — scene-io.hotLoadSpaceVersion. lastFieldsRef
+   *  is threaded through so the reload path re-baselines the hot-swap field-diff guard. */
   const hotLoadSpaceVersion = useCallback((v: number | undefined) => sceneIO.hotLoadSpaceVersion({
-    resetWorldIdentity, spaceSlug, reloadingRef, pendingReloadRef, renderedRevRef, hotLoadSpaceVersionRef,
+    resetWorldIdentity, spaceSlug, reloadingRef, pendingReloadRef, renderedRevRef, lastFieldsRef, hotLoadSpaceVersionRef,
     handleLoadScene, greetInstructions, setSpaceVer,
   }, v), [spaceSlug, handleLoadScene])
   hotLoadSpaceVersionRef.current = hotLoadSpaceVersion
@@ -1608,14 +1614,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (!r.ok) return false
       const { snapshot } = await r.json()
       if (!snapshot) return false
-      // STRUCTURAL GUARD — hot-swap only when the field set is identical (same
-      // names + visualType bindings). Any field add/remove/rebind is a real scene
-      // change → false, so the caller full-reloads.
-      const sig = (fs: { name?: string; visualTypeName?: string }[]) =>
-        fs.map(f => `${f.name || ''}|${f.visualTypeName || ''}`).sort().join(',')
-      const cur = sig([...sim.fields.values()].map(f => ({ name: f.name, visualTypeName: f.visualTypeName })))
-      const next = sig((snapshot.fields || []) as { name?: string; visualTypeName?: string }[])
-      if (cur !== next) return false
+      // SAFETY GUARD — hot-swap ONLY a pure shader/hook edit. Diff the incoming
+      // snapshot's fields against the ones this tab last RENDERED: identical ⇒ the
+      // edit touched only visuals/modules/stepHooks (safe to swap in place). ANY
+      // field difference — add/remove/rebind OR a property (move/color/shape) — means
+      // the owner tab's 2s sync could push stale fields back OVER this edit, so bail
+      // to the full reload. No baseline yet ⇒ bail too (never guess).
+      const nextFields = JSON.stringify((snapshot.fields ?? []) as unknown)
+      if (!lastFieldsRef.current || nextFields !== lastFieldsRef.current) return false
       // 1) SHADERS — re-register in place; the renderer swaps the pipeline object.
       if (snapshot.modules) for (const m of snapshot.modules) renderer.registerModule(m.name, m.wgsl)
       if (snapshot.visualTypes) for (const vt of snapshot.visualTypes) renderer.registerVisualType(vt.name, vt.wgsl)
@@ -1642,6 +1648,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (k.startsWith('__') && k !== '__bridge_rev') continue
         ;(sim.worldData as Record<string, unknown>)[k] = v
       }
+      lastFieldsRef.current = nextFields   // this tab now reflects the swapped snapshot
       renderedRevRef.current = rev
       return true
     } catch { return false }
@@ -2263,6 +2270,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (!snapshot) return // Empty space — blank canvas
         // baseline the auto-load poll on the rev we're rendering right now
         renderedRevRef.current = Number((snapshot as { worldData?: { __bridge_rev?: unknown } })?.worldData?.__bridge_rev) || 0
+        lastFieldsRef.current = JSON.stringify((snapshot as { fields?: unknown })?.fields ?? [])
 
         // Restore visual types and modules first
         if (snapshot.visualTypes) {

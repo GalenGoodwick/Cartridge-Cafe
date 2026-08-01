@@ -449,6 +449,7 @@ export interface HotLoadSpaceVersionDeps {
   reloadingRef: Ref<boolean>
   pendingReloadRef: Ref<{ v: number | undefined } | null>
   renderedRevRef: Ref<number>
+  lastFieldsRef?: Ref<string>   // hot-swap field-diff baseline (re-set on full load)
   hotLoadSpaceVersionRef: Ref<((v: number | undefined) => Promise<void>) | null>
   handleLoadScene: (sceneName: string, preScene?: unknown) => Promise<void>
   greetInstructions: (worldId: string) => void
@@ -507,6 +508,7 @@ export async function hotLoadSpaceVersion(d: HotLoadSpaceVersionDeps, v: number 
     // record the rev we just rendered so the auto-load poll baselines on what's
     // actually on screen (this is the SAME __bridge_rev the snapshot?rev=1 poll reads)
     d.renderedRevRef.current = Number((data?.snapshot as { worldData?: { __bridge_rev?: unknown } } | undefined)?.worldData?.__bridge_rev) || 0
+    if (d.lastFieldsRef) d.lastFieldsRef.current = JSON.stringify((data?.snapshot as { fields?: unknown } | undefined)?.fields ?? [])
     d.greetInstructions(`space:${d.spaceSlug}`)   // pop instructions on first entry to this space
     d.setSpaceVer(v)
     window.history.replaceState(null, '', v === undefined ? `/space/${d.spaceSlug}` : `/space/${d.spaceSlug}?version=${v}`)
