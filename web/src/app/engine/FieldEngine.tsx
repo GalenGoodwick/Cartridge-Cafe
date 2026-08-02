@@ -5570,7 +5570,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} setWorldChatOpen={setWorldChatOpen} />
+            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} setWorldChatOpen={setWorldChatOpen} sendHumanShot={sendHumanShot} humanShot={humanShot} />
           )}
           {/* EDIT COACH — shown once, the first time the ✎ EDIT dock is opened,
               so a new builder knows what each control does. ✕ / GOT IT dismiss. */}

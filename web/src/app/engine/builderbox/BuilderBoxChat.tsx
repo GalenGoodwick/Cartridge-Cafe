@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react'
 import { useWorldChat } from '@/lib/useWorldChat'
 
-export function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: string; channel: string; onFullChat: () => void }) {
+export function BuilderBoxChat({ slotKey, channel, onFullChat, sendHumanShot, humanShot }: { slotKey: string; channel: string; onFullChat: () => void; sendHumanShot?: () => void; humanShot?: 'idle' | 'sending' | 'sent' | 'err' }) {
   const { msgs, who, draft, setDraft, say, postErr, scrollRef, snapToBottom } =
     useWorldChat('world-chat:' + slotKey, { channel, verifyPost: true, noStore: true })
   // no auto-snap — manual ▼ CURRENT only (Galen)
@@ -22,6 +22,13 @@ export function BuilderBoxChat({ slotKey, channel, onFullChat }: { slotKey: stri
           <button onClick={() => { snapToBottom(); setAtBottom(true) }} disabled={atBottom}
             title={atBottom ? 'at the newest message' : 'jump to the newest message'}
             className={atBottom ? 'text-white/20 cursor-default' : 'text-amber-300 animate-pulse'}>▼ CURRENT</button>
+          {sendHumanShot && (
+            <button onClick={sendHumanShot} disabled={humanShot === 'sending'}
+              title="Capture your current view (the eye) and send it to the AI editing this world"
+              className="text-amber-300/70 hover:text-amber-200 disabled:opacity-50">
+              {humanShot === 'sending' ? '◈' : humanShot === 'sent' ? '✓' : humanShot === 'err' ? '⚠' : '📸'}
+            </button>
+          )}
           <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
         </div>
       </div>

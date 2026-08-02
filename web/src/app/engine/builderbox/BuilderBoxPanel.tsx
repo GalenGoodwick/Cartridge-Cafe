@@ -9,7 +9,7 @@ import type { TerminalEntry } from '../AgentTerminalPanel'
 import { BuilderBoxChat } from './BuilderBoxChat'
 import SummonPrompt from '../SummonPrompt'
 
-export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsoleClosedRef, buildConsoleRef, lastSceneRef, playScene, spaceId, spaceName, spaceSlug, spaceOwnerName, isOwner, isHub, riding, me, handleBranch, setWorldChatOpen }: {
+export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsoleClosedRef, buildConsoleRef, lastSceneRef, playScene, spaceId, spaceName, spaceSlug, spaceOwnerName, isOwner, isHub, riding, me, handleBranch, setWorldChatOpen, sendHumanShot, humanShot }: {
   terminalLog: TerminalEntry[]
   setBuildConsoleOpen: Dispatch<SetStateAction<boolean>>
   buildConsoleClosedRef: MutableRefObject<boolean>
@@ -26,6 +26,8 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
   me: string | null
   handleBranch: () => void
   setWorldChatOpen: Dispatch<SetStateAction<boolean>>
+  sendHumanShot?: () => void
+  humanShot?: 'idle' | 'sending' | 'sent' | 'err'
 }) {
   return (
             <div className="absolute -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
@@ -51,7 +53,7 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
                 const base = cur.split(' ⑂ ')[0]
                 const key = ((spaceId ? (spaceName || spaceSlug) : base) || '').split(' ⑂ ')[0].trim().toUpperCase()
                 const channel = spaceId && spaceSlug ? 'chat:space:' + spaceSlug : 'chat:world:' + base
-                return key ? <BuilderBoxChat slotKey={key} channel={channel} onFullChat={() => { setBuildConsoleOpen(false); setWorldChatOpen(true) }} /> : null
+                return key ? <BuilderBoxChat slotKey={key} channel={channel} sendHumanShot={sendHumanShot} humanShot={humanShot} onFullChat={() => { setBuildConsoleOpen(false); setWorldChatOpen(true) }} /> : null
               })()}
               {/* the PROMPT BOX — summon connected AIs to build this world. Owner
                   of a real space only (the summons pushes to real humans). NOT on
