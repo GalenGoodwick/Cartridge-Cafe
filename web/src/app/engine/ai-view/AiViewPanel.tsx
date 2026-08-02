@@ -38,7 +38,7 @@ function SwarmRows({ nodes, depth = 0 }: { nodes: SwarmNodeView[]; depth?: numbe
   ))}</>
 }
 
-export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph, setNodesExpanded, perf, swarm, onClose }: {
+export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph, setNodesExpanded, perf, swarm, sendHumanShot, humanShot, onClose }: {
   aiFocus: { action?: string; fieldName?: string; at?: number; error?: { name: string; type: string; error: string } | null } | null
   aiEye: { png?: string; at?: number; name?: string; stats?: { meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: number; hookErrors?: number; dominantColors?: number[][] } } | null
   aiViewTab: 'eye' | 'nodes' | 'swarm'
@@ -47,6 +47,8 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
   setNodesExpanded: Dispatch<SetStateAction<boolean>>
   perf: { frameMs: number; hookMs: number; topHook: [string, number] | null; compileMs: number; compileAgeS: number; fields: number; syncKB: number } | null
   swarm: { project: string; done: number; total: number; nodes: SwarmNodeView[] } | null
+  sendHumanShot?: () => void
+  humanShot?: 'idle' | 'sending' | 'sent' | 'err'
   onClose?: () => void
 }) {
             const focusFresh = !!(aiFocus && aiFocus.at && (Date.now() - aiFocus.at < 120000))
@@ -86,6 +88,15 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                         </div>
                       ) : (
                         <div className="text-white/30 leading-relaxed">no AI editing this world right now.<br/>when one does, its focus lands here live.</div>
+                      )}
+                      {/* HUMAN SNAPSHOT — hand your live view to the AI (universal infra):
+                          captures the canvas → slot human_shot:<scope> the AI reads. */}
+                      {sendHumanShot && (
+                        <button onClick={sendHumanShot} disabled={humanShot === 'sending'}
+                          title="Capture your current view and send it to the AI editing this world"
+                          className="mt-2 w-full px-2 py-1.5 rounded border border-amber-300/25 bg-amber-300/[0.06] hover:bg-amber-300/[0.12] text-amber-200/80 font-mono text-[11px] tracking-[0.1em] transition-colors disabled:opacity-50">
+                          {humanShot === 'sending' ? '◈ sending…' : humanShot === 'sent' ? '✓ sent to the AI' : humanShot === 'err' ? '⚠ failed — retry' : '📸 send my view to the AI'}
+                        </button>
                       )}
                     </div>
                     {/* SHADER REJECT — the silent-black-screen trap, made loud */}

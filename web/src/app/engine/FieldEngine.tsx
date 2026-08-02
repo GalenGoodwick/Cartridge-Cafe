@@ -981,6 +981,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }, 1800)
     return () => clearInterval(iv)
   }, [buildConsoleOpen, spaceId, spaceSlug, playScene])
+  // ── HUMAN SNAPSHOT → the AI's eye. A builder watching a world an AI is editing
+  //    can hand the AI THEIR live frame: capture the canvas and POST it to slot
+  //    human_shot:<scope> (same scope key + storage the AI's own eye uses). A
+  //    docked AI — even a headless one over the bridge — reads it via
+  //    GET /api/engine/save?slot=human_shot:<scope>. Universal infra: any world. ──
+  const [humanShot, setHumanShot] = useState<'idle' | 'sending' | 'sent' | 'err'>('idle')
+  const sendHumanShot = useCallback(async () => {
+    const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+    const scope = spaceId
+      ? spaceId
+      : (base ? 'scene:' + base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64) : null)
+    if (!scope) { showToast('no world scope for the snapshot', 'error'); return }
+    setHumanShot('sending')
+    try {
+      const png = await (rendererRef.current as unknown as { captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> })?.captureCanvasJpeg?.(512, 0.82)
+      if (!png) throw new Error('no-frame')
+      const r = await fetch('/api/engine/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot: 'human_shot:' + scope, data: { png, at: Date.now(), by: 'human' } }),
+      })
+      if (!r.ok) throw new Error(String(r.status))
+      setHumanShot('sent'); showToast('📸 your view was sent to the AI', 'success')
+      setTimeout(() => setHumanShot('idle'), 2500)
+    } catch { setHumanShot('err'); showToast('snapshot failed — try again', 'error'); setTimeout(() => setHumanShot('idle'), 2500) }
+  }, [spaceId, playScene, spaceSlug])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current), [])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
@@ -5536,7 +5561,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               view must never auto-open just because a swarm map exists). The
               swarm tab still surfaces INSIDE it once opened. */}
           {buildConsoleOpen && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} onClose={() => setAiViewDismissed(true)} />
+            <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} sendHumanShot={sendHumanShot} humanShot={humanShot} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}
           {nodesExpanded && nodeGraph && <NodeGraphOverlay graph={nodeGraph} onClose={() => setNodesExpanded(false)} />}
