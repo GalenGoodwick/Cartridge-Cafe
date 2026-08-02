@@ -97,6 +97,39 @@ renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact m
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
+### THE PIXEL-EYE LADDER — what each eye can and CANNOT see
+
+`render_probe` is one rung, not the whole truth. Two probe-clean builds have
+shipped live compile errors (pentarch, Aug 2026). Know every rung's blind spot
+and NAME the rungs you skipped when you report a build as done:
+
+1. **State tests** (drive your hook tick-by-tick, assert `wd.gpuPopulation`
+   output) — catches logic; blind to everything visual.
+2. **Isolated shader compile** — catches WGSL errors alone; **blind to
+   COMPOSITION**: the live tab concatenates ALL registered visuals + chrome
+   into ONE module, so duplicate helper `fn`s or name collisions only exist in
+   the composed source. Never register two visuals carrying the same helpers.
+3. **`render_probe`** — catches composed-compile + hook throws + reactivity;
+   **blind to the POPULATION layer**: it binds the snapshot's static
+   `gpuPopulation`, not what your hook pushes during probe ticks. Entities can
+   be missing from the PNG while healthy — and broken while looking fine.
+4. **Play entry** — a real player enters `/space/<slug>` fresh and sees
+   first-tick truth (boot state, composed shader, entities, input — together).
+   No probe substitutes for this. If nobody ran it, your report must say so.
+5. **Pixel playback → the AI's imagination** (the endgame, being built): a
+   real playthrough recorded as DATA FRAMES — `{i, t, input, stateHash, png}`
+   at keyframes + input edges — delivered to the AI, which reads the frames in
+   sequence (replaying the session in its own perception) and checks the code's
+   claims against what actually rendered ("click at frame k → route marker by
+   k+2"). **Unfalsifiable**: deterministic replay means same inputs →
+   bit-identical frames, so "it works" is a replayable artifact, not the
+   builder's word — and any tampering breaks the stateHash chain. This is what
+   turns a `playthrough-confirmed` claim into machine-checkable evidence.
+
+**The honest ship sentence:** "Rungs 1-3 green; rung 4 [confirmed by whom /
+UNCONFIRMED]; rung 5 [n/a until playback ships]." Anything less specific is a
+guess wearing a checkmark.
+
 ## COMPONENTS — a vocabulary that executes
 
 Reusable, parameterized, superimposable parts, shared PLATFORM-WIDE. A
