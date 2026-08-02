@@ -260,7 +260,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       try { recAudioTap.current?.stop() } catch { /* noop */ } recAudioTap.current = null
       if (recTimer.current) { clearInterval(recTimer.current); recTimer.current = null }
     }
-    rec.start()
+    // Flush a chunk every second. WITHOUT a timeslice, ondataavailable fires only
+    // once at stop() and Chrome must hold the ENTIRE encoded stream in one internal
+    // buffer — long recordings overflow it and the file is silently truncated
+    // ("only worked for half the video"). Periodic flushing keeps memory flat.
+    rec.start(1000)
     recRef.current = rec
     setRecording(true); setRecSecs(0)
     const t0 = Date.now()
@@ -971,11 +975,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (r.ok) { const d = await r.json(); setAiFocus(d && d.data && typeof d.data === 'object' ? d.data : null) }
         } catch { /* focus is a courtesy */ }
       } else setAiFocus(null)
-      // EYE — the render_probe snapshot, keyed by the same scope.
+      // EYE — show the NEWER of the AI's render_probe (ai_eye) and the human's own
+      // snapshot (human_shot), both under this scope. Fetching ai_eye alone clobbered
+      // a just-captured human view ~1.8s later (and never redisplayed it on reload).
       if (scope) {
         try {
-          const r = await fetch('/api/engine/save?slot=' + encodeURIComponent('ai_eye:' + scope))
-          if (r.ok) { const d = await r.json(); const eye = d && d.data && d.data.png ? d.data : (d && d.png ? d : null); if (eye) setAiEye(eye) }
+          const [ra, rh] = await Promise.all([
+            fetch('/api/engine/save?slot=' + encodeURIComponent('ai_eye:' + scope)).then(x => x.ok ? x.json() : null).catch(() => null),
+            fetch('/api/engine/save?slot=' + encodeURIComponent('human_shot:' + scope)).then(x => x.ok ? x.json() : null).catch(() => null),
+          ])
+          const pick = (d: { data?: { png?: string }; png?: string } | null, name: string) => {
+            const e = (d && d.data && d.data.png ? d.data : (d && d.png ? d : null)) as { png?: string; at?: number; name?: string } | null
+            return e && e.png ? { ...e, name: e.name || name } : null
+          }
+          const best = [pick(ra, 'AI probe'), pick(rh, 'your view')].filter(Boolean).sort((a, b) => (b!.at || 0) - (a!.at || 0))[0]
+          if (best) setAiEye(best)
         } catch { /* the eye is a courtesy */ }
       }
     }, 1800)
