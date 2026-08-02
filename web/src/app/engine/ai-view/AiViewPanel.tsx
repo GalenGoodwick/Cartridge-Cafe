@@ -136,9 +136,12 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                           )}
                         </>
                       ) : (
-                        <div className="w-full aspect-square rounded border border-dashed border-white/12 bg-black/50 flex items-center justify-center text-center px-3">
-                          <span className="font-mono text-[11px] text-white/25 leading-relaxed">no eye yet.<br/>appears when the AI takes a render_probe snapshot of the scene.</span>
-                        </div>
+                        <button onClick={sendHumanShot} disabled={!sendHumanShot || humanShot === 'sending'}
+                          title="Capture your current view (screenshot + scene data) and save it for the AI to see"
+                          className="w-full aspect-square rounded border border-dashed border-amber-300/25 bg-black/50 hover:bg-amber-300/[0.06] hover:border-amber-300/40 flex flex-col items-center justify-center text-center px-3 gap-1.5 transition-colors disabled:opacity-60 cursor-pointer">
+                          <span className="text-2xl leading-none">{humanShot === 'sending' ? '◈' : humanShot === 'sent' ? '✓' : humanShot === 'err' ? '⚠' : '📸'}</span>
+                          <span className="font-mono text-[11px] text-amber-200/50 leading-relaxed">{humanShot === 'sending' ? 'capturing…' : humanShot === 'sent' ? 'sent to the AI' : humanShot === 'err' ? 'failed — click to retry' : 'no eye yet — click to capture your view for the AI'}</span>
+                        </button>
                       )}
                     </div>
                   </>

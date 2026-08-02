@@ -997,9 +997,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     try {
       const png = await (rendererRef.current as unknown as { captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> })?.captureCanvasJpeg?.(512, 0.82)
       if (!png) throw new Error('no-frame')
+      // also snapshot the VIEW DATA (camera + player pose) so a headless AI knows
+      // WHERE this frame was shot from, not just the pixels.
+      const wd = (simulationRef.current?.worldData || {}) as Record<string, unknown>
+      const gu = Array.isArray(wd.gpuUniforms) ? (wd.gpuUniforms as number[]) : []
+      const vf = (wd.__vf || {}) as Record<string, number>
+      const view = { camera: gu.slice(240, 248), player: { px: vf.px, py: vf.py, pz: vf.pz, yaw: vf.yaw, pitch: vf.pitch }, scene: base }
       const r = await fetch('/api/engine/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slot: 'human_shot:' + scope, data: { png, at: Date.now(), by: 'human' } }),
+        body: JSON.stringify({ slot: 'human_shot:' + scope, data: { png, view, at: Date.now(), by: 'human' } }),
       })
       if (!r.ok) throw new Error(String(r.status))
       setHumanShot('sent'); showToast('📸 your view was sent to the AI', 'success')
