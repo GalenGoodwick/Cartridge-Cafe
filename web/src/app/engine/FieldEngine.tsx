@@ -108,8 +108,23 @@ function iconCacheLoad(): typeof cafeIconCache {
   } catch { return null }
 }
 
-
-
+// Inner-field HTML/CSS UI protocol: sanitize a hook-supplied HTML string before it
+// becomes innerHTML. Strips executable/embed elements + event-handler attributes +
+// javascript: URLs. Inline styles and data-ui-click hooks are preserved.
+function sanitizeHudHtml(html: string): string {
+  const tmpl = document.createElement('template')
+  tmpl.innerHTML = html
+  const frag = tmpl.content
+  frag.querySelectorAll('script, iframe, object, embed, link, meta, base, style').forEach((n) => n.remove())
+  frag.querySelectorAll('*').forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase()
+      if (name.startsWith('on')) node.removeAttribute(attr.name)
+      else if ((name === 'href' || name === 'src' || name === 'xlink:href') && /^\s*javascript:/i.test(attr.value)) node.removeAttribute(attr.name)
+    }
+  })
+  return tmpl.innerHTML
+}
 
 export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
@@ -3491,9 +3506,34 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             el.style.bottom = elem.bottom ?? ''
             el.style.color = elem.color ?? '#fff'
             el.style.fontSize = elem.fontSize ?? '16px'
+            // inner-field HTML/CSS protocol: apply an arbitrary style object
+            if (elem.css) { for (const k in elem.css) { try { (el.style as unknown as Record<string, string>)[k] = elem.css[k] } catch { /* skip bad css prop */ } } }
+            // clickable → feed the click back to the hook via worldData.__uiClick
+            if (elem.clickable) {
+              el.style.pointerEvents = 'auto'
+              if (!el.style.cursor) el.style.cursor = 'pointer'
+              const anyEl = el as unknown as { __uiClickBound?: boolean }
+              if (!anyEl.__uiClickBound) {
+                anyEl.__uiClickBound = true
+                el.addEventListener('pointerdown', (ev) => {
+                  ev.stopPropagation()
+                  let node = ev.target as HTMLElement | null, action = ''
+                  while (node && node !== el) { if (node.dataset && node.dataset.uiClick) { action = node.dataset.uiClick; break } node = node.parentElement }
+                  if (!action) action = el.getAttribute('data-hud-id') ?? ''
+                  const wd = sim.worldData as Record<string, unknown>
+                  wd['__uiClick'] = action; wd['__uiClickT'] = performance.now()
+                })
+              }
+            } else {
+              el.style.pointerEvents = 'none'
+            }
 
             if (elem.type === 'text') {
               el.textContent = elem.text ?? ''
+            } else if (elem.type === 'html') {
+              const anyEl = el as unknown as { __uiHtml?: string }
+              const next = elem.html ?? ''
+              if (anyEl.__uiHtml !== next) { anyEl.__uiHtml = next; el.innerHTML = sanitizeHudHtml(next) }
             } else if (elem.type === 'bar') {
               const pct = elem.max ? Math.min(100, ((elem.value ?? 0) / elem.max) * 100) : 0
               // Reuse fill child if it exists

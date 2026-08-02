@@ -376,7 +376,19 @@ export interface SuperFieldGPU {
 /** HUD element — rendered as DOM overlay on top of the canvas */
 export interface HudElement {
   id: string
-  type: 'text' | 'bar' | 'image'
+  type: 'text' | 'bar' | 'image' | 'html'
+  /** Raw HTML (for type='html') — the inner-field HTML/CSS UI protocol. Sanitized:
+   *  <script>/<iframe>/on*-handlers/javascript: URLs are stripped. Use
+   *  data-ui-click="<action>" on any inner node to make it clickable. */
+  html?: string
+  /** CSS style object applied to the element (camelCase keys, e.g. { background:'#111',
+   *  border:'1px solid #4af', padding:'8px', display:'grid', gridTemplateColumns:'1fr 1fr' }). */
+  css?: Record<string, string>
+  /** If true the element takes pointer clicks; a click sets worldData.__uiClick to the
+   *  clicked node's data-ui-click value (or this id) + worldData.__uiClickT = timestamp. */
+  clickable?: boolean
+  /** Height in CSS units (box / html elements). */
+  height?: string
   /** CSS positioning — use px or % values */
   x?: string
   y?: string
