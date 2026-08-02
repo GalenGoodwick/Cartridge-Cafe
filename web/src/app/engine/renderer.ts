@@ -258,6 +258,7 @@ export class FieldRenderer {
   private hitIdPixelCount: number = 0
   private hitIdReadbackPending: boolean = false
   private _hitReadbackNeeded: boolean = false
+  private _captureReq: { resolve: (s: string | null) => void; maxSize: number; quality: number } | null = null
   /** True only when some field is hittable — gates the hit-ID copy + readback. */
   get hitReadbackNeeded(): boolean { return this._hitReadbackNeeded }
   /** Latest readback: per-pixel field index (0xFFFFFFFF = no field) */
@@ -2033,7 +2034,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     // IOSurface ('texture usage must not be 0') — catch it and skip this frame
     // rather than surfacing a WORLD FAULT; the next settled frame renders fine.
     let textureView: GPUTextureView
-    try { textureView = ctx.getCurrentTexture().createView() } catch { return }
+    let capTex: GPUTexture | null = null
+    try { capTex = ctx.getCurrentTexture(); textureView = capTex.createView() } catch { return }
 
     // Computed BEFORE the base pass so a 3D world can skip the base DRAW: the
     // raymarch covers the whole screen, so drawing the 2D grid-world backdrop
@@ -2314,6 +2316,14 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     }
 
     device.queue.submit([encoder.finish()])
+    // Serve a pending frame-capture from the texture we JUST rendered. getCurrentTexture()
+    // is only valid in-frame, so a capture requested from a click (outside the loop) would
+    // grab a blank/next frame — this hands off the exact visible pixels instead.
+    if (this._captureReq && capTex) {
+      const req = this._captureReq
+      this._captureReq = null
+      void this.captureCanvasJpeg(req.maxSize, req.quality, capTex).then(req.resolve)
+    }
   }
 
   /** Effects-only render — used for spatial canvas decoration */
@@ -2553,18 +2563,28 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     return { width: outW, height: outH, pixels }
   }
 
+  /** Request the NEXT rendered frame's exact pixels as a JPEG data URL. Use this from
+   *  OUTSIDE the loop (a click, a UI handler): it queues the capture and render() serves
+   *  it in-frame from the real presented texture, so you get what's on screen — not the
+   *  blank/next frame a bare getCurrentTexture() would grab. Resolves next frame. */
+  requestFrameCapture(maxSize = 512, quality = 0.82): Promise<string | null> {
+    return new Promise((resolve) => { this._captureReq = { resolve, maxSize, quality } })
+  }
+
   /** Snap the CURRENT presented frame to a JPEG data URL — must be called from
    *  within the frame loop right after render(), while getCurrentTexture() still
    *  holds this frame (WebGPU releases it on present, so a detached toDataURL
-   *  reads black). Downscaled; BGRA→RGBA handled per canvas format. */
-  async captureCanvasJpeg(maxSize = 192, quality = 0.85): Promise<string | null> {
+   *  reads black). Downscaled; BGRA→RGBA handled per canvas format.
+   *  Pass `tex` to capture a texture already acquired this frame (render() does this
+   *  to serve requestFrameCapture); otherwise it grabs the current texture. */
+  async captureCanvasJpeg(maxSize = 192, quality = 0.85, tex?: GPUTexture): Promise<string | null> {
     const device = this.device
     const ctx = this.context
     if (!device || !ctx) return null
     const canvas = ctx.canvas as HTMLCanvasElement
     const W = canvas.width, H = canvas.height
     if (W <= 0 || H <= 0) return null
-    const canvasTex = ctx.getCurrentTexture()
+    const canvasTex = tex ?? ctx.getCurrentTexture()
     const bytesPerRow = Math.ceil(W * 4 / 256) * 256
     const buf = device.createBuffer({
       size: bytesPerRow * H,
