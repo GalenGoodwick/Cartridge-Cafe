@@ -3543,14 +3543,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             if (elem.clickable) {
               el.style.pointerEvents = 'auto'
               if (!el.style.cursor) el.style.cursor = 'pointer'
-              const anyEl = el as unknown as { __uiClickBound?: boolean }
+              const boundEl = el
+              const anyEl = boundEl as unknown as { __uiClickBound?: boolean }
               if (!anyEl.__uiClickBound) {
                 anyEl.__uiClickBound = true
-                el.addEventListener('pointerdown', (ev) => {
+                boundEl.addEventListener('pointerdown', (ev) => {
                   ev.stopPropagation()
                   let node = ev.target as HTMLElement | null, action = ''
-                  while (node && node !== el) { if (node.dataset && node.dataset.uiClick) { action = node.dataset.uiClick; break } node = node.parentElement }
-                  if (!action) action = el.getAttribute('data-hud-id') ?? ''
+                  while (node && node !== boundEl) { if (node.dataset && node.dataset.uiClick) { action = node.dataset.uiClick; break } node = node.parentElement }
+                  if (!action) action = boundEl.getAttribute('data-hud-id') ?? ''
                   const wd = sim.worldData as Record<string, unknown>
                   wd['__uiClick'] = action; wd['__uiClickT'] = performance.now()
                 })
