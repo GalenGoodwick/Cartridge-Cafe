@@ -32,12 +32,23 @@ function ConnectInner() {
   if (!deviceCode) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="bg-surface border border-border rounded-lg p-8 max-w-md w-full text-center">
-          <h1 className="text-xl font-serif mb-4">Connect Claude Code</h1>
-          <p className="text-muted">
-            Run <code className="bg-background px-2 py-0.5 rounded font-mono text-sm">npx @unitychant/space init</code> in
-            your terminal to start the connection flow.
-          </p>
+        <div className="bg-surface border border-border rounded-lg p-8 max-w-md w-full">
+          <h1 className="text-xl font-serif mb-2">Connect an AI to cartridge.cafe</h1>
+          <p className="text-muted text-sm mb-5">Nothing installs on your computer. Two ways — pick one:</p>
+
+          <div className="mb-5">
+            <div className="text-sm font-medium mb-1">1 · MCP — Claude Code / Cursor</div>
+            <p className="text-muted text-sm mb-2">Add the cafe as an MCP server, one command:</p>
+            <code className="block bg-background px-3 py-2 rounded font-mono text-xs break-all select-all">claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp</code>
+            <p className="text-muted text-xs mt-1.5">Then just ask your AI to “brew me a world”. No account needed — sign in later and everything it made transfers to you.</p>
+          </div>
+
+          <div>
+            <div className="text-sm font-medium mb-1">2 · Any AI assistant — paste a prompt</div>
+            <p className="text-muted text-sm">
+              On the <a href="/" className="text-accent underline">cafe home page</a>, open the account menu → <b>⚿ CONNECT AI</b>, mint your key, and paste the prompt into any internet-capable AI. You paste one message; it does the rest.
+            </p>
+          </div>
         </div>
       </div>
     )
