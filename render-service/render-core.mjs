@@ -483,6 +483,7 @@ ${fieldChain}
     offscreenHint: last.bbox && (last.bbox.w < S * 0.15 || last.bbox.h < S * 0.15 || last.bbox.x > S * 0.7 || last.bbox.x + last.bbox.w < S * 0.3) ? "content tiny or hugging an edge — likely mis-placed" : null,
     quadrantLum: last.quadrantLum, dominantColors: last.dominantColors,
     motion, inputReport, png,
+    hud: Array.isArray(worldData.hud) ? worldData.hud : null,   // the DOM UI LAYER (wd.hud) — the probe PNG is CANVAS-ONLY; without this the eye is blind to all HUD text/buttons
     frameCost,     // the frame-rate test: hookMs (CPU) + renderMs (relative GPU) + entity/hook counts
     audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
   };
