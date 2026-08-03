@@ -172,7 +172,7 @@ export default function AdminPage() {
         {err && <div style={{ color: '#ff8080', fontSize: 16 }}>{err}</div>}
         {!err && !roots && <div style={{ color: '#c9b896', fontSize: 14 }}>fetching the shelf…</div>}
         {roots && roots.map(r => (
-          <div key={r.name} style={{ marginBottom: 6 }}>
+          <div key={r.space ? 'space:' + r.space : r.name} style={{ marginBottom: 6 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px',
               border: '1px solid rgba(185,122,42,0.25)', borderRadius: 10,
@@ -180,6 +180,8 @@ export default function AdminPage() {
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                {/* show the slug on player-space rows so same-named spaces (the veilfire-3d twins) are distinguishable — the row used to show only the display name */}
+                {r.space && <div style={{ fontSize: 11, color: '#c9b896', opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>/space/{r.space}</div>}
                 {r.builtBy && <div style={{ fontSize: 11, color: '#c9b89660' }}>{r.builtBy}</div>}
               </div>
               {r.private && <Hidden />}
