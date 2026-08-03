@@ -382,13 +382,29 @@ ${fieldChain}
   const NSAMPLES = CLIP || ((NTICKS > 0 && compiled.length) ? Math.max(2, parseInt(opts.samples ?? (opts.input ? 8 : 6))) : 1);
   const sampleTicks = NSAMPLES === 1 ? [NTICKS] : Array.from({ length: NSAMPLES }, (_, s) => Math.round(1 + s * (NTICKS - 1) / (NSAMPLES - 1)));
   const samples = [];
-  let cur = 0;
+  let cur = 0, hookMs = 0, renderMs = 0;
   for (const target of sampleTicks) {
+    const h0 = performance.now();
     while (cur < target) { tickOnce(cur); cur++; if (performance.now() - hookT0 > HOOK_BUDGET_MS) { hookErrors.push({ hookId: "*", phase: "budget", error: `hook loop exceeded ${HOOK_BUDGET_MS}ms — stopped at tick ${cur}` }); break; } }
+    hookMs += performance.now() - h0;
+    const r0 = performance.now();
     const snap = await sample((opts.time !== undefined ? parseFloat(opts.time) : cur * DT));
+    renderMs += performance.now() - r0;
     snap.tick = cur;
     samples.push(snap);
   }
+  // FRAME COST — the eye's frame-rate test (Galen's law: always measure cost, not just
+  // pixels). hookMs = CPU per-tick JS (accurate); renderMs = GPU render+readback on the
+  // SOFTWARE gpu (lavapipe), so it is a RELATIVE cost signal for before/after regressions,
+  // NOT real-device fps. A build that spikes perTickHookMs or perFrameRenderMs will lag.
+  const popCount = Array.isArray(worldData.gpuPopulation) ? Math.floor(worldData.gpuPopulation.length / 4) : 0;
+  const frameCost = {
+    hookMs: +hookMs.toFixed(1), renderMs: +renderMs.toFixed(1),
+    perTickHookMs: +(hookMs / Math.max(1, cur)).toFixed(2),
+    perFrameRenderMs: +(renderMs / Math.max(1, samples.length)).toFixed(1),
+    ticks: cur, frames: samples.length, entities: popCount, hooks: compiled.length,
+    note: "renderMs is software-GPU (lavapipe) — relative before/after signal, not real-device fps",
+  };
   for (const rec of runtimeErrs.values()) hookErrors.push(rec);
   if (__missingSim.size) hookErrors.push({ hookId: "*", phase: "sim-gap", error: "sandbox has no sim." + [...__missingSim].join(", sim.") + " — no-op'd (parity with world-sandbox Proxy trap)" });
 
@@ -455,6 +471,7 @@ ${fieldChain}
     offscreenHint: last.bbox && (last.bbox.w < S * 0.15 || last.bbox.h < S * 0.15 || last.bbox.x > S * 0.7 || last.bbox.x + last.bbox.w < S * 0.3) ? "content tiny or hugging an edge — likely mis-placed" : null,
     quadrantLum: last.quadrantLum, dominantColors: last.dominantColors,
     motion, inputReport, png,
+    frameCost,     // the frame-rate test: hookMs (CPU) + renderMs (relative GPU) + entity/hook counts
     audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
   };
 }
