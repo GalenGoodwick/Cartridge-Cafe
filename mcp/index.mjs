@@ -9,7 +9,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 
-import { makeClient } from '../tools/bridge-client.mjs'
+// Vendored copy of tools/bridge-client.mjs — the file lives outside this package
+// dir, so it is copied in on `prepack` (see package.json) to keep the published
+// tarball self-contained. Edit the source at repo-root tools/, not this copy.
+import { makeClient } from './bridge-client.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
@@ -61,7 +64,7 @@ const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or yo
 4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.
 5. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.2.0' }, { instructions: PROTOCOL })
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.2.1' }, { instructions: PROTOCOL })
 
 server.tool(
   'read_guide',

@@ -6,12 +6,12 @@
     "url": "https://github.com/GalenGoodwick/Cartridge-Cafe",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.2.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "cartridge-cafe-mcp",
-      "version": "0.1.1",
+      "version": "0.2.1",
       "transport": { "type": "stdio" }
     }
   ]
