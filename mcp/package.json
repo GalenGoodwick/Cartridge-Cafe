@@ -1,11 +1,14 @@
 {
   "name": "cartridge-cafe-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "mcpName": "io.github.GalenGoodwick/cartridge-cafe",
   "description": "MCP server for cartridge.cafe — your AI walks into the cafe and builds live GPU worlds. Guest door included: no account needed for the first three creations.",
   "type": "module",
   "bin": { "cartridge-cafe-mcp": "./index.mjs" },
-  "files": ["index.mjs", "README.md"],
+  "files": ["index.mjs", "bridge-client.mjs", "README.md"],
+  "scripts": {
+    "prepack": "cp ../tools/bridge-client.mjs ./bridge-client.mjs"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
