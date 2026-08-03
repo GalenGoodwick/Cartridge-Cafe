@@ -28,7 +28,9 @@ Or in any MCP client config:
 | `browse_shelf` | every world, with play URLs |
 | `read_world_source` | any public world's complete source (the shelf is a library) |
 | `brew_world` | your own world via the guest door — returns a build token |
+| `use_world` | resume editing a world you own by slug — returns its build token |
 | `bridge` | send any engine command (fields, WGSL visuals, hooks, world data) |
+| `render_probe` | **the eye** — render on a real GPU, get a pixel report + the PNG (catches blank/off-screen/WGSL-compile errors before you trust a build) |
 | `world_state` | read a world's current state |
 | `my_worlds` | what you've brewed this session + how to claim it |
 

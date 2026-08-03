@@ -52,7 +52,16 @@ async function ensureGuest() {
 
 const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s : JSON.stringify(s, null, 2) }] })
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.1.0' })
+// The build discipline travels WITH the connection — an MCP client surfaces this
+// to the AI on connect, so the guide + the eye + node conventions aren't optional.
+const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or you build blind:
+1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
+2. brew_world (guest door, no account) for a build token, or use_world to resume one you own.
+3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
+4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.
+5. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
+
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.2.0' }, { instructions: PROTOCOL })
 
 server.tool(
   'read_guide',
@@ -105,7 +114,7 @@ server.tool(
     mine.push(world)
     return text({
       ...world,
-      next: 'Read the guide (read_guide), then build with the bridge tool. EVERY field needs a visualType or it renders as nothing. Ship worldData.instructions before you call it done.',
+      next: 'Read the guide (read_guide), then build with the bridge tool. EVERY field needs a visualType or it renders as nothing. render_probe after every change and LOOK at the image — a failed shader renders as nothing with no error. Ship worldData.vision + worldData.instructions before you call it done.',
     })
   },
 )
@@ -145,6 +154,44 @@ server.tool(
     worlds: mine,
     claim: 'These live under a guest deed. Sign in at ' + BASE + ' in a browser holding this machine\'s cookies and they transfer to the account permanently.',
   }),
+)
+
+server.tool(
+  'render_probe',
+  'THE EYE — render a world on a real cloud GPU and get back a pixel report PLUS the actual PNG. Call this after EVERY change and LOOK at the image. Report fields: errors (WGSL COMPILE errors with the exact line — fix that line), meanLum / coveragePct (coverage<1 ≈ a blank/black world — an unskinned field or a shader that did not compile), bbox / offscreenHint (mis-placed coords — build around 256,256), hookErrors (step-hook throws), motion, and — when input is set — inputReport.respondsToInput. Headless you are otherwise BLIND: a failed shader renders as NOTHING with no error. Defaults to your latest brewed world.',
+  {
+    input: z.string().optional().describe('Optional input preset to also press the controls: auto | run-right | tap-action | sweep-cursor'),
+    token: z.string().optional().describe('World token. Defaults to your latest brewed world.'),
+  },
+  async ({ input, token }) => {
+    const tok = token || mine[mine.length - 1]?.token
+    if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
+    const cmd = input ? { type: 'render_probe', input } : { type: 'render_probe' }
+    const out = await bridgeFor(tok).bridgeSend(cmd, { normalize: false })
+    const r = (out && out.results && out.results[0]) || out || {}
+    const { image, ...report } = r
+    const content = [{ type: 'text', text: JSON.stringify(report, null, 2) }]
+    if (typeof image === 'string' && image.length) {
+      content.push({ type: 'image', data: image.replace(/^data:image\/png;base64,/, ''), mimeType: 'image/png' })
+    } else {
+      content.push({ type: 'text', text: '⚠ NO IMAGE — the eye is CLOSED: nothing rendered. Usually an unskinned field (needs a visualType) or a WGSL compile error above. Fix it and re-probe; do not trust this build.' })
+    }
+    return { content }
+  },
+)
+
+server.tool(
+  'use_world',
+  'Resume editing a world you already own (brewed here, or on your account) — returns its build token (uc_st_) for the bridge, and adds it to my_worlds. Guest deeds are cookie-scoped to this machine. Get the slug from a browse_shelf play URL (/space/<slug>).',
+  { slug: z.string().describe('The world slug, e.g. "lumenwake" from /space/lumenwake') },
+  async ({ slug }) => {
+    if (!(await ensureGuest())) return text({ error: 'could not open a session' })
+    const t = await jfetch(`/api/spaces/${slug}/token`, { method: 'POST', body: JSON.stringify({ name: 'mcp' }) })
+    if (!t.body?.token) return text({ error: t.body?.error || `could not get a token for "${slug}" — do you own it on this machine?` })
+    const world = { name: slug, slug, token: t.body.token, viewUrl: `${BASE}/space/${slug}` }
+    mine.push(world)
+    return text({ ...world, next: 'Read world_state to see what is there, build with the bridge tool, and render_probe to SEE every change before you trust it.' })
+  },
 )
 
 const transport = new StdioServerTransport()
