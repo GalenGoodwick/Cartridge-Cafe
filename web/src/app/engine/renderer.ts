@@ -629,11 +629,34 @@ export class FieldRenderer {
       if (info.reason === 'destroyed') return
       this._lost = true   // HARD STOP: no more draws on a dead device (that's the flicker)
       console.error('[GPU] device lost:', info.reason, info.message)
-      if (typeof window !== 'undefined') {
+      if (typeof window === 'undefined') return
+      // AUTO-RECOVER: a non-'destroyed' loss means the browser's GPU PROCESS
+      // restarted — a hung shader, a driver reset, or the player toggling
+      // hardware acceleration (chrome://settings/system). The device and its
+      // entire resource tree are gone; the only clean recovery is a fresh page
+      // load with a new device. Reload ONCE, after a beat so the GPU process
+      // finishes restarting; guard with sessionStorage so a genuinely-off GPU
+      // can't loop — a second loss within 20s means the reload didn't help, so
+      // fall through to the banner and let the player act. Before this, a lost
+      // device left every world frozen-dead until a manual reload ("won't load
+      // after toggling acceleration" — the same bug across the whole engine).
+      let looping = false
+      try {
+        const K = 'cc_gpu_reload_at'
+        const last = Number(sessionStorage.getItem(K) || 0)
+        looping = Date.now() - last < 20_000
+        if (!looping) sessionStorage.setItem(K, String(Date.now()))
+      } catch { looping = true }   // no storage (private mode) → don't auto-loop, just banner
+      if (!looping) {
         window.dispatchEvent(new CustomEvent('cc:fault', {
-          detail: { kind: 'gpu-lost', message: `GPU device lost (${info.reason}): ${info.message || 'no detail'}` },
+          detail: { kind: 'gpu-lost', message: 'The GPU restarted — reloading to recover…' },
         }))
+        setTimeout(() => { try { window.location.reload() } catch { /* reload blocked; banner already shown */ } }, 800)
+        return
       }
+      window.dispatchEvent(new CustomEvent('cc:fault', {
+        detail: { kind: 'gpu-lost', message: `GPU device lost (${info.reason}): ${info.message || 'graphics acceleration may be off — check chrome://settings/system, then fully quit and reopen the browser'}` },
+      }))
     }).catch(() => { /* never rejects in practice */ })
     let uncapCount = 0
     device.onuncapturederror = (e: GPUUncapturedErrorEvent) => {
