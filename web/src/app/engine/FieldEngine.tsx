@@ -1037,7 +1037,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     } catch { setHumanShot('err'); showToast('snapshot failed — try again', 'error'); setTimeout(() => setHumanShot('idle'), 2500) }
   }, [spaceId, playScene, spaceSlug])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
-  const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current), [])
+  const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current, simulationRef.current ? allStepHookSnapshots(simulationRef.current) : undefined), [allStepHookSnapshots])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
   useEffect(() => {
     if (!buildConsoleOpen) return

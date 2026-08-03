@@ -34,12 +34,18 @@ export const EDGE_STYLE: Record<string, string> = { paints: 'rgba(56,189,248,0.5
  *  visual→field is SPECIFIC (field.visualTypeName); module→visual and hook→visual are
  *  the composition/uniform relationships (every module is in a visual's scope, every
  *  hook writes the worldData a visual samples). */
-export function buildNodeGraph(sim: FieldSimulation | null, renderer: FieldRenderer | null): AiNodeGraph {
+export function buildNodeGraph(sim: FieldSimulation | null, renderer: FieldRenderer | null, stepHooks?: { id: string; author?: string; description?: string; code?: string }[]): AiNodeGraph {
   const r = renderer as unknown as { getAllModules?: () => { name: string; wgsl: string }[]; getAllVisualTypes?: () => { id: number; name: string; wgsl: string }[] } | null
   const mods = (r?.getAllModules?.() ?? [])
   const vis = (r?.getAllVisualTypes?.() ?? [])
   const flds = sim ? Array.from(sim.fields.values()) : []
-  const hks = sim ? Array.from(sim.stepHooks.entries()) : []
+  // Sandboxed /space worlds run their hooks in the Worker (mirrored in
+  // liveHooksRef) and are NEVER registered in sim.stepHooks, so reading sim alone
+  // shows 0 hooks though they execute every frame. Prefer the caller's
+  // sandbox-inclusive snapshot; fall back to sim for legacy main-thread worlds.
+  type HookVal = { author?: string; description?: string; code?: string }
+  const hks: [string, HookVal][] =
+    stepHooks ? stepHooks.map(h => [h.id, h] as [string, HookVal]) : (sim ? Array.from(sim.stepHooks.entries()) : [])
   const modules = mods.map(m => ({ kind: 'module' as const, id: 'm:' + m.name, title: m.name, wgslLen: (m.wgsl || '').length }))
   const visuals = vis.map(v => ({ kind: 'visual' as const, id: 'v:' + v.name, title: v.name, wgslLen: (v.wgsl || '').length }))
   const fields = flds.map((f) => ({ kind: 'field' as const, id: 'f:' + f.id, title: f.name || f.id, shape: f.shapeType, visual: f.visualTypeName, pixelCollide: f.pixelCollide }))
