@@ -93,3 +93,19 @@ export async function createSpaceUniqueSlug(
   }
   throw new Error('could not mint a unique slug after 8 attempts')
 }
+
+/** Guard against SILENT same-name twins. Repeated create with a name whose slug
+ *  is already taken made createSpaceUniqueSlug mint a differently-suffixed copy
+ *  carrying the IDENTICAL display name (the VEILFIRE-3D duplicates, Aug 2026 —
+ *  five "VEILFIRE 3D" rows in /admin). Returns the owner's existing world of this
+ *  name (case-insensitive) so the caller can point them at it — open it / use_world
+ *  it — instead of quietly duplicating. Scoped to the SAME owner: two different
+ *  people may share a name, and that legitimately gets a suffixed slug. */
+export async function findOwnWorldByName(userId: string, name: string) {
+  const n = (name || '').trim()
+  if (!n) return null
+  return prisma.playerSpace.findFirst({
+    where: { ownerId: userId, name: { equals: n, mode: 'insensitive' } },
+    select: { slug: true, name: true },
+  })
+}

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/companion'
-import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts } from '@/lib/world-create'
+import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts, findOwnWorldByName } from '@/lib/world-create'
 import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -74,6 +74,15 @@ export async function POST(req: NextRequest) {
   // opportunistic cleanup: retire the caller's OWN abandoned drafts so they
   // don't hoard slugs + the world cap forever (best-effort, never blocks)
   await sweepAbandonedDrafts(user.id).catch(() => {})
+
+  // GUARD: don't silently mint a same-name twin for the same owner (the
+  // VEILFIRE-3D duplicates — five identically-named rows in /admin). Abandoned
+  // same-name drafts were just swept above, so anything left is a real world:
+  // point the user at it instead of quietly creating a confusing copy.
+  const twin = await findOwnWorldByName(user.id, name.trim())
+  if (twin) {
+    return NextResponse.json({ error: `You already have a world named "${twin.name}" — open /space/${twin.slug}, or choose a different name.`, existingSlug: twin.slug }, { status: 409 })
+  }
 
   // Generate slug from name if not provided
   const baseSlug = slugify(rawSlug?.trim() || name.trim())

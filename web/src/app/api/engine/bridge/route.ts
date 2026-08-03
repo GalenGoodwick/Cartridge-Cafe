@@ -16,7 +16,7 @@ import { logVisit } from '@/lib/visits'
 import { bridgeOverLimit } from '@/lib/bridge-rate'
 import { validatePlayerToken } from '@/lib/player-token'
 import { slugify } from '@/lib/companion'
-import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
+import { canCreateWorld, createSpaceUniqueSlug, findOwnWorldByName } from '@/lib/world-create'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
 import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
 
@@ -741,10 +741,17 @@ export async function POST(req: NextRequest) {
       // doesn't own — that keeps a leaked player key from being a wildcard.
       if (auth.playerId) {
         if (cmd.type === 'create_world') {
-          const name = (typeof cmd.name === 'string' && cmd.name.trim() ? cmd.name.trim() : 'untitled world').slice(0, 60)
+          const rawName = typeof cmd.name === 'string' ? cmd.name.trim() : ''
+          const name = (rawName || 'untitled world').slice(0, 60)
           // one gate for every create path (world cap; guests handled on the human paths)
           const gate = await canCreateWorld(auth.playerId)
           if (!gate.ok) { results.push({ type: cmd.type, error: gate.error }); continue }
+          // GUARD: don't silently mint a same-name twin for the same owner (the
+          // VEILFIRE-3D dups). Only for an INTENTIONAL name — an unnamed scratch create still works.
+          if (rawName) {
+            const twin = await findOwnWorldByName(auth.playerId, name)
+            if (twin) { results.push({ type: cmd.type, error: `You already own a world named "${twin.name}" (/space/${twin.slug}). Edit it with use_world {"slug":"${twin.slug}"}, or create with a different name.`, existingSlug: twin.slug }); continue }
+          }
           // race-safe: the DB unique constraint arbitrates the slug, not a prior read
           const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId! }))
           const worldToken = await mintWorldToken(space.id, 'created via player key')
