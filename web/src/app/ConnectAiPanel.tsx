@@ -135,24 +135,29 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
                 )}
               </>
             )}
-            {/* active key exists but this browser doesn't hold it — paste-to-remember */}
+            {/* active key exists but this browser doesn't hold it — explain honestly;
+                MINT (below) is the primary path, paste is a small non-destructive option */}
             {!!activePrefix && !cachedIsActive && (
-              showPaste ? (
-                <div className="space-y-1.5 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
-                  <div className="text-[12px] text-glow/45 leading-snug">Paste your <b>current</b> key ({activePrefix}) to remember it on this device so you can copy it any time.</div>
-                  <input value={paste} onChange={e => setPaste(e.target.value)} placeholder="uc_pt_…" autoFocus
-                    className="w-full rounded-md border border-brass/30 bg-black/60 px-2 py-1.5 text-[12px] text-glow/90 placeholder-glow/25" />
-                  {pasteErr && <div className="text-[12px] text-red-400/80">{pasteErr}</div>}
-                  <div className="flex gap-1.5">
-                    <button onClick={rememberPasted} className="flex-1 rounded-md bg-flame hover:bg-glow px-2 py-1.5 text-[13px] tracking-[0.1em] text-void font-bold">REMEMBER</button>
-                    <button onClick={() => { setShowPaste(false); setPaste(''); setPasteErr('') }} className="rounded-md border border-brass/30 px-2 py-1.5 text-[13px] text-glow/50 hover:text-glow">cancel</button>
-                  </div>
+              <div className="rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2 space-y-1.5">
+                <div className="text-[12px] text-glow/50 leading-snug">
+                  This browser doesn’t have your current key ({activePrefix}) saved — keys are shown only <b>once</b>. Mint a new one below (that revokes the old), or if you saved this key elsewhere, paste it to copy it again.
                 </div>
-              ) : (
-                <button onClick={() => setShowPaste(true)} className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[13px] text-steamer/70 hover:text-glow">
-                  🔑 remember my key here (to copy it)
-                </button>
-              )
+                {showPaste ? (
+                  <>
+                    <input value={paste} onChange={e => setPaste(e.target.value)} placeholder="uc_pt_…" autoFocus
+                      className="w-full rounded-md border border-brass/30 bg-black/60 px-2 py-1.5 text-[12px] text-glow/90 placeholder-glow/25" />
+                    {pasteErr && <div className="text-[12px] text-red-400/80">{pasteErr}</div>}
+                    <div className="flex gap-1.5">
+                      <button onClick={rememberPasted} className="flex-1 rounded-md bg-flame hover:bg-glow px-2 py-1.5 text-[13px] tracking-[0.1em] text-void font-bold">REMEMBER</button>
+                      <button onClick={() => { setShowPaste(false); setPaste(''); setPasteErr('') }} className="rounded-md border border-brass/30 px-2 py-1.5 text-[13px] text-glow/50 hover:text-glow">cancel</button>
+                    </div>
+                  </>
+                ) : (
+                  <button onClick={() => setShowPaste(true)} className="text-[12px] text-steamer/60 hover:text-glow underline underline-offset-2">
+                    saved it elsewhere? paste to copy it →
+                  </button>
+                )}
+              </div>
             )}
             <button disabled={busy} onClick={mint}
               className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all disabled:opacity-50">
