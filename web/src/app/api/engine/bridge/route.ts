@@ -597,6 +597,10 @@ const REGION_TURN_TTL = 12_000
 // a command changes the world if it's a build op (define_/create_/set_/… ), not a
 // read or roundtable-chat command — only those contend for the lock.
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
+// NODE-GATE: commands whose effect is gated by node holds. The route stamps the
+// un-spoofable builder identity (holderOf(token)) onto these before they reach the
+// persist chokepoint — the client-supplied `author` field is never trusted for access.
+const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node'])
 
 export async function POST(req: NextRequest) {
   { const _auth = req.headers.get('authorization')
@@ -710,6 +714,17 @@ export async function POST(req: NextRequest) {
       // Add delay between commands so the engine page can process each one
       if (results.length > 0) {
         await new Promise(r => setTimeout(r, 100))
+      }
+
+      // NODE-GATE identity: stamp the un-spoofable builder id onto node-mutating
+      // commands (holderOf = SHA-256 of the bearer token). This is what lets the
+      // persist chokepoint enforce "you may only overwrite a node YOU hold." Admin
+      // tokens carry an override. Overwrites any client-supplied __ value.
+      if (NODE_CMDS.has(cmd.type as string)) {
+        const authHeader = req.headers.get('authorization') || ''
+        cmd.__holder = holderOf(authHeader.slice(7))
+        cmd.__now = Date.now()
+        cmd.__admin = isAdminToken(authHeader, { allowLegacyAnthropicKey: true })
       }
 
       // Icon tokens brew the icon. Only that.
@@ -1411,6 +1426,10 @@ export async function POST(req: NextRequest) {
       if (isSpaceScoped) {
         try {
           spaceResult = await applyCommandToSnapshot(auth.spaceId!, cmd)
+          // NODE-GATE: a push refused by a hold must NOT be relayed to live tabs
+          // (that would clobber the held node in-browser, defeating the gate). Report
+          // the refusal and move on — the snapshot was left untouched.
+          if (spaceResult?.gateRejected) { results.push(spaceResult); continue }
           // mark that a bridge command just wrote this world — the state route
           // defers a tab's auto-sync briefly so this change isn't clobbered before
           // it propagates to open tabs via SSE (fixes the "deploy doesn't stick" flap)

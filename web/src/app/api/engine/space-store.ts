@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
+import { canPush, stampHold, canRelease } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -603,6 +604,22 @@ export function applyCommandToSnapshotObject(
       // update_step_hook is the live engine's explicit replace spelling — the
       // persisted semantics are identical (live also aliases `name` → hookId).
       const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+      // ── PUSH-GATE (node-gate): the hard access pathway. If this hookId's node is
+      // HELD by a DIFFERENT builder and the hold is fresh, refuse the overwrite here
+      // at the single persist chokepoint — "add your own node, or edit only what you
+      // hold." holder/now/admin are ROUTE-INJECTED (__holder = holderOf(token), never
+      // the spoofable cmd.author). No holder = free = today's behavior (legacy-neutral).
+      {
+        const wdG = snap.worldData as Record<string, unknown>
+        const nodesG = (wdG.__nodes && typeof wdG.__nodes === 'object' ? wdG.__nodes : null) as Record<string, Record<string, unknown>> | null
+        const chk = canPush(nodesG?.[hookId] ?? null, String(cmd.__holder ?? ''), Number(cmd.__now ?? Date.now()), { override: cmd.__admin === true })
+        if (!chk.ok) {
+          result.ok = false
+          result.error = chk.reason
+          result.gateRejected = true
+          return result
+        }
+      }
       // KNOWN LIVE-EDIT LIMITATION (live-hotswap, Aug 2026 — Galen/Fable pill
       // experiment): the tab's in-place hot-swap (FieldEngine.hotSwapLive) can
       // re-load hooks into an EXISTING Worker sandbox, but it cannot CREATE one.
@@ -634,7 +651,46 @@ export function applyCommandToSnapshotObject(
       // Re-pushing a hook can no longer reorder it. Purely additive: this writes
       // worldData.__nodes; nothing reads it yet on this deploy, so behavior is
       // unchanged (legacy-neutral). See node-autoregister.ts.
-      autoRegisterHook(snap.worldData as Record<string, unknown>, hookId, cmd.code as string)
+      const autoNode = autoRegisterHook(snap.worldData as Record<string, unknown>, hookId, cmd.code as string)
+      // A LEGAL push AUTO-CLAIMS the node for its pusher (add == claim); the hold
+      // refreshes on every push so an active builder never goes stale. Only when
+      // __holder is resolved (space/scene build tokens).
+      {
+        const holder = String(cmd.__holder ?? '')
+        if (autoNode && holder) stampHold(autoNode as Record<string, unknown>, holder, Number(cmd.__now ?? Date.now()))
+      }
+      break
+    }
+
+    case 'claim_node': {
+      // Take (or refresh) the HOLD on a node — the explicit form of what a push does
+      // implicitly. Succeeds if the node is free / stale / already yours; refused if a
+      // different builder holds it fresh. holder/now/admin are ROUTE-INJECTED.
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      if (!id || !holder) { result.ok = false; result.error = 'claim_node needs an id (and a resolved builder identity)'; break }
+      const wd = snap.worldData as Record<string, unknown>
+      const nodes = (wd.__nodes && typeof wd.__nodes === 'object' ? wd.__nodes : (wd.__nodes = {})) as Record<string, Record<string, unknown>>
+      if (!nodes[id]) {
+        wd.__nodeSeq = (Number(wd.__nodeSeq) || 0) + 10
+        nodes[id] = { id, order: wd.__nodeSeq, owns: { uni: [] }, auto: true, rev: 1 }
+      }
+      const chk = canPush(nodes[id], holder, now, { override: cmd.__admin === true })   // same rule as a push
+      if (!chk.ok) { result.ok = false; result.error = chk.reason }
+      else { stampHold(nodes[id], holder, now); result.ok = true; result.node = nodes[id] }
+      break
+    }
+
+    case 'release_node': {
+      // Give up your hold so another builder may take the node. Holder-only (admin override).
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const nodes = (snap.worldData as Record<string, unknown>)?.__nodes as Record<string, Record<string, unknown>> | undefined
+      const n = nodes?.[id]
+      if (n && canRelease(n, holder, cmd.__admin === true)) { delete n.holder; delete n.heldAt; result.ok = true; result.node = n }
+      else if (n) { result.ok = false; result.error = `node "${id}" is held by ${n.holder ?? 'nobody'} — not yours to release` }
+      else { result.ok = false; result.error = `no node "${id}" to release` }
       break
     }
 
