@@ -14,6 +14,7 @@
 import { encode } from "npm:fast-png@6";
 import { PRELUDE, HEADLESS_STUBS } from "./prelude.mjs";
 import { deduplicateModCode, funcNamesOf } from "./mod-dedupe.mjs";
+import { snapshotUni, recordViolations } from "./owns-guard.mjs";   // node-runtime rung 2: advisory ownership guard
 
 /** requestAdapter that works on a real GPU (Mac/Metal) AND on a headless
  *  software stack (Railway/lavapipe). Try the normal path, then a forced
@@ -225,12 +226,21 @@ export async function renderProbe(state, opts = {}) {
     if (worldData.__play_sound != null) { audioEvents.push({ t: time, sound: worldData.__play_sound }); worldData.__play_sound = null; }
     if (worldData.__play_music != null) { audioEvents.push({ t: time, music: worldData.__play_music }); worldData.__play_music = null; }
   };
+  // owns-guard (node-runtime rung 2, advisory): after each node's hook runs, diff the
+  // uniforms and log any out-of-range write (→ ownershipViolations). Legacy-neutral —
+  // no __nodes registry ⇒ skipped. DETECT only; never revert (strict is a later rung).
+  const __nodeReg = worldData && typeof worldData.__nodes === "object" && worldData.__nodes ? worldData.__nodes : null;
+  const ownershipViolations = new Map();
   function tickOnce(t) {
     if (!compiled.length || NTICKS <= 0) return;
     applyInput(t);
     for (const h of compiled) {
+      const reg = __nodeReg ? __nodeReg[h.id] : null;
+      const owns = reg && reg.owns && Array.isArray(reg.owns.uni) ? reg.owns.uni : null;
+      const before = owns ? snapshotUni(worldData.gpuUniforms) : null;
       try { h.fn(simProxy, DT); }
       catch (e) { let rec = runtimeErrs.get(h.id); if (!rec) { rec = { hookId: h.id, phase: "runtime", error: String(e?.message || e), firstTick: t, count: 0 }; runtimeErrs.set(h.id, rec); } rec.count++; }
+      if (owns) recordViolations(ownershipViolations, before, worldData.gpuUniforms, owns, h.id, t);
     }
     captureAudio(t);
   }
@@ -466,6 +476,7 @@ ${fieldChain}
   return {
     frames,
     ok: true, visual: vname, errors: [], ticks: NTICKS, hookErrors,
+    ownershipViolations: [...ownershipViolations.values()],   // node-runtime rung 2: advisory out-of-range uniform writes
     meanLum: last.meanLum, maxLum: last.maxLum, coveragePct: last.coveragePct, visible: last.coveragePct > 0.5,
     bbox: last.bbox,
     offscreenHint: last.bbox && (last.bbox.w < S * 0.15 || last.bbox.h < S * 0.15 || last.bbox.x > S * 0.7 || last.bbox.x + last.bbox.w < S * 0.3) ? "content tiny or hugging an edge — likely mis-placed" : null,
