@@ -12,7 +12,7 @@ const ERROR_TEXT: Record<string, string> = {
   AccessDenied: 'the counter turned you away. try again or use another door.',
   Callback: 'something broke on the way back in. try again.',
   Configuration: 'this door is not wired up yet.',
-  CredentialsSignin: 'the ledger refused: wrong word for that name — or a NEW name with a word under 8 characters (a new email + an 8+ character word signs you up right here). if you first came in with google, use that door.',
+  CredentialsSignin: 'that door would not open. try again, or use another.',
   Default: 'the door stuck. try again.',
 }
 
@@ -21,11 +21,8 @@ function SignInInner() {
   const callbackUrl = params.get('callbackUrl') || '/'
   const errorCode = params.get('error')
   const [providers, setProviders] = useState<Record<string, unknown> | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const { data: session } = useSession()
-  const [enrolled, setEnrolled] = useState<string>('')
 
   const [claimedN, setClaimedN] = useState<number | null>(null)
 
@@ -74,27 +71,6 @@ function SignInInner() {
             {session?.user && !session.user.isTemp && (
               <div className="rounded-lg border border-brass/25 bg-void/30 px-4 py-3.5 space-y-2">
                 <div className="font-mono text-[14px] tracking-[0.25em] text-brass">YOU ARE IN AS {(session.user.email || '').toUpperCase()}</div>
-                <p className="font-sans text-[16px] text-grounds">secure this device — next time, your face or fingerprint is the key.</p>
-                <button
-                  onClick={async () => {
-                    setEnrolled('')
-                    try {
-                      const { startRegistration } = await import('@simplewebauthn/browser')
-                      const opts = await (await fetch('/api/auth/passkey/register')).json()
-                      if (opts.error) { setEnrolled(opts.error); return }
-                      const att = await startRegistration({ optionsJSON: opts })
-                      const v = await (await fetch('/api/auth/passkey/register', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ response: att, deviceName: navigator.platform || 'this device' }),
-                      })).json()
-                      setEnrolled(v.ok ? 'this device now opens the door.' : (v.error || 'could not add'))
-                    } catch { setEnrolled('the prompt was dismissed.') }
-                  }}
-                  className="w-full rounded-lg border border-flame/40 hover:border-flame/70 text-flame/90 hover:text-glow font-mono text-[16px] tracking-[0.2em] px-6 py-3 transition-all"
-                >
-                  ⌘ ADD FACE ID / TOUCH ID
-                </button>
-                {enrolled && <p className="font-mono text-[14px] text-grounds">{enrolled}</p>}
                 <div className="pt-1">
                   <p className="font-sans text-[16px] text-grounds mb-2">get a ping when a world you brewed finishes building — even after you leave.</p>
                   <NotifyMeButton label="🔔 TURN ON NOTIFICATIONS" onLabel="🔔 NOTIFICATIONS ON" className="items-stretch" />
@@ -135,21 +111,6 @@ function SignInInner() {
                 JUST TRY IT — BREW ONE WORLD AS A GUEST
               </button>
             )}
-            {providers && !!providers.passkey && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { startAuthentication } = await import('@simplewebauthn/browser')
-                    const options = await (await fetch('/api/auth/passkey/login')).json()
-                    const assertion = await startAuthentication({ optionsJSON: options })
-                    await signIn('passkey', { assertion: JSON.stringify(assertion), callbackUrl })
-                  } catch { /* user dismissed the prompt */ }
-                }}
-                className="w-full rounded-lg border border-brass/30 hover:border-flame/60 text-steamer/80 hover:text-glow font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-all"
-              >
-                ⌘ CONTINUE WITH PASSKEY
-              </button>
-            )}
             {providers && !!providers.github && (
               <button
                 onClick={() => signIn('github', { callbackUrl })}
@@ -158,39 +119,6 @@ function SignInInner() {
                 CONTINUE WITH GITHUB
               </button>
             )}
-            {/* the ledger door — email + word (CredentialsProvider was always wired; now it has a handle) */}
-            <div className="flex items-center gap-3 pt-1">
-              <div className="flex-1 h-px bg-brass/20" />
-              <span className="font-mono text-[14px] tracking-[0.3em] text-grounds">OR THE LEDGER — SIGN IN, OR SIGN UP FRESH</span>
-              <div className="flex-1 h-px bg-brass/20" />
-            </div>
-            <form
-              className="space-y-2"
-              onSubmit={async (e) => {
-                e.preventDefault()
-                if (busy) return
-                setBusy(true)
-                await signIn('credentials', { email, password, callbackUrl })
-                setBusy(false)
-              }}
-            >
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="email" autoComplete="email" required
-                className="w-full rounded-lg bg-void/40 border border-brass/25 focus:border-flame/60 outline-none text-steamer font-mono text-[16px] px-4 py-3 placeholder:text-grounds"
-              />
-              <input
-                type="password" value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="password — 8+ characters signs a new account" autoComplete="current-password" required minLength={8}
-                className="w-full rounded-lg bg-void/40 border border-brass/25 focus:border-flame/60 outline-none text-steamer font-mono text-[16px] px-4 py-3 placeholder:text-grounds"
-              />
-              <button
-                type="submit" disabled={busy}
-                className="w-full rounded-lg border border-brass/30 hover:border-flame/60 text-steamer/80 hover:text-glow font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-all disabled:opacity-50"
-              >
-                {busy ? 'CHECKING THE LEDGER…' : 'SIGN THE LEDGER'}
-              </button>
-            </form>
             {/* clickwrap: continuing = agreeing, with the commons deal stated plainly */}
             <div className="pt-2 text-center font-mono text-[14px] leading-relaxed text-crema/40">
               by continuing you agree to the{' '}

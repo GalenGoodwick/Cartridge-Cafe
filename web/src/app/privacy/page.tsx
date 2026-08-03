@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         <P>cartridge.cafe collects as little as it can and never sells your data. Here&rsquo;s the whole picture.</P>
 
         <H>What we collect</H>
-        <P><b className="text-glow">Account:</b> your email (or a passkey / guest token) so you can sign in and own your worlds. <b className="text-glow">Worlds:</b> the worlds you create, their save points, and lineage. <b className="text-glow">Usage:</b> basic technical data — which world you&rsquo;re in, presence, and error/diagnostic reports (e.g. a browser that can&rsquo;t render) so we can fix what&rsquo;s broken.</P>
+        <P><b className="text-glow">Account:</b> your email (or a guest token) so you can sign in and own your worlds. <b className="text-glow">Worlds:</b> the worlds you create, their save points, and lineage. <b className="text-glow">Usage:</b> basic technical data — which world you&rsquo;re in, presence, and error/diagnostic reports (e.g. a browser that can&rsquo;t render) so we can fix what&rsquo;s broken.</P>
 
         <H>Why</H>
         <P>To run the service: sign you in, keep and display your worlds, show who&rsquo;s around, and debug problems. Public worlds and your display name are visible to other members by design — that&rsquo;s the cafe. Private worlds are visible only to you.</P>

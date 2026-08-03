@@ -2,8 +2,8 @@ import webpush from 'web-push'
 import { prisma } from './prisma'
 
 // Web-push for cartridge.cafe. Ported from Unity Chant, trimmed to the cafe's
-// needs. The PushSubscription table SELF-CREATES (like ensurePasskeyTable /
-// ensureCommunityTables) so production never needs a migration or a dangerous
+// needs. The PushSubscription table SELF-CREATES (like ensureCommunityTables)
+// so production never needs a migration or a dangerous
 // `prisma db push` — the cafe keeps raw-SQL tables out of the schema on purpose.
 
 let tableReady = false

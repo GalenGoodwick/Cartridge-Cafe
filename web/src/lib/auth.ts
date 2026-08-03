@@ -3,11 +3,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter'
 import GoogleProvider from 'next-auth/providers/google'
 import GitHubProvider from 'next-auth/providers/github'
 import CredentialsProvider from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
-import { verifyAuthenticationResponse } from '@simplewebauthn/server'
-import { verifyChallengeCookie, CHALLENGE_COOKIE } from './passkeys'
 import prisma from './prisma'
-import { checkRateLimit } from './rate-limit'
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
@@ -31,118 +27,6 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
-
-    // Email/password credentials
-    CredentialsProvider({
-      name: 'Email',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
-
-
-        // Rate limit login attempts by email (10/min)
-        const rateLimited = await checkRateLimit('login', credentials.email)
-        if (rateLimited) return null
-
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-          select: { id: true, email: true, name: true, image: true, passwordHash: true, status: true },
-        })
-
-        // A NEW name signs the ledger: an unknown email + a word CREATES the
-        // account right here (there was no signup door at all — a fresh email
-        // just bounced with "did not match"). 8+ chars keeps the word a word.
-        if (!user) {
-          if (credentials.password.length < 8) return null
-          const passwordHash = await bcrypt.hash(credentials.password, 12)
-          const created = await prisma.user.create({
-            data: {
-              email: credentials.email,
-              name: credentials.email.split('@')[0],
-              passwordHash,
-            },
-            select: { id: true, email: true, name: true, image: true },
-          })
-          return created
-        }
-        // The email exists but came in through another door (OAuth — no
-        // password on file). Refuse: typing a password here must never
-        // claim someone's Google-born account.
-        if (!user.passwordHash) return null
-        if (user.status === 'BANNED') return null
-
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash)
-        if (!valid) return null
-
-        // Reactivate self-deleted accounts on login
-        if (user.status === 'DELETED') {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { status: 'ACTIVE', deletedAt: null },
-          })
-        }
-
-        return { id: user.id, email: user.email, name: user.name, image: user.image }
-      },
-    }),
-
-    // Passkey (WebAuthn) — device-bound sign-in. The browser gets options from
-    // /api/auth/passkey/login, the authenticator signs, and the assertion is
-    // verified here against the stored public key. No password ever exists.
-    CredentialsProvider({
-      id: 'passkey',
-      name: 'Passkey',
-      credentials: { assertion: { label: 'Assertion', type: 'text' } },
-      async authorize(credentials, req) {
-        if (!credentials?.assertion) return null
-        let assertion: { id?: string; rawId?: string }
-        try { assertion = JSON.parse(credentials.assertion) } catch { return null }
-        if (!assertion?.id) return null
-
-        // the challenge rides the signed cookie set by the options route
-        const cookieHeader = (req?.headers as Record<string, string> | undefined)?.cookie || ''
-        const raw = cookieHeader.split('; ').find(c => c.startsWith(CHALLENGE_COOKIE + '='))?.slice(CHALLENGE_COOKIE.length + 1)
-        const expectedChallenge = verifyChallengeCookie(raw ? decodeURIComponent(raw) : undefined)
-        if (!expectedChallenge) return null
-
-        const passkey = await prisma.passkey.findUnique({
-          where: { credentialId: assertion.id },
-          include: { user: { select: { id: true, email: true, name: true, image: true, status: true } } },
-        })
-        if (!passkey || passkey.user.status === 'BANNED') return null
-
-        const host = (req?.headers as Record<string, string> | undefined)?.host || 'localhost:3000'
-        const rpID = host.split(':')[0]
-        const origin = `${rpID === 'localhost' ? 'http' : 'https'}://${host}`
-        try {
-          const { verified, authenticationInfo } = await verifyAuthenticationResponse({
-            response: assertion as Parameters<typeof verifyAuthenticationResponse>[0]['response'],
-            expectedChallenge,
-            expectedOrigin: origin,
-            expectedRPID: rpID,
-            credential: {
-              id: passkey.credentialId,
-              publicKey: new Uint8Array(Buffer.from(passkey.publicKey, 'base64url')),
-              counter: passkey.counter,
-            },
-          })
-          if (!verified) return null
-          await prisma.passkey.update({
-            where: { id: passkey.id },
-            data: { counter: authenticationInfo.newCounter, lastUsedAt: new Date() },
-          })
-          if (passkey.user.status === 'DELETED') {
-            await prisma.user.update({ where: { id: passkey.user.id }, data: { status: 'ACTIVE', deletedAt: null } })
-          }
-          return { id: passkey.user.id, email: passkey.user.email, name: passkey.user.name, image: passkey.user.image }
-        } catch {
-          return null
-        }
-      },
-    }),
 
     // Guest — one world, no account. /api/auth/guest mints a temp user and a
     // signed httpOnly cookie; this provider turns that cookie into a session.
@@ -170,8 +54,8 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account }) {
-      // Skip status check for credentials (already handled in authorize)
-      if (account?.provider === 'credentials' || account?.provider === 'passkey' || account?.provider === 'guest') return true
+      // Skip status check for the guest door (already handled in authorize)
+      if (account?.provider === 'guest') return true
 
       // Check if user is banned (deleted users can reactivate by logging in)
       try {
