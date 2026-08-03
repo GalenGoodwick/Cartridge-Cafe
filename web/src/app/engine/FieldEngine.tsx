@@ -12,6 +12,7 @@ import { resetPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
+import { orderHooks } from './node-order'   // node-runtime rung 1: run hooks in declared __nodes order
 import { serializeWorld, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
 import { NodeGraphOverlay, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
@@ -580,7 +581,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const untrusted = !!spaceId || !!worldData?.__sandbox
     if (untrusted && stepHooks && stepHooks.length > 0) {
       const box = new WorldSandbox()
-      box.load(stepHooks.map(h => ({ id: h.id, code: h.code })))   // all hooks, isolated
+      box.load(orderHooks(stepHooks, worldData).map(h => ({ id: h.id, code: h.code })))   // all hooks, isolated, in DECLARED __nodes order (legacy-neutral: no __nodes ⇒ array order)
       if (box.active) {
         sandboxRef.current = box
         return   // the sandbox owns the hooks — do NOT compile them on the main thread
@@ -591,7 +592,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       console.warn('[sandbox] required but Worker unavailable — untrusted hooks skipped')
       return
     }
-    for (const h of stepHooks || []) sim.addStepHook(h.id, h.author, h.description, h.code)
+    for (const h of orderHooks(stepHooks || [], worldData)) sim.addStepHook(h.id, h.author, h.description, h.code)
   }, [spaceId])
   /** EVERY hook this world owns — including sandbox-owned ones. A __sandbox
    *  world's hooks run in the sealed Worker (mirrored in liveHooksRef) and are

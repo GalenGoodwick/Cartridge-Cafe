@@ -15,6 +15,7 @@ import { encode } from "npm:fast-png@6";
 import { PRELUDE, HEADLESS_STUBS } from "./prelude.mjs";
 import { deduplicateModCode, funcNamesOf } from "./mod-dedupe.mjs";
 import { snapshotUni, recordViolations } from "./owns-guard.mjs";   // node-runtime rung 2: advisory ownership guard
+import { orderHooks } from "./node-order.mjs";   // node-runtime rung 1: compile+run hooks in declared __nodes order (keeps the eye in sync with the client)
 
 /** requestAdapter that works on a real GPU (Mac/Metal) AND on a headless
  *  software stack (Railway/lavapipe). Try the normal path, then a forced
@@ -131,7 +132,7 @@ export async function renderProbe(state, opts = {}) {
     },
   });
   const compiled = [];
-  if (Array.isArray(state.stepHooks)) for (const h of state.stepHooks) {
+  if (Array.isArray(state.stepHooks)) for (const h of orderHooks(state.stepHooks, worldData)) {
     try { compiled.push({ id: h.id, fn: new Function("sim", "dt", h.code) }); }
     catch (e) { hookErrors.push({ hookId: h.id, phase: "compile", error: String(e?.message || e) }); }
   }
