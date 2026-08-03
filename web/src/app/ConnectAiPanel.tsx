@@ -26,13 +26,17 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState('')
   const [manual, setManual] = useState<string | null>(null)   // clipboard blocked → show text to copy by hand
-  const [cached, setCached] = useState<{ prefix: string; raw: string } | null>(null)   // this browser's remembered key
+  // Read the remembered key on the FIRST render (lazy init), not in an effect —
+  // otherwise `cached` is null on the paint where `state` first resolves, and the
+  // panel briefly shows the "paste your key to remember it" box before a reload
+  // settles it. Reading synchronously makes the box decision right on first paint.
+  const [cached, setCached] = useState<{ prefix: string; raw: string } | null>(() => readCached())   // this browser's remembered key
   const [paste, setPaste] = useState('')          // paste-to-remember a key minted elsewhere
   const [showPaste, setShowPaste] = useState(false)
   const [pasteErr, setPasteErr] = useState('')
 
   const load = () => fetch('/api/player-token').then(r => r.json()).then(setState).catch(() => {})
-  useEffect(() => { load(); setCached(readCached()) }, [])
+  useEffect(() => { load() }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -98,7 +102,11 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
         <div className="text-[13px] text-amber-300/70 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
           ⚠ Use an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) <b>can’t</b> — it can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
         </div>
-        {state && !state.signedIn ? (
+        {!state ? (
+          // wait for the key state before deciding which box to show — never flash
+          // the wrong one (the "paste your key" box) before we know what you have
+          <div className="text-[14px] text-glow/35 text-center py-3 tracking-[0.15em]">…</div>
+        ) : !state.signedIn ? (
           <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
         ) : fresh ? (
           <div className="space-y-2">
