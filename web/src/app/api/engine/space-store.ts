@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
+import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -628,6 +629,12 @@ export function applyCommandToSnapshotObject(
       // so every visitor runs its JS hooks in the sealed Worker sandbox, never on
       // the main thread. This is what makes "allow JS hooks" safe on a public site.
       ;(snap.worldData as Record<string, unknown>).__sandbox = true
+      // AUTO-REGISTER (node-runtime rung 3). Every hook auto-becomes a node with a
+      // stable insertion-order slot + owns.uni inferred from its literal u[N] writes.
+      // Re-pushing a hook can no longer reorder it. Purely additive: this writes
+      // worldData.__nodes; nothing reads it yet on this deploy, so behavior is
+      // unchanged (legacy-neutral). See node-autoregister.ts.
+      autoRegisterHook(snap.worldData as Record<string, unknown>, hookId, cmd.code as string)
       break
     }
 
