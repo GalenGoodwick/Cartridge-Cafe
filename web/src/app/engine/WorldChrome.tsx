@@ -45,8 +45,8 @@ function useDevLive(slug?: string) {
  *  or a space's human name); otherwise it's derived from ctx. `liveSlug` opts
  *  this chip into the developer-live badge + watcher line for that world;
  *  `viewerIsOwner` drops the viewing developer out of their own watcher count. */
-export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, subOverride, inline, liveSlug, viewerIsOwner }: {
-  ctx: WorldContext; nameOverride?: string; ownerName?: string; ownerId?: string; ownerHandle?: string; subOverride?: string; inline?: boolean; liveSlug?: string; viewerIsOwner?: boolean
+export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, subOverride, inline, liveSlug, viewerIsOwner, playMode }: {
+  ctx: WorldContext; nameOverride?: string; ownerName?: string; ownerId?: string; ownerHandle?: string; subOverride?: string; inline?: boolean; liveSlug?: string; viewerIsOwner?: boolean; playMode?: boolean
 }) {
   const { kind, identity: id } = ctx
   const sub = subOverride ?? focusSubline(ctx)
@@ -54,6 +54,18 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, 
   const { devLive, present } = useDevLive(liveSlug)
   // the developer (owner) is not their own audience — subtract them from what they see
   const watching = Math.max(0, present - (viewerIsOwner ? 1 : 0))
+  // In gameplay the full title chip hides, but "developer live" must still read —
+  // a maker (or the owner) being on the world is exactly the signal a player wants
+  // mid-game. Show ONLY a compact pulse pill in play mode; the poll keeps running.
+  if (playMode) {
+    if (!devLive) return null
+    return (
+      <div className="pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 flex items-center border border-white/10 text-[13px] tracking-[0.15em] text-red-300/85">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 animate-pulse" aria-hidden />
+        developer live{watching > 0 && <span className="text-white/40"> · {watching} watching</span>}
+      </div>
+    )
+  }
   // the maker's name opens THEIR profile shelf (/u/<handle>) — the current maker
   // page, not the old /maker/<id> list. Only linkable when we know the handle.
   const makerHref = ownerHandle ? `/u/${encodeURIComponent(ownerHandle)}` : null
