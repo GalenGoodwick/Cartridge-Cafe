@@ -11,6 +11,7 @@ import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
 import ConnectAiPanel from '@/app/ConnectAiPanel'
+import McpConnectPanel from '@/app/McpConnectPanel'
 import ManagePanel from '@/app/engine/ManagePanel'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
@@ -237,6 +238,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — your personal player key
+  const [mcpOpen, setMcpOpen] = useState(false)   // "Connect via MCP" — add the cafe as an MCP server
   // FIRST-VISIT ORIENTATION — shown once per person. localStorage covers this
   // browser (incl. a guest who then signs up, same tab); the server flag
   // (/api/oriented, keyed by user id) covers cross-device + after sign-up.
@@ -1880,6 +1882,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                           if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
                           setConnectOpen(true)
                         } },
+                      { label: '⧉ CONNECT VIA MCP', onClick: () => { setAcctOpen(false); setMcpOpen(true) } },
                     ].map(it => (
                       <button key={it.label} onClick={it.onClick}
                         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors">
@@ -1934,6 +1937,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
 
           {/* CONNECT AI — mint your personal player key (chat commons + build your worlds) */}
           {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
+
+          {/* CONNECT VIA MCP — add the cafe as an MCP server (Claude Code / Cursor) */}
+          {mcpOpen && <McpConnectPanel onClose={() => setMcpOpen(false)} />}
 
           {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
           {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview}
