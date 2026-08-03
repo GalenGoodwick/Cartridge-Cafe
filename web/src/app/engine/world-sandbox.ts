@@ -216,6 +216,11 @@ export class WorldSandbox {
   private compileError: string | null = null
   private inFlight = false
   private pending: SandboxReply | null = null
+  /** Per-tick hook execution time (ms) the Worker reports, lightly smoothed. For a
+   *  /space sandbox world the hooks NEVER run on the main thread, so sim.hookPerf
+   *  stays empty and the perf HUD read "hooks 0.0ms" — this is the real number for
+   *  those worlds. The host already receives it (SandboxReply.ms); we just keep it. */
+  lastHookMs = 0
   private reportedError = false
   private lastSurfaced = ''
   private quarantined = false
@@ -348,6 +353,7 @@ export class WorldSandbox {
       } else {
         this.inFlight = false
         this.pending = m as SandboxReply
+        if (typeof m.ms === 'number') this.lastHookMs = this.lastHookMs * 0.7 + m.ms * 0.3   // smoothed hook cost for the perf HUD
         // apply the instant it arrives — the very next rendered frame sees fresh
         // uniforms instead of waiting for the next RAF's tick() to notice
         const sim = this.lastSim

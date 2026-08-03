@@ -1052,7 +1052,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const cp = r?.compilePerf
       setPerf({
         frameMs: frameMsEmaRef.current || 0,
-        hookMs: hp?.totalMs || 0,
+        // sandbox (/space) worlds run hooks in the Worker → sim.hookPerf is empty;
+        // take the Worker-reported cost so the HUD isn't stuck at 0.0ms for them.
+        hookMs: Math.max(hp?.totalMs || 0, sandboxRef.current?.lastHookMs || 0),
         topHook,
         compileMs: cp?.lastMs || 0,
         compileAgeS: cp?.at ? (Date.now() - cp.at) / 1000 : Infinity,
