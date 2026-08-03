@@ -1,8 +1,25 @@
 'use client'
 
-import { playerConnectPrompt } from '@/lib/connectPrompt'
+import { playerConnectPrompt, cafeOrigin } from '@/lib/connectPrompt'
 import { useState, useEffect } from 'react'
 import { copyText } from '@/lib/copyText'
+
+/** One copyable, individually-SELECTABLE field (Base URL / key) — so a user can
+ *  grab just the URL or just the key, instead of the whole prompt being one lump
+ *  (the reported "I can't select just the url" pain). Click selects only this
+ *  field's value. */
+function CopyField({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-16 shrink-0 text-[11px] tracking-[0.12em] text-glow/35">{label}</span>
+      <input readOnly value={value} onFocus={e => e.currentTarget.select()}
+        className="min-w-0 flex-1 select-all truncate rounded-md border border-brass/25 bg-black/50 px-2 py-1 text-[12px] text-glow/85" />
+      <button onClick={onCopy} className="shrink-0 rounded-md border border-brass/30 px-2 py-1 text-[12px] text-steamer/70 hover:text-glow">
+        {copied ? '✓' : 'copy'}
+      </button>
+    </div>
+  )
+}
 
 /** CONNECT AI to the cafe — mint/revoke your personal PLAYER KEY. A connected AI
  *  (or your terminal) uses it to chat the commons and create/edit YOUR OWN worlds.
@@ -99,8 +116,11 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
         <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
           Your personal key — it lets an AI chat the commons and build <b>your own</b> worlds. Shown once, revocable.
         </div>
-        <div className="text-[13px] text-amber-300/70 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
-          ⚠ Use an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) <b>can’t</b> — it can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
+        <div className="text-[13px] text-emerald-300/80 leading-relaxed mb-2 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
+          <b>Nothing installs on your computer, and you run no commands.</b> You paste <b>one message</b> into an AI assistant and it makes the web requests — not you. Revoke the key anytime.
+        </div>
+        <div className="text-[13px] text-glow/50 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
+          It just needs an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
         </div>
         {!state ? (
           // wait for the key state before deciding which box to show — never flash
@@ -115,9 +135,11 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
               className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all">
               {copied === 'prompt' ? 'COPIED ✓' : copied === 'fail:prompt' ? '⚠ COPY BLOCKED — select below' : '📋 COPY CONNECT PROMPT'}
             </button>
-            <button onClick={() => copy(fresh, 'key')} className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[14px] text-steamer/70 hover:text-glow">
-              {copied === 'key' ? 'copied ✓' : copied === 'fail:key' ? '⚠ copy blocked — select below' : 'copy just the key'}
-            </button>
+            <div className="space-y-1.5 pt-0.5">
+              <div className="text-[11px] tracking-[0.1em] text-glow/30">…or grab one piece:</div>
+              <CopyField label="Base URL" value={cafeOrigin()} onCopy={() => copy(cafeOrigin(), 'url')} copied={copied === 'url'} />
+              <CopyField label="Key" value={fresh} onCopy={() => copy(fresh, 'key')} copied={copied === 'key'} />
+            </div>
             {manual !== null && (
               <textarea readOnly value={manual} rows={6} onFocus={e => e.currentTarget.select()}
                 className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[12px] leading-relaxed text-glow/90 select-all resize-none" />
@@ -137,6 +159,11 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
                   className="w-full rounded-md border border-brass/30 px-3 py-1.5 text-[14px] text-steamer/70 hover:text-glow">
                   {copied === 'curprompt' ? 'copied ✓' : copied === 'fail:curprompt' ? '⚠ copy blocked — select below' : 'copy the full connect prompt'}
                 </button>
+                <div className="space-y-1.5 pt-0.5">
+                  <div className="text-[11px] tracking-[0.1em] text-glow/30">…or grab one piece:</div>
+                  <CopyField label="Base URL" value={cafeOrigin()} onCopy={() => copy(cafeOrigin(), 'url')} copied={copied === 'url'} />
+                  <CopyField label="Key" value={cached!.raw} onCopy={() => copy(cached!.raw, 'key')} copied={copied === 'key'} />
+                </div>
                 {manual !== null && (
                   <textarea readOnly value={manual} rows={6} onFocus={e => e.currentTarget.select()}
                     className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[12px] leading-relaxed text-glow/90 select-all resize-none" />
