@@ -622,19 +622,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // AI PRESENCE — a working AI has a body. Any authed bridge command beats the
-  // same cc_presence table the human heartbeat uses (one body per id, a beat
-  // moves it), so the AI is docked in its world's head-count while it builds.
-  // Fire-and-forget: presence must never fail a build command.
-  if (auth.spaceName) {
-    const scene = String(auth.spaceName).toUpperCase().slice(0, 120)
-    prisma.$executeRawUnsafe(
-      `INSERT INTO cc_presence (id, scene, seen) VALUES ($1, $2, now())
-       ON CONFLICT (id) DO UPDATE SET scene = $2, seen = now()`,
-      'ai:' + (auth.slug || scene.toLowerCase()), scene,
-    ).catch(() => {})
-  }
-
   try {
     const body = await req.json()
 
@@ -647,6 +634,20 @@ export async function POST(req: NextRequest) {
 
     if (commands.length === 0) {
       return NextResponse.json({ error: 'No commands. Send {type:"paint",...} or {commands:[...]}' }, { status: 400 })
+    }
+
+    // AI PRESENCE — a working AI has a body. Dock it in its world's head-count only
+    // on a BUILD command (mutating), not on reads/keepalives/commons-polls — else a
+    // watcher holding a world token (e.g. a `main_read` loop) shows "developer live"
+    // forever on a world nobody is building. Truthful by construction: a fresh row
+    // means real work is landing right now. Fire-and-forget: never fail a build.
+    if (auth.spaceName && commands.some(c => typeof c.type === 'string' && MUTATING.test(c.type))) {
+      const scene = String(auth.spaceName).toUpperCase().slice(0, 120)
+      prisma.$executeRawUnsafe(
+        `INSERT INTO cc_presence (id, scene, seen) VALUES ($1, $2, now())
+         ON CONFLICT (id) DO UPDATE SET scene = $2, seen = now()`,
+        'ai:' + (auth.slug || scene.toLowerCase()), scene,
+      ).catch(() => {})
     }
 
     // CLAIM-LOCK: a space edit by a build agent must hold the world. Contend only
