@@ -1131,6 +1131,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   // Pointer state for panning (Space + drag to pan)
   const pointerDown = useRef(false)
+  // true while the click that ENGAGED pointer-lock is still held — swallow it for
+  // gameplay so click-to-lock (or re-lock after Esc) doesn't also fire (misfire fix)
+  const lockSwallow = useRef(false)
   const isPanning = useRef(false)
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
@@ -2655,8 +2658,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
     // the ENTRY click can't lock (it just swapped the world in); a deliberate
     // click ≥600ms after the swap does — click-to-lock, never lock-on-entry
-    if (sim && sim.worldData['__mouseLook'] && (performance.now() - swapAtRef.current) > 600 && document.pointerLockElement !== canvas) {
+    // The click that ENGAGES cursor lock must lock WITHOUT firing — otherwise
+    // click-to-play (and every re-lock after Esc) also lands as a game press, so a
+    // mouse-look world fires a shot the instant you re-capture the cursor (the
+    // misfire). Detect the engaging click, request the lock, and swallow THIS press
+    // for hooks; every later click while already locked fires normally.
+    const engagingLock = !!(sim && sim.worldData['__mouseLook'] && (performance.now() - swapAtRef.current) > 600 && document.pointerLockElement !== canvas)
+    if (engagingLock) {
       try { canvas.requestPointerLock() } catch { /* not supported */ }
+      lockSwallow.current = true
     }
 
     pointerDown.current = true
@@ -2671,9 +2681,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const grid0 = screenToGrid(e.clientX, e.clientY, rect0, cam0, cam0.zoom)
       sim.worldData['mouse_x'] = grid0.x
       sim.worldData['mouse_y'] = grid0.y
-      sim.worldData['mouse_down'] = true
-      // pulse counter — a click shorter than one sim frame still lands once
-      sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
+      // the engaging-lock click is swallowed so it locks without firing; every
+      // later click (while already locked) records the press and fires normally.
+      if (!engagingLock) {
+        sim.worldData['mouse_down'] = true
+        // pulse counter — a click shorter than one sim frame still lands once
+        sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
+      }
       // RIGHT-CLICK, exposed to hooks — purely additive (mouse_down above is
       // UNCHANGED, still fires for any button, so no existing world's behavior
       // shifts). The context menu is already suppressed on this canvas
@@ -2799,7 +2813,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (sim) {
       sim.worldData['mouse_x'] = gridPos.x
       sim.worldData['mouse_y'] = gridPos.y
-      sim.worldData['mouse_down'] = pointerDown.current
+      sim.worldData['mouse_down'] = pointerDown.current && !lockSwallow.current
     }
 
     // Dragging a field — update its position and skip panning
@@ -2880,6 +2894,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     // release must be visible to hooks even without a final move event
+    lockSwallow.current = false   // the engaging-lock press ended — later clicks fire
     { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
     if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR) simUpR.worldData['mouse_down_right'] = false }
     // PLAY-mode portal: pressed on a door with the chrome closed — travel on a
