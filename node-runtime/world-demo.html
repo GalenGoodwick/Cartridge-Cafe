@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>node-to-pixel · layered provenance (3D world + 2D UI)</title>
+<style>
+  :root{--gr:#0e0b09;--pn:#1e1712;--ln:#33291f;--ink:#ece5d8;--mut:#9d9080;--fn:#6c6154;
+    --em:#ff7a2f;--cy:#54d2dd;--pl:#e35aa0;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+  *{box-sizing:border-box} body{margin:0;background:var(--gr);color:var(--ink);font:14px/1.5 var(--mono);padding:22px;max-width:900px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 2px} .sub{color:var(--mut);font-size:12px;margin-bottom:18px} .sub b{color:var(--em)}
+  .grid{display:grid;gap:16px} @media(min-width:720px){.grid{grid-template-columns:minmax(0,1fr) 300px}}
+  .panel{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:14px}
+  .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:10px}
+  #scene{width:100%;image-rendering:pixelated;border-radius:8px;border:1px solid var(--ln);background:#000;cursor:crosshair;aspect-ratio:320/200}
+  .pk{font-size:14px;color:var(--cy)} .pkk{color:var(--fn);font-size:11px} .pkk b{color:var(--em)}
+  .pr{margin-top:7px;font-size:12px;color:#d0c4b0} .pr b{color:var(--fn);text-transform:uppercase;font-size:10px;letter-spacing:.08em;margin-right:6px} .pr .mn{color:var(--ink)}
+  .cand{margin-top:10px;padding:8px;border:1px solid #e35aa033;background:#e35aa00e;border-radius:6px;font-size:11px;color:#c9bca8} .cand b{color:var(--pl);text-transform:uppercase;font-size:10px;margin-right:6px}
+  #graph{display:flex;flex-direction:column;gap:4px} .gn{display:grid;grid-template-columns:30px 1fr auto;gap:8px;padding:6px 9px;border:1px solid var(--ln);border-radius:6px;background:#170f0a;font-size:12px}
+  .go{color:var(--fn);text-align:right} .gid{color:var(--ink)} .gow{color:var(--cy);font-size:10px}
+</style></head>
+<body>
+  <h1>node-to-pixel — layered provenance</h1>
+  <div class="sub"><b>3D world</b> (raymarched) underneath · <b>2D UI</b> (HUD) on top · ONE owner buffer. Hover any pixel — a world surface resolves to its geometry node, a UI button to its UI node. No layer logic at the click.</div>
+  <div class="grid">
+    <div>
+      <div class="panel"><div class="lbl">frame · click any pixel</div>
+        <canvas id="scene" aria-label="3D world + 2D UI; hover for provenance"></canvas></div>
+      <div class="panel" style="margin-top:14px"><div class="lbl">provenance · pixel → node → code</div>
+        <div id="prov"><div class="pk" style="color:var(--fn)">hover the frame — click the ship, the pillar, the floor, or a UI button</div></div></div>
+    </div>
+    <div class="panel"><div class="lbl">the work graph (both layers)</div><div id="graph"></div></div>
+  </div>
+  <script type="module" src="./world-main.js"></script>
+</body></html>

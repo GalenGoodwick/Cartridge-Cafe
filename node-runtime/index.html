@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>node-runtime · self-hosting proof</title>
+<style>
+  :root{--gr:#0e0b09;--pn:#1e1712;--ln:#33291f;--ink:#ece5d8;--mut:#9d9080;--fn:#6c6154;
+    --em:#ff7a2f;--cy:#54d2dd;--pl:#e35aa0;--gd:#7fd18a;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+  *{box-sizing:border-box} body{margin:0;background:var(--gr);color:var(--ink);
+    font:14px/1.5 var(--mono);padding:22px;max-width:1180px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 2px;letter-spacing:-.01em} .sub{color:var(--mut);font-size:12px;margin-bottom:20px}
+  .sub b{color:var(--em)}
+  .grid{display:grid;gap:18px} @media(min-width:860px){.grid{grid-template-columns:minmax(0,1fr) 320px}}
+  .panel{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:16px}
+  .lbl{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);margin-bottom:12px}
+  #scene{width:100%;image-rendering:pixelated;border-radius:8px;border:1px solid var(--ln);background:#000;cursor:crosshair;aspect-ratio:16/10}
+  .ctl{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  button{font:12px var(--mono);background:#251c15;color:var(--ink);border:1px solid var(--ln);
+    border-radius:7px;padding:7px 11px;cursor:pointer} button:hover{border-color:var(--em)}
+  .stat{margin-top:10px;font-size:11.5px;color:var(--mut)} .stat b{color:var(--ink)}
+  #err{color:var(--gd)} #viol{color:var(--em);font-weight:600}
+  /* provenance */
+  .pk{font-size:14px;color:var(--cy)} .pkk{color:var(--fn);font-size:11px}
+  .pr{margin-top:8px;font-size:12px;color:#d0c4b0} .pr b{color:var(--fn);text-transform:uppercase;font-size:10px;letter-spacing:.08em;margin-right:6px}
+  .pr .mn{color:var(--ink)}
+  .cand{margin-top:12px;padding:9px;border:1px solid #e35aa033;background:#e35aa00e;border-radius:7px;font-size:11.5px;color:#c9bca8}
+  .cand b{color:var(--pl);text-transform:uppercase;font-size:10px;margin-right:6px}
+  .cand.none{border-color:var(--ln);background:none;color:var(--fn)}
+  /* work graph */
+  #graph{display:flex;flex-direction:column;gap:5px;max-height:520px;overflow-y:auto}
+  .gn{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:baseline;
+    padding:8px 10px;border:1px solid var(--ln);border-radius:7px;background:#170f0a}
+  .gn.live{border-left:2px solid var(--gd)} .gn.stub{border-left:2px solid var(--fn);opacity:.72}
+  .go{color:var(--fn);font-size:11px;text-align:right;font-variant-numeric:tabular-nums}
+  .gid{color:var(--ink);font-size:12.5px} .gn.stub .gid{color:var(--mut)}
+  .gow{color:var(--cy);font-size:10.5px} .gst{grid-column:3;color:var(--fn);font-size:10px}
+  .gn.live .gst{color:var(--gd)}
+  .gd{grid-column:1 / -1;color:var(--fn);font-size:10.5px;margin-top:2px}
+  /* superposition */
+  .cn{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--ln);border-radius:6px;margin-bottom:5px;font-size:12px;background:#170f0a;color:var(--mut)}
+  .cn.champ{border-color:var(--gd);color:var(--ink);background:#7fd18a10}
+  .cdot{width:11px;height:11px;border-radius:50%;box-shadow:0 0 6px currentColor}
+  .csc{margin-left:auto;color:var(--fn);font-size:11px} .cn.champ .csc{color:var(--gd)}
+  .cwin{color:var(--gd);font-size:10.5px} .smeta{color:var(--fn);font-size:10.5px;margin-top:9px}
+  /* playback scrubber */
+  .pbrow{display:flex;align-items:center;gap:10px;margin-top:12px}
+  #scrub{flex:1;accent-color:var(--em);height:4px}
+  .pbstat{font-family:var(--mono);font-size:11px;color:var(--mut);white-space:nowrap}
+  .pbstat.islive{color:var(--gd)}
+</style></head>
+<body>
+  <h1>node-runtime — the pipeline, self-hosting</h1>
+  <div class="sub">left: a live frame, click any pixel for <b>provenance</b>. right: the registry drawing itself as the <b>work graph</b>. flip order/guard to run the veilfire clobber (AT-1/AT-2) live.</div>
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <div class="lbl">frame · node → pixel</div>
+        <canvas id="scene" aria-label="live node-runtime frame; hover for provenance"></canvas>
+        <div class="ctl">
+          <button id="order">base order: 30 (before weapons)</button>
+          <button id="guard">guard: strict</button>
+        </div>
+        <div class="stat"><span id="err">hook errors: none</span> · ownership violations this run: <b id="viol">0</b></div>
+        <div class="pbrow">
+          <button id="golive">● live</button>
+          <input id="scrub" type="range" min="0" max="0" value="0" aria-label="playback scrubber">
+          <span id="pbstat" class="pbstat islive">● LIVE</span>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <div class="lbl">provenance · pixel → node</div>
+        <div id="prov"><div class="pk" style="color:var(--fn)">hover the frame — the wall hides a candidate; the HUD lamp lives on u69</div></div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <div class="lbl">superposition · candidates → collapse</div>
+        <div id="super"></div>
+        <div class="ctl"><button id="collapse">▸ collapse to champion</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="lbl">work graph · the registry, itself</div>
+      <div id="graph"></div>
+    </div>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body></html>
