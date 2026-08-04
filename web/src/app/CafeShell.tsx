@@ -341,6 +341,11 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   const brewSlugRef = useRef('')
   const brewFinalizedRef = useRef(false)
   const activeTabRef = useRef(true)
+  // who this tab is (user id, or a guest id, or 'anon'). The seat guard bumps
+  // ONLY a sibling tab of the SAME identity — a guest / the AI's own account /
+  // another person on this browser profile is a different player, not a rival
+  // for this player's one seat.
+  const identityRef = useRef<string>('anon')
   const claimRef = useRef<() => void>(() => {})
   const [portals, setPortals] = useState<{ name: string; x: number; y: number; r: number }[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
@@ -1130,21 +1135,26 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     if (typeof BroadcastChannel === 'undefined') return
     const tabId = Math.random().toString(36).slice(2)
     const bc = new BroadcastChannel('cc-tab')
-    const claim = () => {
-      activeTabRef.current = true
-      setBlocked(false)
-      pause(false)
-      bc.postMessage({ type: 'claim', tabId })
-    }
+    const takeSeat = () => { activeTabRef.current = true; setBlocked(false); pause(false) }
+    // announce we hold the seat, stamped with WHO we are, so siblings can tell
+    // "same player, newer tab" (bump) from "a different identity" (leave alone).
+    const announce = () => bc.postMessage({ type: 'claim', tabId, who: identityRef.current })
+    const claim = () => { takeSeat(); announce() }   // the PLAY HERE button
     claimRef.current = claim
     bc.onmessage = (e) => {
-      if (e.data?.type === 'claim' && e.data.tabId !== tabId && activeTabRef.current) {
+      if (e.data?.type === 'claim' && e.data.tabId !== tabId
+          && e.data.who === identityRef.current && activeTabRef.current) {
         activeTabRef.current = false
         setBlocked(true)
         pause(true)
       }
     }
-    claim()
+    // usable immediately; broadcast the eviction claim only once we know our
+    // identity, so it never carries a placeholder that could bump a real tab.
+    takeSeat()
+    fetch('/api/auth/session').then(r => r.json()).then(s => {
+      identityRef.current = (s?.user?.id as string) || 'anon'
+    }).catch(() => {}).finally(announce)
     return () => bc.close()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
