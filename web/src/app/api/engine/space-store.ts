@@ -168,6 +168,8 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   define_visual: new Set(['type', 'name', 'wgsl']),
   define_module: new Set(['type', 'name', 'wgsl']),
   remove_module: new Set(['type', 'name']),
+  register_node: new Set(['type', 'id', 'node']),
+  remove_node: new Set(['type', 'id']),
   add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
   remove_interaction_effect: new Set(['type', 'effectId']),
   clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
@@ -691,6 +693,61 @@ export function applyCommandToSnapshotObject(
       if (n && canRelease(n, holder, cmd.__admin === true)) { delete n.holder; delete n.heldAt; result.ok = true; result.node = n }
       else if (n) { result.ok = false; result.error = `node "${id}" is held by ${n.holder ?? 'nobody'} — not yours to release` }
       else { result.ok = false; result.error = `no node "${id}" to release` }
+      break
+    }
+
+    case 'register_node': {
+      // EXPLICITLY declare a node's owned uniform ranges + provenance (author,
+      // order). This is the manual counterpart to auto-register: an explicit
+      // record (auto:false) wins over the inferred one. Uniform-range EXCLUSIVITY
+      // is enforced HERE — a registration whose owns.uni overlaps another node's
+      // is rejected at register time, never at runtime. Respects the hold: a node
+      // held by another fresh builder can't be re-registered (same rule as a push).
+      const id = String(cmd.id ?? '')
+      if (!id) { result.ok = false; result.error = 'register_node needs an id'; break }
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      const wd = snap.worldData as Record<string, unknown>
+      const nodes = (wd.__nodes && typeof wd.__nodes === 'object' ? wd.__nodes : (wd.__nodes = {})) as Record<string, Record<string, unknown>>
+      const gate = canPush(nodes[id], holder, now, { override: cmd.__admin === true })
+      if (!gate.ok) { result.ok = false; result.error = gate.reason; break }
+      const rec = (cmd.node as Record<string, unknown>) || {}
+      const uni = (o: unknown): number[][] => Array.isArray((o as Record<string, unknown>)?.uni)
+        ? ((o as Record<string, unknown>).uni as unknown[]).filter(r => Array.isArray(r) && r.length === 2) as number[][] : []
+      const mine = uni(rec.owns)
+      let clash: string | null = null
+      for (const [oid, o] of Object.entries(nodes)) {
+        if (oid === id) continue
+        for (const a of mine) for (const b of uni(o.owns))
+          if (a[0] <= b[1] && b[0] <= a[1]) { clash = `owns.uni [${a}] of ${id} overlaps ${oid} [${b}]`; break }
+        if (clash) break
+      }
+      if (clash) { result.ok = false; result.error = clash }
+      else {
+        const prev = nodes[id] || {}
+        // ...prev preserves an existing hold (holder/heldAt); ...rec is the caller's
+        // declaration; auto:false marks it explicit so auto-register won't reshape it.
+        nodes[id] = { order: 100, owns: { uni: [] }, ...prev, ...rec, id, auto: false, rev: (Number(prev.rev) || 0) + 1 }
+        result.ok = true; result.node = nodes[id]
+      }
+      break
+    }
+
+    case 'remove_node': {
+      // Drop a node from the registry (its order falls to the legacy tail). The
+      // step-hook itself is untouched — remove_step_hook does that. Respects the
+      // hold: you can't remove a node another builder holds fresh.
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      const nodes = (snap.worldData as Record<string, unknown>)?.__nodes as Record<string, Record<string, unknown>> | undefined
+      const n = nodes?.[id]
+      if (!n) { result.ok = false; result.error = `no node "${id}" to remove` }
+      else {
+        const gate = canPush(n, holder, now, { override: cmd.__admin === true })
+        if (!gate.ok) { result.ok = false; result.error = gate.reason }
+        else { delete nodes![id]; result.ok = true }
+      }
       break
     }
 

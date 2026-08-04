@@ -600,7 +600,7 @@ const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|des
 // NODE-GATE: commands whose effect is gated by node holds. The route stamps the
 // un-spoofable builder identity (holderOf(token)) onto these before they reach the
 // persist chokepoint — the client-supplied `author` field is never trusted for access.
-const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node'])
+const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node', 'register_node', 'remove_node'])
 
 export async function POST(req: NextRequest) {
   { const _auth = req.headers.get('authorization')
