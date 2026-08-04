@@ -13,7 +13,7 @@
 // cursor/physics worlds it is invisible.
 
 import type { FieldSimulation } from './simulation'
-import { sliceSnippet } from '@/lib/hook-error-locus'
+import { sliceSnippet, reportError } from '@/lib/hook-error-locus'
 import { sceneDefine } from './scene-graph'
 
 // ── the worker: sealed global, compiles the hook, runs it against a shim ──
@@ -68,6 +68,7 @@ function __locOf(st) {
   }
   return null;
 }
+let __gframe = 0;   // tick counter for the SAMPLED owns-guard (rung-2 client mirror)
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
@@ -175,7 +176,23 @@ self.onmessage = function (ev) {
     const __t0 = __now();
     let __runErr = null;
     let __runErrLoc = null;   // {hookId,line,col[,stack]} for the throwing hook (source-doc)
+    // rung-2 CLIENT owns-guard (mirror of render-service/owns-guard.mjs), SAMPLED:
+    // before each node's hook snapshot its owned gpuUniforms; after, any changed
+    // slot OUTSIDE the node's declared owns.uni is an out-of-range write. Advisory
+    // — logged (→ /admin), never reverted. A violation is a CODE property, not a
+    // timing one, so we don't diff every frame: check the first 120 frames after
+    // load, then every 30th. Legacy-neutral: no __nodes ⇒ no owns ⇒ zero cost.
+    const __nodes = (msg.worldData && typeof msg.worldData.__nodes === 'object') ? msg.worldData.__nodes : null;
+    const __sample = !!__nodes && (__gframe < 120 || (__gframe % 30) === 0);
+    __gframe++;
+    const __viol = __sample ? new Map() : null;
     for (const h of __hooks) {
+      const __ownsRaw = __sample && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
+      // EMPTY owns = "unknown / unclaimed range" — never guarded (a claim_node'd or
+      // zero-write node has owns:[]; guarding it would flag every legit write).
+      const __owns = (__ownsRaw && __ownsRaw.length > 0) ? __ownsRaw : null;
+      const __u = __owns && __sim.worldData && __sim.worldData.gpuUniforms;
+      const __before = (__owns && __u && __u.length != null) ? __u.slice() : null;
       try { h.fn(__sim, msg.dt); }
       catch (e) {   // keep running the rest; capture WHERE (source-doc) for the first throw
         const __em = String((e && e.message) || e);
@@ -187,6 +204,19 @@ self.onmessage = function (ev) {
           __runErrLoc = __l
             ? { hookId: h.id, line: __l.line, col: __l.col, message: __em }
             : { hookId: h.id, line: 0, col: 0, message: __em, stack: String((e && e.stack) || '').slice(0, 600) };
+        }
+      }
+      if (__before) {
+        const __after = __sim.worldData.gpuUniforms || [];
+        const __n = __before.length > __after.length ? __before.length : __after.length;
+        for (let __i = 0; __i < __n; __i++) {
+          const __a = __i < __before.length ? __before[__i] : 0;
+          const __b = __i < __after.length ? __after[__i] : 0;
+          if (__a !== __b && !(Number.isNaN(__a) && Number.isNaN(__b))) {
+            let __inr = false;
+            for (let __r = 0; __r < __owns.length; __r++) { if (__i >= __owns[__r][0] && __i <= __owns[__r][1]) { __inr = true; break; } }
+            if (!__inr) { const __k = h.id + '|' + __i; const __e = __viol.get(__k); if (__e) __e.count++; else __viol.set(__k, { node: h.id, index: __i, count: 1 }); }
+          }
         }
       }
     }
@@ -218,7 +248,7 @@ self.onmessage = function (ev) {
       }
       if (any) fieldPatches.push(patch);
     }
-    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
+    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, ownershipViolations: (__viol && __viol.size) ? [...__viol.values()] : undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
 };
 `
@@ -230,6 +260,7 @@ interface SandboxReply {
   events?: { type: string; detail: unknown }[]
   error?: string
   errLoc?: { hookId: string; line: number; col: number; message: string; stack?: string }   // source-doc: WHERE the throw was (line 0 + stack = format we don't parse yet)
+  ownershipViolations?: { node: string; index: number; count: number }[]   // rung-2 client guard: out-of-range uniform writes (advisory, sampled)
   ms?: number
 }
 
@@ -513,6 +544,19 @@ export class WorldSandbox {
     if (this.pending.error) {
       console.warn('[sandbox] hook runtime error:', this.pending.error)
       this.surface(sim, 'runtime', this.pending.error, this.pending.errLoc)
+    }
+    // rung-2 owns-guard: a node wrote a uniform slot outside its declared lane.
+    // Advisory — report to /admin (reportError throttles per node|index; NO fault
+    // banner, the world still runs), naming the culprit node + its author.
+    if (this.pending.ownershipViolations && this.pending.ownershipViolations.length) {
+      for (const v of this.pending.ownershipViolations) {
+        const spec = this.hookSpecs.get(v.node)
+        reportError('owns-violation', {
+          name: v.node,
+          reason: `wrote gpuUniforms[${v.index}] — outside node "${v.node}"'s declared owns.uni`,
+          author: spec?.author,
+        })
+      }
     }
     {
       const wd = sim.worldData as Record<string, unknown>
