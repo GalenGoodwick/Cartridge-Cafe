@@ -1070,10 +1070,27 @@ export class FieldSimulation {
     if (pixelX < 0 || pixelX >= this.superHitMapWidth || pixelY < 0 || pixelY >= this.superHitMapHeight) return null
 
     const idx = pixelY * this.superHitMapWidth + pixelX
-    const fieldIdx = this.superHitMap[idx]
-    if (fieldIdx === 0xFFFFFFFF || fieldIdx >= this.superFieldOrder.length) return null
+    const raw = this.superHitMap[idx]
+    if (raw === 0xFFFFFFFF) return null
+    const fieldIdx = raw & 0xFFFF   // provenance packs the entity in the high bits — mask for the field
+    if (fieldIdx >= this.superFieldOrder.length) return null
 
     return this.superFieldOrder[fieldIdx]
+  }
+
+  /** PROVENANCE (pixel-exact): the population entity index at a grid coordinate,
+   *  packed into the hit map's HIGH bits by the compositing shader when a visual
+   *  markPop()'d it. -1 = no entity (the field's own art). Complements the
+   *  world-published __entities path in inspect with an exact GPU answer. */
+  getEntityAtPoint(gridX: number, gridY: number): number {
+    if (!this.superHitMap || !this.superHitMapWidth || !this.superHitMapHeight) return -1
+    const px = this._gridToPixelX, py = this._gridToPixelY
+    if (!px || !py) return -1
+    const pixelX = Math.floor(px(gridX)), pixelY = Math.floor(py(gridY))
+    if (pixelX < 0 || pixelX >= this.superHitMapWidth || pixelY < 0 || pixelY >= this.superHitMapHeight) return -1
+    const raw = this.superHitMap[pixelY * this.superHitMapWidth + pixelX]
+    if (raw === 0xFFFFFFFF) return -1
+    return (raw >>> 16) - 1
   }
 
   /** Grid-to-pixel conversion functions, set by the render loop */

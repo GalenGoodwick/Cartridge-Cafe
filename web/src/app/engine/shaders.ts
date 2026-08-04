@@ -98,6 +98,14 @@ const COORD_MATH = /* wgsl */`
 const SHADER_UTILITIES = /* wgsl */`
 // --- Utility Library ---
 
+// PROVENANCE (node-to-pixel, entity level): a visual calls markPop(i) the moment
+// it commits to drawing population entity i (the opaque pixel). The compositing
+// pass reads pvPopOwner after the visual runs and packs it into the hit buffer, so
+// a click resolves to the SPECIFIC entity (e.g. a ship part), not just the field.
+// Default -1 = "no entity here" (the field's own art, not a population entity).
+var<private> pvPopOwner: i32 = -1;
+fn markPop(i: i32) { pvPopOwner = i; }
+
 // GLSL mod semantics: x - y * floor(x / y)
 fn glsl_mod(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
 fn glsl_mod2(x: vec2f, y: vec2f) -> vec2f { return x - y * floor(x / y); }
@@ -1986,6 +1994,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   // Overlap tracking — store indices of all fields present at this pixel (max 8)
   var overlapIndices: array<u32, 8>;
   var overlapCount: u32 = 0u;
+  var pixelEntity: i32 = -1;   // provenance: which population entity owns this pixel (-1 = the field's own art)
 
   for (var i = 0u; i < fieldCount; i++) {
     let f = superFields[i];
@@ -2031,6 +2040,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let behindAlpha = oitAlphaSoFar + resultPresence * oitTransmittance;
       behind = vec4f(behindColor, behindAlpha);
     }
+    pvPopOwner = -1;   // provenance: reset before the visual — it may markPop(i) an entity
     var visual = superVisual(localUV, sdf, f, frame.time, behind);
 
     // ─── Auto-computed SDF normals + lighting ───
@@ -2070,6 +2080,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
           // Legacy superimposition: last-write-wins overwrite
           resultColor = visual.rgb;
           resultPresence = max(resultPresence, visual.a);
+          pixelEntity = pvPopOwner;   // provenance: the winning field's entity (markPop), if any
         } else {
           // OIT: weighted blended accumulation — order-independent
           let depth = f32(i) / max(f32(fieldCount), 1.0);
@@ -2143,7 +2154,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       break;
     }
   }
-  hitIdBuf[idx] = hitIdx;
+  // PROVENANCE: pack the entity owner into the HIGH bits (field in low 16, entity+1
+  // in high 16). Legacy readers mask & 0xFFFF for the field; provenance reads >> 16.
+  hitIdBuf[idx] = select(hitIdx, hitIdx | (u32(pixelEntity + 1) << 16u), hitIdx != 0xFFFFFFFFu && pixelEntity >= 0);
 
   // Write to accumulation buffer (blend with existing for coexistence with per-field effects)
   let existing = accumBuf[idx];

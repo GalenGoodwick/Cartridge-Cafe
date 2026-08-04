@@ -2647,6 +2647,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
         }
       } catch { /* entities are a bonus, never break inspect */ }
+      // PIXEL-EXACT entity — if the world's shader markPop()'d its parts, the GPU
+      // owner buffer resolves the EXACT part under the click (packed into the hit
+      // map), more precise than __entities' world-published positions. Prefer it
+      // when present; __entities stays the fallback for worlds that don't markPop.
+      try {
+        const gpuEnt = sim ? sim.getEntityAtPoint(gI.x, gI.y) : -1
+        if (gpuEnt >= 0) entI = { id: gpuEnt, kind: entI?.kind, label: entI?.label }
+      } catch { /* getEntityAtPoint is a bonus, never break inspect */ }
       const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: (hfI?.visualType as string | undefined) ?? null, color: colI, entity: entI }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
