@@ -35,6 +35,13 @@ interface Hazard {
   maxArray?: number
   totalElements?: number
   phase?: string
+  // source-documented faults (hooks/shaders/GPU) carry where + who + the source:
+  author?: string       // who authored the offending hook/shader
+  line?: number
+  col?: number
+  snippet?: string      // the held source, marked at the culprit line
+  gpuModel?: string     // UNMASKED_RENDERER, for gpu-lost triage
+  stack?: string        // raw stack for engine-code errors (no held source)
 }
 
 interface Report {
@@ -86,6 +93,12 @@ export async function POST(req: NextRequest) {
       arrays: typeof o.arrays === 'number' ? o.arrays : undefined,
       maxArray: typeof o.maxArray === 'number' ? o.maxArray : undefined,
       totalElements: typeof o.totalElements === 'number' ? o.totalElements : undefined,
+      author: clip(o.author, 120),
+      line: typeof o.line === 'number' ? o.line : undefined,
+      col: typeof o.col === 'number' ? o.col : undefined,
+      snippet: clip(o.snippet, 1200),
+      gpuModel: clip(o.gpuModel, 120),
+      stack: clip(o.stack, MAX_REASON),
     }
   })
 
@@ -118,7 +131,7 @@ export async function POST(req: NextRequest) {
   // the commons see breakage the moment it happens and can converge on the fix.
   // Throttled per phase+visual (a broken world reload-loops its report), and
   // only for real shader faults — support-gate/engine-init noise stays out.
-  if (report.phase === 'preflight' || report.phase === 'compile-error' || report.phase === 'hook-budget') {
+  if (['preflight', 'compile-error', 'hook-budget', 'hook-error', 'gpu-lost', 'window-error'].includes(report.phase)) {
     const g = globalThis as unknown as { __qBusSeen?: Map<string, number> }
     const seen = (g.__qBusSeen ??= new Map())
     const key = report.phase + ':' + (hazards[0]?.name ?? '') + ':' + (report.url ?? '')

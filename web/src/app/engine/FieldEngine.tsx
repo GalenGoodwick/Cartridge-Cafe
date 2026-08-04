@@ -581,7 +581,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const untrusted = !!spaceId || !!worldData?.__sandbox
     if (untrusted && stepHooks && stepHooks.length > 0) {
       const box = new WorldSandbox()
-      box.load(orderHooks(stepHooks, worldData).map(h => ({ id: h.id, code: h.code })))   // all hooks, isolated, in DECLARED __nodes order (legacy-neutral: no __nodes ⇒ array order)
+      box.load(orderHooks(stepHooks, worldData).map(h => ({ id: h.id, code: h.code, author: (h as { author?: string }).author })))   // all hooks, isolated, in DECLARED __nodes order (legacy-neutral: no __nodes ⇒ array order); author carried for source-doc
       if (box.active) {
         sandboxRef.current = box
         return   // the sandbox owns the hooks — do NOT compile them on the main thread
@@ -706,7 +706,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const faultReportedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const onFault = (e: Event) => {
-      const det = (e as CustomEvent).detail as { kind: string; message: string }
+      const det = (e as CustomEvent).detail as { kind: string; message: string
+        loc?: { hookId: string; line: number; col: number }; snippet?: string; author?: string; gpuModel?: string; stack?: string }
       // FIRST fault wins the banner — later faults are usually echoes of it
       setFault(prev => prev ?? det)
       const sceneName = lastSceneRef.current || playScene || spaceSlug || 'unknown'
@@ -736,7 +737,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           url: typeof location !== 'undefined' ? location.href : '',
           phase: 'cc-fault:' + det.kind,
           scene: sceneName,
-          hazards: [{ name: det.kind, reason: (det.message + ' · ' + ENGINE_BUILD + ' · ' + (typeof navigator !== 'undefined' ? navigator.userAgent : '')).slice(0, 800) }],
+          // one funnel — enriched at source where the engine holds it: the hook's
+          // author + line + a marked snippet (hook faults), the GPU model (gpu loss),
+          // or the raw stack when the line format isn't parsed yet (WebKit).
+          hazards: [{
+            name: det.loc?.hookId || det.kind,
+            reason: (det.message + ' · ' + ENGINE_BUILD + ' · ' + (typeof navigator !== 'undefined' ? navigator.userAgent : '')).slice(0, 800),
+            author: det.author,
+            line: det.loc?.line,
+            col: det.loc?.col,
+            snippet: det.snippet,
+            gpuModel: det.gpuModel,
+            stack: det.stack,
+          }],
         }),
       }).catch(() => { /* telemetry must never break the world */ })
     }
@@ -5037,7 +5050,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 max-w-[520px] px-4 py-3 rounded-xl bg-red-950/90 border border-red-500/40 backdrop-blur font-mono text-[16px] text-red-100 shadow-2xl">
               <div className="tracking-[0.2em] text-red-300 mb-1">⚠ WORLD FAULT — {fault.kind} <span className="text-red-300/50">({ENGINE_BUILD})</span></div>
               {fault.kind === 'gpu-lost'
-                ? <div className="text-red-100/90 leading-relaxed">This world overloaded the GPU and crashed it — likely a shader too heavy for this device. Rendering is stopped so it can&rsquo;t keep flickering. Reload to recover; the rest of the cafe is fine.</div>
+                ? <div className="text-red-100/90 leading-relaxed">The GPU dropped out — this can be a heavy world, or a driver reset / GPU switch on your machine. Rendering is stopped so it can&rsquo;t keep flickering. Reload usually recovers; the rest of the cafe is fine.</div>
                 : <div className="text-red-100/90 leading-relaxed break-words">{fault.message}</div>}
               <div className="flex gap-2 mt-2">
                 {(fault.kind === 'gpu-lost' || fault.kind === 'frame-crash') && (
@@ -5567,7 +5580,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             // NOT done, any of three signals raises the curtain: an unfinished
             // brief, a live server job, or AI edits landing now (covers branch
             // jobs that carry no spaceId for buildJobActive to match).
-            const building = !done && !everDoneRef.current && (!!brief || buildJobActive || aiEditing)
+            // A bare brief only means "building" while the world is still BLANK
+            // (nothing built yet → genuinely queued). Once fields exist, a stale
+            // creation_brief with no brief_done (e.g. the render check refused it,
+            // or the house builder never completed) must NOT trap a playable world
+            // behind the curtain — require a LIVE signal (server job or AI edits
+            // landing now) to keep it up. Mirrors the blank-gated check at ~1989.
+            const building = !done && !everDoneRef.current && ((blank && !!brief) || buildJobActive || aiEditing)
             // An existing world whose fields are still being fetched/restored → a
             // plain loading spinner riding on TOP of the black fade curtain.
             // The main shells narrate their own boot ("the shelf is waking") —

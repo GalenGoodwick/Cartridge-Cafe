@@ -11,6 +11,8 @@ type Analytics = {
   bridgePerHour: { hour: string; n: number }[]
   topTalkers: Talker[]
 }
+type Hazard = { name?: string; reason?: string; phase?: string; line?: number; col?: number; snippet?: string; author?: string; gpuModel?: string; stack?: string }
+type FaultReport = { at: string; phase: string; url?: string; scene?: string; hazards: Hazard[] }
 // A non-house token doing more than this in 24h is worth a glance — well above
 // the normal per-token build cadence, the shape a runaway loop would take.
 const HOT_TALKER = 800
@@ -23,10 +25,21 @@ export default function AdminPage() {
   const [busy, setBusy] = useState('')
   const [openRoot, setOpenRoot] = useState('')
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [faults, setFaults] = useState<FaultReport[] | null>(null)
+  const [faultFilter, setFaultFilter] = useState('')
+
+  // fault log — errors gathered from real users' sessions, source-documented
+  // where the engine holds the source (hooks, shaders, GPU loss). Newest first.
+  const loadFaults = () => {
+    fetch('/api/engine/quarantine').then(r => r.ok ? r.json() : null)
+      .then(d => setFaults(Array.isArray(d?.reports) ? [...d.reports].reverse() : []))
+      .catch(() => setFaults([]))
+  }
 
   useEffect(() => {
     fetch('/api/admin/analytics').then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setAnalytics(d) }).catch(() => {})
+    loadFaults()
   }, [])
 
   const load = () => {
@@ -216,6 +229,57 @@ export default function AdminPage() {
             ))}
           </div>
         ))}
+        {/* ── fault log: every error gathered from real sessions ────────── */}
+        {!err && (
+          <div style={{ marginTop: 44 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+              <div style={{ fontSize: 24, fontStyle: 'italic', color: '#ffb0a8', flex: 1 }}>faults from the field</div>
+              <button onClick={loadFaults} style={{ fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.15em', color: '#c9b896', background: 'none', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>↻ REFRESH</button>
+            </div>
+            <div style={{ fontSize: 13, color: '#c9b89680', marginBottom: 16 }}>
+              Errors reported by real users&rsquo; sessions, newest first — source-documented where the engine holds the source.
+            </div>
+            {faults && faults.length > 0 && (
+              <input value={faultFilter} onChange={e => setFaultFilter(e.target.value)} placeholder="filter by scene, phase, hook, message…"
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, fontFamily: 'inherit', fontSize: 13, color: '#e7dcc8', background: 'rgba(20,14,10,0.8)', border: '1px solid rgba(185,122,42,0.25)', borderRadius: 8, padding: '8px 12px' }} />
+            )}
+            {!faults && <div style={{ color: '#c9b896', fontSize: 14 }}>reading the log…</div>}
+            {faults && faults.length === 0 && <div style={{ color: '#9be3a8', fontSize: 14 }}>no faults logged — clean skies.</div>}
+            {faults && faults.filter(f => {
+              if (!faultFilter.trim()) return true
+              const q = faultFilter.toLowerCase()
+              return (f.scene ?? '').toLowerCase().includes(q) || (f.phase ?? '').toLowerCase().includes(q) || (f.url ?? '').toLowerCase().includes(q)
+                || f.hazards.some(h => (h.name ?? '').toLowerCase().includes(q) || (h.reason ?? '').toLowerCase().includes(q) || (h.author ?? '').toLowerCase().includes(q))
+            }).map((f, i) => {
+              const p = f.phase.replace(/^cc-fault:/, '')   // faults arrive prefixed by the forwarder
+              const phaseColor = p === 'gpu-lost' ? '#ff8a6a' : p === 'hook-error' ? '#ffcf6a' : p === 'window-error' ? '#d98aff' : p.includes('compile') || p === 'gpu-error' ? '#ff6a9a' : '#8ab4ff'
+              return (
+                <div key={i} style={{ marginBottom: 8, border: '1px solid rgba(185,122,42,0.2)', borderRadius: 10, background: 'rgba(24,16,12,0.7)', padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 10, letterSpacing: '0.15em', color: '#1a1109', background: phaseColor, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{p.toUpperCase()}</span>
+                    {f.scene && <span style={{ fontSize: 13, color: '#ffdba8' }}>{f.scene}</span>}
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 11, color: '#c9b89670' }}>{new Date(f.at).toLocaleString()}</span>
+                  </div>
+                  {f.url && <div style={{ fontSize: 11, color: '#c9b89660', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.url}</div>}
+                  {f.hazards.map((h, j) => (
+                    <div key={j} style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 13, color: '#ffd0c8' }}>
+                        {h.name && <span style={{ color: '#ffb0a8', fontWeight: 700 }}>{h.name}</span>}
+                        {h.author && <span style={{ color: '#9be3a8', fontSize: 11 }}> · by {h.author}</span>}
+                        {typeof h.line === 'number' && h.line > 0 && <span style={{ color: '#c9b89680', fontSize: 11 }}> · line {h.line}{typeof h.col === 'number' ? ':' + h.col : ''}</span>}
+                        {h.gpuModel && <span style={{ color: '#c9b89680', fontSize: 11 }}> · {h.gpuModel}</span>}
+                      </div>
+                      {h.reason && <div style={{ fontSize: 12, color: '#e7dcc8cc', marginTop: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{h.reason}</div>}
+                      {h.snippet && <pre style={{ fontSize: 12, color: '#d8cbb2', background: 'rgba(10,7,5,0.7)', border: '1px solid rgba(185,122,42,0.15)', borderRadius: 6, padding: '8px 10px', marginTop: 6, overflowX: 'auto', whiteSpace: 'pre' }}>{h.snippet}</pre>}
+                      {!h.snippet && h.stack && <pre style={{ fontSize: 11, color: '#c9b89699', background: 'rgba(10,7,5,0.5)', border: '1px solid rgba(185,122,42,0.1)', borderRadius: 6, padding: '8px 10px', marginTop: 6, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>{h.stack}</pre>}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        )}
         <div style={{ marginTop: 26, fontSize: 11, letterSpacing: '0.25em', color: 'rgba(245,176,76,0.4)' }}>CARTRIDGE.CAFE · KEEPER ONLY</div>
       </div>
     </div>

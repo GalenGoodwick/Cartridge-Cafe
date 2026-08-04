@@ -13,6 +13,7 @@
 // cursor/physics worlds it is invisible.
 
 import type { FieldSimulation } from './simulation'
+import { sliceSnippet } from '@/lib/hook-error-locus'
 import { sceneDefine } from './scene-graph'
 
 // ── the worker: sealed global, compiles the hook, runs it against a shim ──
@@ -48,6 +49,25 @@ function __rand() {
 // .toString() is standalone runnable JS. Bound to a fixed name so minification
 // renaming the original can't break the call site below.
 const __sceneDefine = ${sceneDefine.toString()};
+// AUTO-DOCUMENT AT SOURCE — a hook runs as new Function('sim','dt',code), so V8
+// tags a throw's frame <anonymous>:L:C where the eval'd body starts 2 lines below
+// the generated header (measured). hookLine = L - 2. Regex-free so the template
+// literal needs no backslash escaping. Returns {line,col} into the hook's OWN
+// source (which the host holds → resolves to author + snippet). Best-effort.
+function __locOf(st) {
+  if (typeof st !== 'string') return null;
+  const rows = st.split('\\n');
+  for (let i = 0; i < rows.length; i++) {
+    const k = rows[i].lastIndexOf('<anonymous>:');
+    if (k < 0) continue;
+    let tail = rows[i].slice(k + 12);
+    if (tail.charAt(tail.length - 1) === ')') tail = tail.slice(0, -1);
+    const p = tail.split(':');
+    const ln = Number(p[0]) - 2, col = Number(p[1]);
+    return (ln >= 1 && !isNaN(ln)) ? { line: ln, col: isNaN(col) ? 0 : col } : null;
+  }
+  return null;
+}
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
@@ -154,9 +174,21 @@ self.onmessage = function (ev) {
     const __now = () => (self.performance && self.performance.now) ? self.performance.now() : Date.now();
     const __t0 = __now();
     let __runErr = null;
+    let __runErrLoc = null;   // {hookId,line,col[,stack]} for the throwing hook (source-doc)
     for (const h of __hooks) {
       try { h.fn(__sim, msg.dt); }
-      catch (e) { __runErr = (h.id || '?') + ': ' + String((e && e.message) || e); }  // keep running the rest
+      catch (e) {   // keep running the rest; capture WHERE (source-doc) for the first throw
+        const __em = String((e && e.message) || e);
+        __runErr = (h.id || '?') + ': ' + __em;
+        if (!__runErrLoc) {
+          const __l = __locOf(e && e.stack);
+          // V8 gives {line,col}; on a stack format we don't parse yet (WebKit),
+          // ship the RAW stack so we learn the real format instead of guessing.
+          __runErrLoc = __l
+            ? { hookId: h.id, line: __l.line, col: __l.col, message: __em }
+            : { hookId: h.id, line: 0, col: 0, message: __em, stack: String((e && e.stack) || '').slice(0, 600) };
+        }
+      }
     }
     if (__missing.size) {
       const m = 'sandbox has no sim.' + [...__missing].join('/sim.') + ' — a hook called it; returned a no-op. Mirror it in world-sandbox.ts.';
@@ -186,7 +218,7 @@ self.onmessage = function (ev) {
       }
       if (any) fieldPatches.push(patch);
     }
-    self.postMessage({ type: 'result', error: __runErr || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
+    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
 };
 `
@@ -197,8 +229,11 @@ interface SandboxReply {
   fieldPatches?: { id: string; transform?: Record<string, number>; visualParams?: number[] }[]
   events?: { type: string; detail: unknown }[]
   error?: string
+  errLoc?: { hookId: string; line: number; col: number; message: string; stack?: string }   // source-doc: WHERE the throw was (line 0 + stack = format we don't parse yet)
   ms?: number
 }
+
+type HookSpec = { id: string; code: string; author?: string }
 
 // ── runaway-cost kill-switch — deliberately LIBERAL ──
 // A sandboxed hook can't steal cookies or reach the network, but a hostile or
@@ -226,6 +261,7 @@ export class WorldSandbox {
   private quarantined = false
   private lastPostAt = 0
   private slowStrikes = 0
+  private hookSpecs = new Map<string, HookSpec>()   // id → {code,author} for source-doc resolution
   // CADENCE FIX (the "choppy on ProMotion" core failure): the old pipeline posted
   // one tick per RAF only when the previous reply had already landed — at 120Hz
   // the ~10ms worker round-trip misses the 8.3ms frame window, so hooks ran at
@@ -246,13 +282,31 @@ export class WorldSandbox {
 
   /** Put a hook failure where players AND agents can see it: worldData
    *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay. */
-  private surface(sim: FieldSimulation, phase: 'compile' | 'runtime', msg: string): void {
+  private surface(sim: FieldSimulation, phase: 'compile' | 'runtime', msg: string,
+                  loc?: { hookId: string; line: number; col: number; stack?: string }): void {
     if (msg === this.lastSurfaced) return
     this.lastSurfaced = msg
-    ;(sim.worldData as Record<string, unknown>)['last_hook_error'] = { hookId: 'sandbox', phase, error: msg, at: Date.now() }
+    const spec = loc ? this.hookSpecs.get(loc.hookId) : undefined
+    const hasLine = !!loc && loc.line >= 1                      // 0 = format we couldn't parse
+    const snippet = hasLine && spec ? sliceSnippet(spec.code, loc!.line) : null
+    ;(sim.worldData as Record<string, unknown>)['last_hook_error'] = {
+      hookId: loc?.hookId ?? 'sandbox', phase, error: msg, at: Date.now(),
+      ...(hasLine ? { line: loc!.line, col: loc!.col } : {}),
+      ...(spec?.author ? { author: spec.author } : {}),
+      ...(snippet ? { snippet } : {}),
+    }
     if (typeof window !== 'undefined') {
+      // ONE funnel: dispatch cc:fault carrying the source-doc (author + line +
+      // snippet, or the raw stack when we can't parse the line yet). FieldEngine's
+      // fault forwarder logs it to the quarantine sink — no second POST here.
       window.dispatchEvent(new CustomEvent('cc:fault', {
-        detail: { kind: 'hook-error', message: `world hook ${phase} error: ${msg}` },
+        detail: {
+          kind: 'hook-error', message: `world hook ${phase} error: ${msg}`,
+          ...(hasLine ? { loc: { hookId: loc!.hookId, line: loc!.line, col: loc!.col } } : {}),
+          ...(spec?.author ? { author: spec.author } : {}),
+          ...(snippet ? { snippet } : {}),
+          ...(loc?.stack ? { stack: loc.stack } : {}),
+        },
       }))
     }
   }
@@ -328,7 +382,7 @@ export class WorldSandbox {
   }
 
   /** compile one or more hooks into a fresh sealed worker */
-  load(hooks: string | { id: string; code: string }[]): void {
+  load(hooks: string | { id: string; code: string; author?: string }[]): void {
     this.dispose()
     // a fresh install (e.g. the owner/AI just fixed the hook) gets a clean slate
     this.quarantined = false
@@ -336,6 +390,8 @@ export class WorldSandbox {
     this.lastPostAt = 0
     this.lastTickAt = 0
     const specs = typeof hooks === 'string' ? [{ id: 'hook', code: hooks }] : hooks
+    // hold each hook's source + author so a throw resolves to author + snippet
+    this.hookSpecs = new Map(specs.map(s => [s.id, s as HookSpec]))
     try {
       const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'application/javascript' }))
       this.worker = new Worker(url)
@@ -456,7 +512,7 @@ export class WorldSandbox {
     // the other hooks ran fine and their worldData/patches are valid.
     if (this.pending.error) {
       console.warn('[sandbox] hook runtime error:', this.pending.error)
-      this.surface(sim, 'runtime', this.pending.error)
+      this.surface(sim, 'runtime', this.pending.error, this.pending.errLoc)
     }
     {
       const wd = sim.worldData as Record<string, unknown>

@@ -1,6 +1,7 @@
 // Field Engine v4 — WebGPU Renderer (Multi-pass, multi-effect)
 
 import { DEFAULT_GRID_SIZE } from './types'
+import { gpuModel } from '@/lib/hook-error-locus'
 import {
   vertexShaderSource,
   buildBaseFragmentShader,
@@ -654,8 +655,10 @@ export class FieldRenderer {
         setTimeout(() => { try { window.location.reload() } catch { /* reload blocked; banner already shown */ } }, 800)
         return
       }
+      // reload didn't help → a genuine problem. Carry the GPU model so the fault
+      // log can tell "one weak machine" from a real pattern (not guess "too heavy").
       window.dispatchEvent(new CustomEvent('cc:fault', {
-        detail: { kind: 'gpu-lost', message: `GPU device lost (${info.reason}): ${info.message || 'graphics acceleration may be off — check chrome://settings/system, then fully quit and reopen the browser'}` },
+        detail: { kind: 'gpu-lost', message: `GPU device lost (${info.reason}): ${info.message || 'graphics acceleration may be off — check chrome://settings/system, then fully quit and reopen the browser'}`, gpuModel: gpuModel() },
       }))
     }).catch(() => { /* never rejects in practice */ })
     let uncapCount = 0
