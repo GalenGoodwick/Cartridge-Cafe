@@ -1455,11 +1455,11 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
             case 'create_render_target': {
               const name = cmd.name as string
               if (!name) { pushTerminal('create_render_target', '', 'ERROR: name required'); break }
-              const result = renderer.createRenderTarget(name)
+              const result = renderer.createRenderTarget(name, cmd.persist as boolean | undefined)
               if (result.error) {
                 pushTerminal('create_render_target', name, `ERROR: ${result.error}`)
               } else {
-                pushTerminal('create_render_target', name, `created (id=${result.id})`, undefined, cmdAuthor)
+                pushTerminal('create_render_target', name, `created (id=${result.id}${cmd.persist ? ', persist' : ''})`, undefined, cmdAuthor)
               }
               break
             }

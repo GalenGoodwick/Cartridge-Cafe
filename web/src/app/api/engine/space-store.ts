@@ -188,7 +188,12 @@ function emptySnapshot(): SceneSnapshot {
   return {
     name: '',
     fields: [],
-    worldParams: { gravity: 0, friction: 0.1, collisionForce: 50, boundaryMode: 'solid', bounciness: 0.5, gravitationalConstant: 0 },
+    // collisionForce 0: field-vs-field physics is an OPT-IN primitive
+    // (set_world_params {collisionForce: N}), not ambient default behavior —
+    // overlapping composition fields (viewers, HUD layers, multi-pass rigs)
+    // were silently shoved apart by the old default of 50. Existing worlds
+    // keep their own persisted worldParams; this only seeds new/blank worlds.
+    worldParams: { gravity: 0, friction: 0.1, collisionForce: 0, boundaryMode: 'solid', bounciness: 0.5, gravitationalConstant: 0 },
     worldData: {},
     stepHooks: [],
     interactionRules: [],
@@ -309,7 +314,17 @@ export function applyCommandToSnapshotObject(
         noCollide: cmd.noCollide as boolean | undefined,
         // PIXEL-COLLIDE LAW: collision body = rendered pixels (appearance IS geometry)
         pixelCollide: cmd.pixelCollide as boolean | undefined,
-        properties: cmd.properties as Record<string, unknown> | undefined,
+        // renderTarget / sampleTargets may arrive as top-level command keys (the
+        // create_field whitelist accepts them) but the live engine reads them from
+        // field.properties — fold them in here so they round-trip through the
+        // snapshot, exactly as set_visual does. Without this the assignment is
+        // silently dropped and the field never writes to its render target.
+        properties: (() => {
+          const props = { ...(cmd.properties as Record<string, unknown> | undefined) }
+          if (cmd.renderTarget != null) props.renderTarget = cmd.renderTarget
+          if (cmd.sampleTargets != null) props.sampleTargets = cmd.sampleTargets
+          return Object.keys(props).length > 0 ? props : undefined
+        })(),
       })
       result.fieldId = fieldId
       break
@@ -575,6 +590,16 @@ export function applyCommandToSnapshotObject(
     case 'set_world_params': {
       if (cmd.params) {
         snap.worldParams = { ...snap.worldParams, ...(cmd.params as Record<string, unknown>) } as SceneSnapshot['worldParams']
+      }
+      // the documented form (guide + health warnings) carries params TOP-LEVEL
+      // — {type:'set_world_params', collisionForce: 0}. The live engine accepts
+      // it; persist it too or every fresh load reverts to defaults (fields
+      // shoved by collisionForce=50 that the author explicitly zeroed).
+      const WORLD_PARAM_KEYS = ['gravity', 'friction', 'bounciness', 'boundaryMode', 'collisionForce', 'gravitationalConstant'] as const
+      for (const k of WORLD_PARAM_KEYS) {
+        if (cmd[k] !== undefined) {
+          snap.worldParams = { ...snap.worldParams, [k]: cmd[k] } as SceneSnapshot['worldParams']
+        }
       }
       break
     }

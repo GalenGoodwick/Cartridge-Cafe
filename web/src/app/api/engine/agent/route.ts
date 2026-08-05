@@ -72,7 +72,7 @@ export type EngineCommand =
   // Shader modules — reusable WGSL functions injected into uber-shader (mod_NAME prefix)
   | { type: 'define_module'; name: string; wgsl: string }
   // Render targets — named intermediate buffers for render-to-texture
-  | { type: 'create_render_target'; name: string }
+  | { type: 'create_render_target'; name: string; persist?: boolean }
   | { type: 'destroy_render_target'; name: string }
   // WGSL mods — reusable shader code registered by agents
   | { type: 'register_wgsl_mod'; id: string; author: string; description: string; code: string }

@@ -53,6 +53,10 @@ export interface ModuleDef {
 export interface RenderTargetDef {
   name: string
   timestamp: number
+  /** When true, the target buffer is NOT cleared each frame — it persists across
+   *  frames as a ping-pong state buffer (write this frame, read next frame).
+   *  Default false = legacy per-frame-cleared behavior, byte-identical. */
+  persist?: boolean
 }
 
 /** Per-field rendered pixel sample (16x16 downsampled RGBA) */
@@ -500,8 +504,8 @@ export function getAllModules(): ModuleDef[] {
 }
 
 /** Add a render target definition (server-side persistence) */
-export function addRenderTargetDef(name: string): void {
-  store.renderTargetDefs.set(name, { name, timestamp: Date.now() })
+export function addRenderTargetDef(name: string, persist?: boolean): void {
+  store.renderTargetDefs.set(name, { name, timestamp: Date.now(), persist: persist || undefined })
   schedulePersist()
 }
 

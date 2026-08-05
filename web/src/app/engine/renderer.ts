@@ -354,11 +354,15 @@ export class FieldRenderer {
   private _lost = false
 
   // Render target registry (named intermediate buffers for RTT)
-  private renderTargets: Map<string, { buffer: GPUBuffer; id: number }> = new Map()
+  // Double-buffered: bufA/bufB ping-pong each frame. The shader writes the
+  // back buffer (renderTarget_i) and sampleTarget() reads the front buffer
+  // (renderTargetRead_i = last frame's committed state) — race-free reads.
+  private renderTargets: Map<string, { bufA: GPUBuffer; bufB: GPUBuffer; id: number; persist: boolean }> = new Map()
+  private renderTargetParity = 0
+  private _cachedRenderTargetBGs: [GPUBindGroup | null, GPUBindGroup | null] = [null, null]
   private nextRenderTargetId: number = 0
   static readonly MAX_RENDER_TARGETS = 6
   private renderTargetBindGroupLayout: GPUBindGroupLayout | null = null
-  private _cachedRenderTargetBG: GPUBindGroup | null = null
   private _renderTargetPixelCount: number = 0
 
   // Interaction registry (a + b = c effects at overlap pixels)
@@ -1389,7 +1393,7 @@ export class FieldRenderer {
     this._cachedStateUpdateBG0 = null
     this._cachedStateUpdateBG1A = null
     this._cachedStateUpdateBG1B = null
-    this._cachedRenderTargetBG = null
+    this._cachedRenderTargetBGs = [null, null]
   }
 
   private createEmptyMaskTexture(fieldId: string): GPUTexture {
@@ -3674,15 +3678,28 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     }
 
     const frameBG = this.getFrameBindGroup()
+    // Ping-pong: advance parity, then bind write=back / read=front for this frame.
+    // sampleTarget() therefore always reads LAST frame's committed state — no
+    // read/write races within the dispatch.
+    this.renderTargetParity ^= 1
     const rtBG = this.getRenderTargetBindGroup()
 
-    // Clear render target buffers before dispatch
+    // Prepare back buffers before dispatch:
+    //  - non-persist: clear the back (fresh composite each frame, as before)
+    //  - persist: copy front→back so untouched pixels carry state forward
+    //    (the back otherwise holds 2-frame-old data; a partial write would
+    //    leave stale cells behind)
     if (this.renderTargets.size > 0) {
       const clearSize = pixelCount * 16
+      const p = this.renderTargetParity & 1
       for (const entry of this.renderTargets.values()) {
-        // Zero out the buffer via writeBuffer (vec4f(0) for each pixel)
-        // Use a single clear compute pass instead for efficiency
-        encoder.clearBuffer(entry.buffer, 0, clearSize)
+        const back = p === 0 ? entry.bufA : entry.bufB
+        const front = p === 0 ? entry.bufB : entry.bufA
+        if (entry.persist) {
+          encoder.copyBufferToBuffer(front, 0, back, 0, clearSize)
+        } else {
+          encoder.clearBuffer(back, 0, clearSize)
+        }
       }
     }
 
@@ -4155,7 +4172,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 
   /** Create a named render target buffer. Returns the assigned ID (0-5).
    *  Targets auto-resize when canvas dimensions change. */
-  createRenderTarget(name: string): { id: number; error?: string } {
+  createRenderTarget(name: string, persist = false): { id: number; error?: string } {
     if (this.renderTargets.has(name)) {
       return { id: this.renderTargets.get(name)!.id }
     }
@@ -4166,15 +4183,16 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (!device) return { id: -1, error: 'Device not initialized' }
 
     const id = this.nextRenderTargetId++
-    // Create buffer sized to current accumBuf (will be resized in ensureRenderTargets)
+    // Create both ping-pong buffers sized to current accumBuf (resized in ensureRenderTargets)
     const pixelCount = Math.max(this.accumBufPixelCount, 1)
-    const buffer = device.createBuffer({
+    const mk = () => device.createBuffer({
       size: pixelCount * 16, // vec4f = 16 bytes per pixel
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      // COPY_SRC: persistent targets copy front→back each frame
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     })
-    this.renderTargets.set(name, { buffer, id })
+    this.renderTargets.set(name, { bufA: mk(), bufB: mk(), id, persist })
     this._renderTargetPixelCount = pixelCount
-    this._cachedRenderTargetBG = null
+    this._cachedRenderTargetBGs = [null, null]
     // Trigger recompilation — target count changed
     this.superCompilationId++
     this.superPipelineReady = false
@@ -4189,9 +4207,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   destroyRenderTarget(name: string): void {
     const entry = this.renderTargets.get(name)
     if (!entry) return
-    entry.buffer.destroy()
+    entry.bufA.destroy()
+    entry.bufB.destroy()
     this.renderTargets.delete(name)
-    this._cachedRenderTargetBG = null
+    this._cachedRenderTargetBGs = [null, null]
     // Trigger recompilation — target count changed
     this.superCompilationId++
     this.superPipelineReady = false
@@ -4219,18 +4238,22 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 
     const device = this.device!
     const bufSize = pixelCount * 16
+    const mk = () => device.createBuffer({
+      size: bufSize,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    })
     for (const [name, entry] of this.renderTargets) {
-      entry.buffer.destroy()
-      entry.buffer = device.createBuffer({
-        size: bufSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      })
+      entry.bufA.destroy()
+      entry.bufB.destroy()
+      entry.bufA = mk()
+      entry.bufB = mk()
     }
     this._renderTargetPixelCount = pixelCount
-    this._cachedRenderTargetBG = null
+    this._cachedRenderTargetBGs = [null, null]
   }
 
-  /** Create the render target bind group layout for group 2 */
+  /** Create the render target bind group layout for group 2.
+   *  2N entries: bindings 0..N-1 = write (back) buffers, N..2N-1 = read (front). */
   private ensureRenderTargetBindGroupLayout(): void {
     const device = this.device!
     const count = this.renderTargets.size
@@ -4239,7 +4262,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       return
     }
     const entries: GPUBindGroupLayoutEntry[] = []
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < count * 2; i++) {
       entries.push({
         binding: i,
         visibility: GPUShaderStage.COMPUTE,
@@ -4249,10 +4272,12 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.renderTargetBindGroupLayout = device.createBindGroupLayout({ entries })
   }
 
-  /** Get render target bind group for group 2 */
+  /** Get render target bind group for group 2 at the current parity.
+   *  Write half points at this frame's back buffers, read half at the fronts. */
   private getRenderTargetBindGroup(): GPUBindGroup | null {
     if (this.renderTargets.size === 0) return null
-    if (this._cachedRenderTargetBG) return this._cachedRenderTargetBG
+    const p = this.renderTargetParity & 1
+    if (this._cachedRenderTargetBGs[p]) return this._cachedRenderTargetBGs[p]
 
     const device = this.device!
     if (!this.renderTargetBindGroupLayout) this.ensureRenderTargetBindGroupLayout()
@@ -4260,15 +4285,19 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 
     // Sort targets by id to ensure consistent binding order
     const sorted = [...this.renderTargets.values()].sort((a, b) => a.id - b.id)
-    const entries: GPUBindGroupEntry[] = sorted.map((entry, i) => ({
-      binding: i,
-      resource: { buffer: entry.buffer },
-    }))
-    this._cachedRenderTargetBG = device.createBindGroup({
+    const n = sorted.length
+    const entries: GPUBindGroupEntry[] = []
+    sorted.forEach((entry, i) => {
+      const back = p === 0 ? entry.bufA : entry.bufB
+      const front = p === 0 ? entry.bufB : entry.bufA
+      entries.push({ binding: i, resource: { buffer: back } })       // write
+      entries.push({ binding: n + i, resource: { buffer: front } })  // read
+    })
+    this._cachedRenderTargetBGs[p] = device.createBindGroup({
       layout: this.renderTargetBindGroupLayout,
       entries,
     })
-    return this._cachedRenderTargetBG
+    return this._cachedRenderTargetBGs[p]
   }
 
   /** Clear all visual type, interaction, propagation, and module registries. Called on reset. */
@@ -4282,11 +4311,12 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.moduleRegistry.clear()
     // Destroy render target buffers
     for (const entry of this.renderTargets.values()) {
-      entry.buffer.destroy()
+      entry.bufA.destroy()
+      entry.bufB.destroy()
     }
     this.renderTargets.clear()
     this.nextRenderTargetId = 0
-    this._cachedRenderTargetBG = null
+    this._cachedRenderTargetBGs = [null, null]
     this.renderTargetBindGroupLayout = null
     this.superPipelineReady = false
     this.superPipeline = null
@@ -4343,7 +4373,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     this.postProcessUniformBuf?.destroy()
     this.particleBuffer?.destroy()
     for (const entry of this.renderTargets.values()) {
-      entry.buffer.destroy()
+      entry.bufA.destroy()
+      entry.bufB.destroy()
     }
     this.renderTargets.clear()
 

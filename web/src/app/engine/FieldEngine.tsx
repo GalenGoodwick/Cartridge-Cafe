@@ -3169,7 +3169,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (Array.isArray(data.renderTargets)) {
           for (const rt of data.renderTargets) {
             if (rt.name) {
-              renderer.createRenderTarget(rt.name)
+              renderer.createRenderTarget(rt.name, rt.persist)
             }
           }
         }

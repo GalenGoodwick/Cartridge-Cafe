@@ -1655,10 +1655,15 @@ export function buildSuperimposedComputeShader(
   const modSeen = new Set(BASE_FUNC_NAMES)
   const moduleCode = mods.map(m => deduplicateModCode(m.wgsl, modSeen)).join('\n\n')
 
-  // Render target bindings (group 2) — read_write for both sampling and writing
+  // Render target bindings (group 2) — DOUBLE-BUFFERED. Writes go to
+  // renderTarget_i (back buffer); sampleTarget() reads renderTargetRead_i
+  // (front buffer = last frame's committed state, swapped by the renderer each
+  // frame). This makes sampleTarget race-free: reads never see this dispatch's
+  // in-flight writes, only a complete previous frame.
   const targetBindings: string[] = []
   for (let i = 0; i < numTargets; i++) {
     targetBindings.push(`@group(2) @binding(${i}) var<storage, read_write> renderTarget_${i}: array<vec4f>;`)
+    targetBindings.push(`@group(2) @binding(${numTargets + i}) var<storage, read_write> renderTargetRead_${i}: array<vec4f>;`)
   }
   const targetBindingsStr = targetBindings.join('\n')
 
@@ -1669,7 +1674,7 @@ export function buildSuperimposedComputeShader(
   if (numTargets > 0) {
     const targetCases: string[] = []
     for (let i = 0; i < numTargets; i++) {
-      targetCases.push(`    case ${i}u: { return renderTarget_${i}[pixelIdx]; }`)
+      targetCases.push(`    case ${i}u: { return renderTargetRead_${i}[pixelIdx]; }`)
     }
     sampleTargetFn = `
 fn sampleTarget(targetId: u32, pixelCoord: vec2f) -> vec4f {
@@ -2242,9 +2247,12 @@ export function buildSuperimposed3DComputeShader(
   const modSeen = new Set(BASE_FUNC_NAMES)
   const moduleCode = mods.map(m => deduplicateModCode(m.wgsl, modSeen)).join('\n\n')
 
+  // double-buffered: writes → renderTarget_i (back), sampleTarget reads
+  // renderTargetRead_i (front = last committed frame) — see 2D builder note
   const targetBindings: string[] = []
   for (let i = 0; i < numTargets; i++) {
     targetBindings.push(`@group(2) @binding(${i}) var<storage, read_write> renderTarget_${i}: array<vec4f>;`)
+    targetBindings.push(`@group(2) @binding(${numTargets + i}) var<storage, read_write> renderTargetRead_${i}: array<vec4f>;`)
   }
   const targetBindingsStr = targetBindings.join('\n')
 
@@ -2252,7 +2260,7 @@ export function buildSuperimposed3DComputeShader(
   if (numTargets > 0) {
     const targetCases: string[] = []
     for (let i = 0; i < numTargets; i++) {
-      targetCases.push(`    case ${i}u: { return renderTarget_${i}[pixelIdx]; }`)
+      targetCases.push(`    case ${i}u: { return renderTargetRead_${i}[pixelIdx]; }`)
     }
     sampleTargetFn = `
 fn sampleTarget(targetId: u32, pixelCoord: vec2f) -> vec4f {

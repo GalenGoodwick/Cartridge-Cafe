@@ -1295,7 +1295,7 @@ export async function POST(req: NextRequest) {
         }
 
         if (cmd.type === 'create_render_target' && cmd.name) {
-          addRenderTargetDef(cmd.name as string)
+          addRenderTargetDef(cmd.name as string, cmd.persist as boolean | undefined)
         }
 
         if (cmd.type === 'destroy_render_target' && cmd.name) {
