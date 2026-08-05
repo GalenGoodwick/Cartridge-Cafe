@@ -252,7 +252,7 @@ export default function AdminPage() {
                 || f.hazards.some(h => (h.name ?? '').toLowerCase().includes(q) || (h.reason ?? '').toLowerCase().includes(q) || (h.author ?? '').toLowerCase().includes(q))
             }).map((f, i) => {
               const p = f.phase.replace(/^cc-fault:/, '')   // faults arrive prefixed by the forwarder
-              const phaseColor = p === 'gpu-lost' ? '#ff8a6a' : p === 'hook-error' ? '#ffcf6a' : p === 'window-error' ? '#d98aff' : p === 'owns-violation' ? '#6ad9a0' : p.includes('compile') || p === 'gpu-error' ? '#ff6a9a' : '#8ab4ff'
+              const phaseColor = p === 'gpu-lost' ? '#ff8a6a' : p === 'hook-error' ? '#ffcf6a' : p === 'window-error' ? '#d98aff' : p === 'owns-violation' ? '#6ad9a0' : p === 'node-benched' ? '#ffa94d' : p.includes('compile') || p === 'gpu-error' ? '#ff6a9a' : '#8ab4ff'
               return (
                 <div key={i} style={{ marginBottom: 8, border: '1px solid rgba(185,122,42,0.2)', borderRadius: 10, background: 'rgba(24,16,12,0.7)', padding: '10px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

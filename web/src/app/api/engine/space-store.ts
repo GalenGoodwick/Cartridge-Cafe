@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
-import { canPush, stampHold, canRelease } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
+import { canPush, stampHold, canRelease, holdStatus } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -661,6 +661,37 @@ export function applyCommandToSnapshotObject(
         const holder = String(cmd.__holder ?? '')
         if (autoNode && holder) stampHold(autoNode as Record<string, unknown>, holder, Number(cmd.__now ?? Date.now()))
       }
+      // RUNG E build-time coordination: if this hook's auto-inferred owns overlaps
+      // another node's lane, MESSAGE the AI (warnings, non-fatal). Nodes are the
+      // owners — dock to the one that owns the slot (release yours + claim it),
+      // don't write into its lane. "if available" = the owner's hold status.
+      {
+        const mineUni = ((autoNode as Record<string, unknown> | undefined)?.owns as Record<string, unknown> | undefined)?.uni as number[][] | undefined
+        if (Array.isArray(mineUni) && mineUni.length) {
+          const nodes = ((snap.worldData as Record<string, unknown>).__nodes ?? {}) as Record<string, Record<string, unknown>>
+          const holder = String(cmd.__holder ?? '')
+          const now = Number(cmd.__now ?? Date.now())
+          const conflicts: string[] = []
+          for (const [oid, o] of Object.entries(nodes)) {
+            if (oid === hookId) continue
+            const theirs = (o.owns as Record<string, unknown> | undefined)?.uni as number[][] | undefined
+            if (!Array.isArray(theirs)) continue
+            for (const a of mineUni) for (const b of theirs) {
+              if (Array.isArray(a) && Array.isArray(b) && a[0] <= b[1] && b[0] <= a[1]) {
+                const st = holdStatus(o, holder, now)   // free | mine | stale | held
+                const slot = b[0] === b[1] ? `${b[0]}` : `${b[0]}-${b[1]}`
+                const dock = (st === 'free' || st === 'stale')
+                  ? `it's ${st} — dock there: release_node "${hookId}" + claim_node "${oid}"`
+                  : st === 'mine' ? `you already hold "${oid}" — put this behavior in it` : `held by another builder — write a slot you own`
+                conflicts.push(`slot ${slot} is owned by node "${oid}" (${dock})`)
+              }
+            }
+          }
+          if (conflicts.length) {
+            result.warnings = [...((result.warnings as string[] | undefined) ?? []), 'owns conflict — nodes are the owners: ' + conflicts.join(' · ')]
+          }
+        }
+      }
       break
     }
 
@@ -922,7 +953,7 @@ export function applyCommandToSnapshotObject(
   const known = KNOWN_PARAMS[cmd.type as string]
   if (known) {
     const unknown = Object.keys(cmd).filter(k => !known.has(k) && !k.startsWith('__'))  // __-prefixed = route-internal annotations
-    if (unknown.length) result.warnings = [`unknown params ignored: ${unknown.join(', ')}`]
+    if (unknown.length) result.warnings = [...((result.warnings as string[] | undefined) ?? []), `unknown params ignored: ${unknown.join(', ')}`]
   }
 
   // #6: echo the AUTHORITATIVE resulting field so the agent can verify the change

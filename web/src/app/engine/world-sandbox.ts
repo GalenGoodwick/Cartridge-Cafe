@@ -69,6 +69,11 @@ function __locOf(st) {
   return null;
 }
 let __gframe = 0;   // tick counter for the SAMPLED owns-guard (rung-2 client mirror)
+// strict strike-ledger (rung E): node → { strikes, slots:{idx:count} }. At
+// BENCH_STRIKES violating ticks the node is benched — its hook stops running.
+const __strikes = {};
+const __benched = {};
+const BENCH_STRIKES = 3;
 self.onmessage = function (ev) {
   const msg = ev.data;
   if (msg.type === 'load') {
@@ -183,11 +188,22 @@ self.onmessage = function (ev) {
     // timing one, so we don't diff every frame: check the first 120 frames after
     // load, then every 30th. Legacy-neutral: no __nodes ⇒ no owns ⇒ zero cost.
     const __nodes = (msg.worldData && typeof msg.worldData.__nodes === 'object') ? msg.worldData.__nodes : null;
+    // STRICT (rung E — opt-in worldData.__nodeStrict === true): strike → bench → tell.
+    // An out-of-lane write is REVERTED and counted; a node that keeps doing it
+    // (3 violating frames) is BENCHED — its hook stops running entirely. No
+    // silent forever-fight (revert-hammering a broken node teaches nothing and
+    // wastes every frame): the node is stopped, the DATA (slots/counts/author)
+    // is surfaced, the rest of the world runs on. Advisory stays sampled.
+    // Default OFF = today's behavior; a world opts in once its owns are accurate.
+    const __strict = !!__nodes && msg.worldData.__nodeStrict === true;
     const __sample = !!__nodes && (__gframe < 120 || (__gframe % 30) === 0);
+    const __guard = __strict || __sample;
     __gframe++;
-    const __viol = __sample ? new Map() : null;
+    const __viol = __guard ? new Map() : null;
+    let __benchEvents = null;   // nodes benched THIS tick → main surfaces + bridges them
     for (const h of __hooks) {
-      const __ownsRaw = __sample && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
+      if (__strict && __benched[h.id]) continue;   // benched node: hook does not run (zero cost)
+      const __ownsRaw = __guard && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
       // EMPTY owns = "unknown / unclaimed range" — never guarded (a claim_node'd or
       // zero-write node has owns:[]; guarding it would flag every legit write).
       const __owns = (__ownsRaw && __ownsRaw.length > 0) ? __ownsRaw : null;
@@ -215,8 +231,30 @@ self.onmessage = function (ev) {
           if (__a !== __b && !(Number.isNaN(__a) && Number.isNaN(__b))) {
             let __inr = false;
             for (let __r = 0; __r < __owns.length; __r++) { if (__i >= __owns[__r][0] && __i <= __owns[__r][1]) { __inr = true; break; } }
-            if (!__inr) { const __k = h.id + '|' + __i; const __e = __viol.get(__k); if (__e) __e.count++; else __viol.set(__k, { node: h.id, index: __i, count: 1 }); }
+            if (!__inr) {
+              const __k = h.id + '|' + __i; const __e = __viol.get(__k); if (__e) __e.count++; else __viol.set(__k, { node: h.id, index: __i, count: 1, reverted: __strict });
+              if (__strict && __i < __after.length) { __after[__i] = __a; }   // rung E: REVERT the stomp to its pre-hook value
+              if (__strict) {
+                // strike accounting: node → { strikes, slots } across ticks
+                const __s = (__strikes[h.id] = __strikes[h.id] || { strikes: 0, slots: {} });
+                __s.slots[__i] = (__s.slots[__i] || 0) + 1;
+                __s.hitThisTick = true;
+              }
+            }
           }
+        }
+      }
+      // strike → bench: a violating TICK counts once; at BENCH_STRIKES the node
+      // is benched (hook stops running next tick) and a bench EVENT goes up so
+      // the main thread can surface it (banner + worldData + /admin data).
+      if (__strict && __strikes[h.id] && __strikes[h.id].hitThisTick) {
+        const __s = __strikes[h.id];
+        __s.hitThisTick = false;
+        __s.strikes++;
+        if (__s.strikes >= BENCH_STRIKES && !__benched[h.id]) {
+          __benched[h.id] = true;
+          const __slots = Object.keys(__s.slots).map(Number).sort((x,y)=>x-y);
+          (__benchEvents = __benchEvents || []).push({ node: h.id, strikes: __s.strikes, slots: __slots, writes: __s.slots });
         }
       }
     }
@@ -248,7 +286,7 @@ self.onmessage = function (ev) {
       }
       if (any) fieldPatches.push(patch);
     }
-    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, ownershipViolations: (__viol && __viol.size) ? [...__viol.values()] : undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
+    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, ownershipViolations: (__viol && __viol.size) ? [...__viol.values()] : undefined, benched: __benchEvents || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
   }
 };
 `
@@ -260,7 +298,8 @@ interface SandboxReply {
   events?: { type: string; detail: unknown }[]
   error?: string
   errLoc?: { hookId: string; line: number; col: number; message: string; stack?: string }   // source-doc: WHERE the throw was (line 0 + stack = format we don't parse yet)
-  ownershipViolations?: { node: string; index: number; count: number }[]   // rung-2 client guard: out-of-range uniform writes (advisory, sampled)
+  ownershipViolations?: { node: string; index: number; count: number; reverted?: boolean }[]   // rung-2 client guard: out-of-range uniform writes (advisory sampled, or reverted under strict)
+  benched?: { node: string; strikes: number; slots: number[]; writes: Record<string, number> }[]   // rung E: nodes benched this tick (strict strike-out) — surface + bridge
   ms?: number
 }
 
@@ -553,9 +592,60 @@ export class WorldSandbox {
         const spec = this.hookSpecs.get(v.node)
         reportError('owns-violation', {
           name: v.node,
-          reason: `wrote gpuUniforms[${v.index}] — outside node "${v.node}"'s declared owns.uni`,
+          reason: `wrote gpuUniforms[${v.index}] — outside node "${v.node}"'s declared owns.uni${v.reverted ? ' — REVERTED (strict)' : ''}`,
           author: spec?.author,
         })
+      }
+    }
+    // rung E bench: a node struck out under strict — its hook is now stopped in
+    // the worker. Surface it EVERYWHERE the builder looks: the persistent fault
+    // banner (the re-popup), worldData (bridge-visible — the AI's next state
+    // pull reads exactly what was wrong: node, slots, write counts, author),
+    // and /admin (the durable data record). The rest of the world runs on.
+    if (this.pending.benched && this.pending.benched.length) {
+      const wd = sim.worldData as Record<string, unknown>
+      const ledger = (wd['__node_benched'] = (wd['__node_benched'] && typeof wd['__node_benched'] === 'object' ? wd['__node_benched'] : {}) as Record<string, unknown>) as Record<string, unknown>
+      // registry lookup so the fix is a CONCRETE command, not vague advice.
+      const nodes = (wd['__nodes'] && typeof wd['__nodes'] === 'object' ? wd['__nodes'] : {}) as Record<string, { owns?: { uni?: number[][] } }>
+      const ownerOf = (self: string, slot: number): string | null => {
+        for (const [oid, o] of Object.entries(nodes)) {
+          if (oid === self) continue
+          const uni = o?.owns?.uni
+          if (Array.isArray(uni)) for (const r of uni) if (Array.isArray(r) && slot >= r[0] && slot <= r[1]) return oid
+        }
+        return null
+      }
+      for (const b of this.pending.benched) {
+        const spec = this.hookSpecs.get(b.node)
+        const slots = b.slots.join(', ')
+        // group the out-of-lane slots by who owns them → per-owner fix instruction
+        const byOwner = new Map<string | null, number[]>()
+        for (const s of b.slots) { const o = ownerOf(b.node, s); if (!byOwner.has(o)) byOwner.set(o, []); byOwner.get(o)!.push(s) }
+        const fixes: string[] = []
+        for (const [owner, ss] of byOwner) {
+          const plural = ss.length > 1
+          if (owner) {
+            fixes.push(`slot${plural ? 's' : ''} ${ss.join(',')} belong${plural ? '' : 's'} to node "${owner}" — dock there: release_node "${b.node}" then claim_node "${owner}", and put this behavior in "${owner}"`)
+          } else {
+            const cur = (nodes[b.node]?.owns?.uni) || []
+            const merged = JSON.stringify([...cur, ...ss.map(s => [s, s])])
+            fixes.push(`slot${plural ? 's' : ''} ${ss.join(',')} ${plural ? 'are' : 'is'} unclaimed — if "${b.node}" should own ${plural ? 'them' : 'it'}, widen its lane: register_node {"id":"${b.node}","node":{"owns":{"uni":${merged}}}}`)
+          }
+        }
+        const fix = fixes.join(' · ')
+        ledger[b.node] = { strikes: b.strikes, slots: b.slots, writes: b.writes, author: spec?.author, fix, at: Date.now() }
+        // ONE funnel: the cc:fault forwarder shows the banner AND logs to the
+        // quarantine sink (no second POST from here). The message carries the DATA
+        // (node, slots, write counts, strikes) AND the concrete fix command.
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('cc:fault', {
+            detail: {
+              kind: 'node-benched',
+              message: `node "${b.node}" was benched — it kept writing outside its lane (slot${b.slots.length > 1 ? 's' : ''} ${slots} · write counts ${JSON.stringify(b.writes)} · ${b.strikes} strikes). Its code is stopped; everything else runs. TO FIX: ${fix} — then re-push.`,
+              ...(spec?.author ? { author: spec.author } : {}),
+            },
+          }))
+        }
       }
     }
     {
@@ -615,6 +705,15 @@ export class WorldSandbox {
     const useDt = (typeof fs === 'number' && fs > 0) ? Math.min(fs, 0.1) : wallDt
     try {
       const payload = cloneable(sim.worldData)
+      // NODE worlds get gpuUniforms IN the tick payload: the owns-guard diffs
+      // before/after each hook, and without the real previous state the snapshot
+      // was null → the guard never armed (the GUARDPROBE no-op). ~256 floats —
+      // it was in HOST_HEAVY as an output-echo, not for cost. Pure-legacy worlds
+      // (no __nodes) keep the exact old payload — byte-identical behavior.
+      if (sim.worldData['__nodes'] && typeof sim.worldData['__nodes'] === 'object') {
+        const u = sim.worldData['gpuUniforms']
+        if (Array.isArray(u)) payload.gpuUniforms = u.slice()
+      }
       payload.input = this.buildInput(sim.worldData)   // derived; never persisted to sim.worldData
       // slim PRESENCE for hooks: the full presence blob is host-heavy and dropped
       // by cloneable, but a hook that reacts to the ROOM (a shared/ambient world)
