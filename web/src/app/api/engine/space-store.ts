@@ -168,6 +168,8 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   define_visual: new Set(['type', 'name', 'wgsl']),
   define_module: new Set(['type', 'name', 'wgsl']),
   remove_module: new Set(['type', 'name']),
+  create_render_target: new Set(['type', 'name', 'persist']),
+  destroy_render_target: new Set(['type', 'name']),
   register_node: new Set(['type', 'id', 'node']),
   remove_node: new Set(['type', 'id']),
   add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
@@ -240,8 +242,8 @@ function emptySnapshot(): SceneSnapshot {
  *      remove_collision_callback/tween/cancel_tween — sim runtime structures,
  *      cleared on every load, no snapshot section
  *    · define_propagation — renderer propagation registry, no snapshot section
- *    · create_render_target/destroy_render_target — renderer target registry, no
- *      snapshot section (global mode persists them in the global store)
+ *    · create_render_target/destroy_render_target — persisted in
+ *      snap.renderTargets (cold loads must restore them; see the case handlers)
  *    · set_order (and set_visual's renderOrder param) — field.renderOrder is not
  *      serialized by generateSnapshots, so it cannot survive a reload anywhere
  *    · undo_visual — the snapshot keeps no visual history (in global mode the
@@ -525,6 +527,27 @@ export function applyCommandToSnapshotObject(
         snap.modules[existing].wgsl = cmd.wgsl as string
       } else {
         snap.modules.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
+      }
+      break
+    }
+
+    case 'create_render_target': {
+      // Persist target defs in the snapshot: a cold load (fresh tab or fresh
+      // lambda) must restore them, or fields with a renderTarget draw to
+      // screen and sampleTarget() consumers read black. (Before this, defs
+      // lived only in server memory — the feature broke on every cold start.)
+      if (!snap.renderTargets) snap.renderTargets = []
+      const name = cmd.name as string
+      const persist = cmd.persist === true ? true : undefined
+      const i = snap.renderTargets.findIndex(t => t.name === name)
+      if (i >= 0) snap.renderTargets[i] = { name, persist }
+      else snap.renderTargets.push({ name, persist })
+      break
+    }
+
+    case 'destroy_render_target': {
+      if (snap.renderTargets) {
+        snap.renderTargets = snap.renderTargets.filter(t => t.name !== (cmd.name as string))
       }
       break
     }

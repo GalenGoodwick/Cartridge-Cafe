@@ -429,6 +429,10 @@ export interface SceneSnapshot {
   interactionEffects: InteractionEffect[]
   visualTypes?: Array<{ name: string; wgsl: string }>
   modules?: Array<{ name: string; wgsl: string }>
+  /** Render targets this world declares (create_render_target). Persisted in the
+   *  snapshot so a cold load (fresh tab / fresh lambda) restores them — without
+   *  this, fields with a renderTarget draw to screen and consumers read black. */
+  renderTargets?: Array<{ name: string; persist?: boolean }>
   timestamp: number
 }
 

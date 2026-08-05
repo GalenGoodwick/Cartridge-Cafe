@@ -2371,6 +2371,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             renderer.registerModule(m.name, m.wgsl)
           }
         }
+        // Restore render targets BEFORE fields resolve their renderTarget
+        // property — a cold load without this leaves resolveRenderTarget()
+        // at -1: writer fields draw to screen, sampleTarget() reads black.
+        if (Array.isArray(snapshot.renderTargets)) {
+          for (const rt of snapshot.renderTargets) {
+            if (rt.name) renderer.createRenderTarget(rt.name, rt.persist)
+          }
+        }
 
         // Restore fields and state
         sim.restoreFromSnapshots(snapshot.fields || [])
