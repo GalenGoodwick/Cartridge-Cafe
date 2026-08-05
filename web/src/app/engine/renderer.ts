@@ -4040,6 +4040,13 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     return [...this.visualTypeRegistry.values()]
   }
 
+  /** The WGSL source of a visual by name — pixel→source provenance: the owner
+   *  buffer resolves a clicked pixel to its field's visual, this resolves that
+   *  visual to the exact `visual_<name>` fn that drew the pixel. */
+  getVisualWgsl(name: string): string | null {
+    return this.visualTypeRegistry.get(name)?.wgsl ?? null
+  }
+
   /** Resolve a visual type name to its ID */
   resolveVisualType(name: string): number | undefined {
     const entry = this.visualTypeRegistry.get(name)

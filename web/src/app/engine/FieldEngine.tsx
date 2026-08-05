@@ -201,7 +201,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
   const inspectOnRef = useRef(false)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null }[]>([])
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; source?: string | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -2676,7 +2676,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const gpuEnt = sim ? sim.getEntityAtPoint(gI.x, gI.y) : -1
         if (gpuEnt >= 0) entI = { id: gpuEnt, kind: entI?.kind, label: entI?.label }
       } catch { /* getEntityAtPoint is a bonus, never break inspect */ }
-      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: (hfI?.visualType as string | undefined) ?? null, color: colI, entity: entI }
+      // PIXEL → SOURCE: the owner buffer gave us the field; its visual is the
+      // exact shader that drew this pixel. Resolve the visual NAME + its WGSL so a
+      // click backtracks a pixel to the code that produced it (node-superposition
+      // provenance). visualTypeName is the human name; the number is the packed id.
+      const vName = (hfI as { visualTypeName?: string } | null)?.visualTypeName ?? null
+      let source: string | null = null
+      try { if (vName) source = rendererRef.current?.getVisualWgsl(vName) ?? null } catch { /* never break inspect */ }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, source }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
         const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
@@ -5160,13 +5167,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)</div>
               {inspectLog.length === 0 && <div className="text-white/40">click anything…</div>}
               {[...inspectLog].reverse().map((en, i) => (
-                <button key={en.at + '-' + i}
-                  onClick={() => { try { navigator.clipboard.writeText(JSON.stringify(en)) } catch { /* fine */ } }}
-                  title="click to copy"
-                  className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
-                  ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
-                  {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
-                </button>
+                <div key={en.at + '-' + i}>
+                  <button
+                    onClick={() => { try { navigator.clipboard.writeText(JSON.stringify(en)) } catch { /* fine */ } }}
+                    title="click to copy (incl. the source WGSL)"
+                    className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
+                    ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
+                    {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
+                    {en.source ? <span className="text-emerald-300"> · src ✓</span> : null}
+                  </button>
+                  {/* PIXEL → SOURCE: the newest click shows the exact visual that
+                      drew it — backtrack a pixel to the code that produced it. */}
+                  {i === 0 && en.source && (
+                    <pre className="mt-1 mb-1 max-h-40 overflow-auto rounded bg-black/50 border border-emerald-400/20 px-2 py-1 text-[11px] leading-snug text-emerald-100/80 whitespace-pre-wrap">{en.source.trim()}</pre>
+                  )}
+                </div>
               ))}
             </div>
           )}
