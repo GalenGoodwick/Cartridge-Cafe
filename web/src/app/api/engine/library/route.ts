@@ -7,16 +7,18 @@ export const dynamic = 'force-dynamic'
 /**
  * THE PUBLIC LIBRARY — every world's code, readable by anyone, human or AI.
  *
- * All games and scripts on the shelf are commons: an AI building its own world
- * learns from every world that came before it. Read-only. Private drafts
- * (isPublic=false spaces) stay out until their owner opens them.
+ * All games and scripts are commons: an AI building its own world learns from
+ * every world that came before it. Read-only. Private/draft spaces ARE listed
+ * (marked private: true) so AIs can find and reuse components from any world —
+ * the library is the whole collection, not just the open shelf. Empty drafts
+ * (no fields, no code) are skipped as noise.
  *
  *   GET /api/engine/library                → the catalogue (name, kind, sizes)
  *   GET /api/engine/library?world=<name>   → one world's full source: WGSL
  *       visuals, step-hook code, modules, fields, interaction rules, params.
  *
  * What is NOT here: tokens, owner emails, per-player save state (the
- * __-prefixed worldData blobs), or anything from private spaces.
+ * __-prefixed worldData blobs).
  */
 
 type Sceneish = {
@@ -75,19 +77,18 @@ export async function GET(req: NextRequest) {
       if (scene) return NextResponse.json({ world: sourceOf(want, 'house', scene) })
     } catch { /* not a house scene — fall through to spaces */ }
 
-    // then a PUBLIC space, by slug or name (case-insensitive)
+    // then ANY space, public or private, by slug or name (case-insensitive)
     const space = await prisma.playerSpace.findFirst({
       where: {
-        isPublic: true,
         OR: [{ slug: want.toLowerCase() }, { name: { equals: want, mode: 'insensitive' } }],
       },
-      select: { slug: true, name: true, snapshot: true },
+      select: { slug: true, name: true, snapshot: true, isPublic: true },
     })
     if (space) {
       const s = (space.snapshot as unknown as Sceneish) || {}
-      return NextResponse.json({ world: sourceOf(space.name, 'space', s, space.slug) })
+      return NextResponse.json({ world: { ...sourceOf(space.name, 'space', s, space.slug), private: !space.isPublic || undefined } })
     }
-    return NextResponse.json({ error: 'World not found in the library (private drafts are not listed)' }, { status: 404 })
+    return NextResponse.json({ error: 'World not found in the library' }, { status: 404 })
   }
 
   // ── the catalogue ──
@@ -101,12 +102,15 @@ export async function GET(req: NextRequest) {
     } catch { /* skip unreadable */ }
   }
   const spaces = await prisma.playerSpace.findMany({
-    where: { isPublic: true },
-    select: { slug: true, name: true, snapshot: true },
+    select: { slug: true, name: true, snapshot: true, isPublic: true },
   })
   for (const sp of spaces) {
     const s = (sp.snapshot as unknown as Sceneish) || {}
-    worlds.push({ name: sp.name, kind: 'space', slug: sp.slug, ...sizesOf(s) })
+    const sz = sizesOf(s)
+    // empty drafts are noise, not components — a private world earns its
+    // library card by containing actual code/structure
+    if (!sp.isPublic && sz.visuals === 0 && sz.hooks === 0 && sz.fields === 0) continue
+    worlds.push({ name: sp.name, kind: 'space', slug: sp.slug, ...(sp.isPublic ? {} : { private: true }), ...sz })
   }
   return NextResponse.json({
     library: 'every world\'s code is commons — GET ?world=<name> for full source',

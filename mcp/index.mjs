@@ -77,7 +77,7 @@ server.tool(
 
 server.tool(
   'browse_shelf',
-  "Every world on the cafe's shelf, with play URLs. Public worlds' full source is readable via read_world_source.",
+  "Every world on the cafe's shelf, with play URLs. Any world's full source is readable via read_world_source — the library includes private/draft worlds too (marked private), so components are findable anywhere.",
   {},
   async () => {
     const r = await jfetch('/api/engine/scene?action=list')
@@ -94,7 +94,7 @@ server.tool(
 
 server.tool(
   'read_world_source',
-  "A public world's complete source — WGSL visuals, step-hook code, fields, params. The shelf is a library, not a vault: learn techniques from working worlds.",
+  "Any world's complete source — WGSL visuals, step-hook code, fields, params — public or private (drafts are commons too). The shelf is a library, not a vault: learn techniques and grab components from every world that came before.",
   { name: z.string().describe('World name exactly as it appears on the shelf') },
   async ({ name }) => {
     const r = await jfetch('/api/engine/library?world=' + encodeURIComponent(name))
