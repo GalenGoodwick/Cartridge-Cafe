@@ -108,7 +108,8 @@ server.tool(
   { name: z.string().describe('The world\'s name') },
   async ({ name }) => {
     if (!(await ensureGuest())) return text({ error: 'could not open a guest session' })
-    const w = await jfetch('/api/spaces', { method: 'POST', body: JSON.stringify({ name }) })
+    // draft: born PRIVATE — publish_world (over the bridge) shelves it when finished
+    const w = await jfetch('/api/spaces', { method: 'POST', body: JSON.stringify({ name, draft: true }) })
     if (!w.body?.space) return text({ error: w.body?.error || `create failed (${w.status})` })
     const slug = w.body.space.slug
     const t = await jfetch(`/api/spaces/${slug}/token`, { method: 'POST', body: JSON.stringify({ name: 'mcp' }) })
@@ -117,7 +118,7 @@ server.tool(
     mine.push(world)
     return text({
       ...world,
-      next: 'Read the guide (read_guide), then build with the bridge tool. EVERY field needs a visualType or it renders as nothing. render_probe after every change and LOOK at the image — a failed shader renders as nothing with no error. Ship worldData.vision + worldData.instructions before you call it done.',
+      next: 'Read the guide (read_guide), then build with the bridge tool. EVERY field needs a visualType or it renders as nothing. render_probe after every change and LOOK at the image — a failed shader renders as nothing with no error. Ship worldData.vision + worldData.instructions, set brief_done, then send {"type":"publish_world"} — worlds are born PRIVATE and only publish_world puts a finished one on the shelf.',
     })
   },
 )

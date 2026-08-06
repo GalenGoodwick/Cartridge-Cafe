@@ -221,6 +221,11 @@ never ship that.
 
 ## World Blurb (write it when you finish) <!-- core -->
 
+**Publishing:** worlds are born PRIVATE. When vision + instructions + blurb are set and
+`brief_done` passes the render check, send `{"type": "publish_world"}` to put the world
+on the public shelf. Until then it is visible only to its owner (and in the code
+library, where every world's source is commons). `unpublish_world` reverses it.
+
 When your world is done, set `worldData.blurb` — a ONE-LINE shareable hook, the
 tagline shown when someone shares the world or sees it on the shelf. YOU built it,
 so you write the pitch: name what the player DOES or SEES, concrete and inviting.
@@ -409,6 +414,8 @@ looking at the **center, `(256, 256)`**, showing roughly `x,y ∈ [0, 512]`. So:
 | `define_module` | `name, wgsl` | Register a reusable WGSL module. Functions must use `mod_NAME` prefix. Modules are injected before visuals in the uber-shader and can be called by any visual. Zero runtime cost (compile-time concatenation). |
 | `create_render_target` | `name, persist?` | Create a named intermediate render buffer. Fields write to it via the `renderTarget` property; other fields sample it via `sampleTarget()`. `persist: true` = the buffer is NOT cleared each frame — it carries state across frames (the cross-frame buffer a solver needs). Max 6 targets. |
 | `destroy_render_target` | `name` | Destroy a named render target and free its GPU memory. |
+| `publish_world` | — | Put THIS world on the public shelf. Gated: requires `worldData.vision`, `worldData.instructions`, and `brief_done` (which itself requires a working visual). Worlds are born PRIVATE — publishing is the explicit act of finishing. |
+| `unpublish_world` | — | Take this world off the public shelf. Still editable by its owner and readable in the library. |
 
 Fields with a `visualType` are rendered via the **uber-shader** — a single compute pass that evaluates all superimposed fields. This is the primary way to create complex 3D/2D visuals.
 

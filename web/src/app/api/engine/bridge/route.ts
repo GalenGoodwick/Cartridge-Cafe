@@ -753,12 +753,15 @@ export async function POST(req: NextRequest) {
             if (twin) { results.push({ type: cmd.type, error: `You already own a world named "${twin.name}" (/space/${twin.slug}). Edit it with use_world {"slug":"${twin.slug}"}, or create with a different name.`, existingSlug: twin.slug }); continue }
           }
           // race-safe: the DB unique constraint arbitrates the slug, not a prior read
-          const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId! }))
+          // PUBLISH PIPELINE: AI-created worlds are born PRIVATE. The public
+          // shelf is for finished worlds — publish_world (gated on vision +
+          // instructions + brief_done) is the explicit act that shelves one.
+          const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId!, isPublic: false }))
           const worldToken = await mintWorldToken(space.id, 'created via player key')
           // The platform speaks on its own bus: world births announce themselves.
           commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
-          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken,
-            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing.` })
+          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: true,
+            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing. The world is PRIVATE until you send {"type":"publish_world"} (requires vision + instructions + brief_done) — the shelf is for finished worlds.` })
           continue
         }
         if (cmd.type === 'use_world') {
@@ -793,6 +796,35 @@ export async function POST(req: NextRequest) {
         const out = await setOriginal(auth.spaceId!)
         results.push({ type: 'set_original', ...out,
           next: out.ok ? 'baseline captured — reset_world / R now restore exactly this state. Re-run anytime to re-bake.' : undefined })
+        continue
+      }
+      // PUBLISH PIPELINE — landing on the public shelf is an explicit, gated
+      // act, so half-built hobby worlds don't pop up on main. The gates are the
+      // brew wizard's own discipline applied to the API door: vision +
+      // instructions + brief_done (which itself requires a WORKING visual via
+      // the render check). unpublish_world takes a world back off the shelf —
+      // still editable by its owner, still readable in the library.
+      if ((cmd.type === 'publish_world' || cmd.type === 'unpublish_world') && isSpaceScoped) {
+        if (cmd.type === 'unpublish_world') {
+          await prisma.playerSpace.update({ where: { id: auth.spaceId! }, data: { isPublic: false } })
+          results.push({ type: cmd.type, ok: true, private: true,
+            next: 'off the shelf — still editable and library-readable. publish_world to re-shelve.' })
+          continue
+        }
+        const pubSnap = await getSpaceSnapshot(auth.spaceId!, true)
+        const pubWd = (pubSnap?.worldData ?? {}) as Record<string, unknown>
+        const missing: string[] = []
+        if (typeof pubWd.vision !== 'string' || !(pubWd.vision as string).trim()) missing.push('worldData.vision')
+        if (typeof pubWd.instructions !== 'string' || !(pubWd.instructions as string).trim()) missing.push('worldData.instructions')
+        if (!pubWd.brief_done) missing.push('brief_done (itself gated on a WORKING visual — the render check)')
+        if (missing.length) {
+          results.push({ type: cmd.type,
+            error: `publish refused — the shelf is for finished worlds. Missing: ${missing.join(', ')}.` })
+          continue
+        }
+        await prisma.playerSpace.update({ where: { id: auth.spaceId! }, data: { isPublic: true } })
+        results.push({ type: cmd.type, ok: true, published: true, url: `https://cartridge.cafe/space/${auth.slug}`,
+          next: 'on the public shelf.' })
         continue
       }
       // manifest of every store this world touches (read-only)
