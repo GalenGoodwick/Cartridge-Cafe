@@ -4241,6 +4241,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
       const mode3D = renderModeRef.current === '3d' ? camera3DRef.current : undefined
       const stepHookData = renderer.hasStepHooks() ? { dt, worldData: sim.worldData } : undefined
+      renderer.setWorldData(sim.worldData as Record<string, unknown>)   // sandboxed worlds: hooks run in the worker, but render layers (GPU text) still need hud
 
       // ── Lossless frame memoization ──
       // Every visual is a pure function of (uv, time, params, uniforms). If no

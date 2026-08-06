@@ -2108,10 +2108,16 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
     } catch { return false }
   }
   private _txtScreenBuf: GPUBuffer | null = null
+  /** worldData feed for render layers that must work in SANDBOXED worlds too —
+   *  stepHookData is undefined when hooks run in the worker (renderer holds no
+   *  hooks), which starved the text pass of hud data. Set every frame. */
+  private _wdFeed: Record<string, unknown> | null = null
+  setWorldData(wd: Record<string, unknown> | null): void { this._wdFeed = wd }
   private renderTextLayer(encoder: GPUCommandEncoder, view: GPUTextureView, worldData: Record<string, unknown> | undefined, W: number, H: number, dpr: number): void {
     const device = this.device
-    if (!device || !worldData) return
-    const hud = worldData['hud']
+    const wdT = worldData ?? this._wdFeed ?? undefined
+    if (!device || !wdT) return
+    const hud = wdT['hud']
     if (!Array.isArray(hud) || !hud.length) return
     if (!this.ensureTextLayer() || !this._txtPipeline || !this._txtBuf || !this._txtScreenBuf || !this._txtBG) return
     const inst = new Float32Array(FieldRenderer.TXT_MAX * 8)
