@@ -215,7 +215,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
   const inspectOnRef = useRef(false)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; source?: string | null }[]>([])
+  // HOVER PIXEL COLOR (Galen): while inspect is on, snapshot the canvas ~4×/s
+  // (createImageBitmap works on a WebGPU canvas) into a 2D buffer and sample
+  // the TRUE painted pixel under the cursor live — shown in the console header.
+  const [inspectHover, setInspectHover] = useState<{ hex: string; x: number; y: number } | null>(null)
+  const inspectPixRef = useRef<{ data: ImageData; w: number; h: number } | null>(null)
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; source?: string | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -2644,6 +2649,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //  deliberate click inside the world must. Time-gate on the last swap.
   const swapAtRef = useRef(0)
 
+  // inspect frame-snapshot loop: cheap (4Hz, only while inspect is on)
+  useEffect(() => {
+    if (!inspectOn) { inspectPixRef.current = null; return }
+    let live = true
+    const grab = async () => {
+      try {
+        const cv = canvasRef.current
+        if (!cv || !live) return
+        const bmp = await createImageBitmap(cv)
+        const oc = document.createElement('canvas')
+        oc.width = bmp.width; oc.height = bmp.height
+        const cx = oc.getContext('2d')
+        if (cx) { cx.drawImage(bmp, 0, 0); inspectPixRef.current = { data: cx.getImageData(0, 0, bmp.width, bmp.height), w: bmp.width, h: bmp.height } }
+        bmp.close()
+      } catch { /* snapshot is a bonus */ }
+    }
+    grab()
+    const iv = setInterval(grab, 250)
+    return () => { live = false; clearInterval(iv) }
+  }, [inspectOn])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const canvas = canvasRef.current
     const sim = simulationRef.current
@@ -2724,7 +2750,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (!nodeI.length) nodeI = null
         }
       } catch { /* provenance is a bonus, never break inspect */ }
-      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, source }
+      // HUD TEXT is DOM overlay, invisible to every canvas resolver (Galen:
+      // "press b to start text") — hit-test worldData.hud entries by their %
+      // positions and approximate text box, name the containing/nearest one.
+      let hudI: { id: string; text: string } | null = null
+      try {
+        const hudU = sim?.worldData?.['hud']
+        const cvR = canvas.getBoundingClientRect()
+        if (Array.isArray(hudU)) {
+          let bdH = 40
+          for (const hEl of hudU as Array<Record<string, unknown>>) {
+            if (hEl?.['type'] !== 'text' || !hEl['text']) continue
+            const hx = cvR.left + cvR.width * (parseFloat(String(hEl['x'])) / 100)
+            const hy = cvR.top + cvR.height * (parseFloat(String(hEl['y'])) / 100)
+            const fs = parseFloat(String(hEl['fontSize'] || '12')) || 12
+            const tw = String(hEl['text']).length * fs * 0.62
+            const inX = e.clientX >= hx - 8 && e.clientX <= hx + tw + 8
+            const dY = Math.abs(e.clientY - (hy + fs * 0.6))
+            if (inX && dY < Math.max(fs, 14) && dY < bdH) { bdH = dY; hudI = { id: String(hEl['id']), text: String(hEl['text']).slice(0, 48) } }
+          }
+        }
+      } catch { /* hud naming is a bonus */ }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, hud: hudI, source }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
         const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
@@ -2880,6 +2927,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (inspectOnRef.current) {
+      try {
+        const cv = canvasRef.current, pix = inspectPixRef.current
+        if (cv && pix) {
+          const r = cv.getBoundingClientRect()
+          const px = Math.max(0, Math.min(pix.w - 1, Math.round((e.clientX - r.left) / r.width * pix.w)))
+          const py = Math.max(0, Math.min(pix.h - 1, Math.round((e.clientY - r.top) / r.height * pix.h)))
+          const o = (py * pix.w + px) * 4, d = pix.data.data
+          const hex = '#' + [d[o], d[o + 1], d[o + 2]].map(v => v.toString(16).padStart(2, '0')).join('')
+          setInspectHover({ hex, x: px, y: py })
+        }
+      } catch { /* hover color is a bonus */ }
+      return
+    }
     const input = inputRef.current
     const canvas = canvasRef.current
     if (!input || !canvas) return
@@ -5219,7 +5280,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           )}
           {inspectOn && (
             <div className="fixed top-14 left-3 z-[999] pointer-events-auto font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-sky-400/40 p-2.5 max-w-[380px]">
-              <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)</div>
+              <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)
+                {inspectHover ? <span className="ml-2 text-white/80"><span style={{ display: 'inline-block', width: 10, height: 10, background: inspectHover.hex, border: '1px solid rgba(255,255,255,0.4)', marginRight: 4 }} />{inspectHover.hex} ({inspectHover.x},{inspectHover.y})</span> : null}</div>
               {inspectLog.length === 0 && <div className="text-white/40">click anything…</div>}
               {[...inspectLog].reverse().map((en, i) => (
                 <div key={en.at + '-' + i}>
@@ -5229,6 +5291,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
                     ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
                     {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
+                    {en.hud ? <span className="text-cyan-300"> › HUD "{en.hud.text}" ({en.hud.id})</span> : null}
                     {en.node ? <span className="text-fuchsia-300"> › {en.node.map(n => `${n.hook} #${n.idx}·k${n.kind}@${n.d}px`).join(' · ')}</span> : null}
                     {en.source ? <span className="text-emerald-300"> · src ✓</span> : null}
                   </button>
