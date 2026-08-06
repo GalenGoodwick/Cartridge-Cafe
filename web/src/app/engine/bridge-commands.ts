@@ -348,7 +348,10 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
             case 'update_step_hook': {
               // JS hooks are allowed for everyone now — they run ONLY in the sealed
               // Worker sandbox (no DOM/cookies/network), never on the main thread.
-              const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+              // `id` is accepted as an alias for `hookId`/`name` — otherwise a caller
+              // passing `id` silently minted a `hook_<ts>` ghost that shadowed the
+              // named hook and ran alongside it (the Aug 2026 veilfire deploy trap).
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || (cmd.id as string) || `hook_${Date.now()}`
               const code = String(cmd.code || '')
               if (!code) { pushTerminal('update_step_hook', cmd.author, 'ERROR: step hook needs code', undefined, cmdAuthor); break }
               liveHooksRef.current.set(hookId, { id: hookId, author: String(cmd.author || 'ai'), description: String(cmd.description || ''), code })
@@ -890,7 +893,8 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
 
             case 'add_step_hook': {
               // Allowed for everyone — runs ONLY in the sealed Worker sandbox.
-              const hookId = (cmd.hookId as string) || (cmd.name as string) || `hook_${Date.now()}`
+              // `id` accepted as an alias for `hookId`/`name` (see update_step_hook).
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || (cmd.id as string) || `hook_${Date.now()}`
               const code = String(cmd.code || '')
               if (!code) { pushTerminal('add_step_hook', cmd.author, 'ERROR: step hook needs code', undefined, cmdAuthor); break }
               liveHooksRef.current.set(hookId, { id: hookId, author: String(cmd.author || 'ai'), description: String(cmd.description || ''), code })
@@ -900,7 +904,7 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
               break
             }
             case 'remove_step_hook': {
-              const hookId = (cmd.hookId as string) || (cmd.name as string) || ''
+              const hookId = (cmd.hookId as string) || (cmd.name as string) || (cmd.id as string) || ''
               liveHooksRef.current.delete(hookId)
               installHooks(sim, [...liveHooksRef.current.values()], sim.worldData)
               pushTerminal('remove_step_hook', cmd.author, `hook "${hookId}" removed — ${liveHooksRef.current.size} active`, undefined, cmdAuthor)
