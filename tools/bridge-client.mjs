@@ -88,9 +88,11 @@ export function makeClient({ base = CAFE_BASE, token = '', timeoutMs = 15_000, h
       }
     },
 
-    /** The engine build guide (markdown). */
-    async guide() {
-      return (await this.text('/api/engine/guide')).text
+    /** The engine build guide (markdown). No args = CORE contracts + capability
+     *  index; pass a section name for one section in full depth. */
+    async guide(section) {
+      const q = section ? `?section=${encodeURIComponent(section)}` : ''
+      return (await this.text(`/api/engine/guide${q}`)).text
     },
   }
 }
