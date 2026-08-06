@@ -3023,6 +3023,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (!canvas) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      // World-owned wheel (opt-in): a world that sets worldData.wheel_opt gets
+      // the wheel/pinch stream as a monotonic accumulator (worldData.wheel_y)
+      // for its OWN zoom/scroll, and the grid camera stays put — pinch should
+      // zoom the game, not the render grid. Hooks consume it split_n-style
+      // (keep last-seen, act on the delta); it is not in the worker→main sync
+      // whitelist, so a hook can never clobber the count.
+      {
+        const wsim = simulationRef.current
+        const wwd = wsim ? (wsim.worldData as Record<string, unknown>) : null
+        if (wwd && wwd['wheel_opt'] === true) {
+          wwd['wheel_y'] = ((wwd['wheel_y'] as number) || 0) + e.deltaY
+          return
+        }
+      }
       if (renderModeRef.current === '3d') {
         // 3D mode: dolly camera along view direction
         const cam3D = camera3DRef.current
