@@ -195,6 +195,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
   const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
+  // owner's shelf switch: current visibility + the confirm popup (Galen: one
+  // click to publish/private, confirm either way, ABOVE the edit button)
+  const [spacePublic, setSpacePublic] = useState<boolean | null>(null)
+  const [pubConfirm, setPubConfirm] = useState(false)
+  const [pubBusy, setPubBusy] = useState(false)
   // ── INSPECT MODE (universal — Galen Jul 30): a toggle in the EDIT dropdown.
   //    While on: blue overlay + grid, clicks are DOCUMENTED (never gameplay),
   //    each entry = coords · field · visual · color, mirrored to wd.__clicks so
@@ -5309,6 +5314,55 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 </div>
               )}
             </div>}
+            {/* THE SHELF SWITCH — owner-only, ABOVE the edit fold (Galen: out of
+                world tools, one click to publish/private, confirm either way).
+                Shows the world's CURRENT visibility; the popup names the act. */}
+            {!isHub && spaceId && isOwner && !versionView && spacePublic !== null && (
+              <div className="relative">
+                <button
+                  onClick={() => setPubConfirm(v => !v)}
+                  title={spacePublic ? 'this world is PUBLIC — click to take it off the shelf' : 'this world is PRIVATE — click to publish it to the shelf'}
+                  className={'w-full px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ' +
+                    (spacePublic
+                      ? 'bg-amber-400/15 border-amber-300/40 text-amber-200 hover:bg-amber-400/25'
+                      : 'bg-black/60 border-white/15 text-white/60 hover:text-white hover:bg-black/80')}
+                >
+                  {spacePublic ? '● PUBLIC' : '○ PRIVATE'}
+                </button>
+                {pubConfirm && (
+                  <div className="absolute right-full top-0 mr-2 z-50 w-64 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-amber-300/25 p-3 shadow-2xl font-mono">
+                    <div className="text-[14px] text-white/80 leading-snug mb-2">
+                      {spacePublic
+                        ? 'take this world off the public shelf? it stays yours to edit, and its code stays readable in the library.'
+                        : 'publish this world to the public shelf? anyone can play it.'}
+                    </div>
+                    <button disabled={pubBusy}
+                      onClick={async () => {
+                        setPubBusy(true)
+                        try {
+                          const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug!)}`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ isPublic: !spacePublic }),
+                          })
+                          const d = await r.json().catch(() => null)
+                          if (r.ok) setSpacePublic(typeof d?.space?.isPublic === 'boolean' ? d.space.isPublic : !spacePublic)
+                        } finally { setPubBusy(false); setPubConfirm(false) }
+                      }}
+                      className={'w-full px-2 py-1.5 rounded text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40 ' +
+                        (spacePublic
+                          ? 'bg-black/50 border border-white/20 text-white/80 hover:text-white'
+                          : 'bg-amber-400/20 border border-amber-300/50 text-amber-200 hover:bg-amber-400/30')}
+                    >
+                      {pubBusy ? '…' : spacePublic ? 'MAKE PRIVATE' : 'PUBLISH'}
+                    </button>
+                    <button onClick={() => setPubConfirm(false)}
+                      className="w-full mt-1.5 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[14px] transition-colors">
+                      cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {/* game worlds fold their meta-UI behind one dock; back/tools/sound/
                 instructions + the game's own HUD stay out. CAFE / hubs / SUB-MAIN
                 are navigation surfaces — they show everything as before. */}
