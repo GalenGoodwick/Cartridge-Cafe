@@ -200,6 +200,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [spacePublic, setSpacePublic] = useState<boolean | null>(null)
   const [pubConfirm, setPubConfirm] = useState(false)
   const [pubBusy, setPubBusy] = useState(false)
+  useEffect(() => {
+    if (!spaceId || !spaceSlug || !isOwner) { setSpacePublic(null); return }
+    let gone = false
+    fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`)
+      .then(r => r.json())
+      .then(d => { if (!gone && typeof d?.space?.isPublic === 'boolean') setSpacePublic(d.space.isPublic) })
+      .catch(() => {})
+    return () => { gone = true }
+  }, [spaceId, spaceSlug, isOwner])
   // ── INSPECT MODE (universal — Galen Jul 30): a toggle in the EDIT dropdown.
   //    While on: blue overlay + grid, clicks are DOCUMENTED (never gameplay),
   //    each entry = coords · field · visual · color, mirrored to wd.__clicks so
