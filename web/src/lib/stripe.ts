@@ -23,6 +23,9 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // one-time $10 to publish a cafe page to permanent hosting at /p/<slug>.
   // Scoped to the slug (Entitlement.slug) so a purchase buys exactly one address.
   page: { env: 'STRIPE_PRICE_PAGE', mode: 'payment', label: 'publish a page — permanent hosting ($10)' },
+  // a plain optional tip — the price itself has custom_unit_amount enabled,
+  // so the donor picks the amount on Stripe's own checkout page.
+  donate: { env: 'STRIPE_PRICE_DONATE', mode: 'payment', label: 'donate to cartridge.cafe' },
 }
 
 export function stripeConfigured(): boolean {

@@ -379,6 +379,23 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     const iv = setInterval(pull, 60000)
     return () => clearInterval(iv)
   }, [])
+  // donate — a plain optional tip, same checkout pattern as world-protect
+  const [pay, setPay] = useState<{ configured: boolean; products: Array<{ key: string; label: string }> } | null>(null)
+  const [donateBusy, setDonateBusy] = useState(false)
+  useEffect(() => {
+    fetch('/api/pay/checkout', { cache: 'no-store' }).then(r => r.json()).then(setPay).catch(() => {})
+  }, [])
+  const donateProduct = pay?.configured ? pay.products.find(p => p.key === 'donate') : undefined
+  const buyDonate = async () => {
+    if (donateBusy) return
+    setDonateBusy(true)
+    try {
+      const r = await fetch('/api/pay/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: 'donate' }) })
+      const j = await r.json()
+      if (j?.url) { window.location.assign(j.url); return }
+    } catch { /* silent — donate is optional, no error UI needed here */ }
+    finally { setDonateBusy(false) }
+  }
   // /?icon=1 — the profile page's door into the icon brewer
   useEffect(() => {
     try { if (new URLSearchParams(window.location.search).get('icon') === '1') setIconOpen(true) } catch { /* fine */ }
@@ -1899,6 +1916,12 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                         {it.label}
                       </button>
                     ))}
+                    {donateProduct && (
+                      <button onClick={() => { setAcctOpen(false); void buyDonate() }} disabled={donateBusy}
+                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors disabled:opacity-50">
+                        {donateBusy ? 'opening…' : '♥ DONATE'}
+                      </button>
+                    )}
                     <div className="my-1 border-t border-white/10" />
                     {who.guest ? (
                       // a guest has no real account, but two ways out: KEEP their
