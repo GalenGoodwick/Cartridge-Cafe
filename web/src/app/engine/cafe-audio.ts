@@ -81,7 +81,7 @@ export function worldBus(): { ctx: AudioContext; dest: AudioNode } | null {
 export function recordTap(): { stream: MediaStream; stop: () => void } | null {
   const c = ensureCtx()
   if (!c || !master || !worldGain) return null
-  if (c.state === 'suspended') { c.resume().catch(() => {}) }
+  if (c.state === 'suspended' || (c.state as string) === 'interrupted') { c.resume().catch(() => {}) }
   const dest = c.createMediaStreamDestination()
   master.connect(dest)
   worldGain.connect(dest)
@@ -316,7 +316,7 @@ export function startCafeAudio(initialScene: string) {
 
   const resume = () => {
     const c = ensureCtx()
-    if (c && c.state === 'suspended') c.resume()
+    if (c && (c.state === 'suspended' || (c.state as string) === 'interrupted')) c.resume()
     setScene(currentScene)
   }
 

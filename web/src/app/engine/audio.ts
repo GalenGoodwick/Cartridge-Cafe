@@ -40,8 +40,16 @@ export class GameAudio {
       this.masterGain.gain.value = this.masterVolume
       this.masterGain.connect(this.ctx.destination)
     }
-    if (this.ctx.state === 'suspended') {
+    // AUTO-HEAL (Galen: "sound failed once, didn't auto heal") — Safari parks
+    // the context in 'interrupted' (tab backgrounded, audio focus lost, a call),
+    // not just 'suspended'; resume BOTH. A 'closed' context is dead — drop it so
+    // the next call rebuilds (re-adopting the shared cafe bus if it's alive).
+    const st = this.ctx.state as string
+    if (st === 'suspended' || st === 'interrupted') {
       this.ctx.resume().catch(() => {})
+    } else if (st === 'closed') {
+      this.ctx = null as unknown as AudioContext; this.masterGain = null
+      return this.ensureContext()
     }
     return this.ctx
   }
@@ -84,7 +92,13 @@ export class GameAudio {
 
   /** Play a synthesized beep/tone */
   beep(frequency: number = 440, duration: number = 0.2, volume: number = 0.5, type: OscillatorType = 'sine'): void {
-    const ctx = this.ensureContext()
+    let ctx = this.ensureContext()
+    // a transient bad-state context can throw on createOscillator — heal (drop
+    // + rebuild) and retry once, so ONE failure never silences the game.
+    try { this._beep(ctx, frequency, duration, volume, type) }
+    catch { this.ctx = null as unknown as AudioContext; this.masterGain = null; try { this._beep(this.ensureContext(), frequency, duration, volume, type) } catch { /* give up this one sound */ } }
+  }
+  private _beep(ctx: AudioContext, frequency: number, duration: number, volume: number, type: OscillatorType): void {
     const osc = ctx.createOscillator()
     osc.type = type
     osc.frequency.value = frequency
