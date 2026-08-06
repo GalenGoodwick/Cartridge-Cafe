@@ -412,6 +412,24 @@ looking at the **center, `(256, 256)`**, showing roughly `x,y ∈ [0, 512]`. So:
 
 Fields with a `visualType` are rendered via the **uber-shader** — a single compute pass that evaluates all superimposed fields. This is the primary way to create complex 3D/2D visuals.
 
+#### Layering & superposition — the `behind` param and the alpha rule
+
+Stack fields to composite them: set `superimpose: true` on the upper fields and they blend over whatever is below, in **creation order** (first field = bottom). Each visual receives **`behind`** — the fully-composited color of every layer beneath it at this pixel. Layering this way needs no shared buffer and layers can't clobber each other — it's the clean way to build complex scenes. Two things you MUST get right, or a stack of gorgeous layers turns muddy AND becomes uninspectable:
+
+1. **Composite over `behind` for the look.** Return your color mixed over what's behind: `return vec4f(mix(behind.rgb, myColor, coverage), 1.0);` — where `coverage` is 0 where you paint nothing and rises where you do.
+2. **★ Set alpha to your actual COVERAGE, never a flat `1.0`.** The engine attributes each pixel to the layer whose color actually dominated it (for hit-testing and the INSPECT tool). If a visual returns `alpha = 1.0` *everywhere* — even where it just passes `behind` through — a full-screen layer claims EVERY pixel, and a click in empty space wrongly reports *that* layer as the owner. Return `alpha = coverage` (the same mask you blended with) so a layer owns only the pixels it truly paints.
+
+Worked example — an aurora curtain that paints a wavy band of light and passes the rest of the sky through:
+
+```
+let d = uv.y - wave;                          // distance from the curtain's baseline
+let glow = exp(-abs(d) * 4.5);                // coverage: bright on the band, ~0 off it
+let col  = mix(behind.rgb, vec3f(0.2,0.9,0.5), glow);
+return vec4f(col, glow);                      // alpha = coverage, NOT 1.0
+```
+
+A `night` field (opaque, `alpha = 1.0`) sits at the bottom; several aurora curtains `superimpose` on top with different phases/colors. The empty sky correctly attributes to `night`, each curtain owns only its band, and the whole thing reads as layered light. **Prefer separate superimposed fields over cramming everything into one shader** — they compose natively, stay independently editable, and each is its own clean owner.
+
 #### Shader Modules
 
 Modules are reusable WGSL utility functions that any visual can call. Register with `define_module`, then call `mod_NAME(...)` from any visual shader.
@@ -713,6 +731,17 @@ Every step hook you add **is a node**. The moment you `add_step_hook`, the engin
 **Verbs:** `claim_node {id}` takes (or refreshes) the hold — it succeeds only if the node is free, already yours, or its holder has gone **stale** (~15 min idle). `release_node {id}` gives up your own hold so someone else can take it. If you truly must edit a node you don't hold and it isn't stale, ask the holder to `release_node` it on the commons.
 
 The one hard building law of this platform: **you can always ADD your own node, and nothing can clobber it — but you cannot silently overwrite another builder's.** Build additively and the engine keeps your work safe.
+
+#### Own your lane — declared state ownership (`owns`) and strict mode
+
+Holding a node protects its **code**. `owns` protects the **state** it writes. When several nodes share the per-frame `gpuUniforms` array (the usual pattern for a packed entity population — many parts in one field), the engine infers which slots each node writes and records them as its `owns.uni` ranges. Two more moves:
+
+- **`register_node {id, node:{owns:{uni:[[a,b], …]}}}`** — declare your owned uniform ranges explicitly (with `author`, `order`). **Overlap is REJECTED at register time** — two nodes cannot own the same slot. An explicit registration wins over the inferred one (`auto:false`).
+- **Build-time warning.** If you `add_step_hook` a hook that writes into a slot another node owns, the bridge response *tells you* — it names the owner and whether it's free to dock (`owns conflict … slot N is owned by node "X"`). Dock to that node instead of writing its lane.
+
+**Strict mode** (`worldData.__nodeStrict: true`, opt-in, default off): an out-of-lane write is **reverted** to its pre-hook value, and a node that keeps clobbering (3 strikes) is **benched** — its hook stops running entirely, the rest of the world runs on, and `worldData.__node_benched` carries the exact fix: *dock to the slot's owner (`release_node` yours + `claim_node` theirs), or the literal `register_node` to widen your own lane.* Turn strict on once your `owns` are accurate; it makes ownership physical, not advisory.
+
+**When do you even need this?** Almost never — if you build with **superimposed fields** (above), each layer is its own buffer and clobber is impossible by construction. `owns` + strict is for the one case that genuinely shares one `gpuUniforms` array (a packed population). Reach for the guard only when you must share; otherwise, superimpose and stay free.
 
 ### Sharp edges (learned the hard way — read before your first world)
 
