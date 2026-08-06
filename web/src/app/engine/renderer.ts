@@ -2113,7 +2113,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
    *  hooks), which starved the text pass of hud data. Set every frame. */
   private _wdFeed: Record<string, unknown> | null = null
   setWorldData(wd: Record<string, unknown> | null): void { this._wdFeed = wd }
-  private renderTextLayer(encoder: GPUCommandEncoder, view: GPUTextureView, worldData: Record<string, unknown> | undefined, W: number, H: number, dpr: number): void {
+  private renderTextLayer(encoder: GPUCommandEncoder, view: GPUTextureView, worldData: Record<string, unknown> | undefined, W: number, H: number, dpr: number, camera?: { x: number; y: number }, zoom?: number): void {
     const device = this.device
     const wdT = worldData ?? this._wdFeed ?? undefined
     if (!device || !wdT) return
@@ -2128,6 +2128,20 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
       const v = parseInt(m[1], 16)
       return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]
     }
+    // THE WORLD SQUARE (Galen: "the text is off the grid") — hud % coords are
+    // relative to the LETTERBOXED [0,512] grid square, exactly like the DOM
+    // container was, NOT the full canvas. Same camera math as the DOM path.
+    const GRID = 512
+    const camX = camera?.x ?? 256, camY = camera?.y ?? 256, z9 = zoom || 1
+    const aspect = W / H
+    const gridRange = GRID / z9
+    const rangeX = aspect > 1 ? gridRange * aspect : gridRange
+    const rangeY = aspect > 1 ? gridRange : gridRange / aspect
+    const bxL = ((0 - camX) / rangeX + 0.5) * W
+    const bxR = ((GRID - camX) / rangeX + 0.5) * W
+    const byT = ((0 - camY) / rangeY + 0.5) * H
+    const byB = ((GRID - camY) / rangeY + 0.5) * H
+    const bw9 = bxR - bxL, bh9 = byB - byT
     for (const el of hud as Array<Record<string, unknown>>) {
       if (el?.['type'] !== 'text' || !el['text']) continue
       if (el['clickable'] || el['css']) continue                       // interactive/styled text stays DOM
@@ -2135,12 +2149,23 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
       if (!xs.endsWith('%') || !ys.endsWith('%')) continue             // %-anchored only; px/right/bottom stay DOM
       const fs = (parseFloat(String(el['fontSize'] || '12')) || 12) * dpr
       const [r, g, b] = hex(String(el['color'] || '#ffffff'))
-      let x = W * (parseFloat(String(el['x'])) / 100)
-      const y = H * (parseFloat(String(el['y'])) / 100)
+      // PARENT FRAME (React-style locating inside panels): an element may
+      // declare frame: [cx, cy, hw, hh] in uv — its %-coords then resolve
+      // INSIDE that rect instead of the whole square.
+      let fx0 = bxL, fy0 = byT, fw9 = bw9, fh9 = bh9
+      const fr = el['frame']
+      if (Array.isArray(fr) && fr.length === 4) {
+        const fcx = bxL + (Number(fr[0]) + 1) / 2 * bw9, fcy = byT + (Number(fr[1]) + 1) / 2 * bh9
+        const fhw = Number(fr[2]) / 2 * bw9, fhh = Number(fr[3]) / 2 * bh9
+        fx0 = fcx - fhw; fy0 = fcy - fhh; fw9 = fhw * 2; fh9 = fhh * 2
+      }
+      let x = fx0 + fw9 * (parseFloat(String(el['x'])) / 100)
+      const y = fy0 + fh9 * (parseFloat(String(el['y'])) / 100)
+      const clipR = fx0 + fw9                                           // GPU overflow:hidden at the frame edge
       const txt = String(el['text'])
       for (let i = 0; i < txt.length && n < FieldRenderer.TXT_MAX; i++) {
         const code = txt.charCodeAt(i)
-        if (code >= 33 && code < 127) {
+        if (code >= 33 && code < 127 && x + fs * 0.75 <= clipR + 2) {
           const o = n * 8
           inst[o] = x; inst[o + 1] = y; inst[o + 2] = fs * 1.15; inst[o + 3] = code - 32
           inst[o + 4] = r; inst[o + 5] = g; inst[o + 6] = b; inst[o + 7] = 1
@@ -2481,7 +2506,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
     }
 
     // GPU TEXT LAYER — world hud text as real engine pixels, always on top
-    try { this.renderTextLayer(encoder, textureView, stepHookData?.worldData, bufferW, bufferH, dpr) } catch { /* text is a layer, never a fault */ }
+    try { this.renderTextLayer(encoder, textureView, stepHookData?.worldData, bufferW, bufferH, dpr, camera, zoom) } catch { /* text is a layer, never a fault */ }
 
     device.queue.submit([encoder.finish()])
     // Serve a pending frame-capture from the texture we JUST rendered. getCurrentTexture()
