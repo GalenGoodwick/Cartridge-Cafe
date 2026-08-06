@@ -2117,6 +2117,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
     const device = this.device
     const wdT = worldData ?? this._wdFeed ?? undefined
     if (!device || !wdT) return
+    if (wdT['__gpuText'] !== true) return                  // GPU text = WORLD-space mode, opt-in (screen UI is DOM — the boundary, Aug 6)
     const hud = wdT['hud']
     if (!Array.isArray(hud) || !hud.length) return
     if (!this.ensureTextLayer() || !this._txtPipeline || !this._txtBuf || !this._txtScreenBuf || !this._txtBG) return

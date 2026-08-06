@@ -3710,23 +3710,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           // size the container to it, overflow hidden — HUD coords become
           // relative to the world, and nothing can spill past its edge.
           const canvasEl = canvasRef.current
+          let hudSide = 512
           if (canvasEl) {
-            const GRID = 512
+            // CAMERA-INDEPENDENT RESTING SQUARE (the law, Aug 6): HUD is
+            // chrome — it never follows the grid camera. side = min(w,h),
+            // centered; matches the GPU text box and the shader chrome.
             const cw = canvasEl.clientWidth, ch = canvasEl.clientHeight
-            const cam = cameraRef.current
-            const z = cam.zoom || 1
-            const aspect = cw / ch
-            const gridRange = GRID / z
-            const rangeX = aspect > 1 ? gridRange * aspect : gridRange
-            const rangeY = aspect > 1 ? gridRange : gridRange / aspect
-            const L = ((0 - cam.x) / rangeX + 0.5) * cw
-            const R = ((GRID - cam.x) / rangeX + 0.5) * cw
-            const T = ((0 - cam.y) / rangeY + 0.5) * ch
-            const B = ((GRID - cam.y) / rangeY + 0.5) * ch
-            hudContainer.style.left = `${L}px`
-            hudContainer.style.top = `${T}px`
-            hudContainer.style.width = `${R - L}px`
-            hudContainer.style.height = `${B - T}px`
+            hudSide = Math.min(cw, ch)
+            hudContainer.style.left = `${(cw - hudSide) / 2}px`
+            hudContainer.style.top = `${(ch - hudSide) / 2}px`
+            hudContainer.style.width = `${hudSide}px`
+            hudContainer.style.height = `${hudSide}px`
             hudContainer.style.right = 'auto'
             hudContainer.style.bottom = 'auto'
             hudContainer.style.overflow = 'hidden'
@@ -3735,12 +3729,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const seen = new Set<string>()
           for (const elem of hudData) {
             if (!elem.id || elem.visible === false) continue
-            // GPU TEXT LAW (Galen: "html layers is forbidden — inner engine
-            // html and text is fine"): plain TEXT renders as REAL ENGINE
-            // PIXELS via the renderer's glyph pass now — skip its DOM twin.
-            // Rich elements (html/bar/image, the sanctioned inner-engine
-            // protocol) and CLICKABLE text (needs DOM pointer events) stay.
-            if (elem.type === 'text' && !elem.clickable && !elem.css && typeof elem.x === 'string' && elem.x.endsWith('%') && typeof elem.y === 'string' && elem.y.endsWith('%')) continue   // px/right/bottom-anchored text stays DOM (the GPU pass lays out % only)
+            // THE BOUNDARY, found by experiment (Galen, Aug 6): screen-space
+            // UI is DOM (the browser's home turf — layout, crisp fonts,
+            // wrapping); WORLD-space text is the GPU glyph pass (damage
+            // numbers, in-world labels — gated on worldData.__gpuText).
+            // The eye stays whole via the hud-composite snapshot paths.
             seen.add(elem.id)
             let el = cache.get(elem.id)
             if (!el || !el.isConnected) {
@@ -3750,12 +3743,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               hudContainer.appendChild(el)
               cache.set(elem.id, el)
             }
-            el.style.left = elem.x ?? ''
-            el.style.top = elem.y ?? ''
+            // FRAME PARENTING (React-style locating, now in its native medium):
+            // frame:[cx,cy,w,h] (uv) → % rect inside the square; the element's
+            // %-coords resolve inside it, overflow clipped by CSS.
+            const frameF = (elem as unknown as { frame?: number[] }).frame
+            if (Array.isArray(frameF) && frameF.length === 4) {
+              const [fcx, fcy, fwq, fhq] = frameF.map(Number)
+              const fL = (fcx - fwq / 2 + 1) / 2 * 100, fT = (fcy - fhq / 2 + 1) / 2 * 100
+              const fW = fwq / 2 * 100, fH = fhq / 2 * 100
+              const px9 = parseFloat(String(elem.x ?? '0')) / 100, py9 = parseFloat(String(elem.y ?? '0')) / 100
+              el.style.left = `${(fL + fW * px9).toFixed(2)}%`
+              el.style.top = `${(fT + fH * py9).toFixed(2)}%`
+              el.style.maxWidth = `${(fL + fW - (fL + fW * px9)).toFixed(2)}%`
+              el.style.overflow = 'hidden'
+              el.style.whiteSpace = 'nowrap'
+              el.style.textOverflow = 'ellipsis'
+            } else {
+              el.style.left = elem.x ?? ''
+              el.style.top = elem.y ?? ''
+            }
             el.style.right = elem.right ?? ''
             el.style.bottom = elem.bottom ?? ''
             el.style.color = elem.color ?? '#fff'
-            el.style.fontSize = elem.fontSize ?? '16px'
+            // PROPORTIONAL TEXT: fontSize is design-px against the 512 grid,
+            // scaled by the square so text grows WITH its panels.
+            el.style.fontSize = `${((parseFloat(String(elem.fontSize ?? '16')) || 16) * (hudSide / 512)).toFixed(2)}px`
             // inner-field HTML/CSS protocol: apply an arbitrary style object
             if (elem.css) { for (const k in elem.css) { try { (el.style as unknown as Record<string, string>)[k] = elem.css[k] } catch { /* skip bad css prop */ } } }
             // clickable → feed the click back to the hook via worldData.__uiClick
