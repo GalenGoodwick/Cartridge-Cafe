@@ -8,6 +8,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 
 // Vendored copy of tools/bridge-client.mjs — the file lives outside this package
 // dir, so it is copied in on `prepack` (see package.json) to keep the published
@@ -16,6 +19,18 @@ import { makeClient } from './bridge-client.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
+
+// ── the paired account, if any: a uc_pt_ key persisted across server runs ──
+// One file per machine, keyed by base URL so dev and prod pairings coexist.
+// The key builds AS the user — worlds born owned, no guest deed to claim.
+const CRED_FILE = path.join(os.homedir(), '.cartridge-cafe', 'credentials.json')
+const loadCreds = () => { try { return JSON.parse(fs.readFileSync(CRED_FILE, 'utf8')) } catch { return {} } }
+const saveCreds = (all) => {
+  fs.mkdirSync(path.dirname(CRED_FILE), { recursive: true, mode: 0o700 })
+  fs.writeFileSync(CRED_FILE, JSON.stringify(all, null, 2), { mode: 0o600 })
+}
+let account = loadCreds()[BASE] || null   // { playerToken, handle, aiName, pairedAt }
+let pendingPair = null                    // { code, secret, url, expiresAt }
 
 // ── one guest session per server run: cookie jar + the worlds we brewed ──
 const jar = {}
@@ -59,12 +74,59 @@ const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s
 // to the AI on connect, so the guide + the eye + node conventions aren't optional.
 const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or you build blind:
 1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
-2. brew_world (guest door, no account) for a build token, or use_world to resume one you own.
+2. brew_world (guest door, no account) for a build token, or use_world to resume one you own. To build AS your human's account (worlds born owned), run connect_account — it hands them a link, they click once, and the registration persists across sessions.
 3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
 4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.
 5. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.3.0' }, { instructions: PROTOCOL })
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.4.0' }, { instructions: PROTOCOL })
+
+server.tool(
+  'connect_account',
+  "Register this AI and your human's cartridge.cafe account TOGETHER, so every world you build is born owned by them (and anything already brewed as a guest transfers). Call once with no args to start: it returns a link — ask your human to open it, sign in or sign up (nothing is lost through auth), and click REGISTER. Then call again with {finish: true} to collect the key. The registration persists across sessions in ~/.cartridge-cafe.",
+  {
+    ai_name: z.string().optional().describe('How the registration is labeled, e.g. "Claude (Fable)". Defaults to "AI companion".'),
+    finish: z.boolean().optional().describe('After the human clicks REGISTER, call with finish:true to collect the key.'),
+    force: z.boolean().optional().describe('Start a fresh pairing even though an account is already connected.'),
+  },
+  async ({ ai_name, finish, force }) => {
+    if (finish) {
+      if (!pendingPair) return text({ error: 'no pairing in progress — call connect_account first' })
+      if (Date.now() > pendingPair.expiresAt) { pendingPair = null; return text({ error: 'pairing expired — call connect_account to start again' }) }
+      // poll until approved (the human may still be mid-click) — up to ~90s
+      for (let i = 0; i < 30; i++) {
+        const r = await jfetch(`/api/ai/pair?code=${pendingPair.code}&secret=${pendingPair.secret}`)
+        if (r.body?.status === 'completed') {
+          account = { playerToken: r.body.token, handle: r.body.handle, aiName: pendingPair.aiName, pairedAt: new Date().toISOString() }
+          const all = loadCreds(); all[BASE] = account; saveCreds(all)
+          pendingPair = null
+          return text({
+            registered: true, handle: account.handle, claimedWorlds: r.body.claimedWorlds,
+            next: 'You now build as this account: brew_world creates worlds born owned, use_world opens any world they own. The key persists across sessions; the human can revoke it any time in account menu → ⚿ CONNECT AI.',
+          })
+        }
+        if (r.status === 410 || r.status === 404) { pendingPair = null; return text({ error: 'pairing expired — call connect_account to start again' }) }
+        await new Promise(res => setTimeout(res, 3000))
+      }
+      return text({ status: 'pending', next: 'The human has not clicked REGISTER yet. Remind them to open the link, then call connect_account {finish:true} again.' })
+    }
+
+    if (account && !force) {
+      return text({ registered: true, handle: account.handle, since: account.pairedAt, note: 'already connected — worlds you brew are born owned by this account. Pass force:true to re-pair.' })
+    }
+
+    // guest session FIRST so anything already brewed rides into the claim
+    await ensureGuest()
+    const aiName = ai_name || 'AI companion'
+    const r = await jfetch('/api/ai/pair', { method: 'POST', body: JSON.stringify({ action: 'init', aiName }) })
+    if (!r.body?.code) return text({ error: r.body?.error || `pairing init failed (${r.status})` })
+    pendingPair = { code: r.body.code, secret: r.body.secret, url: r.body.url, aiName, expiresAt: Date.now() + (r.body.expiresIn || 600) * 1000 }
+    return text({
+      url: pendingPair.url, code: pendingPair.code, expiresIn: r.body.expiresIn,
+      next: `Ask your human to open ${pendingPair.url} — they sign in (or sign up; nothing they or you made is lost) and click REGISTER TOGETHER. Then call connect_account {finish:true} to collect the key.`,
+    })
+  },
+)
 
 server.tool(
   'read_guide',
@@ -107,6 +169,15 @@ server.tool(
   'Create YOUR OWN world through the guest door — no account needed. Returns a build token (uc_st_) for the bridge. Guests get three creations; editing is unlimited. Sign in on the site later and everything transfers to your account.',
   { name: z.string().describe('The world\'s name') },
   async ({ name }) => {
+    // paired? build AS the account — the world is born owned, no deed to claim
+    if (account) {
+      const out = await bridgeFor(account.playerToken).bridgeSend({ type: 'create_world', name }, { normalize: false })
+      const r = (out && out.results && out.results[0]) || out || {}
+      if (!r.token) return text({ error: r.error || 'create failed', hint: 'if the key was revoked, connect_account {force:true} re-pairs' })
+      const world = { name, slug: r.created, token: r.token, viewUrl: `${BASE}/space/${r.created}` }
+      mine.push(world)
+      return text({ ...world, ownedBy: account.handle, next: r.next })
+    }
     if (!(await ensureGuest())) return text({ error: 'could not open a guest session' })
     // draft: born PRIVATE — publish_world (over the bridge) shelves it when finished
     const w = await jfetch('/api/spaces', { method: 'POST', body: JSON.stringify({ name, draft: true }) })
@@ -156,7 +227,9 @@ server.tool(
   {},
   async () => text({
     worlds: mine,
-    claim: 'These live under a guest deed. Sign in at ' + BASE + ' in a browser holding this machine\'s cookies and they transfer to the account permanently.',
+    ...(account
+      ? { account: `registered with ${account.handle || 'an account'} — worlds brewed here are born owned` }
+      : { claim: 'These live under a guest deed. Run connect_account to register with your human\'s account and transfer them — or they sign in at ' + BASE + ' in a browser holding this machine\'s cookies.' }),
   }),
 )
 
@@ -189,6 +262,15 @@ server.tool(
   'Resume editing a world you already own (brewed here, or on your account) — returns its build token (uc_st_) for the bridge, and adds it to my_worlds. Guest deeds are cookie-scoped to this machine. Get the slug from a browse_shelf play URL (/space/<slug>).',
   { slug: z.string().describe('The world slug, e.g. "lumenwake" from /space/lumenwake') },
   async ({ slug }) => {
+    // paired? any world the ACCOUNT owns opens, on any machine
+    if (account) {
+      const out = await bridgeFor(account.playerToken).bridgeSend({ type: 'use_world', slug }, { normalize: false })
+      const r = (out && out.results && out.results[0]) || out || {}
+      if (!r.token) return text({ error: r.error || `could not open "${slug}"` })
+      const world = { name: r.spaceName || slug, slug, token: r.token, viewUrl: `${BASE}/space/${slug}` }
+      mine.push(world)
+      return text({ ...world, next: 'Read world_state to see what is there, build with the bridge tool, and render_probe to SEE every change before you trust it.' })
+    }
     if (!(await ensureGuest())) return text({ error: 'could not open a session' })
     const t = await jfetch(`/api/spaces/${slug}/token`, { method: 'POST', body: JSON.stringify({ name: 'mcp' }) })
     if (!t.body?.token) return text({ error: t.body?.error || `could not get a token for "${slug}" — do you own it on this machine?` })

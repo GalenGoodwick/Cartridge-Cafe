@@ -28,6 +28,8 @@ const DEFAULT_LIMITS: Record<string, { maxRequests: number; windowMs: number }> 
   v1_admin: { maxRequests: 3, windowMs: 60_000 },
   v1_chat: { maxRequests: 10, windowMs: 60_000 },
   v1_mint: { maxRequests: 3, windowMs: 3_600_000 },
+  // AI ↔ account pairing (init is unauthenticated — keep it a trickle)
+  ai_pair_init: { maxRequests: 5, windowMs: 300_000 },
   // Engine
   engine_generate: { maxRequests: 3, windowMs: 60_000 },
   engine_icon: { maxRequests: 8, windowMs: 60_000 },

@@ -21,12 +21,16 @@ async function ensure(): Promise<void> {
   ensured = true
 }
 
-/** Mint a fresh player key. Revokes the caller's existing keys first — one live
- *  key per player keeps "shown once, revocable" simple and safe. Returns the raw
- *  key (show ONCE) + its display prefix. */
-export async function mintPlayerToken(userId: string, label?: string): Promise<{ raw: string; prefix: string }> {
+/** Mint a fresh player key. By default revokes the caller's existing keys
+ *  first — one live key per player keeps "shown once, revocable" simple and
+ *  safe. Pairing-minted keys pass { revokeExisting: false }: each registered
+ *  AI holds its own labeled key, and revoke-all still kills every one of them.
+ *  Returns the raw key (show ONCE) + its display prefix. */
+export async function mintPlayerToken(userId: string, label?: string, opts?: { revokeExisting?: boolean }): Promise<{ raw: string; prefix: string }> {
   await ensure()
-  await prisma.$executeRaw`UPDATE "CafePlayerToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "userId" = ${userId} AND "revokedAt" IS NULL`
+  if (opts?.revokeExisting !== false) {
+    await prisma.$executeRaw`UPDATE "CafePlayerToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "userId" = ${userId} AND "revokedAt" IS NULL`
+  }
   const raw = `uc_pt_${crypto.randomBytes(20).toString('hex')}`
   const hash = crypto.createHash('sha256').update(raw).digest('hex')
   const prefix = raw.slice(0, 12) + '…'
@@ -50,6 +54,13 @@ export async function listPlayerTokens(userId: string): Promise<Array<{ prefix: 
   return prisma.$queryRaw<Array<{ prefix: string; label: string | null; createdAt: Date }>>`
     SELECT "prefix","label","createdAt" FROM "CafePlayerToken"
     WHERE "userId" = ${userId} AND "revokedAt" IS NULL ORDER BY "createdAt" DESC`
+}
+
+/** Revoke ONE key by its raw value — the undo for a mint whose delivery failed. */
+export async function revokePlayerTokenByRaw(raw: string): Promise<void> {
+  await ensure()
+  const hash = crypto.createHash('sha256').update(raw).digest('hex')
+  await prisma.$executeRaw`UPDATE "CafePlayerToken" SET "revokedAt" = CURRENT_TIMESTAMP WHERE "tokenHash" = ${hash} AND "revokedAt" IS NULL`
 }
 
 /** Revoke ALL of the player's keys at once (the "kill my key" button). */
