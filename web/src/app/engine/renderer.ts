@@ -2045,13 +2045,13 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
     if (this._txtPipeline && this._txtAtlas) return true
     if (typeof document === 'undefined') return false
     try {
-      const COLS = 16, ROWS = 6, CW = 48, CH = 64
+      const COLS = 16, ROWS = 6, CW = 72, CH = 96
       const cv = document.createElement('canvas')
       cv.width = COLS * CW; cv.height = ROWS * CH
       const cx = cv.getContext('2d')
       if (!cx) return false
       cx.clearRect(0, 0, cv.width, cv.height)
-      cx.font = '600 44px Menlo, Consolas, monospace'
+      cx.font = '600 66px Menlo, Consolas, monospace'
       cx.textBaseline = 'middle'; cx.textAlign = 'center'; cx.fillStyle = '#ffffff'
       for (let c = 32; c < 128; c++) {
         const i = c - 32
@@ -2147,7 +2147,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
       if (el['clickable'] || el['css']) continue                       // interactive/styled text stays DOM
       const xs = String(el['x'] ?? ''), ys = String(el['y'] ?? '')
       if (!xs.endsWith('%') || !ys.endsWith('%')) continue             // %-anchored only; px/right/bottom stay DOM
-      const fs = (parseFloat(String(el['fontSize'] || '12')) || 12) * dpr
+      // PROPORTIONAL TEXT (Galen: "text and ui is such a hot mess") — fontSize
+      // is design-px against the 512 grid; scale it by the world square so
+      // text grows WITH its panels instead of rattling around fixed-size.
+      const fs = (parseFloat(String(el['fontSize'] || '12')) || 12) * (Math.min(bw9, bh9) / 512)
       const [r, g, b] = hex(String(el['color'] || '#ffffff'))
       // PARENT FRAME (React-style locating inside panels): an element may
       // declare frame: [cx, cy, hw, hh] in uv — its %-coords then resolve
