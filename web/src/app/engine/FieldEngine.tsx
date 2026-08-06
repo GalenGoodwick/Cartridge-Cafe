@@ -3735,6 +3735,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const seen = new Set<string>()
           for (const elem of hudData) {
             if (!elem.id || elem.visible === false) continue
+            // GPU TEXT LAW (Galen: "html layers is forbidden — inner engine
+            // html and text is fine"): plain TEXT renders as REAL ENGINE
+            // PIXELS via the renderer's glyph pass now — skip its DOM twin.
+            // Rich elements (html/bar/image, the sanctioned inner-engine
+            // protocol) and CLICKABLE text (needs DOM pointer events) stay.
+            if (elem.type === 'text' && !elem.clickable && !elem.css) continue
             seen.add(elem.id)
             let el = cache.get(elem.id)
             if (!el || !el.isConnected) {

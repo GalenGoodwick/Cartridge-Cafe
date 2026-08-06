@@ -2025,6 +2025,132 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 
   // --- Render ---
 
+  // ═══ GPU TEXT LAYER (Galen: "html layers is forbidden… so how do we get a
+  // font render going?") — worlds keep publishing worldData.hud; plain TEXT
+  // entries now render as REAL ENGINE PIXELS via a glyph-atlas pass (rich
+  // html/bar/image elements remain the sanctioned inner-engine DOM protocol).
+  // Atlas: ASCII 32-127 rasterized ONCE by the browser's font engine into a
+  // texture (no const-array fonts — the freeze-quarantine law). Per frame the
+  // hud text lays out into instanced quads; the pass draws after everything.
+  private _txtPipeline: GPURenderPipeline | null = null
+  private _txtAtlas: GPUTexture | null = null
+  private _txtSampler: GPUSampler | null = null
+  private _txtBuf: GPUBuffer | null = null
+  private _txtBG: GPUBindGroup | null = null
+  private _txtCount = 0
+  private static readonly TXT_MAX = 4096
+  private ensureTextLayer(): boolean {
+    const device = this.device
+    if (!device) return false
+    if (this._txtPipeline && this._txtAtlas) return true
+    if (typeof document === 'undefined') return false
+    try {
+      const COLS = 16, ROWS = 6, CW = 48, CH = 64
+      const cv = document.createElement('canvas')
+      cv.width = COLS * CW; cv.height = ROWS * CH
+      const cx = cv.getContext('2d')
+      if (!cx) return false
+      cx.clearRect(0, 0, cv.width, cv.height)
+      cx.font = '600 44px Menlo, Consolas, monospace'
+      cx.textBaseline = 'middle'; cx.textAlign = 'center'; cx.fillStyle = '#ffffff'
+      for (let c = 32; c < 128; c++) {
+        const i = c - 32
+        cx.fillText(String.fromCharCode(c), (i % COLS) * CW + CW / 2, Math.floor(i / COLS) * CH + CH / 2 + 2)
+      }
+      this._txtAtlas = device.createTexture({ size: [cv.width, cv.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })
+      device.queue.copyExternalImageToTexture({ source: cv }, { texture: this._txtAtlas }, [cv.width, cv.height])
+      this._txtSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+      this._txtBuf = device.createBuffer({ size: FieldRenderer.TXT_MAX * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })
+      const mod = device.createShaderModule({ code: /* wgsl */`
+struct Glyph { pos: vec2f, h: f32, ch: f32, color: vec4f };
+@group(0) @binding(0) var<storage, read> glyphs: array<Glyph>;
+@group(0) @binding(1) var atlas: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+@group(0) @binding(3) var<uniform> screen: vec2f;
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) color: vec4f, @location(2) ch: f32 };
+@vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
+  let g = glyphs[ii];
+  var corner = array<vec2f, 6>(vec2f(0.0,0.0), vec2f(1.0,0.0), vec2f(0.0,1.0), vec2f(1.0,0.0), vec2f(1.0,1.0), vec2f(0.0,1.0))[vi];
+  let w = g.h * 0.75;
+  let px = g.pos + corner * vec2f(w, g.h);
+  var o: VO;
+  o.pos = vec4f(px.x / screen.x * 2.0 - 1.0, 1.0 - px.y / screen.y * 2.0, 0.0, 1.0);
+  o.uv = corner; o.color = g.color; o.ch = g.ch;
+  return o;
+}
+@fragment fn fs(v: VO) -> @location(0) vec4f {
+  let ci = i32(v.ch);
+  let cell = vec2f(f32(ci % 16), f32(ci / 16));
+  let uv = (cell + v.uv) / vec2f(16.0, 6.0);
+  let a = textureSample(atlas, samp, uv).a * v.color.a;
+  return vec4f(v.color.rgb * a, a);
+}` })
+      const bgl = device.createBindGroupLayout({ entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      ] })
+      this._txtScreenBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+      this._txtBG = device.createBindGroup({ layout: bgl, entries: [
+        { binding: 0, resource: { buffer: this._txtBuf } },
+        { binding: 1, resource: this._txtAtlas.createView() },
+        { binding: 2, resource: this._txtSampler },
+        { binding: 3, resource: { buffer: this._txtScreenBuf } },
+      ] })
+      this._txtPipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+        vertex: { module: mod, entryPoint: 'vs' },
+        fragment: { module: mod, entryPoint: 'fs', targets: [{ format: this.canvasFormat!, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }] },
+        primitive: { topology: 'triangle-list' },
+      })
+      return true
+    } catch { return false }
+  }
+  private _txtScreenBuf: GPUBuffer | null = null
+  private renderTextLayer(encoder: GPUCommandEncoder, view: GPUTextureView, worldData: Record<string, unknown> | undefined, W: number, H: number, dpr: number): void {
+    const device = this.device
+    if (!device || !worldData) return
+    const hud = worldData['hud']
+    if (!Array.isArray(hud) || !hud.length) return
+    if (!this.ensureTextLayer() || !this._txtPipeline || !this._txtBuf || !this._txtScreenBuf || !this._txtBG) return
+    const inst = new Float32Array(FieldRenderer.TXT_MAX * 8)
+    let n = 0
+    const hex = (c: string): [number, number, number] => {
+      const m = /^#?([0-9a-f]{6})/i.exec(c || '')
+      if (!m) return [1, 1, 1]
+      const v = parseInt(m[1], 16)
+      return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]
+    }
+    for (const el of hud as Array<Record<string, unknown>>) {
+      if (el?.['type'] !== 'text' || !el['text']) continue
+      const fs = (parseFloat(String(el['fontSize'] || '12')) || 12) * dpr
+      const [r, g, b] = hex(String(el['color'] || '#ffffff'))
+      let x = W * (parseFloat(String(el['x'])) / 100)
+      const y = H * (parseFloat(String(el['y'])) / 100)
+      const txt = String(el['text'])
+      for (let i = 0; i < txt.length && n < FieldRenderer.TXT_MAX; i++) {
+        const code = txt.charCodeAt(i)
+        if (code >= 33 && code < 127) {
+          const o = n * 8
+          inst[o] = x; inst[o + 1] = y; inst[o + 2] = fs * 1.15; inst[o + 3] = code - 32
+          inst[o + 4] = r; inst[o + 5] = g; inst[o + 6] = b; inst[o + 7] = 1
+          n++
+        }
+        x += fs * 0.62
+      }
+    }
+    this._txtCount = n
+    if (!n) return
+    device.queue.writeBuffer(this._txtBuf, 0, inst, 0, n * 8)
+    device.queue.writeBuffer(this._txtScreenBuf, 0, new Float32Array([W, H, 0, 0]))
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'load', storeOp: 'store' }] })
+    pass.setPipeline(this._txtPipeline)
+    pass.setBindGroup(0, this._txtBG)
+    pass.draw(6, n)
+    pass.end()
+  }
+
   render(
     camera: { x: number; y: number },
     zoom: number,
@@ -2344,6 +2470,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
         }
       }
     }
+
+    // GPU TEXT LAYER — world hud text as real engine pixels, always on top
+    try { this.renderTextLayer(encoder, textureView, stepHookData?.worldData, bufferW, bufferH, dpr) } catch { /* text is a layer, never a fault */ }
 
     device.queue.submit([encoder.finish()])
     // Serve a pending frame-capture from the texture we JUST rendered. getCurrentTexture()
