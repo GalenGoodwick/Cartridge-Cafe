@@ -60,7 +60,7 @@ export function buildNodeGraph(sim: FieldSimulation | null, renderer: FieldRende
 /** The expanded architecture graph + inspector. A layered left→right DAG:
  *  modules & hooks (inputs) → visuals → fields, drawn in SVG with a click-to-inspect
  *  side panel. */
-export function NodeGraphOverlay({ graph, onClose }: { graph: AiNodeGraph; onClose: () => void }) {
+export function NodeGraphOverlay({ graph, onClose, onVisit }: { graph: AiNodeGraph; onClose: () => void; onVisit?: (hookId: string) => boolean }) {
   const [sel, setSel] = useState<string | null>(null)
   const NODE_W = 168, NODE_H = 30, VGAP = 12, TOP = 44
   const COLX: Record<string, number> = { module: 24, hook: 236, visual: 448, field: 672 }
@@ -120,7 +120,7 @@ export function NodeGraphOverlay({ graph, onClose }: { graph: AiNodeGraph; onClo
           </div>
           {/* inspector */}
           <div className="w-[380px] border-l border-white/10 p-3 overflow-auto font-mono text-[12px]">
-            {selNode ? <NodeInspector node={selNode} graph={graph} /> : (
+            {selNode ? <NodeInspector node={selNode} graph={graph} onVisit={onVisit} /> : (
               <div className="text-white/30 leading-relaxed">click a node to inspect it.<br/><br/>modules compose into visuals, visuals paint fields, hooks drive the uniforms visuals read.</div>
             )}
           </div>
@@ -130,7 +130,7 @@ export function NodeGraphOverlay({ graph, onClose }: { graph: AiNodeGraph; onClo
   )
 }
 
-export function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph }) {
+export function NodeInspector({ node, graph, onVisit }: { node: ANode; graph: AiNodeGraph; onVisit?: (hookId: string) => boolean }) {
   const st = NODE_KIND_STYLE[node.kind]
   const ins = graph.edges.filter(e => e.to === node.id)
   const outs = graph.edges.filter(e => e.from === node.id)
@@ -147,6 +147,7 @@ export function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph
         {node.kind === 'visual' && <div>shader source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
         {node.kind === 'field' && <><div>shape · <span className="text-white/80">{node.shape || '—'}</span></div><div>painted by · <span className="text-white/80">{node.visual || '(none)'}</span></div><div>body · <span className={node.pixelCollide ? 'text-emerald-300/90' : 'text-white/80'}>{node.pixelCollide ? 'rendered pixels ◉' : 'bounding rect'}</span></div></>}
         {node.kind === 'hook' && <><div>author · <span className="text-white/80">{node.author || '—'}</span></div><div>JS · <span className="text-white/80">{(node.codeLen / 1024).toFixed(1)} KB</span></div>{node.desc && <div className="text-white/45 mt-1 leading-relaxed">{node.desc}</div>}</>}
+        {node.kind === 'hook' && onVisit && <VisitButton hookId={node.title} onVisit={onVisit} />}
       </div>
       {(ins.length > 0 || outs.length > 0) && (
         <div className="mt-3 pt-2 border-t border-white/10 space-y-1.5">
@@ -170,5 +171,20 @@ export function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph
           : 'structural node — becomes draggable/wireable in Tier-2.'}
       </div>
     </div>
+  )
+}
+
+/** ⤷ VISIT — jump the player to where this hook is rendering right now. The engine
+ *  resolves the hook's live gpuPopulation entries via __popProv (pixel→node
+ *  provenance) and issues a worldData.__goto the world's movement node consumes.
+ *  Disabled state = the hook has no attributed entities this frame (nothing to
+ *  visit) — provenance-driven, zero cartridge cooperation needed. */
+function VisitButton({ hookId, onVisit }: { hookId: string; onVisit: (hookId: string) => boolean }) {
+  const [state, setState] = useState<'idle' | 'went' | 'nowhere'>('idle')
+  return (
+    <button
+      onClick={() => { const ok = onVisit(hookId); setState(ok ? 'went' : 'nowhere'); setTimeout(() => setState('idle'), 1600) }}
+      className="mt-2 px-2 py-1 rounded border border-white/20 text-[11px] tracking-[0.12em] text-white/70 hover:text-white hover:border-white/50 transition-colors"
+    >{state === 'went' ? '⤷ TRAVELLING…' : state === 'nowhere' ? 'NO LIVE RENDER POS' : '⤷ VISIT — go to where this renders'}</button>
   )
 }

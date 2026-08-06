@@ -5869,7 +5869,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} sendHumanShot={sendHumanShot} humanShot={humanShot} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}
-          {nodesExpanded && nodeGraph && <NodeGraphOverlay graph={nodeGraph} onClose={() => setNodesExpanded(false)} />}
+          {nodesExpanded && nodeGraph && <NodeGraphOverlay graph={nodeGraph} onClose={() => setNodesExpanded(false)} onVisit={(hookId) => {
+            // ⤷ VISIT (Galen): click a node → travel to where it renders. Resolve the
+            // hook's live entities via __popProv, centroid their world positions, and
+            // issue worldData.__goto — the world's movement node consumes it (falls
+            // back silently on worlds without a consumer).
+            const sim = simulationRef.current
+            const wd = sim?.worldData as Record<string, unknown> | undefined
+            const prov = wd?.['__popProv'] as { hook: string; from: number; to: number }[] | undefined
+            const pop = wd?.['gpuPopulation'] as number[] | undefined
+            if (!sim || !wd || !Array.isArray(prov) || !Array.isArray(pop)) return false
+            let sx = 0, sy = 0, sz = 0, n = 0
+            for (const sg of prov) {
+              if (sg.hook !== hookId) continue
+              for (let q = sg.from; q < sg.to && q * 4 + 3 < pop.length; q++) {
+                const b = q * 4
+                const x = Number(pop[b]), y = Number(pop[b + 1]), z = Number(pop[b + 2]), w = Number(pop[b + 3])
+                if (!isFinite(x) || !isFinite(y) || !isFinite(z) || Math.abs(w) < 0.4) continue   // skip aux quads
+                sx += x; sy += y; sz += z; n++
+              }
+            }
+            if (!n) return false
+            wd['__goto'] = { x: sx / n, y: sy / n, z: sz / n, hook: hookId, at: Date.now() }
+            setNodesExpanded(false)
+            return true
+          }} />}
           {/* ⌁ BUILDERBOX — the merged panel: AI build log + this world's chat.
               Auto-opens while a build runs (see the terminalLog effect). ANY chat
               entry here also pings the network (commons + builderbox:queue) as an
