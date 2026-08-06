@@ -407,7 +407,7 @@ looking at the **center, `(256, 256)`**, showing roughly `x,y ∈ [0, 512]`. So:
 |---------|-----------|-------------|
 | `define_visual` | `name, wgsl` | Register a visual type. Fields with `visualType` matching this name render using this shader. The wgsl MUST define `fn visual_<name>(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f` — standalone `@fragment fn main` shaders are REJECTED (all visuals compose into one module). |
 | `define_module` | `name, wgsl` | Register a reusable WGSL module. Functions must use `mod_NAME` prefix. Modules are injected before visuals in the uber-shader and can be called by any visual. Zero runtime cost (compile-time concatenation). |
-| `create_render_target` | `name` | Create a named intermediate render buffer. Fields can write to it via `renderTarget` property, and other fields can sample from it via `sampleTarget()`. Max 6 targets. |
+| `create_render_target` | `name, persist?` | Create a named intermediate render buffer. Fields write to it via the `renderTarget` property; other fields sample it via `sampleTarget()`. `persist: true` = the buffer is NOT cleared each frame — it carries state across frames (the cross-frame buffer a solver needs). Max 6 targets. |
 | `destroy_render_target` | `name` | Destroy a named render target and free its GPU memory. |
 
 Fields with a `visualType` are rendered via the **uber-shader** — a single compute pass that evaluates all superimposed fields. This is the primary way to create complex 3D/2D visuals.
@@ -434,6 +434,59 @@ Render targets let fields write to named intermediate buffers that other fields 
    - Target IDs are assigned in creation order (0, 1, 2, ...)
 
 Fields can also declare `sampleTargets: ["bg"]` to document which targets they read from (used for dependency ordering).
+
+**Timing (double-buffered):** every target is double-buffered — writes go to a back
+buffer and `sampleTarget()` always returns the LAST COMPLETED frame's content, never
+this frame's in-flight writes. Reads are race-free by construction, with exactly one
+frame of latency. Non-persist targets clear each frame (fresh composite); `persist:
+true` targets carry their pixels forward instead.
+
+#### GPU Solvers on Persistent Targets (fluids, cellular automata, reaction-diffusion)
+
+A `persist: true` target IS a simulation state buffer. The pattern:
+
+1. `{"type": "create_render_target", "name": "state", "persist": true}`
+2. One fullscreen "solver" field with `renderTarget: "state"` — its visual reads last
+   frame's state via `sampleTarget(0u, pix())`, advances the sim, and returns the new
+   state as its color (alpha 1.0 = clean overwrite). A field writing to a target does
+   NOT draw to screen.
+3. Any other visual reads `sampleTarget(0u, ...)` to DISPLAY the state — shade it, remap
+   it, split it into channels. State layout is yours (e.g. `rg` = velocity/scale, `b` =
+   density).
+
+Live example: `/space/fluid-x-ray` — a stable-fluids solver (semi-Lagrangian advection +
+divergence damping) writing velocity+dye into a persistent target, with four viewers
+deriving depth / normals / flow / material-id from the same buffer. Read its source.
+
+CAVEAT: the headless render probe boots a COLD world for ~1 frame — persistent-target
+sims will look black/time-zero in the probe even when correct. Verify compile-clean via
+the probe, but judge the moving sim in a live tab.
+
+#### Films & Cutscenes (scripted, law-morphing video)
+
+Worlds can be MOVIES: a step hook is the director, physics is the cast, and the score is
+a table of LAW CHANGES over time. Because hooks publish uniforms every tick, the world's
+physical laws can change per-frame — eased drifts or hard single-frame switches (a force
+that ignites, a transport law that inverts sign, motion that dies).
+
+The pattern (live example: `/space/smoke-opera` — a 32s four-act fluid film; read its
+`director` hook):
+
+1. **Score** — a per-act law table in the director hook:
+   `LAWS = [[emitStrength, turbulence, direction, dissipation, ...], ...]`
+2. **Clock** — accumulate `wd.__t += Math.min(dt, 0.05)`; loop it (`T = wd.__t % 32`);
+   derive act + time-within-act.
+3. **Publish** — ease scalars between acts (smoothstep), keep dramatic switches HARD
+   (e.g. direction flips in one frame). Write literal `u[N] = ...` indices then
+   `wd.gpuUniforms = u` — the node-runtime infers uniform OWNERSHIP from those literal
+   writes; other spellings get flagged as violations.
+4. **Solver reads its laws from `uni(N)` fresh every frame** — that's what makes the
+   laws scriptable.
+5. **Titles** — `wd.hud` act cards make the film legible.
+6. **Take it home** — the in-world REC button records any world to a downloadable MP4
+   (video+audio). A "cutscene" in a game world is this same pattern gated on a trigger
+   (`sim.trigger`/chapter) instead of a looping clock: freeze input, run the score,
+   restore.
 
 ### Per-Field Effects (Shader Stack)
 
