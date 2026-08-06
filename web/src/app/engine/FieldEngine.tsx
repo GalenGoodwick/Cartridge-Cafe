@@ -3740,7 +3740,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             // PIXELS via the renderer's glyph pass now — skip its DOM twin.
             // Rich elements (html/bar/image, the sanctioned inner-engine
             // protocol) and CLICKABLE text (needs DOM pointer events) stay.
-            if (elem.type === 'text' && !elem.clickable && !elem.css) continue
+            if (elem.type === 'text' && !elem.clickable && !elem.css && typeof elem.x === 'string' && elem.x.endsWith('%') && typeof elem.y === 'string' && elem.y.endsWith('%')) continue   // px/right/bottom-anchored text stays DOM (the GPU pass lays out % only)
             seen.add(elem.id)
             let el = cache.get(elem.id)
             if (!el || !el.isConnected) {

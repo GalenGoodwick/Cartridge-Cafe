@@ -7,6 +7,12 @@ import { hydrateAllScenes, loadScene } from './api/engine/store'
 // world is NOCTURNE DISTRICT (Galen's pick). Falls back to the wordmark-on-night
 // card if the render is unavailable, so the site card never breaks.
 export const runtime = 'nodejs'
+// The site card is ALWAYS the same featured world — it must NOT re-render from
+// scratch on every scrape (that 14s render-service round-trip is what times out
+// Telegram's short-fetch bot; the per-world cards keep it because each is unique).
+// ISR-cache it hard: generate once, serve the cached PNG in ms forever after,
+// regenerating quietly in the background at most once a day.
+export const revalidate = 86400
 export const alt = 'cartridge.cafe — worlds, imagined on contact'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'

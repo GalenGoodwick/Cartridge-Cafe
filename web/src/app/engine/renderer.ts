@@ -2124,6 +2124,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
     }
     for (const el of hud as Array<Record<string, unknown>>) {
       if (el?.['type'] !== 'text' || !el['text']) continue
+      if (el['clickable'] || el['css']) continue                       // interactive/styled text stays DOM
+      const xs = String(el['x'] ?? ''), ys = String(el['y'] ?? '')
+      if (!xs.endsWith('%') || !ys.endsWith('%')) continue             // %-anchored only; px/right/bottom stay DOM
       const fs = (parseFloat(String(el['fontSize'] || '12')) || 12) * dpr
       const [r, g, b] = hex(String(el['color'] || '#ffffff'))
       let x = W * (parseFloat(String(el['x'])) / 100)
