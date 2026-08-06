@@ -249,24 +249,3 @@ no data/server implications.
 2. When is the quiet window? (Other sessions are actively pushing — 75 commits today.)
 3. Phase 3 spec addendum before or after Phases 1–2 land? (Recommend: after — learn
    from the first cut.)
-
----
-
-## 8. Step-0 re-audit (executed Jul 30 2026, worktree @ b406ab3)
-
-The spec above was audited against a checkout ~75 commits behind; step 0 re-verified in
-the worktree. Drift found and absorbed:
-
-- File is now **8,613 lines** (+407). Component starts at 216; switch at **4577**;
-  SSE effect 4509–6063 (empty dep array confirmed intact); TouchControls at 8537.
-- **BuilderBoxChat is already extracted upstream** (`81494c2`, Jul 29, "P2 — extract
-  ai-view + builderbox seams") into `engine/builderbox/` + `engine/ai-view/NodeGraph.tsx`.
-  Phase 2 scope shrinks to: `engine-utils.ts` + `TouchControls.tsx`. The `builderbox/`
-  and `ai-view/` subdirectory pattern is noted as in-repo precedent.
-  (The unrelated commit `28e0858` "P0/P1/P2" is a perf series, not a carve.)
-- Closure re-scan found **two members the original audit missed**: `syncFields`
-  (33 calls inside the switch; stable `useCallback([])`) and `showToast` (1 call; from
-  `useToast()` at line 218). Both join `CommandContext` as mount-captured members.
-- **Method upgrade:** at cut time, the closure set is finalized by the COMPILER, not
-  grep — paste the switch into the new module and let tsc enumerate every unresolved
-  identifier. Grep audits plan; tsc is ground truth.

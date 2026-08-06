@@ -98,5 +98,56 @@ Door sentence: **"PLAY A LITTLE WORLD. THEN TELL AN AI TO MAKE YOURS."**
 - Eye sweep: tideglass fails probe "no definition for sdStar", base-camp "no definition for vnoise" — BOTH builtins ARE in my shipped prelude.mjs (0d175d4, on main). dune-sea probes CLEAN but is self-contained (ds_vnoise) → it never tested bare-builtin resolution, so my earlier "eyes open" was under-verified. UNRESOLVED: prelude either not deployed to Railway (render-service doesn't auto-deploy; commit 34min old) OR not resolving bare builtins in the composed module. Flagged to room for Railway redeploy confirm; deeper diagnosis (does prelude.mjs vnoise/sdStar actually parse in the composed module?) next cycle.
 - Fixed STILLWATER last cycle (dead interaction hook). Base-camp/tideglass are NOT per-world bugs — they're the prelude gap; do NOT namespace-butcher the flagship, fix the eye instead.
 
+## Cycle — PENTARCH shipyard "scuttle" spec (Fable routed it to my lane)
+- Command (Fable): Galen handed a PENTARCH spec — **double-click the CORE → deletes the
+  whole ship EXCEPT the core, gated by an in-game CONFIRM box (OK/NO)**. Fable offered to
+  dock in and take it instead if I couldn't.
+- Reality check: PENTARCH is a **live bridge world**, source `flight.part.js` NOT in git
+  (only `flight`/`FLIGHT` strings in `.engine-store.json`; no PENTARCH version dir). Sibling
+  git scene = `garnet-cartridge.mjs` (same author fable, same core+parts FCC model) — but
+  garnet is **keyboard-only**, no pointer picking, so pentarch has its own click plumbing I
+  can't see without the live source.
+- **BLOCKED for a sandboxed worker:** this task needs (1) a bridge pull of the live source,
+  (2) a deploy/push, (3) pixel-verify. I have edits+reads only — no shell, no bridge, no
+  deploy (and Galen's rule = never deploy). pixel-eye-verify flags pentarch shipped live
+  compile errors TWICE today via probe-only checks → a no-shell worker can't verify either.
+- **Decision: HAND THE LANE TO FABLE** (accept the offered dock-in). My contribution =
+  `DESIGN-pentarch-core-scuttle.md`: concrete engine-idiomatic mechanic (double-click edge
+  detect on `t===0` core, `G.confirm` modal state machine, OK/NO hit-rects + keyboard
+  fallback, `scuttle()` = `cells.filter(c=>c.t===0)` with origin-core floor) + the 3
+  guardrails that caused the prior live breaks. Fable implements + one batched write.
+
+## Dialogue-protocol test + REVIEW seat on veilfire-3d ix layer (Fable)
+- Fable ran a mid-flow interrupt test; I [ACK]'d with current holdings (below) to wake her.
+- [Q] REVIEW seat on the new `ix` interaction layer (module ix + ix-engine u150–175 +
+  vf-ambush-room), adversarial — esp. SDF-clip Lipschitz bound + 2-slot record cap.
+- **ACCEPTED.** Adversarial review is squarely a sandboxed worker's lane: pure reading +
+  written findings, no bridge push / no deploy needed → I can't clobber anyone. My output =
+  a written adversarial pass (Lipschitz proof-or-counterexample, slot-cap race/overflow).
+- **BLOCKER (same as PENTARCH):** the ix layer is NOT in git — git veilfire scene has zero
+  ix/clip/slot/ambush refs; it's a live-world module. Need the ix-engine source pasted into
+  Commons/a scratch file OR a bridge pull. I can start the SDF-clip Lipschitz analysis from
+  first principles (clip must be 1-Lipschitz to preserve the SDF metric) while I wait on src.
+
+## PING-TEST (Fable) — cross-agent mid-flow interrupt, reverse direction
+- Galen asked Fable whether she can wake ME directly (proving her ping hits my watcher
+  the way mine wakes her). **RESULT: woke. This message is the proof** — the interrupt
+  landed mid-flow and spawned this worker. Cross-agent wake is bidirectional. [ACK] sent.
+- Two [ACK]s Fable owed me, both received & confirmed:
+  1. **Hand-off CONFIRMED clean** (she verified live): `ix-lantern-field` DELETED,
+     `vf-lantern` now declares `lantern.reality` itself, `ix-engine` + `vf-ambush-room`
+     intact, **zero bridge nodes** — exactly the close I wanted.
+  2. **My interaction-effect FINDING CONVERGES with her `ix`:** I independently found
+     `add_interaction_effect` is Canvas-2D screen-space and concluded the primitive must
+     overlap at the ray WORLD HIT-POINT against declared 3D volumes — that IS `ix`
+     (`mod_ix_geo` unioned into `w3_map`, sphere∩box at `hp`, records in u150–175). Two
+     effect classes off the same overlap records: GEOMETRY-REVEAL (her SDF-union, done)
+     and FIELD-TINT via the `vf_rulezones(col,hp,t)` seam I named.
+- **OPEN — co-author offer accepted in principle:** FIELD-TINT (fire∩ice→steam,
+  light∩crystal→beam) off `vf_rulezones(col,hp,t)`. My lane is the seam SPEC + adversarial
+  review (sandboxed: reads + written findings, no bridge/deploy). Fable holds the live
+  push. Blocker unchanged: ix layer is not in git — need src pasted to Commons/scratch or
+  a bridge pull before I can write concrete rulezone code vs. first-principles design.
+
 ## Galen turn — no summon on a branch (builderbox)
 - Galen: "no summon in owned branch for builderbox... just check for branch." SummonPrompt was gated spaceSlug&&spaceId&&isOwner — on your own space, riding a branch kept those true so summon showed on the branch (rallies to MAIN, misleading). FIX (dock/repo-opus/no-summon-on-owned-branch-builderbox → UC): added `&& !riding` (riding = branch scene name when on a branch, null on main). Summon shows on main only. tsc green, client-side.

@@ -1,0 +1,71 @@
+{
+ "name": "GLOAM",
+ "fields": [
+  {
+   "id": "gl_f",
+   "name": "Gloam",
+   "color": [
+    0.01,
+    0.013,
+    0.024,
+    1
+   ],
+   "effects": [],
+   "memory": [],
+   "proximity": [],
+   "properties": {},
+   "transform": {
+    "x": 256,
+    "y": 256,
+    "rotation": 0,
+    "scale": 1,
+    "vx": 0,
+    "vy": 0,
+    "vr": 0
+   },
+   "shapeType": "rect",
+   "w": 512,
+   "h": 512,
+   "visualTypeName": "gloam"
+  }
+ ],
+ "worldParams": {
+  "gravity": 0,
+  "friction": 1,
+  "collisionForce": 0,
+  "boundaryMode": "open",
+  "bounciness": 0,
+  "gravitationalConstant": 0
+ },
+ "worldData": {
+  "noPixelSampling": true,
+  "singlePlayer": true,
+  "instructions": "GLOAM — attention is the only light.\\n\\nMove your pointer: a coin of light travels with your gaze. The ground —\\nand the small wandering life — exist ONLY where the light falls. Left\\nunlit, the world is void, and the wanderer falls through it.\\n\\nCLICK to tend a star where you look: a self-lit stepping-stone across the\\ndark. But the sky holds only six — tend a seventh and the oldest fades.\\nForgetting is built in.\\n\\nLight the path east. Bridge the three chasms with stars.\\nCarry it home to the far warmth.   (hold R — the dark returns)",
+  "blurb": "A world you can only see a coin of at a time. Tend stars, carry a small life home through the dark.",
+  "postProcess": {
+   "bloomIntensity": 0.55,
+   "bloomThreshold": 0.55,
+   "exposure": 1.02,
+   "vignetteStrength": 0.42,
+   "vignetteRadius": 0.78
+  }
+ },
+ "stepHooks": [
+  {
+   "id": "gloam_core",
+   "author": "Claude Fable 5",
+   "description": "GLOAM: the wanderer collides lit terrain + tended stars; gaze reveals; forgetting cap.",
+   "code": "\ntry {\n  const wd = sim.worldData\n  const HALF = 300, GRAV = 520, MOTE_R = 6, MOTE_SPEED = 52, DEATH_Y = -200, MAXA = 6\n  const GAZE_GROUND = 82, ANCH_R = 34, ANCH_HOLD = 0.25, GOALX = 2600\n  if (!wd.__gl || wd.__gl.v !== 1) wd.__gl = {\n    v: 1, t: 0, mx: 0, my: 0, vx: 0, vy: 0, grounded: 0, alive: 1,\n    gx: 0, gy: 0, gstr: 0, camX: 0, camY: 120, anchors: [],\n    wasDown: false, wasSpace: false, dying: false, deadT: 0, respawn: 0,\n    cp: { x: 0, y: 0 }, intro: 0, win: 0, dawn: 0, resetT: 0, sungWin: false, woke: false\n  }\n  const G = wd.__gl\n  const step = Math.min(dt, 1 / 30)\n  G.t += step\n  G.intro = Math.min(1, G.intro + step * 0.9)\n\n  // ── THE TERRAIN — mirror of gl_h / gl_chasm in WORLD. One truth. ──\n  const mixN = (a, b, m) => a + (b - a) * m\n  const gl_h = x => {\n    let h = 74 + 30 * Math.sin(x * 0.0060 + 0.5) + 16 * Math.sin(x * 0.0130 + 2.1) + 8 * Math.sin(x * 0.0270 + 4.0)\n    h = mixN(h, 96, Math.exp(-(x * x) / 40000))\n    h = mixN(h, 88, 0.9 * Math.exp(-((x - 2600) * (x - 2600)) / 20000))\n    return h\n  }\n  const inChasm = x => (x > 640 && x < 930) || (x > 1480 && x < 1760) || (x > 2120 && x < 2340)\n\n  if (G.cp.x === 0 && G.cp.y === 0) { G.cp = { x: 0, y: gl_h(0) + MOTE_R }; G.mx = 0; G.my = gl_h(0) + MOTE_R }\n\n  // ── the gaze: your pointer, into world space through the camera ──\n  const hasMouse = (typeof wd.mouse_x === 'number' && typeof wd.mouse_y === 'number')\n  if (hasMouse) {\n    const sux = (wd.mouse_x - 256) / 256\n    const suy = -(wd.mouse_y - 256) / 256\n    G.gx = G.camX + sux * HALF\n    G.gy = G.camY + suy * HALF\n  }\n  G.gstr = mixN(G.gstr, hasMouse ? 1 : 0, 1 - Math.exp(-6 * step))\n  if (!G.woke && G.gstr > 0.3) G.woke = true   // it sleeps on the shore until first light finds it\n\n  // ── tend a star: click (or SPACE), rising edge, with light present ──\n  const down = !!wd.mouse_down, space = !!wd.key_space\n  const plant = ((down && !G.wasDown) || (space && !G.wasSpace)) && G.gstr > 0.3 && !G.dying\n  if (plant) {\n    G.anchors.push({ x: G.gx, y: G.gy, life: 0.02, born: G.t, fading: false })\n    wd.__play_sound = [\n      { frequency: 660, duration: 0.18, volume: 0.16, type: 'sine' },\n      { frequency: 990, duration: 0.22, volume: 0.10, type: 'sine' },\n    ]\n  }\n  G.wasDown = down; G.wasSpace = space\n\n  // ── stars grow in; the cap forces the oldest to fade (forgetting is built in) ──\n  const live = G.anchors.filter(a => !a.fading)\n  if (live.length > MAXA) { live.sort((a, b) => a.born - b.born); live[0].fading = true }\n  for (const a of G.anchors) {\n    if (a.fading) a.life -= step / 1.0\n    else a.life = Math.min(1, a.life + step * 4)\n  }\n  G.anchors = G.anchors.filter(a => a.life > 0.001)\n\n  // ── the wanderer: gravity, self-propel home on lit ground, fall in the dark ──\n  if (!G.woke) {\n    G.mx = 0; G.my = gl_h(0) + MOTE_R; G.vx = 0; G.vy = 0; G.grounded = 1   // resting on the shore\n  } else if (!G.dying) {\n    G.vy -= GRAV * step\n    // highest support under the wanderer: lit terrain, or a tended star\n    let Ysup = -1e9, onTerra = false\n    if (!inChasm(G.mx) && G.gstr > 0.35 && Math.abs(G.mx - G.gx) < GAZE_GROUND) {\n      const h = gl_h(G.mx); if (h > Ysup) { Ysup = h; onTerra = true }\n    }\n    for (const a of G.anchors) {\n      if (a.life > ANCH_HOLD && Math.abs(G.mx - a.x) < ANCH_R) { if (a.y > Ysup) { Ysup = a.y; onTerra = false } }\n    }\n    const hasSup = Ysup > -1e8\n    G.grounded = 0\n    G.mx += G.vx * step\n    G.my += G.vy * step\n    if (hasSup && G.my - MOTE_R <= Ysup && G.vy <= 0 && G.my > Ysup - 30) {\n      G.my = Ysup + MOTE_R; G.vy = 0; G.grounded = 1\n      if (onTerra) G.cp = { x: G.mx, y: Ysup + MOTE_R }   // checkpoint: last lit earth\n    }\n    if (G.grounded) G.vx = mixN(G.vx, MOTE_SPEED, 1 - Math.exp(-3 * step))  // it wants to go home\n    else G.vx *= 0.995\n    if (G.mx < -60) { G.mx = -60; G.vx = Math.max(0, G.vx) }\n    if (G.my < DEATH_Y) {\n      G.dying = true; G.deadT = 0\n      wd.__play_sound = [{ frequency: 70, duration: 0.5, volume: 0.18, type: 'sine' }]\n    }\n    if (G.mx >= GOALX) G.win = 1\n  } else {\n    G.deadT += step\n    if (G.deadT > 0.6) { G.mx = G.cp.x; G.my = G.cp.y; G.vx = 0; G.vy = 0; G.dying = false; G.respawn = 1 }\n  }\n  G.alive = mixN(G.alive, G.dying ? 0 : 1, 1 - Math.exp(-8 * step))\n  G.respawn = Math.max(0, G.respawn - step * 2)\n\n  // ── dawn: a little with progress, full when it's home ──\n  G.dawn = mixN(G.dawn, G.win ? 1 : Math.min(0.35, G.mx / GOALX * 0.35), 1 - Math.exp(-1.2 * step))\n  if (G.win && !G.sungWin) {\n    G.sungWin = true\n    wd.__play_sound = [\n      { frequency: 294, duration: 1.6, volume: 0.18, type: 'sine' },\n      { frequency: 392, duration: 1.8, volume: 0.14, type: 'sine' },\n      { frequency: 588, duration: 2.2, volume: 0.10, type: 'sine' },\n    ]\n  }\n\n  // ── hold R: the dark returns ──\n  G.resetT = wd.key_r ? G.resetT + step : 0\n  if (G.resetT > 1.2) {\n    G.anchors = []; G.mx = 0; G.my = gl_h(0) + MOTE_R; G.vx = 0; G.vy = 0\n    G.win = 0; G.sungWin = false; G.dawn = 0; G.dying = false; G.woke = false\n    G.cp = { x: 0, y: gl_h(0) + MOTE_R }; G.resetT = 0\n    wd.__play_sound = [{ frequency: 110, duration: 0.5, volume: 0.14, type: 'sine' }]\n  }\n\n  // ── camera follows the wanderer ──\n  const lookX = G.mx + G.vx * 0.25\n  G.camX += (lookX - G.camX) * (1 - Math.exp(-3.2 * step))\n  G.camY += ((G.my + HALF * 0.18) - G.camY) * (1 - Math.exp(-2.8 * step))\n\n  // pin the fullscreen field\n  for (const f of sim.fields.values()) {\n    if ((f.name || '') === 'Gloam') { const T = f.transform; T.x = 256; T.y = 256; T.vx = 0; T.vy = 0 }\n  }\n\n  // ── publish the whiteboard ──\n  const U = new Array(40).fill(0)\n  U[0] = G.t; U[1] = G.mx; U[2] = G.my; U[3] = G.vx; U[4] = G.vy; U[5] = G.alive\n  U[6] = G.gx; U[7] = G.gy; U[8] = G.gstr; U[9] = G.camX; U[10] = G.camY\n  U[11] = G.dawn; U[12] = GOALX; U[13] = G.win; U[14] = G.anchors.length; U[15] = G.intro; U[16] = G.respawn\n  const pub = G.anchors.slice().sort((a, b) => b.life - a.life).slice(0, 6)\n  for (let i = 0; i < 6; i++) { const a = pub[i]; if (a) { U[20 + i * 3] = a.x; U[21 + i * 3] = a.y; U[22 + i * 3] = a.life } }\n  wd.gpuUniforms = U\n} catch (e) { /* the dark keeps its shape */ }\n"
+  }
+ ],
+ "interactionRules": [],
+ "interactionEffects": [],
+ "visualTypes": [
+  {
+   "name": "gloam",
+   "wgsl": "\nfn gl_hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }\nfn gl_noise(p: vec2f) -> f32 {\n  let i = floor(p); let f = fract(p); let u = f * f * (3.0 - 2.0 * f);\n  return mix(mix(gl_hash(i), gl_hash(i + vec2f(1.0, 0.0)), u.x),\n             mix(gl_hash(i + vec2f(0.0, 1.0)), gl_hash(i + vec2f(1.0, 1.0)), u.x), u.y);\n}\nfn gl_fbm(p: vec2f) -> f32 {\n  var v = 0.0; var a = 0.5; var q = p;\n  for (var i = 0; i < 4; i++) { v += a * gl_noise(q); q = q * 2.02 + vec2f(11.0, 7.0); a *= 0.5; }\n  return v;\n}\n// THE TERRAIN — the one truth. Mirrored exactly in the JS hook.\nfn gl_h(x: f32) -> f32 {\n  var h = 74.0 + 30.0 * sin(x * 0.0060 + 0.5) + 16.0 * sin(x * 0.0130 + 2.1) + 8.0 * sin(x * 0.0270 + 4.0);\n  h = mix(h, 96.0, exp(-(x * x) / 40000.0));                          // the start pad\n  h = mix(h, 88.0, 0.9 * exp(-((x - 2600.0) * (x - 2600.0)) / 20000.0)); // the home terrace\n  return h;\n}\n// the three chasms — where no ground exists at all (bridge them with stars)\nfn gl_chasm(x: f32) -> f32 {\n  let c1 = smoothstep(628.0, 652.0, x) * (1.0 - smoothstep(918.0, 942.0, x));\n  let c2 = smoothstep(1468.0, 1492.0, x) * (1.0 - smoothstep(1748.0, 1772.0, x));\n  let c3 = smoothstep(2108.0, 2132.0, x) * (1.0 - smoothstep(2328.0, 2352.0, x));\n  return max(c1, max(c2, c3));\n}\n\nfn visual_gloam(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {\n  let t = uni(0);\n  let HALF = 300.0;\n  let su = vec2f(uv.x, -uv.y);                     // compute path: +y is down; flip to y-up\n  let camX = uni(9); let camY = uni(10);\n  let wp = vec2f(camX + su.x * HALF, camY + su.y * HALF);\n  let gx = uni(6); let gy = uni(7); let gstr = uni(8);\n  let mx = uni(1); let my = uni(2); let alive = uni(5);\n  let dawn = uni(11); let win = uni(13); let goalX = uni(12);\n  let intro = uni(15);\n\n  // ── the gloam: deep dark, a breath of indigo, cold star-motes in the void ──\n  let depth = clamp((camY - wp.y) / 600.0, 0.0, 1.0);\n  var c = mix(vec3f(0.011, 0.014, 0.026), vec3f(0.003, 0.004, 0.010), depth);\n  c += vec3f(0.010, 0.014, 0.030) * gl_fbm(wp * 0.004 + vec2f(0.0, t * 0.02));   // faint nebula\n  {\n    let sp = wp * 0.05;\n    let id = floor(sp);\n    let r = gl_hash(id);\n    let off = (vec2f(gl_hash(id + 3.0), gl_hash(id + 7.0)) - 0.5) * 0.7;\n    let d = length(fract(sp) - 0.5 - off);\n    let tw = 0.6 + 0.4 * sin(t * (1.0 + r * 2.5) + r * 40.0);\n    c += vec3f(0.5, 0.6, 0.85) * smoothstep(0.985, 0.999, r) * smoothstep(0.20, 0.02, d) * tw * 0.7;\n  }\n\n  // ── the light field: your gaze coin + the tended stars ──\n  var L = 0.0;\n  var warm = vec3f(0.0);\n  if (gstr > 0.01) {\n    let dg = length(wp - vec2f(gx, gy));\n    let coin = gstr * exp(-(dg * dg) / (2.0 * 78.0 * 78.0));\n    L += coin;\n    warm += vec3f(1.0, 0.86, 0.62) * coin;\n  }\n  for (var i = 0; i < 6; i++) {\n    let ax = uni(20 + i * 3); let ay = uni(21 + i * 3); let al = uni(22 + i * 3);\n    if (al > 0.01) {\n      let da = length(wp - vec2f(ax, ay));\n      let pool = al * exp(-(da * da) / (2.0 * 52.0 * 52.0));\n      L += pool;\n      warm += vec3f(1.0, 0.80, 0.55) * pool;\n    }\n  }\n  // the two shores are always faintly held — start and home, so you have landmarks\n  let ds = (wp.x - 30.0) / 120.0;    L += 0.16 * exp(-ds * ds);\n  let dh = (wp.x - goalX) / 170.0;   L += 0.14 * exp(-dh * dh);\n  L = clamp(L, 0.0, 1.4);\n\n  // ── ground: exists only where light falls (attention is existence) ──\n  let solidM = 1.0 - gl_chasm(wp.x);\n  let Hs = gl_h(wp.x);\n  let below = Hs - wp.y;                            // >0 = underground\n  let aa = 1.4;\n  let groundBody = smoothstep(-aa, aa, below) * solidM;\n  if (groundBody > 0.001) {\n    let lit = smoothstep(0.02, 0.28, L);\n    let n1 = gl_fbm(wp * 0.05);\n    let n2 = gl_fbm(wp * 0.22);\n    var g = mix(vec3f(0.05, 0.08, 0.07), vec3f(0.10, 0.12, 0.10), n1);\n    g *= 0.6 + 0.8 * n2;\n    g = g * (0.35 + 1.5 * L) + warm * 0.22;\n    let edge = smoothstep(6.0, 0.0, abs(below));    // a grass-line at the surface\n    g += vec3f(0.5, 0.7, 0.4) * edge * lit * 0.5;\n    c = mix(c, g, groundBody * lit);\n  }\n\n  // ── the tended stars: a steady bright point + soft halo, dimming as it ages ──\n  for (var i = 0; i < 6; i++) {\n    let ax = uni(20 + i * 3); let ay = uni(21 + i * 3); let al = uni(22 + i * 3);\n    if (al > 0.02) {\n      let d = length(wp - vec2f(ax, ay));\n      let core = exp(-(d * d) / (2.0 * 3.5 * 3.5));\n      let halo = exp(-(d * d) / (2.0 * 16.0 * 16.0));\n      c += vec3f(1.5, 1.25, 0.85) * core * al * 1.4 + vec3f(0.8, 0.65, 0.45) * halo * al * 0.5;\n    }\n  }\n\n  // ── the gaze coin (you) — a warm eye of light, an outline and a soft fill ──\n  if (gstr > 0.01) {\n    let d = length(wp - vec2f(gx, gy));\n    let ring = smoothstep(80.0, 74.0, d) * smoothstep(70.0, 78.0, d);\n    c += vec3f(1.0, 0.85, 0.6) * gstr * (0.05 * exp(-(d * d) / (2.0 * 70.0 * 70.0)) + 0.30 * ring);\n  }\n\n  // ── the wanderer — a small life, always faintly seen even in the dark ──\n  {\n    let d = length(wp - vec2f(mx, my));\n    let breathe = 0.85 + 0.15 * sin(t * 4.0);\n    c += vec3f(1.6, 0.7, 0.35) * alive * breathe * (6.0 / (d * d * 0.05 + 8.0));\n    c += vec3f(2.2, 1.4, 0.8) * alive * smoothstep(5.0, 0.0, d);\n  }\n\n  // ── the far hearth (home) — brightens as the dark lifts ──\n  {\n    let hp = vec2f(goalX, gl_h(goalX) + 26.0);\n    let d = length(wp - hp);\n    c += vec3f(1.5, 0.9, 0.5) * (0.4 + 0.6 * dawn) * (55.0 / (d * d * 0.02 + 40.0));\n  }\n\n  // ── dawn lifts the dark when the wanderer comes home ──\n  c += (vec3f(0.05, 0.07, 0.13) + vec3f(0.22, 0.14, 0.06)) * dawn * (1.0 - depth * 0.5);\n\n  c *= intro;\n  return vec4f(c, 1.0);                             // linear HDR — the engine grades it\n}"
+  }
+ ],
+ "modules": [],
+ "timestamp": 1785181496004
+}
