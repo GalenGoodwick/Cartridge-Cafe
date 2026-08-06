@@ -215,7 +215,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
   const inspectOnRef = useRef(false)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number } | null; source?: string | null }[]>([])
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; source?: string | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -2701,21 +2701,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // gpuPopulation entry this tick (__popProv, built in the hook loop).
       // Project the entries (uv quads → grid = (v+1)·256) and name the nearest
       // one + its authoring hook — works for ANY world, no cooperation needed.
-      let nodeI: { hook: string; idx: number; kind: number } | null = null
+      // No cutoff, and a STACK not a single answer (Galen: "containers of
+      // smaller things" — a big panel's CENTER is far from most of its own
+      // pixels, so nearest-center missed it). Every painted pixel now names
+      // the nearest few entries with distances: the small thing under the
+      // cursor AND its enclosing containers both appear.
+      let nodeI: { hook: string; idx: number; kind: number; d: number }[] | null = null
       try {
         const popU = sim?.worldData?.['gpuPopulation']
         const provU = sim?.worldData?.['__popProv']
         if (Array.isArray(popU) && Array.isArray(provU) && provU.length) {
-          let bdU = 46, biU = -1
+          const cands: { idx: number; d: number; kind: number }[] = []
           for (let k = 0; k + 3 < popU.length; k += 4) {
             const sxU = (Number(popU[k]) + 1) * 256, syU = (Number(popU[k + 1]) + 1) * 256
-            const dU = Math.hypot(sxU - gI.x, syU - gI.y)
-            if (dU < bdU) { bdU = dU; biU = k / 4 }
+            cands.push({ idx: k / 4, d: Math.hypot(sxU - gI.x, syU - gI.y), kind: Math.trunc(Number(popU[k + 3])) })
           }
-          if (biU >= 0) {
-            const segU = (provU as { hook: string; from: number; to: number }[]).find(sg => biU >= sg.from && biU < sg.to)
-            nodeI = { hook: segU ? segU.hook : 'unattributed', idx: biU, kind: Math.trunc(Number(popU[biU * 4 + 3])) }
-          }
+          cands.sort((a, b) => a.d - b.d)
+          nodeI = cands.slice(0, 3).map(c => {
+            const segU = (provU as { hook: string; from: number; to: number }[]).find(sg => c.idx >= sg.from && c.idx < sg.to)
+            return { hook: segU ? segU.hook : 'unattributed', idx: c.idx, kind: c.kind, d: Math.round(c.d) }
+          })
+          if (!nodeI.length) nodeI = null
         }
       } catch { /* provenance is a bonus, never break inspect */ }
       const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, source }
@@ -5223,7 +5229,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
                     ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
                     {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
-                    {en.node ? <span className="text-fuchsia-300"> › {en.node.hook} #{en.node.idx}·k{en.node.kind}</span> : null}
+                    {en.node ? <span className="text-fuchsia-300"> › {en.node.map(n => `${n.hook} #${n.idx}·k${n.kind}@${n.d}px`).join(' · ')}</span> : null}
                     {en.source ? <span className="text-emerald-300"> · src ✓</span> : null}
                   </button>
                   {/* PIXEL → SOURCE: the newest click shows the exact visual that
