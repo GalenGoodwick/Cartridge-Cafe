@@ -2128,20 +2128,16 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
       const v = parseInt(m[1], 16)
       return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]
     }
-    // THE WORLD SQUARE (Galen: "the text is off the grid") — hud % coords are
-    // relative to the LETTERBOXED [0,512] grid square, exactly like the DOM
-    // container was, NOT the full canvas. Same camera math as the DOM path.
-    const GRID = 512
-    const camX = camera?.x ?? 256, camY = camera?.y ?? 256, z9 = zoom || 1
-    const aspect = W / H
-    const gridRange = GRID / z9
-    const rangeX = aspect > 1 ? gridRange * aspect : gridRange
-    const rangeY = aspect > 1 ? gridRange : gridRange / aspect
-    const bxL = ((0 - camX) / rangeX + 0.5) * W
-    const bxR = ((GRID - camX) / rangeX + 0.5) * W
-    const byT = ((0 - camY) / rangeY + 0.5) * H
-    const byB = ((GRID - camY) / rangeY + 0.5) * H
-    const bw9 = bxR - bxL, bh9 = byB - byT
+    // THE WORLD SQUARE, CAMERA-INDEPENDENT (Galen: "you need a sense of where
+    // things go") — HUD is CHROME, not world: it lives in the letterboxed
+    // square at its RESTING frame (centered, zoom 1). The old DOM formula
+    // tracked the live grid camera, so any pan/zoom dragged the whole HUD off
+    // the world's shader chrome — the uniform drift in Galen's tab. UI never
+    // follows the camera.
+    const side9 = Math.min(W, H)
+    const bxL = (W - side9) / 2
+    const byT = (H - side9) / 2
+    const bw9 = side9, bh9 = side9
     for (const el of hud as Array<Record<string, unknown>>) {
       if (el?.['type'] !== 'text' || !el['text']) continue
       if (el['clickable'] || el['css']) continue                       // interactive/styled text stays DOM
