@@ -2661,7 +2661,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const oc = document.createElement('canvas')
         oc.width = bmp.width; oc.height = bmp.height
         const cx = oc.getContext('2d')
-        if (cx) { cx.drawImage(bmp, 0, 0); inspectPixRef.current = { data: cx.getImageData(0, 0, bmp.width, bmp.height), w: bmp.width, h: bmp.height } }
+        if (cx) {
+          cx.drawImage(bmp, 0, 0)
+          // COMPOSITE THE HUD (Galen: "press b does not hover as red even
+          // though I can see it") — HUD text is an HTML layer, not shader
+          // pixels; re-render it into the snapshot at its % positions so the
+          // hover eye samples the SCREEN the player sees, not just the canvas.
+          try {
+            const hudU = simulationRef.current?.worldData?.['hud']
+            const rct = cv.getBoundingClientRect()
+            const scl = bmp.width / Math.max(1, rct.width)
+            if (Array.isArray(hudU)) for (const hEl of hudU as Array<Record<string, unknown>>) {
+              if (hEl?.['type'] !== 'text' || !hEl['text']) continue
+              const fs = (parseFloat(String(hEl['fontSize'] || '12')) || 12) * scl
+              cx.font = `${fs}px monospace`
+              cx.fillStyle = String(hEl['color'] || '#ffffff')
+              cx.textBaseline = 'top'
+              cx.fillText(String(hEl['text']), bmp.width * (parseFloat(String(hEl['x'])) / 100), bmp.height * (parseFloat(String(hEl['y'])) / 100))
+            }
+          } catch { /* hud compositing is a bonus */ }
+          inspectPixRef.current = { data: cx.getImageData(0, 0, bmp.width, bmp.height), w: bmp.width, h: bmp.height }
+        }
         bmp.close()
       } catch { /* snapshot is a bonus */ }
     }
