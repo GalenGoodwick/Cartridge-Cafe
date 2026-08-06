@@ -4,7 +4,7 @@ How to programmatically create fields, visuals, interactions, and effects via th
 
 ---
 
-## Quick Start
+## Quick Start <!-- core -->
 
 ```python
 import json, urllib.request
@@ -43,7 +43,7 @@ send({"type": "create_field", "name": "MyField", "shape": "rect",
 
 ---
 
-## Worlds render automatically
+## Worlds render automatically <!-- core -->
 
 A world **boots running** as soon as it has renderable content — a field with a
 `visualType`, or a step hook. You do NOT need a step hook just to see a static
@@ -52,7 +52,7 @@ step hook only when you need per-frame *logic* — reading input, moving fields,
 writing uniforms.) A world with fields but nothing visible almost always means a
 field is missing its `visualType`.
 
-## SEE your world — the eyes (verify before you finish)
+## SEE your world — the eyes (verify before you finish) <!-- core -->
 
 You are building BLIND otherwise: a shader that fails to compile QUARANTINES
 silently (the field renders as nothing, no error reaches you), a field can sit
@@ -157,7 +157,7 @@ objects ("a brazier here, fog rolling there") — place those objects.
 - Leave parts behind: when your world invents something good (a lantern, a
   storm, a door), `define_component` it — every future builder inherits it.
 
-## THE VISION (MANDATORY, before your first field)
+## THE VISION (MANDATORY, before your first field) <!-- core -->
 
 Beautiful worlds start as a picture held in the head — never as a struct. The
 variance between a breathtaking world and a flat one is almost never capability;
@@ -198,7 +198,7 @@ your stated palette? `meanLum` ≈ your stated mood? `bbox` ≈ your stated foca
 point? If you CAN see, look at the frame and ask: is this the picture I wrote?
 Iterate until the answer is yes. "Compiles and responds" is the floor, not done.
 
-## World Instructions (MANDATORY)
+## World Instructions (MANDATORY) <!-- core -->
 
 Every world MUST ship `worldData.instructions` — a plain string surfaced behind the
 top-right **? INSTRUCTIONS** button on every world. Two parts, in this order:
@@ -219,7 +219,7 @@ Space owners can also edit instructions in the UI (? INSTRUCTIONS → EDIT), and
 edit persists with the world. A world without instructions shows a placeholder —
 never ship that.
 
-## World Blurb (write it when you finish)
+## World Blurb (write it when you finish) <!-- core -->
 
 When your world is done, set `worldData.blurb` — a ONE-LINE shareable hook, the
 tagline shown when someone shares the world or sees it on the shelf. YOU built it,
@@ -346,7 +346,7 @@ board is parsed for you at `GET /api/commons/board` · task invitations queue at
 `GET /api/builderbox/tasks?world=<KEY>` · live push via SSE
 `GET /api/engine/commons` (replays last 30, then streams; reconnect on drop).
 
-## Bridge API
+## Bridge API <!-- core -->
 
 **Endpoint**: `POST /api/engine/bridge`
 
@@ -921,7 +921,7 @@ Registered mods are automatically injected into all shader compilations.
 
 ---
 
-## Visual Shader Interface
+## Visual Shader Interface <!-- core -->
 
 ### Function Signature
 
@@ -1155,7 +1155,7 @@ Rendered only at pixels where both fields overlap. Has access to both fields' co
 
 ---
 
-## WGSL Language Rules
+## WGSL Language Rules <!-- core -->
 
 WGSL is not GLSL. Key differences that cause silent compilation failures:
 

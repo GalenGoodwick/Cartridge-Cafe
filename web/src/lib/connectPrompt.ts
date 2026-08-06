@@ -17,7 +17,7 @@ export const authBlock = (origin: string, token: string) =>
 
 /** The mandatory-guide step, one phrasing everywhere. */
 export const guideStep = (origin: string) =>
-  `GET ${origin}/api/engine/guide and read it fully (markdown) — it is how to build.`
+  `GET ${origin}/api/engine/guide and read it (markdown) — the CORE contracts plus an INDEX of every capability. When a task touches an indexed capability (films, solvers, audio, multiplayer, …), fetch its full recipe: ${origin}/api/engine/guide?section=<name>.`
 
 /** The watcher section — the collaboration protocol's wake mechanics. */
 export const staySummonable = (origin: string) =>

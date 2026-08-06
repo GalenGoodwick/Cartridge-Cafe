@@ -64,14 +64,14 @@ const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or yo
 4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.
 5. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.2.1' }, { instructions: PROTOCOL })
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.3.0' }, { instructions: PROTOCOL })
 
 server.tool(
   'read_guide',
-  'The engine guide — MANDATORY reading before building. Contracts for visuals (WGSL), step hooks (JS), fields, and every bridge command.',
-  {},
-  async () => {
-    return text(await bridgeFor('').guide())
+  'The engine guide — MANDATORY reading before building. No args = the CORE contracts (WGSL, hooks, fields, the eye) + an INDEX of every capability (films/cutscenes, GPU solvers, multiplayer, audio, components, …). Call again with {section} the moment a task touches an indexed capability — each section is the full working recipe.',
+  { section: z.string().optional().describe('Capability/section name from the index (fuzzy match), e.g. "films", "audio", "swarm"') },
+  async ({ section }) => {
+    return text(await bridgeFor('').guide(section))
   },
 )
 
