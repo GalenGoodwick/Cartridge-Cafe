@@ -2000,6 +2000,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   var overlapIndices: array<u32, 8>;
   var overlapCount: u32 = 0u;
   var pixelEntity: i32 = -1;   // provenance: which population entity owns this pixel (-1 = the field's own art)
+  // PROVENANCE BY COLOR (Galen): attribute the pixel to the layer whose actual
+  // color CONTRIBUTION dominated the final pixel — grounded in the paint itself,
+  // not a visual's alpha claim (a full-screen superimpose layer that returns
+  // alpha everywhere but only tints a small region should own only that region).
+  var maxContrib: f32 = 0.0;
+  var contribIdx: u32 = 0xFFFFFFFFu;
 
   for (var i = 0u; i < fieldCount; i++) {
     let f = superFields[i];
@@ -2080,6 +2086,16 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       // contribute to the screen buffer (accumBuf). They only render to
       // their designated target via the RTT write section below.
       if (i32(f.shapeDims.w) < 0) {
+        // PROVENANCE BY COLOR: how much did THIS field actually change the pixel
+        // from what's behind it? That delta (× its alpha) is its real paint
+        // contribution — tracked for EVERY screen-visible field (OIT base AND
+        // legacy-superimpose layers alike), so the background attributes to the
+        // base that painted it, not the topmost full-screen layer passing behind
+        // through. Screen-visible only (== -1); noHit (== -2) never owns a pixel.
+        if (i32(f.shapeDims.w) == -1) {
+          let contrib = length(visual.rgb - behind.rgb) * visual.a;
+          if (contrib > maxContrib) { maxContrib = contrib; contribIdx = i; }
+        }
         let superimpose = f.pos3D.w; // 0.0 = OIT (correct transparency), 1.0 = legacy overwrite
         if (superimpose > 0.5) {
           // Legacy superimposition: last-write-wins overwrite
@@ -2149,14 +2165,21 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     }
   }
 
-  // Write topmost screen-visible field index for pixel-perfect hit testing
-  // Skip RTT-targeted fields (shapeDims.w >= 0) and noHit fields (shapeDims.w == -2)
+  // Write the OWNING screen-visible field index for pixel-perfect hit testing.
+  // PROVENANCE BY COLOR: prefer the layer whose actual color contribution
+  // dominated this pixel (grounded in the paint, robust to alpha claims); fall
+  // back to topmost-overlapping only if nothing meaningfully painted (e.g. a pure
+  // OIT stack). Skip RTT-targeted (shapeDims.w >= 0) and noHit (== -2) fields.
   var hitIdx = 0xFFFFFFFFu;
-  for (var hi = overlapCount; hi > 0u; hi--) {
-    let hfi = overlapIndices[hi - 1u];
-    if (i32(superFields[hfi].shapeDims.w) == -1) {
-      hitIdx = hfi;
-      break;
+  if (contribIdx != 0xFFFFFFFFu && maxContrib > 0.02) {
+    hitIdx = contribIdx;
+  } else {
+    for (var hi = overlapCount; hi > 0u; hi--) {
+      let hfi = overlapIndices[hi - 1u];
+      if (i32(superFields[hfi].shapeDims.w) == -1) {
+        hitIdx = hfi;
+        break;
+      }
     }
   }
   // PROVENANCE: pack the entity owner into the HIGH bits (field in low 16, entity+1
