@@ -478,6 +478,17 @@ export class FieldSimulation {
     // visible by ID instead of just "the frame is slow". Two perf.now() per hook
     // is negligible next to the hook body.
     let hookTotal = 0
+    // PIXEL→NODE PROVENANCE (universal, Galen: "click to diagnose working
+    // universally"): watch gpuPopulation BETWEEN hooks — a wholesale
+    // reassignment makes the assigning hook the owner of everything so far;
+    // appended entries belong to the appending hook. wd.__popProv =
+    // [{hook, from, to}] in ENTRY indices (quads), rebuilt every tick; the
+    // INSPECT click maps pixel → nearest entry → owning hook, for ANY world,
+    // with zero cartridge cooperation.
+    const wdProv = this.worldData as Record<string, unknown>
+    let provArr: unknown = wdProv['gpuPopulation']
+    let provLen = Array.isArray(provArr) ? (provArr as unknown[]).length : 0
+    const popProv: { hook: string; from: number; to: number }[] = []
     for (const [hookId, hook] of this.stepHooks) {
       const t0 = performance.now()
       try {
@@ -486,11 +497,21 @@ export class FieldSimulation {
         console.warn(`Step hook ${hookId} failed:`, e)
         this.reportHookError(hookId, e)
       }
+      const nowArr: unknown = wdProv['gpuPopulation']
+      const nowLen = Array.isArray(nowArr) ? (nowArr as unknown[]).length : 0
+      if (nowArr !== provArr) {
+        popProv.length = 0
+        if (nowLen > 0) popProv.push({ hook: hookId, from: 0, to: nowLen / 4 })
+      } else if (nowLen > provLen) {
+        popProv.push({ hook: hookId, from: provLen / 4, to: nowLen / 4 })
+      }
+      provArr = nowArr; provLen = nowLen
       const ms = performance.now() - t0
       hookTotal += ms
       const prev = this.hookPerf.perHook.get(hookId) ?? ms
       this.hookPerf.perHook.set(hookId, prev * 0.9 + ms * 0.1)   // EMA
     }
+    wdProv['__popProv'] = popProv
     this.hookPerf.totalMs = this.hookPerf.totalMs * 0.9 + hookTotal * 0.1
     // drop timings for hooks that no longer exist
     if (this.hookPerf.perHook.size > this.stepHooks.size) {
