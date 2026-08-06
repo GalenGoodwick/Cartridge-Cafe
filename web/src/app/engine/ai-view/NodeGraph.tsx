@@ -8,10 +8,10 @@ import { useState } from 'react'
 import type { FieldSimulation } from '../simulation'
 import type { FieldRenderer } from '../renderer'
 
-export type ANodeModule = { kind: 'module'; id: string; title: string; wgslLen: number }
-export type ANodeVisual = { kind: 'visual'; id: string; title: string; wgslLen: number }
+export type ANodeModule = { kind: 'module'; id: string; title: string; wgslLen: number; wgsl?: string }
+export type ANodeVisual = { kind: 'visual'; id: string; title: string; wgslLen: number; wgsl?: string }
 export type ANodeField = { kind: 'field'; id: string; title: string; shape?: string; visual?: string; pixelCollide?: boolean }
-export type ANodeHook = { kind: 'hook'; id: string; title: string; desc?: string; author?: string; codeLen: number }
+export type ANodeHook = { kind: 'hook'; id: string; title: string; desc?: string; author?: string; codeLen: number; code?: string }
 export type ANode = ANodeModule | ANodeVisual | ANodeField | ANodeHook
 export interface AiNodeGraph {
   modules: ANodeModule[]
@@ -46,10 +46,10 @@ export function buildNodeGraph(sim: FieldSimulation | null, renderer: FieldRende
   type HookVal = { author?: string; description?: string; code?: string }
   const hks: [string, HookVal][] =
     stepHooks ? stepHooks.map(h => [h.id, h] as [string, HookVal]) : (sim ? Array.from(sim.stepHooks.entries()) : [])
-  const modules = mods.map(m => ({ kind: 'module' as const, id: 'm:' + m.name, title: m.name, wgslLen: (m.wgsl || '').length }))
-  const visuals = vis.map(v => ({ kind: 'visual' as const, id: 'v:' + v.name, title: v.name, wgslLen: (v.wgsl || '').length }))
+  const modules = mods.map(m => ({ kind: 'module' as const, id: 'm:' + m.name, title: m.name, wgslLen: (m.wgsl || '').length, wgsl: m.wgsl }))
+  const visuals = vis.map(v => ({ kind: 'visual' as const, id: 'v:' + v.name, title: v.name, wgslLen: (v.wgsl || '').length, wgsl: v.wgsl }))
   const fields = flds.map((f) => ({ kind: 'field' as const, id: 'f:' + f.id, title: f.name || f.id, shape: f.shapeType, visual: f.visualTypeName, pixelCollide: f.pixelCollide }))
-  const hooks = hks.map(([id, h]) => ({ kind: 'hook' as const, id: 'h:' + id, title: id, desc: h.description, author: h.author, codeLen: (h.code || '').length }))
+  const hooks = hks.map(([id, h]) => ({ kind: 'hook' as const, id: 'h:' + id, title: id, desc: h.description, author: h.author, codeLen: (h.code || '').length, code: h.code }))
   const edges: AiNodeGraph['edges'] = []
   for (const f of flds) if (f.visualTypeName && visuals.some(v => v.id === 'v:' + f.visualTypeName)) edges.push({ from: 'v:' + f.visualTypeName, to: 'f:' + f.id, kind: 'paints' })
   for (const m of modules) for (const v of visuals) edges.push({ from: m.id, to: v.id, kind: 'composes' })
@@ -119,7 +119,7 @@ export function NodeGraphOverlay({ graph, onClose }: { graph: AiNodeGraph; onClo
             </svg>
           </div>
           {/* inspector */}
-          <div className="w-[300px] border-l border-white/10 p-3 overflow-auto font-mono text-[12px]">
+          <div className="w-[380px] border-l border-white/10 p-3 overflow-auto font-mono text-[12px]">
             {selNode ? <NodeInspector node={selNode} graph={graph} /> : (
               <div className="text-white/30 leading-relaxed">click a node to inspect it.<br/><br/>modules compose into visuals, visuals paint fields, hooks drive the uniforms visuals read.</div>
             )}
@@ -154,6 +154,16 @@ export function NodeInspector({ node, graph }: { node: ANode; graph: AiNodeGraph
           {outs.length > 0 && <div><div className="text-white/35 text-[11px] mb-0.5">→ feeds ({outs.length})</div>{outs.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.to)}</div>)}{outs.length > 8 && <div className="text-white/30">+{outs.length - 8} more</div>}</div>}
         </div>
       )}
+      {(() => {
+        const src = node.kind === 'hook' ? node.code : (node.kind === 'module' || node.kind === 'visual') ? node.wgsl : undefined
+        if (!src) return null
+        return (
+          <div className="mt-3 pt-2 border-t border-white/10">
+            <div className="text-white/35 text-[11px] mb-1">source · {(src.length / 1024).toFixed(1)} KB</div>
+            <pre className="text-[10px] leading-[1.45] text-white/70 bg-white/[0.04] border border-white/10 rounded-md p-2 overflow-auto max-h-[46vh] whitespace-pre">{src}</pre>
+          </div>
+        )
+      })()}
       <div className="mt-3 pt-2 border-t border-white/10 text-white/25 text-[11px] leading-relaxed">
         {(node.kind === 'module' || node.kind === 'visual' || node.kind === 'hook')
           ? 'code node — AI-authored, human-openable. (edit wiring in Tier-2)'
