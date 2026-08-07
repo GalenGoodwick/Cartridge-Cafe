@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { signIn, useSession } from 'next-auth/react'
+import { signIn, signOut, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { NotifyMeButton } from '@/components/NotifyMeButton'
 
@@ -38,6 +38,24 @@ function SignInInner() {
     fetch('/api/spaces/claim', { method: 'POST' }).then(r => r.json())
       .then(d => { if (d.claimed > 0) setClaimedN(d.claimed) }).catch(() => {})
   }, [session])
+
+  // Enter through an OAuth door. A guest ALREADY holds a NextAuth session, and
+  // starting OAuth while signed in makes NextAuth try to LINK the provider onto
+  // the guest user — which throws OAuthAccountNotLinked the moment that email
+  // belongs to a real account (core callback-handler: userByAccount.id !== the
+  // session user → refuse; allowDangerousEmailAccountLinking never even runs
+  // because a session exists). So sign the guest session out FIRST, then start
+  // OAuth as a clean sign-in that resolves to the real account. The cc_guest
+  // cookie is separate (httpOnly) and survives signOut, so the claim effect
+  // above / AutoClaimDeed still carry the guest's world onto the account.
+  const enterThrough = async (provider: string) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      if (session?.user?.isTemp) await signOut({ redirect: false })
+      await signIn(provider, { callbackUrl })
+    } finally { setBusy(false) }
+  }
 
   return (
     <div className="cafe-room text-steamer flex items-center justify-center px-6">
@@ -90,8 +108,9 @@ function SignInInner() {
             {(!session?.user || session.user.isTemp) && <>
             {(!providers || !!providers.google) && (
               <button
-                onClick={() => signIn('google', { callbackUrl })}
-                className="w-full rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-colors"
+                onClick={() => enterThrough('google')}
+                disabled={busy}
+                className="w-full rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-colors disabled:opacity-50"
               >
                 CONTINUE WITH GOOGLE
               </button>
@@ -113,8 +132,9 @@ function SignInInner() {
             )}
             {providers && !!providers.github && (
               <button
-                onClick={() => signIn('github', { callbackUrl })}
-                className="w-full rounded-lg border border-brass/30 hover:border-flame/60 text-steamer/80 hover:text-glow font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-all"
+                onClick={() => enterThrough('github')}
+                disabled={busy}
+                className="w-full rounded-lg border border-brass/30 hover:border-flame/60 text-steamer/80 hover:text-glow font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-all disabled:opacity-50"
               >
                 CONTINUE WITH GITHUB
               </button>

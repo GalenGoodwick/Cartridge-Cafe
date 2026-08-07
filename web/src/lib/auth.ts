@@ -14,6 +14,16 @@ export const authOptions: NextAuthOptions = {
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            // Link a Google login to an existing same-email user instead of failing
+            // with OAuthAccountNotLinked. Safe here: Google verifies the email, so it
+            // can't be used to hijack an account under an address you don't control.
+            // (Fixes pre-existing cafe users — e.g. accounts carried from the shared
+            // dawn-base — being walled out when they first sign in with Google.)
+            allowDangerousEmailAccountLinking: true,
+            // Always show Google's account chooser, so a returning user can pick
+            // WHICH Google account (default silently reuses the one browser session
+            // — "no ability to choose account").
+            authorization: { params: { prompt: 'select_account' } },
           }),
         ]
       : []),
