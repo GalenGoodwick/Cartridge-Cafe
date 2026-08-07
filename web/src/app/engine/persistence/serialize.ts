@@ -27,7 +27,7 @@ export function filterSyncWorldData(worldData: Record<string, unknown>): Record<
 /** Keys that are never save state: engine plumbing, per-frame render outputs,
  *  input, presence, and the design/registry keys that belong to the ROM itself. */
 export const SAVE_STATE_DENY = new Set([
-  'gpuUniforms', 'gpuPopulation', 'hud', 'save', 'persist', 'cellSample',
+  'gpuUniforms', 'gpuPopulation', 'hud', 'save', 'persist', 'cellSample', 'presence',
   '__play_sound', '__play_music', 'last_hook_error', 'last_compile_error',
   '__nodes', '__nodeStrict', '__rooms', '__bridge_rev', '__sandbox', '__budget',
   '__fresh', '__frameMeter', '__popProv', '__entities', '__clicks',
@@ -83,6 +83,10 @@ export function saveStateBaseline(
   return out
 }
 
+/** Per-frame render outputs that must not persist into a rom world's snapshot —
+ *  they're neither ROM (authored) nor save state (denied), just frame residue. */
+const ROM_SYNC_DROP = new Set(['hud', '__play_sound', '__play_music', 'last_hook_error', 'cellSample'])
+
 /** ROM protection for the owner 2s sync: strip everything that would be captured as
  *  save state, so the shared snapshot carries only ROM + declared-shared keys. This
  *  is the leak fix — player state stops circulating between tabs entirely. */
@@ -93,6 +97,7 @@ export function stripSaveState(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(worldData)) {
+    if (ROM_SYNC_DROP.has(k)) continue
     if (saveStateEligible(k, shared)) {
       let ser: string | undefined
       try { ser = JSON.stringify(v) ?? undefined } catch { ser = undefined }
