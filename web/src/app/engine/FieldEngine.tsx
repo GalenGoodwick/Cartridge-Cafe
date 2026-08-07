@@ -2040,6 +2040,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       setVersionsOpen(false)
       setChromeVisible(false)
       setWorldLoading(true)
+      // #4 PROGRESSIVE RESOLUTION: seed the render governor LOW so the FIRST frames
+      // after the shader compiles paint cheap+fast (a heavy raymarcher's per-pixel
+      // cost is its first-paint tax) — then the governor eases resolution back UP
+      // on its own once frames are comfortable. First-paint sooner, sharpens in.
+      autoScaleRef.current = 0.5
       await fadeToBlack()   // the departing world dims out BEFORE teardown — no last-frame flash
       if (playLoadedRef.current !== playScene) return   // superseded during the fade
       try {
