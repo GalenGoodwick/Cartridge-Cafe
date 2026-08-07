@@ -90,6 +90,22 @@ describe('save states — scoping', () => {
     expect(sharedKeys({ __shared: [1, 'ok', null] })).toEqual(new Set(['ok']))
   })
 
+  it('design-mode re-baseline: authored tuning becomes ROM, not the owner save', () => {
+    // owner tunes globewarp's aqua knobs live in design mode, then turns it off.
+    const shared = sharedKeys(ROM)
+    const authored = { ...ROM, __vf: undefined, __aqua2: { nb: 20, kick: 1.5, rest: 0.04 } }
+    delete (authored as Record<string, unknown>).__vf
+    // turning design mode OFF re-baselines from the current (authored) worldData
+    const newBase = saveStateBaseline(authored, shared)
+    // a player who now visits and doesn't touch the knobs captures nothing:
+    expect(captureSaveState(authored, newBase, shared)).toEqual({})
+    // and the authored knob is the ROM value everyone boots with
+    expect(JSON.parse(newBase.__aqua2)).toEqual({ nb: 20, kick: 1.5, rest: 0.04 })
+    // a player who then diverges only saves THEIR change, over the authored ROM
+    const played = { ...authored, __aqua2: { nb: 20, kick: 9.9, rest: 0.04 }, __myrun: { score: 5 } }
+    expect(captureSaveState(played, newBase, shared)).toEqual({ __aqua2: { nb: 20, kick: 9.9, rest: 0.04 }, __myrun: { score: 5 } })
+  })
+
   it('the deny list covers the engine plumbing that must never ride a save', () => {
     for (const k of ['gpuUniforms', 'gpuPopulation', '__nodes', '__bridge_rev', 'save', 'persist', '__saveArch', '__shared']) {
       expect(SAVE_STATE_DENY.has(k), `${k} missing from deny`).toBe(true)

@@ -215,6 +215,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
   const inspectOnRef = useRef(false)
+  // ── DESIGN MODE (SAVE STATES, Galen Aug 7): owner-only. Rom worlds capture every
+  //    worldData divergence as the PLAYER's save state — but an owner tuning the
+  //    world live IS authoring the ROM, not playing. While design mode is on, per-
+  //    player capture pauses and the owner's 2s sync writes FULL worldData to the
+  //    shared snapshot (no strip) so tuning knobs land in the cartridge. Turning it
+  //    OFF re-baselines: the just-authored state becomes the new ROM, so nothing
+  //    tuned is later mistaken for the owner's personal save. Default OFF. ──
+  const designModeRef = useRef(false)
+  const [designMode, setDesignMode] = useState(false)
   // HOVER PIXEL COLOR (Galen): while inspect is on, snapshot the canvas ~4×/s
   // (createImageBitmap works on a WebGPU canvas) into a 2D buffer and sample
   // the TRUE painted pixel under the cursor live — shown in the console header.
@@ -454,6 +463,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const romSharedRef = useRef<Set<string>>(new Set())
   const stateSaveSerRef = useRef('')
   const stateSaveAtRef = useRef(0)
+  // SAVE STATES: design mode flips → keep the ref in step, and on turning it OFF
+  // re-baseline so the just-authored worldData becomes the new ROM (nothing the
+  // owner tuned is later captured as their personal save).
+  useEffect(() => {
+    const wasOn = designModeRef.current
+    designModeRef.current = designMode
+    if (wasOn && !designMode) {
+      const sim = simulationRef.current
+      if (sim && romBaselineRef.current) {
+        romBaselineRef.current = saveStateBaseline(sim.worldData, romSharedRef.current)
+        stateSaveSerRef.current = ''   // next capture diffs against the fresh ROM
+      }
+    }
+  }, [designMode])
   const hookErrAtRef = useRef(0)           // last hook-error timestamp forwarded to the server (bridge-visible)
   useEffect(() => {
     if (!spaceSlug && !playScene) return
@@ -3734,7 +3757,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // worldData.save and forgets — no save/load code of its own. Gated on
       // autoSaveReadyRef so we never clobber the just-loaded save with the default.
       // SAVE STATES: capture the worldData↔ROM divergence per-player, debounced.
-      if (autoSaveReadyRef.current && romBaselineRef.current && !visitingRef.current && now - stateSaveAtRef.current > 4000) {
+      // Design mode pauses capture — the owner is authoring the ROM, not playing.
+      if (autoSaveReadyRef.current && romBaselineRef.current && !visitingRef.current && !designModeRef.current && now - stateSaveAtRef.current > 4000) {
         const state = captureSaveState(sim.worldData, romBaselineRef.current, romSharedRef.current)
         const ser = JSON.stringify(state)
         if (ser !== stateSaveSerRef.current) {
@@ -4700,7 +4724,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const snap = serializeWorld(sim, renderer, { stepHooks: allStepHookSnapshots(sim), excludeBroken: true })
         // SAVE STATES · ROM PROTECTION: the shared snapshot carries only ROM + declared-
         // shared keys — player state never circulates between tabs again (the Aug 7 leak).
-        if (romBaselineRef.current) snap.worldData = stripSaveState(snap.worldData, romBaselineRef.current, romSharedRef.current)
+        // Design mode skips the strip: the owner's live worldData IS the new ROM.
+        if (romBaselineRef.current && !designModeRef.current) snap.worldData = stripSaveState(snap.worldData, romBaselineRef.current, romSharedRef.current)
         // TEARDOWN GUARD: a hot-reload leaves the renderer with 0 visuals for a beat.
         // Skinned fields but no visuals is a transient, not a real state — persisting it
         // renders everyone DARK. Skip it.
@@ -5656,6 +5681,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
               >
                 {inspectOn ? '◉ INSPECT ON' : '◎ INSPECT'}
+              </button>
+            )}
+            {/* DESIGN MODE (SAVE STATES) — owner only. OFF (default): the owner gets
+                their own per-player save like everyone else. ON: live edits author
+                the CARTRIDGE (tuning knobs → shared ROM, not the owner's save). */}
+            {isOwner && !isHub && (
+              <button
+                onClick={() => setDesignMode(v => !v)}
+                title="Design mode — your live edits save to the CARTRIDGE for everyone, instead of your personal save. Turn off to play with your own save."
+                className={designMode
+                  ? 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-500/25 backdrop-blur border border-amber-400/60 text-amber-100 transition-colors'
+                  : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
+              >
+                {designMode ? '✎ DESIGN ON' : '✎ DESIGN'}
               </button>
             )}
             {/* build-console link removed from EDIT — the BuilderBox door
