@@ -2185,6 +2185,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (scene.interactionRules) sim.interactionRules = scene.interactionRules
         if (scene.interactionEffects) for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
         if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
+        // #2 WARM THE UBER-SHADER: kick off the (async) megashader compile NOW —
+        // modules + visuals are all registered at this point (so no mod_w3_ray
+        // race), and starting it here lets it compile CONCURRENTLY with the
+        // field-effect compiles below + the first hook frames, instead of only
+        // when liftWhenSettled first polls it. Free parallelism; shaves the wait.
+        renderer.isSuperReady()
         // compile each field's effects — the /play loader never did this, so
         // cartridge effects (the fluid solver, any feedback pass) were silently
         // dropped and only the base visual ever rendered.
