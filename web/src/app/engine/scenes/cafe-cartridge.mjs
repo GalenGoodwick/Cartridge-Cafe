@@ -912,6 +912,7 @@ try {
             }
           }
           const B = U.bubbles[n]
+          B.seen = 1   // roster-confirmed at least once — safe to render even on a later DEGRADED poll (browse null) whose want-set omits it
           B.launch = want[n].launch
           B.big = !!want[n].big
           B.square = !!want[n].square   // a branch draws square, not round
@@ -1001,10 +1002,14 @@ try {
         // degraded pass, or bubbles that arrive with the full poll would adopt
         // the saved layout anchored and miss their bump. Fires once per visit.
         if (fullAnswer && !U.bumpedOnce) { U.bumpedOnce = 1; U.doBump = 1 }
-        // NOTHING renders without the roster's word — a stale shared-doc bubble
-        // (a world hidden since it was saved) must never get even one frame.
-        // On a degraded first pass it just waits in U.bubbles for the full poll.
-        U.order = Object.keys(U.bubbles).filter(n => want[n]).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 200)
+        // Render every bubble the roster has EVER confirmed (B.seen) — NOT just
+        // THIS poll's want-set. U.bubbles is only ever populated from the want-set
+        // (above), so seen still guarantees nothing renders without the roster's
+        // word; but a DEGRADED poll (browse null, so the want-set omits every space
+        // bubble) must not blink confirmed icons out of U.order and back — the
+        // flicker on main load.
+        // Prune (above, full answers only) is what removes genuinely-gone worlds.
+        U.order = Object.keys(U.bubbles).filter(n => U.bubbles[n].seen).sort((a2, b2) => U.bubbles[b2].score - U.bubbles[a2].score).slice(0, 200)
         if ((MF || SUB || PL) && U.order.length === 0 && !U.hintedEmpty && typeof window !== 'undefined') {
           U.hintedEmpty = true
           const emptyText = MF ? 'no worlds on your deed yet - brew yours'
