@@ -465,7 +465,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (stopped) return
       const sim = simulationRef.current
       if (!sim) { if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200); return }
-      const rom = sim.worldData?.['__saveArch'] === 'rom'   // SAVE STATES: rom implies persist
+      // SAVE STATES: DEFAULT-ON for spaces — rom is live once the snapshot applied
+      // and set a baseline (legacy worlds never set one). Waiting on the baseline
+      // (not the flag) also guarantees the restore can never race the snapshot.
+      const rom = !!spaceSlug && romBaselineRef.current !== null
       if (!sim.worldData?.['persist'] && !rom) {
         // the snapshot (which carries persist:true) may not have applied yet —
         // keep checking; give up only after ~8s (then it's a real arcade world)
@@ -2491,7 +2494,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
           // SAVE STATES: this snapshot IS the ROM — capture the boot baseline (from the
           // SNAPSHOT, never the live sim, so player state can't bake into the baseline).
-          if ((snapshot.worldData as Record<string, unknown>)['__saveArch'] === 'rom') {
+          // DEFAULT-ON: every space is a rom world unless it declares __saveArch:'legacy'.
+          if ((snapshot.worldData as Record<string, unknown>)['__saveArch'] !== 'legacy') {
             romSharedRef.current = sharedKeys(snapshot.worldData as Record<string, unknown>)
             romBaselineRef.current = saveStateBaseline(snapshot.worldData as Record<string, unknown>, romSharedRef.current)
           } else { romBaselineRef.current = null; romSharedRef.current = new Set() }
@@ -3434,12 +3438,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // Restore world data
       if (data.worldData && typeof data.worldData === 'object') {
         Object.assign(sim.worldData, stripSave(data.worldData as Record<string, unknown>))
-        // SAVE STATES: a reload carries a new ROM — refresh the baseline from the
-        // INCOMING worldData (rom syncs are already player-state-stripped).
-        if ((data.worldData as Record<string, unknown>)['__saveArch'] === 'rom') {
-          romSharedRef.current = sharedKeys(data.worldData as Record<string, unknown>)
-          romBaselineRef.current = saveStateBaseline(data.worldData as Record<string, unknown>, romSharedRef.current)
-        }
+        // SAVE STATES: this is the PERSONAL-EDITOR restore (spaces fetch {} above and
+        // load via loadSpaceSnapshot, which owns the ROM baseline) — the editor is a
+        // design surface and must NEVER set a baseline or start capturing.
       }
       setFields(new Map(sim.fields))
     } catch {

@@ -10,7 +10,7 @@ import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-const BASE = 'http://localhost:3055'
+const BASE = process.env.SS_BASE || 'http://localhost:3055'
 let pass = 0, fail = 0
 const ok = (c, name) => { if (c) { pass++; console.log('  ✓', name) } else { fail++; console.log('  ✗ FAIL', name) } }
 
@@ -56,9 +56,9 @@ try {
   wd.hud = [{ id: 'e2e', text: 'T' + wd.__progress.ticks, x: 50, y: 20 }]
 } catch (e) {}
 ` })
-await bridge({ type: 'set_world_data', data: { __saveArch: 'rom', __shared: ['communal'], communal: 0 } })
+await bridge({ type: 'set_world_data', data: { __shared: ['communal'], communal: 0 } })   // NO __saveArch — proving DEFAULT-ON
 const snap0 = (await jfetch(`/api/spaces/${slug}/snapshot`)).body || {}
-ok((snap0.snapshot || snap0).worldData?.__saveArch === 'rom', 'ROM flag in the snapshot')
+ok((snap0.snapshot || snap0).worldData?.__saveArch === undefined, 'NO flag set — this world tests the default')
 
 // ── browser helpers ─────────────────────────────────────────────────────────
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -121,7 +121,7 @@ const snap1 = (await jfetch(`/api/spaces/${slug}/snapshot`)).body || {}
 const swd = (snap1.snapshot || snap1).worldData || {}
 ok(swd.__progress === undefined, 'shared snapshot carries NO player progress (ROM protected)')
 ok(swd.hud === undefined, 'no hud residue in the ROM')
-ok(swd.__saveArch === 'rom' && swd.communal !== undefined, 'ROM + shared keys intact')
+ok(swd.communal !== undefined, 'shared keys intact under the default')
 
 console.log(`\n${pass} passed · ${fail} failed`)
 process.exit(fail ? 1 : 0)

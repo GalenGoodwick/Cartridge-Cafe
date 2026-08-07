@@ -37,8 +37,13 @@ class.
 
 ## Mechanics
 
-**Flag:** `worldData.__saveArch = 'rom'` (in the snapshot, like `persist`). V1 is
-opt-in per world; default-on comes after the class-2 worlds declare `__shared`.
+**DEFAULT-ON (Aug 7, Galen: "no more leaks"):** every SPACE is a rom world unless it
+declares `worldData.__saveArch = 'legacy'` (globewarp holds legacy until the design-
+mode bypass exists). `'rom'` remains as an explicit opt-in marker. Scenes (/play)
+and the personal editor never set a baseline — play sessions don't write back and
+the editor is a design surface. Communal declarations shipped with the flip:
+kindle `__shared:['__k','__trail','__nudge']` · bloop `__shared:[players,playerCount,
+multiplayer,mpManifest,__io,__edge]` · pentarch `__shared:['__lobby']`.
 Implies persist semantics — no separate `persist:true` needed.
 
 **Baseline:** at snapshot apply, the engine deep-clones the applied worldData →

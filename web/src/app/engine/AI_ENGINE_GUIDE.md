@@ -1264,6 +1264,27 @@ GPU, `add_gpu_step_hook` (WGSL) is still available and faster.
 
 ---
 
+## SAVE STATES — per-player persistence is AUTOMATIC (the ROM model)
+
+Every SPACE world is a cartridge in an emulator. The stored snapshot is the ROM —
+what you author over the bridge. Play sessions never rewrite it: any worldData key a
+live session moves off the ROM baseline is that player's SAVE STATE, captured by the
+engine per-user (guests too), restored on their next visit. You write NO save code.
+
+- Keep progression in `__`-prefixed worldData keys as usual (`wd.__mygame = {...}`)
+  — that state is per-player automatically. Do NOT hand-roll save/load.
+- Keys that must be SHARED across all players (a communal fire, lantern trails, a
+  lobby roster) go in `worldData.__shared = ['__fire', '__trails']` — declare them
+  or every player gets their own copy and the communal feature silently breaks.
+- Live multiplayer round state belongs in the ARENA service, not worldData.
+- `worldData.__saveArch = 'legacy'` opts a world out entirely (pre-ROM behavior:
+  worldData is world-global — state leaks between players; you almost never want it).
+- The older explicit channel (`worldData.persist = true` + progress in `wd.save`)
+  still works and composes with save states.
+- Engine plumbing keys (gpuUniforms, hud, __nodes, presence, …) are never captured.
+- Baseline note: whatever worldData values the ROM ships with ARE every new player's
+  boot state — deploy your world with CLEAN spawn values, not your test session's.
+
 ## Triggers Are State, Not Events
 
 Worlds persist: save data restores `__`-prefixed worldData across sessions, so
