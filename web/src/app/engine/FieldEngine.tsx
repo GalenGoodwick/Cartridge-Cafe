@@ -1645,7 +1645,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const sim = simulationRef.current
       const hooksNeedFrames = (sim?.stepHooks?.size ?? 0) > 0 && !sim?.worldData?.gpuUniforms
       const ready = rr ? rr.isSuperReady() && !hooksNeedFrames : true
-      if (ready || Date.now() - t0 > 4000) {
+      // A heavy raymarched uber-shader can compile well past a few seconds. The
+      // compile is ASYNC (createComputePipelineAsync) so the page stays live and
+      // the spinner animates — keep the curtain up until the pipeline is ACTUALLY
+      // ready instead of yanking it at 4s (which left a black screen mid-compile,
+      // the "veilfire loads dark" bug). Long safety cap so a broken world still
+      // resolves; past a beat, say COMPILING so a slow load never reads as frozen.
+      if (!ready && Date.now() - t0 > 2500) setLoadHeavy(true)
+      if (ready || Date.now() - t0 > 25000) {
+        setLoadHeavy(false)
         setTimeout(() => { setWorldLoading(false); setSwapFade(false) }, 260)   // settle beat
         return
       }
@@ -1999,6 +2007,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the cartridge without a page refresh — the ideal loop for iterating worlds.
   const [reloadTick, setReloadTick] = useState(0)
   const [worldLoading, setWorldLoading] = useState(false)   // true while an existing world's fields are being fetched/restored
+  const [loadHeavy, setLoadHeavy] = useState(false)   // a heavy uber-shader is still COMPILING past the first beat — keep the spinner + say so
   // report the blank-and-building state upward (aiPulse ticks ~1/s) so the space
   // chrome can hide affordances (SHARE) that make no sense on a world that isn't real yet
   const lastBuildingRef = useRef<boolean | null>(null)
@@ -5828,8 +5837,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[14px] tracking-[0.25em] text-white/50">
-                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : 'LOADING WORLD…'}
+                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : (loadHeavy ? 'COMPILING THIS WORLD…' : 'LOADING WORLD…')}
                 </div>
+                {loading && loadHeavy && (
+                  <div className="font-mono text-[12px] tracking-[0.15em] text-white/30">heavy shaders — a few seconds</div>
+                )}
                 {/* no builder yet: reassure (the world is SAFE, never lost) + a way
                     out — build it yourself with the player key / CONNECT AI. */}
                 {building && !agentConnected && terminalLog.length === 0 && (
