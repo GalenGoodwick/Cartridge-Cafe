@@ -13,7 +13,7 @@ import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
 import { orderHooks } from './node-order'   // node-runtime rung 1: run hooks in declared __nodes order
-import { serializeWorld, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes } from './persistence/serialize'
+import { serializeWorld, isTeardownSnapshot, snapshotBytes, diffShaders, shaderHashes, captureSaveState, saveStateBaseline, sharedKeys, stripSaveState } from './persistence/serialize'
 import { NodeGraphOverlay, buildNodeGraph, type AiNodeGraph } from './ai-view/NodeGraph'
 import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
 import { BuilderBoxPanel } from './builderbox/BuilderBoxPanel'
@@ -447,6 +447,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const autoSaveSerRef = useRef('')
   const autoSaveAtRef = useRef(0)
   const autoSaveReadyRef = useRef(false)   // gate: don't persist until the load resolves (else the default overwrites the real save)
+  // SAVE STATES (DESIGN-save-states.md): ROM worlds (`worldData.__saveArch='rom'`).
+  // Baseline = the authored cartridge's worldData, pre-stringified; null = not a rom
+  // world, all save-state code inert. Shared = the world's declared class-2 keys.
+  const romBaselineRef = useRef<Record<string, string> | null>(null)
+  const romSharedRef = useRef<Set<string>>(new Set())
+  const stateSaveSerRef = useRef('')
+  const stateSaveAtRef = useRef(0)
   const hookErrAtRef = useRef(0)           // last hook-error timestamp forwarded to the server (bridge-visible)
   useEffect(() => {
     if (!spaceSlug && !playScene) return
@@ -458,7 +465,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (stopped) return
       const sim = simulationRef.current
       if (!sim) { if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200); return }
-      if (!sim.worldData?.['persist']) {
+      const rom = sim.worldData?.['__saveArch'] === 'rom'   // SAVE STATES: rom implies persist
+      if (!sim.worldData?.['persist'] && !rom) {
         // the snapshot (which carries persist:true) may not have applied yet —
         // keep checking; give up only after ~8s (then it's a real arcade world)
         if (attempt < 40) setTimeout(() => tryLoad(attempt + 1), 200)
@@ -468,25 +476,50 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // cached (stale) save while only a HARD reload bypasses cache — the player
       // sees their progress "revert" on reload (Galen, Jul 31). The save changes
       // every few seconds; it must never be read from cache.
-      fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`, { cache: 'no-store' })
-        .then(r => r.json())
-        .then(j => {
-          const s = simulationRef.current
-          if (!stopped && s && j?.data != null) {
-            s.worldData['save'] = j.data
-            sandboxRef.current?.injectSave(j.data)   // outrank the in-flight worker reply (pre-load fresh-init would clobber)
-            autoSaveSerRef.current = JSON.stringify(j.data)
-          }
-        })
-        .catch(() => {})
-        .finally(() => { autoSaveReadyRef.current = true })   // now the frame loop may persist changes
+      const loads: Promise<unknown>[] = []
+      if (sim.worldData?.['persist']) loads.push(
+        fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf())}`, { cache: 'no-store' })
+          .then(r => r.json())
+          .then(j => {
+            const s = simulationRef.current
+            if (!stopped && s && j?.data != null) {
+              s.worldData['save'] = j.data
+              sandboxRef.current?.injectSave(j.data)   // outrank the in-flight worker reply (pre-load fresh-init would clobber)
+              autoSaveSerRef.current = JSON.stringify(j.data)
+            }
+          })
+          .catch(() => {}))
+      // SAVE STATES: restore the player's worldData overlay (slot <world>:__state).
+      if (rom) loads.push(
+        fetch(`/api/engine/save?scope=user&anon=${encodeURIComponent(whoRef.current || '')}&slot=${encodeURIComponent(slotOf().replace(/:__autosave$/, ':__state'))}`, { cache: 'no-store' })
+          .then(r => r.json())
+          .then(j => {
+            const s = simulationRef.current
+            const data = j?.data as Record<string, unknown> | null
+            if (!stopped && s && data && typeof data === 'object') {
+              for (const [k, v] of Object.entries(data)) s.worldData[k] = v
+              sandboxRef.current?.injectState(data)   // outrank in-flight replies (same race as 'save')
+              stateSaveSerRef.current = JSON.stringify(captureSaveState(s.worldData, romBaselineRef.current || {}, romSharedRef.current))
+            }
+          })
+          .catch(() => {}))
+      Promise.allSettled(loads).then(() => { if (!stopped) autoSaveReadyRef.current = true })   // now the frame loop may persist changes
     }
     tryLoad()
     // 2) FLUSH on leave — a final save so nothing since the last debounce is lost.
     // NOT a reset: it persists the current state. Only for persist worlds.
     const flush = () => {
+      const wd = simulationRef.current?.worldData
+      // SAVE STATES: final capture on leave so nothing since the last debounce is lost
+      if (wd && romBaselineRef.current && autoSaveReadyRef.current) {
+        try {
+          const state = captureSaveState(wd, romBaselineRef.current, romSharedRef.current)
+          fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+            body: JSON.stringify({ slot: slotOf().replace(/:__autosave$/, ':__state'), data: state, scope: 'user', anon: whoRef.current }) }).catch(() => {})
+        } catch { /* leaving anyway */ }
+      }
       if (!persistOn()) return
-      const sv = simulationRef.current?.worldData?.['save']
+      const sv = wd?.['save']
       if (sv === undefined) return
       try {
         fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
@@ -2299,6 +2332,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const visitingRef = useRef<string | null>(null)
   const hotSwapSpace = useCallback(async (targetSlug: string) => {
     resetWorldIdentity()
+    // SAVE STATES: a portal visit swaps in FOREIGN worldData — the home baseline no
+    // longer describes it. Null it so capture pauses (never diff world A against
+    // world B's ROM and save the garbage into A's slot). Re-set on real entry.
+    romBaselineRef.current = null
     const sim = simulationRef.current
     const renderer = rendererRef.current
     if (!sim || !renderer || !targetSlug) return
@@ -2452,6 +2489,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
           Object.assign(sim.worldData, stripSave(snapshot.worldData))
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
+          // SAVE STATES: this snapshot IS the ROM — capture the boot baseline (from the
+          // SNAPSHOT, never the live sim, so player state can't bake into the baseline).
+          if ((snapshot.worldData as Record<string, unknown>)['__saveArch'] === 'rom') {
+            romSharedRef.current = sharedKeys(snapshot.worldData as Record<string, unknown>)
+            romBaselineRef.current = saveStateBaseline(snapshot.worldData as Record<string, unknown>, romSharedRef.current)
+          } else { romBaselineRef.current = null; romSharedRef.current = new Set() }
         }
         // Transient input state must never survive a restore (stuck ghost keys)
         for (const k of Object.keys(sim.worldData)) {
@@ -3391,6 +3434,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // Restore world data
       if (data.worldData && typeof data.worldData === 'object') {
         Object.assign(sim.worldData, stripSave(data.worldData as Record<string, unknown>))
+        // SAVE STATES: a reload carries a new ROM — refresh the baseline from the
+        // INCOMING worldData (rom syncs are already player-state-stripped).
+        if ((data.worldData as Record<string, unknown>)['__saveArch'] === 'rom') {
+          romSharedRef.current = sharedKeys(data.worldData as Record<string, unknown>)
+          romBaselineRef.current = saveStateBaseline(data.worldData as Record<string, unknown>, romSharedRef.current)
+        }
       }
       setFields(new Map(sim.fields))
     } catch {
@@ -3683,6 +3732,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // to the player's slot whenever it changes, debounced. The world writes to
       // worldData.save and forgets — no save/load code of its own. Gated on
       // autoSaveReadyRef so we never clobber the just-loaded save with the default.
+      // SAVE STATES: capture the worldData↔ROM divergence per-player, debounced.
+      if (autoSaveReadyRef.current && romBaselineRef.current && !visitingRef.current && now - stateSaveAtRef.current > 4000) {
+        const state = captureSaveState(sim.worldData, romBaselineRef.current, romSharedRef.current)
+        const ser = JSON.stringify(state)
+        if (ser !== stateSaveSerRef.current) {
+          stateSaveSerRef.current = ser
+          stateSaveAtRef.current = now
+          fetch('/api/engine/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot: `${cellBase()}:__state`, data: state, scope: 'user', anon: whoRef.current }),
+          }).catch(() => {})
+        }
+      }
+
       if (autoSaveReadyRef.current && sim.worldData['persist'] && sim.worldData['save'] !== undefined && now - autoSaveAtRef.current > 4000) {
         const ser = JSON.stringify(sim.worldData['save'])
         if (ser !== autoSaveSerRef.current) {
@@ -4633,6 +4697,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // visuals must not circulate through the store forever, costing every fresh
         // session an isolation sweep.
         const snap = serializeWorld(sim, renderer, { stepHooks: allStepHookSnapshots(sim), excludeBroken: true })
+        // SAVE STATES · ROM PROTECTION: the shared snapshot carries only ROM + declared-
+        // shared keys — player state never circulates between tabs again (the Aug 7 leak).
+        if (romBaselineRef.current) snap.worldData = stripSaveState(snap.worldData, romBaselineRef.current, romSharedRef.current)
         // TEARDOWN GUARD: a hot-reload leaves the renderer with 0 visuals for a beat.
         // Skinned fields but no visuals is a transient, not a real state — persisting it
         // renders everyone DARK. Skip it.

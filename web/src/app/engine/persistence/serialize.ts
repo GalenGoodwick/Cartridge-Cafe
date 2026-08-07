@@ -18,6 +18,91 @@ export function filterSyncWorldData(worldData: Record<string, unknown>): Record<
   )
 }
 
+// ── SAVE STATES (the ROM/save-state architecture, DESIGN-save-states.md) ──────
+// A world flagged `worldData.__saveArch = 'rom'` is treated like a cartridge in an
+// emulator: the stored snapshot is the ROM (authored, written only by design
+// actions), and every worldData key the live sim moves off the ROM baseline is the
+// player's SAVE STATE — captured by the engine, per-user, no world cooperation.
+
+/** Keys that are never save state: engine plumbing, per-frame render outputs,
+ *  input, presence, and the design/registry keys that belong to the ROM itself. */
+export const SAVE_STATE_DENY = new Set([
+  'gpuUniforms', 'gpuPopulation', 'hud', 'save', 'persist', 'cellSample',
+  '__play_sound', '__play_music', 'last_hook_error', 'last_compile_error',
+  '__nodes', '__nodeStrict', '__rooms', '__bridge_rev', '__sandbox', '__budget',
+  '__fresh', '__frameMeter', '__popProv', '__entities', '__clicks',
+  '__saveArch', '__shared', 'instructions', 'vision', 'blurb', 'built_by',
+  '__built_at', '__built_ua', 'renderScale', 'postProcess', 'maxBufferPixels',
+  'noPixelSampling', 'singlePlayer', 'music_mod', 'ai_focus',
+])
+
+function saveStateEligible(k: string, shared: Set<string>): boolean {
+  return !SAVE_STATE_DENY.has(k) && !shared.has(k) &&
+    !k.startsWith('key_') && !k.startsWith('mouse_')
+}
+
+/** The world's declared class-2 keys (`worldData.__shared`) — shared/world-persistent
+ *  by design (MOORING lanterns). They keep today's semantics: owner-synced into the
+ *  shared snapshot, never captured per-player. */
+export function sharedKeys(worldData: Record<string, unknown>): Set<string> {
+  const raw = worldData['__shared']
+  return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [])
+}
+
+/** Capture the player's save state: every eligible key whose value has diverged from
+ *  the ROM baseline (JSON-compared per key, stringified once each). Baseline-equal
+ *  keys are omitted so a redeployed ROM shows through wherever the player never
+ *  diverged — emulator savestate semantics with graceful ROM upgrades. */
+export function captureSaveState(
+  worldData: Record<string, unknown>,
+  baseline: Record<string, string>,
+  shared: Set<string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(worldData)) {
+    if (!saveStateEligible(k, shared)) continue
+    if (v === undefined) continue
+    let ser: string
+    try { ser = JSON.stringify(v) ?? '' } catch { continue }   // uncloneables never persist
+    if (ser !== baseline[k]) out[k] = JSON.parse(ser)
+  }
+  return out
+}
+
+/** The ROM baseline: eligible keys of the just-applied snapshot worldData, pre-
+ *  stringified for cheap per-key comparison in the capture loop. */
+export function saveStateBaseline(
+  worldData: Record<string, unknown>,
+  shared: Set<string>,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(worldData)) {
+    if (!saveStateEligible(k, shared)) continue
+    try { const s = JSON.stringify(v); if (s !== undefined) out[k] = s } catch { /* skip */ }
+  }
+  return out
+}
+
+/** ROM protection for the owner 2s sync: strip everything that would be captured as
+ *  save state, so the shared snapshot carries only ROM + declared-shared keys. This
+ *  is the leak fix — player state stops circulating between tabs entirely. */
+export function stripSaveState(
+  worldData: Record<string, unknown>,
+  baseline: Record<string, string>,
+  shared: Set<string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(worldData)) {
+    if (saveStateEligible(k, shared)) {
+      let ser: string | undefined
+      try { ser = JSON.stringify(v) ?? undefined } catch { ser = undefined }
+      if (ser !== baseline[k]) continue          // diverged → player state → not ROM
+    }
+    out[k] = v
+  }
+  return out
+}
+
 /** Registered visuals as {name,wgsl}. `excludeBroken` drops quarantined shaders so a
  *  broken visual never circulates through the store (owner-sync + version-save do this;
  *  some read/branch paths deliberately keep them). */

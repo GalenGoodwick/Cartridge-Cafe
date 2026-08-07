@@ -514,6 +514,12 @@ export class WorldSandbox {
   private saveInject: { data: unknown; frames: number } | null = null
   injectSave(data: unknown): void { this.saveInject = { data, frames: 4 } }
 
+  /** SAVE STATES (DESIGN-save-states.md): the injectSave twin for a whole-worldData
+   *  overlay. For 4 frames the restored keys outrank in-flight worker replies (which
+   *  carry pre-restore fresh-init state), exactly the proven 'save' race fix. */
+  private stateInject: { data: Record<string, unknown>; frames: number } | null = null
+  injectState(data: Record<string, unknown>): void { this.stateInject = { data, frames: 4 } }
+
   get active(): boolean { return !!this.worker }
   get error(): string | null { return this.compileError }
 
@@ -657,6 +663,7 @@ export class WorldSandbox {
       // reads as warping and jitter. The host owns everything else.
       for (const k of Object.keys(incoming)) {
         if (k === 'save' && this.saveInject) continue   // the loaded save outranks stale replies
+        if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
             (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
@@ -667,6 +674,11 @@ export class WorldSandbox {
         wd['save'] = this.saveInject.data              // assert the loaded save host-side
         this.saveInject.frames -= 1
         if (this.saveInject.frames <= 0) this.saveInject = null
+      }
+      if (this.stateInject) {
+        for (const [k, v] of Object.entries(this.stateInject.data)) wd[k] = v   // assert restored state host-side
+        this.stateInject.frames -= 1
+        if (this.stateInject.frames <= 0) this.stateInject = null
       }
       // field transforms the hook moved
       for (const p of this.pending.fieldPatches || []) {
