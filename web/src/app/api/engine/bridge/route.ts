@@ -362,7 +362,7 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
  *  is unset/down, the caller still has the static eyes (describe/health). */
 async function renderViaService(
   snap: { fields?: unknown[]; visualTypes?: unknown[]; modules?: unknown[]; worldData?: Record<string, unknown>; stepHooks?: unknown[] } | null | undefined,
-  opts: { name?: unknown; ticks?: unknown; size?: unknown; input?: unknown },
+  opts: { name?: unknown; ticks?: unknown; size?: unknown; input?: unknown; trace?: unknown },
 ): Promise<Record<string, unknown>> {
   const base = process.env.RENDER_SERVICE_URL
   const secret = process.env.RENDER_SECRET
@@ -388,6 +388,7 @@ async function renderViaService(
   // |'sweep-cursor') or an explicit timeline array. Lets the render VERIFY the
   // world reacts to controls, not just that it draws.
   if (typeof opts.input === 'string' || Array.isArray(opts.input)) payload.input = opts.input
+  if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the __vf state trace per sampled tick
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 25_000)
@@ -863,6 +864,37 @@ export async function POST(req: NextRequest) {
             try { await saveGameSlot('ai_eye:' + aiScope, { png: img, at: Date.now(), name: cmd.name ?? null, stats }) } catch { /* courtesy, never blocks the probe */ }
           }
         }
+        continue
+      }
+
+      // #12b playthrough — PLAY this world headless. Same render-service sandbox
+      // as render_probe (the REAL step-hooks, ticked in order), but driven by a
+      // scripted input timeline over many ticks, returning the __vf STATE TRACE
+      // (position/hp/weapon/flags per sample) — not just pixels. Catches
+      // play-over-time bugs a single frame cannot: can't-enter, softlocks, a
+      // trigger that never fires, a fight that can't be won. A read; never mutates.
+      //   input: a preset ('auto'|'run-right'|'tap-action'|'sweep-cursor') OR a
+      //   timeline [{from,to, keys?:['w','space',...], pointer?:{x,y,down?}}]
+      //   (ticks; keys/pointer are the HANDS). ticks default 90; samples default 8.
+      if (cmd.type === 'playthrough') {
+        const snap = isSpaceScoped
+          ? await getSpaceSnapshot(auth.spaceId!)
+          : isSceneScoped ? loadScene(auth.sceneName!) : getEngineState()
+        const out = await renderViaService(snap as never, {
+          name: cmd.name,
+          ticks: cmd.ticks ?? 90,
+          input: cmd.input ?? 'auto',
+          trace: true,
+        }) as Record<string, unknown>
+        // lead with the trace + verdicts; keep the last frame's stats/png for the eye
+        results.push({
+          type: 'playthrough',
+          ok: out.ok, errors: out.errors, hookErrors: out.hookErrors,
+          ticks: out.ticks, stateTrace: out.stateTrace,
+          inputReport: out.inputReport, motion: out.motion, frameCost: out.frameCost,
+          meanLum: out.meanLum, coveragePct: out.coveragePct, png: out.png,
+          next: 'stateTrace is the __vf game state at each sampled tick — read position/hp/weapon/flags over time to confirm the world actually PLAYS the way the code claims. Drive it with a scripted `input` timeline to reproduce a specific bug, then re-run after a fix.',
+        })
         continue
       }
 

@@ -76,8 +76,8 @@ const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or yo
 1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
 2. brew_world (guest door, no account) for a build token, or use_world to resume one you own. To build AS your human's account (worlds born owned), run connect_account — it hands them a link, they click once, and the registration persists across sessions.
 3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
-4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.
-5. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
+4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.\n5. PLAY IT — for anything INTERACTIVE, call playthrough (or bridge {type:'playthrough', input:[timeline], ticks}): it runs the real hooks over TIME with pressed controls and returns the game STATE trace (position/hp/flags per tick). render_probe is one frame; playthrough is the play. Use it to prove it actually works, reproduce a cant-enter/softlock/unwinnable bug, and re-verify after a fix.
+6. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
 
 const server = new McpServer({ name: 'cartridge-cafe', version: '0.4.0' }, { instructions: PROTOCOL })
 
@@ -254,6 +254,27 @@ server.tool(
       content.push({ type: 'text', text: '⚠ NO IMAGE — the eye is CLOSED: nothing rendered. Usually an unskinned field (needs a visualType) or a WGSL compile error above. Fix it and re-probe; do not trust this build.' })
     }
     return { content }
+  },
+)
+
+server.tool(
+  'playthrough',
+  'PLAY the world headless — the honest test for anything INTERACTIVE. Runs the world\'s REAL step-hooks on the cloud sandbox (same as render_probe), but ticks them over TIME while pressing a scripted input, and returns stateTrace: the game state (position, hp, weapon, flags) at each sampled tick. Catches play-over-time bugs a single frame cannot — can\'t-enter, softlocks, a trigger that never fires, a fight that can\'t be won. Read the trace to confirm the world plays the way the code claims; drive a specific input timeline to reproduce a bug, then re-run after your fix.',
+  {
+    input: z.string().optional().describe('Input to drive: preset (auto | run-right | tap-action | sweep-cursor) — for a scripted timeline use the bridge tool directly with input:[{from,to,keys,pointer}]. Default: auto'),
+    ticks: z.number().optional().describe('How many ticks to play (default 90 ≈ 1.5s at 60fps).'),
+    token: z.string().optional().describe('World token. Defaults to your latest brewed world.'),
+  },
+  async ({ input, ticks, token }) => {
+    const tok = token || mine[mine.length - 1]?.token
+    if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
+    const cmd = { type: 'playthrough' }
+    if (input) cmd.input = input
+    if (ticks) cmd.ticks = ticks
+    const out = await bridgeFor(tok).bridgeSend(cmd, { normalize: false })
+    const r = (out && out.results && out.results[0]) || out || {}
+    const { png, image, ...report } = r
+    return text(report)
   },
 )
 
