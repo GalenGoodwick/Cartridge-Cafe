@@ -108,7 +108,10 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
  *  loops. Returns a human reason to REJECT with, or null when it looks sane. */
 function wgslHazard(wgsl: string): string | null {
   if (!wgsl) return null
-  if (wgsl.length > 60_000) return `shader is ${wgsl.length}B — too large; keep a visual under 60KB`
+  // NO SIZE CEILING (Galen, Aug 7: "we don't need a ceiling") — big shaders are
+  // legitimate; the real GPU hazards are the loop/array patterns below. A 1MB
+  // sanity net stays only to catch accidental garbage pastes, not real art.
+  if (wgsl.length > 1_000_000) return `shader is ${wgsl.length}B — that is not a shader, that is a paste accident`
   const arr = [...wgsl.matchAll(/array<[^>]*,\s*(\d+)\s*>/g)].map(m => +m[1])
   const bigArr = Math.max(0, ...arr)
   if (bigArr > 1024) return `const array of ${bigArr} elements — baked data arrays freeze the GPU; use math or a texture, never baked pixels`
