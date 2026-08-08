@@ -1721,6 +1721,27 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     tick()
   }, [])
 
+  // Compile every field's effects IN PARALLEL. The old pattern — a serial
+  // `await compileFieldEffect` per effect — paid the SUM of every WGSL compile on
+  // a cold load; a world with N effect shaders stalled N compiles deep behind the
+  // curtain. Identical shaders share one hash-keyed, refcounted GPU pipeline, and
+  // compiling duplicates concurrently would race that refcount — so compile each
+  // UNIQUE shader once in parallel, then register the duplicates (pure cache hits)
+  // after, keeping the refcount exact. One truth for all three load paths.
+  const compileEffectsParallel = useCallback(async (sim: FieldSimulation, renderer: FieldRenderer) => {
+    const mod = getModCode()
+    const pairs: { key: string; fieldId: string; wgsl: string }[] = []
+    for (const field of sim.fields.values())
+      for (const effect of field.effects)
+        pairs.push({ key: `${field.id}_${effect.id}`, fieldId: field.id, wgsl: effect.wgsl })
+    if (pairs.length === 0) return
+    const seen = new Set<string>()
+    const unique: typeof pairs = [], dups: typeof pairs = []
+    for (const p of pairs) { if (seen.has(p.wgsl)) dups.push(p); else { seen.add(p.wgsl); unique.push(p) } }
+    await Promise.all(unique.map(p => renderer.compileFieldEffect(p.key, p.fieldId, p.wgsl, mod)))
+    for (const p of dups) await renderer.compileFieldEffect(p.key, p.fieldId, p.wgsl, mod)
+  }, [getModCode])
+
   // Load a saved scene (replaces current state)
   // WORLD-SWAP HYGIENE — scene-io.resetWorldIdentity (carve Phase 3): a swap
   // SWITCHES OUT the whole node. Call BEFORE applying any incoming snapshot at
@@ -2257,12 +2278,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         renderer.isSuperReady()
         // compile each field's effects — the /play loader never did this, so
         // cartridge effects (the fluid solver, any feedback pass) were silently
-        // dropped and only the base visual ever rendered.
-        for (const field of sim.fields.values()) {
-          for (const effect of field.effects) {
-            await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
-          }
-        }
+        // dropped and only the base visual ever rendered. In parallel now.
+        await compileEffectsParallel(sim, renderer)
         sim.running = true
         setRunning(true)
         syncFields()
@@ -2398,11 +2415,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const hasContent = (snapshot.stepHooks?.length ?? 0) > 0 || (snapshot.fields || []).some((f: { visualTypeName?: string }) => f.visualTypeName)
         if (hasContent && !sim.running) sim.running = true
       }
-      for (const field of sim.fields.values()) {
-        for (const effect of field.effects) {
-          await renderer.compileFieldEffect(`${field.id}_${effect.id}`, field.id, effect.wgsl, getModCode())
-        }
-      }
+      // warm the target's uber-shader early, then compile its effects in parallel —
+      // an in-place portal swap should reach first-paint as fast as a direct load.
+      renderer.isSuperReady()
+      await compileEffectsParallel(sim, renderer)
       visitingRef.current = targetSlug === spaceSlug ? null : targetSlug
       // deep-linkable but never a page nav: ?at=<member> rides the hub URL
       try {
@@ -2411,7 +2427,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         history.replaceState(null, '', u.toString())
       } catch { /* URL cosmetics only */ }
     } catch { /* offline / missing member — stay where we are */ }
-  }, [spaceSlug, installHooks, getModCode])
+  }, [spaceSlug, installHooks, compileEffectsParallel])
   const hotSwapSpaceRef = useRef(hotSwapSpace)
   hotSwapSpaceRef.current = hotSwapSpace
 
@@ -2442,6 +2458,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   useEffect(() => {
     if (!spaceSlug || spaceLoadedRef.current) return
     spaceLoadedRef.current = true
+    // A direct /space/<slug> visit is a cold boot: raise the curtain + spinner NOW
+    // so a heavy world (veilfire's uber-shader compiles for seconds) reads as
+    // LOADING, not a frozen black canvas. This path never set worldLoading — the
+    // spinner only ever showed on in-shell swaps (loadPlayScene). liftWhenSettled
+    // below lowers it the instant the pipeline is genuinely compiled.
+    setWorldLoading(true)
 
     const loadSpaceSnapshot = async () => {
       resetWorldIdentity()
@@ -2457,7 +2479,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const versionQ = versionView ? `?version=${versionView}` : ''
         const resp = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/snapshot${versionQ}`)
         const { snapshot } = await resp.json()
-        if (!snapshot) return // Empty space — blank canvas
+        if (!snapshot) { setWorldLoading(false); return } // Empty space — blank canvas, no curtain
         // baseline the auto-load poll on the rev we're rendering right now
         renderedRevRef.current = Number((snapshot as { worldData?: { __bridge_rev?: unknown } })?.worldData?.__bridge_rev) || 0
         lastFieldsRef.current = JSON.stringify((snapshot as { fields?: unknown })?.fields ?? [])
@@ -2495,6 +2517,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             if (runtimeId !== undefined) field.visualType = runtimeId
           }
         }
+        // WARM THE UBER-SHADER NOW — modules + visuals + the fields' visualTypes are
+        // all registered, so kick the (async) megashader compile here so it runs
+        // CONCURRENTLY with the worldData/hook-install work below + the effect
+        // compiles, instead of only when the first frame or liftWhenSettled polls it.
+        // For a one-uber-shader world like veilfire this IS the load — starting it
+        // early is the parallelism that shaves the wait. Mirrors loadPlayScene.
+        renderer.isSuperReady()
 
         if (snapshot.worldParams) sim.setWorldParams(snapshot.worldParams)
         // RESTART (R) reloads the page with a one-shot cc-reset flag. THIS is the
@@ -2541,18 +2570,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (hasContent && !sim.running) sim.running = true
         }
 
-        // Recompile effects
-        for (const field of sim.fields.values()) {
-          for (const effect of field.effects) {
-            const programKey = `${field.id}_${effect.id}`
-            await renderer.compileFieldEffect(programKey, field.id, effect.wgsl, getModCode())
-          }
-        }
+        // Recompile effects — IN PARALLEL (was one serial await per effect, so a
+        // multi-effect world paid the sum of every compile). compileEffectsParallel
+        // dedupes identical shaders first so the shared-pipeline refcount stays exact.
+        await compileEffectsParallel(sim, renderer)
 
         syncFields()
       } catch (err) {
         console.error('Failed to load space snapshot:', err)
+        setWorldLoading(false)   // failed load must not strand the curtain up
+        return
       }
+      // Lower the curtain only when the NEW pipeline is genuinely compiled (a
+      // heavy uber-shader keeps compiling after restore) — the same settle gate
+      // the in-shell swap uses, so a direct visit no longer flashes black mid-compile.
+      liftWhenSettled()
     }
 
     loadSpaceSnapshot()
