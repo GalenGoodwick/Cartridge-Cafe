@@ -44,7 +44,7 @@ try {
 //   1. RSS watchdog — memory past the ceiling → exit(70) after the response.
 //   2. HANG watchdog — a render in flight past its deadline → exit(71). A
 //      wedged lavapipe call can't be cancelled from JS; exit is the recovery.
-const MAX_RSS = (parseInt(Deno.env.get("RENDER_MAX_RSS_MB") || "900")) * 1024 * 1024;
+const MAX_RSS = (parseInt(Deno.env.get("RENDER_MAX_RSS_MB") || "2500")) * 1024 * 1024;   // a single heavy world peaks ~2GB compiling in software; ceiling sits above that but catches a true runaway
 const HANG_MS_RENDER = parseInt(Deno.env.get("RENDER_HANG_MS") || "180000");     // 3 min — /render on lavapipe is seconds, minutes = wedged
 const HANG_MS_CLIP = parseInt(Deno.env.get("CLIP_HANG_MS") || "900000");         // 15 min — long clips are legitimately slow
 let inflight = null;   // { at, deadline, what }
