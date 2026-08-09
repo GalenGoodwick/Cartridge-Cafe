@@ -34,6 +34,16 @@ async function getAdapter() {
  *  device is now cached and per-render resources are destroyed in a finally.
  *  On device loss the cache clears so the next render re-requests. */
 let __device = null;
+let __sinceRecycle = 0;
+const DEVICE_RECYCLE = parseInt(globalThis.Deno?.env.get("RENDER_DEVICE_RECYCLE") || "18");
+/** flush the cached device so accumulated per-world pipeline compilations are
+ *  freed. Safe because the eye renders SERIALLY (one request in flight). */
+function recycleDeviceIfDue() {
+  if (__device && __sinceRecycle >= DEVICE_RECYCLE) {
+    const old = __device; __device = null; __sinceRecycle = 0;
+    try { old.destroy(); } catch { /* already gone */ }
+  }
+}
 async function getDevice() {
   if (__device) return __device;
   const adapter = await getAdapter();
@@ -329,6 +339,8 @@ ${fieldChain}
   return vec4f(colr + vec3f(keep), 1.0);
 }`;
 
+  __sinceRecycle++;
+  recycleDeviceIfDue();
   const device = await getDevice();
   if (!device) return { ok: false, png: null, errors: [{ message: "no GPU adapter (no Metal, no software Vulkan)" }], hookErrors };
   const errors = [];
