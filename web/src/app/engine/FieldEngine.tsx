@@ -2807,7 +2807,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       try {
         const cv = canvasRef.current
         if (!cv || !live) return
-        const bmp = await createImageBitmap(cv)
+        // DOWNSCALED snapshot (Galen: "laggy on design screen" with inspect
+        // on) — the full-canvas retina readback (createImageBitmap + whole
+        // getImageData, 4×/s) stalls the GPU pipeline on big displays. A
+        // 384-wide resize is ~1% of the pixels and the hover swatch can't
+        // tell the difference.
+        const wS = 384, hS = Math.max(1, Math.round(cv.height / Math.max(1, cv.width) * 384))
+        const bmp = await createImageBitmap(cv, { resizeWidth: wS, resizeHeight: hS, resizeQuality: 'low' })
         const oc = document.createElement('canvas')
         oc.width = bmp.width; oc.height = bmp.height
         const cx = oc.getContext('2d')
@@ -3170,7 +3176,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           const py = Math.max(0, Math.min(pix.h - 1, Math.round((e.clientY - r.top) / r.height * pix.h)))
           const o = (py * pix.w + px) * 4, d = pix.data.data
           const hex = '#' + [d[o], d[o + 1], d[o + 2]].map(v => v.toString(16).padStart(2, '0')).join('')
-          setInspectHover({ hex, x: px, y: py })
+          setInspectHover({ hex, x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) })
         }
       } catch { /* hover color is a bonus */ }
       return
