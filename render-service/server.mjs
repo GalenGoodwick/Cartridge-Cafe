@@ -99,7 +99,7 @@ Deno.serve({ port: PORT }, async (req) => {
   }
 
   try {
-    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input });
+    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input, trace: body.trace });
     const { png, frames: _frames, ...struct } = r;
     return Response.json({ ...struct, image: r.ok && png ? encodeBase64(png) : null, imageMime: "image/png" });
   } catch (e) {

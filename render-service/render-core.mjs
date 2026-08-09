@@ -42,6 +42,10 @@ async function getAdapter() {
 export async function renderProbe(state, opts = {}) {
   const S = parseInt(opts.size ?? 400);
   const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
+  // PLAYTHROUGH: capture the __vf state trace when driving a scripted input timeline
+  // (or opts.trace) — turns render_probe into a real headless playthrough: the eye
+  // sees pixels, the trace sees the game STATE over time (position/hp/weapon/flags).
+  const traceOn = !!opts.trace || Array.isArray(opts.input);
   // dt per tick — 1/60 for probes; a clip passes 1/fps so one tick renders one
   // frame and sim time tracks video time (bells/animations run at real speed).
   const DT = opts.dt ? parseFloat(opts.dt) : 1 / 60;
@@ -402,6 +406,15 @@ ${fieldChain}
     const snap = await sample((opts.time !== undefined ? parseFloat(opts.time) : cur * DT));
     renderMs += performance.now() - r0;
     snap.tick = cur;
+    if (traceOn) {
+      const vf = worldData.__vf, st = {}; let n = 0;
+      if (vf && typeof vf === "object") for (const k in vf) {
+        if (n > 90) break; const v = vf[k], t = typeof v;
+        if (t === "number" || t === "boolean") { st[k] = v; n++; }
+        else if (t === "object" && v && !Array.isArray(v)) for (const k2 in v) { if (n > 90) break; const v2 = v[k2], t2 = typeof v2; if (t2 === "number" || t2 === "boolean") { st[k + "." + k2] = v2; n++; } }
+      }
+      snap.state = st;
+    }
     samples.push(snap);
   }
   // FRAME COST — the eye's frame-rate test (Galen's law: always measure cost, not just
@@ -485,6 +498,7 @@ ${fieldChain}
     motion, inputReport, png,
     hud: Array.isArray(worldData.hud) ? worldData.hud : null,   // the DOM UI LAYER (wd.hud) — the probe PNG is CANVAS-ONLY; without this the eye is blind to all HUD text/buttons
     frameCost,     // the frame-rate test: hookMs (CPU) + renderMs (relative GPU) + entity/hook counts
+    stateTrace: traceOn ? samples.map(s => ({ tick: s.tick, ...(s.state || {}) })) : undefined,   // PLAYTHROUGH — the __vf game state at each sampled tick
     audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
   };
 }
