@@ -666,7 +666,7 @@ export class WorldSandbox {
         if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
-            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects')) {   // __uiRects is HOST-owned (the ui-solver writes it) — a worker echo is one tick stale and would clobber a fresh solve past the change-fingerprint gate
+            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides')) {   // __uiRects (ui-solver) + __uiOverrides (UI EDIT) are HOST-owned — a worker echo is one tick stale and would clobber a fresh solve/drag past the change gates
           wd[k] = incoming[k]
         }
       }

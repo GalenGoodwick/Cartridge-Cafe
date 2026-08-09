@@ -108,6 +108,8 @@ export interface SolvedUi {
   runs: SolvedRun[] // one per text LINE (wrap pre-broken — renderer just emits quads)
   meters: SolvedMeter[]
   hits: SolvedHit[] // button hit rects + actions
+  /** top-level panels with their edit affordances — UI EDIT mode's hit list */
+  panels: Array<Rect & { id: string; draggable: boolean; collapsible: boolean; collapsed: boolean }>
 }
 
 const DEFAULT_GLASS: Required<GlassStyle> = {
@@ -326,7 +328,7 @@ function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['enti
 /** THE SOLVE — worldData.ui (+ overrides + entity anchors) → the rect table */
 export function solveUi(input: SolveInput): SolvedUi {
   const { ui, entities, overrides } = input
-  const out: SolvedUi = { rev: ui.rev ?? 0, rects: {}, boxes: [], runs: [], meters: [], hits: [] }
+  const out: SolvedUi = { rev: ui.rev ?? 0, rects: {}, boxes: [], runs: [], meters: [], hits: [], panels: [] }
   const theme: Required<GlassStyle> = { ...DEFAULT_GLASS, ...(ui.theme ?? {}) }
   const ctx: Ctx = { out, theme, auto: 0 }
 
@@ -345,7 +347,7 @@ export function solveUi(input: SolveInput): SolvedUi {
       : { ...panel, id }
 
     // measure at origin into a scratch context (anchor needs the height first)
-    const scratch: Ctx = { out: { rev: 0, rects: {}, boxes: [], runs: [], meters: [], hits: [] }, theme, auto: ctx.auto }
+    const scratch: Ctx = { out: { rev: 0, rects: {}, boxes: [], runs: [], meters: [], hits: [], panels: [] }, theme, auto: ctx.auto }
     const size = layout(body, 0, 0, w, scratch)
     const h = ov.h ?? (panel.h != null && panel.h !== 'auto' ? units(panel.h, size.h) : size.h)
 
@@ -362,6 +364,7 @@ export function solveUi(input: SolveInput): SolvedUi {
     layout(body, x, y, w, ctx)
     // panel rect wins over the inner col rect (same id) — record final size
     out.rects[id] = { x, y, w, h }
+    out.panels.push({ id, x, y, w, h, draggable: panel.draggable !== false, collapsible: panel.collapsible !== false, collapsed })
   }
   return out
 }

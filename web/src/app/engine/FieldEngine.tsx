@@ -215,6 +215,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   //    each entry = coords · field · visual · color, mirrored to wd.__clicks so
   //    any connected AI reads them over the bridge. Prototyped in tideglass. ──
   const [inspectOn, setInspectOn] = useState(false)
+  // ── UI EDIT MODE (Galen: "manually edit UI elements — click drag, expand/
+  // collapse box"). Drags/resizes/collapses write worldData.__uiOverrides —
+  // the ui-solver applies them live, they persist with the world's data, and
+  // any connected AI can READ them and bake the human's adjustments back into
+  // the source tree. The overlay swallows canvas input while on.
+  const [uiEditOn, setUiEditOn] = useState(false)
+  const uiEditOnRef = useRef(false)
+  const [uiEditPanels, setUiEditPanels] = useState<import('./ui-solver').SolvedUi['panels']>([])
+  const [uiEditSquare, setUiEditSquare] = useState<{ left: number; top: number; side: number } | null>(null)
+  const uiEditDragRef = useRef<{ id: string; mode: 'move' | 'resize'; sx: number; sy: number; start: { dx: number; dy: number; w: number; h: number } } | null>(null)
   const inspectOnRef = useRef(false)
   // ── DESIGN MODE (SAVE STATES, Galen Aug 7): owner-only. Rom worlds capture every
   //    worldData divergence as the PLAYER's save state — but an owner tuning the
@@ -4454,6 +4464,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (fp !== uiRectsFpRef.current) {
             uiRectsFpRef.current = fp
             sim.worldData['__uiRects'] = { rev: solved.rev, rects: solved.rects, hits: solved.hits.map(h => ({ id: h.id, action: h.action, x: h.x, y: h.y, w: h.w, h: h.h })) }
+            if (uiEditOnRef.current) setUiEditPanels(solved.panels)
+          }
+          // UI EDIT overlay geometry: track the resting square so panel
+          // outlines sit exactly on the rendered pixels (cheap compare)
+          if (uiEditOnRef.current) {
+            const cnv = canvasRef.current
+            if (cnv) {
+              const cw = cnv.clientWidth, chh = cnv.clientHeight
+              const sideE = Math.min(cw, chh)
+              setUiEditSquare(prev => (prev && prev.side === sideE && prev.left === (cw - sideE) / 2 && prev.top === (chh - sideE) / 2) ? prev : { left: (cw - sideE) / 2, top: (chh - sideE) / 2, side: sideE })
+            }
           }
         } else if (uiSolvedRef.current) {
           uiSolvedRef.current = null
@@ -5556,6 +5577,101 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             </div>
           )}
 
+          {/* UI EDIT overlay — Galen's manual layout mode. Panel outlines ride
+              the SOLVED rects (the same table the pixels came from, so the
+              handles sit exactly on the glass). Drag = move, right/bottom
+              edge = resize, ▾ chip = collapse. Every gesture writes
+              worldData.__uiOverrides — live for the solver, readable by the
+              AI, persisted with the world's data. The overlay swallows all
+              canvas input while on (game paused, like INSPECT). */}
+          {uiEditOn && uiEditSquare && (
+            <div className="absolute inset-0 z-[70]" style={{ pointerEvents: 'auto', cursor: uiEditDragRef.current ? 'grabbing' : 'default' }}
+              onPointerDown={(e) => {
+                const sq = uiEditSquare
+                const ux = (e.clientX - (e.currentTarget.getBoundingClientRect().left + sq.left)) * (512 / sq.side)
+                const uy = (e.clientY - (e.currentTarget.getBoundingClientRect().top + sq.top)) * (512 / sq.side)
+                // topmost panel wins (painted last)
+                for (let i = uiEditPanels.length - 1; i >= 0; i--) {
+                  const p = uiEditPanels[i]
+                  if (ux < p.x - 4 || ux > p.x + p.w + 4 || uy < p.y - 4 || uy > p.y + p.h + 4) continue
+                  const sim = simulationRef.current
+                  if (!sim) return
+                  const wd = sim.worldData as Record<string, unknown>
+                  const ovAll = { ...((wd['__uiOverrides'] as Record<string, Record<string, unknown>>) ?? {}) }
+                  const ov = { ...(ovAll[p.id] ?? {}) }
+                  // collapse chip: top-right corner zone
+                  if (p.collapsible && ux > p.x + p.w - 16 && uy < p.y + 13) {
+                    ov.collapsed = !p.collapsed
+                    ovAll[p.id] = ov; wd['__uiOverrides'] = ovAll
+                    console.log('[ui-edit]', p.id, ov.collapsed ? 'collapsed' : 'expanded')
+                    e.preventDefault(); e.stopPropagation(); return
+                  }
+                  if (!p.draggable) return
+                  const nearR = Math.abs(ux - (p.x + p.w)) < 7, nearB = Math.abs(uy - (p.y + p.h)) < 7
+                  uiEditDragRef.current = {
+                    id: p.id, mode: (nearR || nearB) ? 'resize' : 'move', sx: ux, sy: uy,
+                    start: { dx: Number(ov.dx ?? 0), dy: Number(ov.dy ?? 0), w: Number(ov.w ?? p.w), h: Number(ov.h ?? p.h) },
+                  }
+                  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+                  e.preventDefault(); e.stopPropagation(); return
+                }
+              }}
+              onPointerMove={(e) => {
+                const d = uiEditDragRef.current
+                const sq = uiEditSquare
+                if (!d) return
+                const sim = simulationRef.current
+                if (!sim) return
+                const r = e.currentTarget.getBoundingClientRect()
+                const ux = (e.clientX - (r.left + sq.left)) * (512 / sq.side)
+                const uy = (e.clientY - (r.top + sq.top)) * (512 / sq.side)
+                const wd = sim.worldData as Record<string, unknown>
+                const ovAll = { ...((wd['__uiOverrides'] as Record<string, Record<string, unknown>>) ?? {}) }
+                const ov = { ...(ovAll[d.id] ?? {}) }
+                if (d.mode === 'move') {
+                  ov.dx = Math.round(d.start.dx + (ux - d.sx))
+                  ov.dy = Math.round(d.start.dy + (uy - d.sy))
+                } else {
+                  ov.w = Math.max(24, Math.round(d.start.w + (ux - d.sx)))
+                  ov.h = Math.max(14, Math.round(d.start.h + (uy - d.sy)))
+                }
+                ovAll[d.id] = ov; wd['__uiOverrides'] = ovAll
+              }}
+              onPointerUp={(e) => {
+                const d = uiEditDragRef.current
+                if (d) {
+                  uiEditDragRef.current = null
+                  const sim = simulationRef.current
+                  const ov = (sim?.worldData as Record<string, unknown> | undefined)?.['__uiOverrides']
+                  console.log('[ui-edit] overrides now', JSON.stringify(ov))
+                  try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* fine */ }
+                }
+              }}
+            >
+              {/* the square frame + per-panel handles */}
+              <div className="absolute" style={{ left: uiEditSquare.left, top: uiEditSquare.top, width: uiEditSquare.side, height: uiEditSquare.side, boxShadow: 'inset 0 0 0 2px rgba(255,190,80,0.35)', pointerEvents: 'none' }}>
+                {uiEditPanels.map((p) => {
+                  const k = uiEditSquare.side / 512
+                  return (
+                    <div key={p.id} className="absolute" style={{ left: p.x * k, top: p.y * k, width: p.w * k, height: p.h * k, outline: '1.5px dashed rgba(255,190,80,0.8)', background: 'rgba(255,190,80,0.06)' }}>
+                      <div className="absolute -top-[15px] left-0 px-1 font-mono text-[10px] leading-[14px] text-amber-200 bg-black/70 rounded-t" style={{ letterSpacing: '0.1em' }}>{p.id}</div>
+                      {p.collapsible && (
+                        <div className="absolute top-0 right-0 w-[16px] h-[13px] text-center font-mono text-[9px] leading-[13px] text-amber-100 bg-amber-500/40" title={p.collapsed ? 'expand' : 'collapse'}>{p.collapsed ? '▸' : '▾'}</div>
+                      )}
+                      {p.draggable && !p.collapsed && (
+                        <div className="absolute -bottom-[1px] -right-[1px] w-[9px] h-[9px] bg-amber-400/80" title="drag to resize" />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="fixed top-14 left-3 z-[999] font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-amber-400/40 p-2.5 max-w-[380px] pointer-events-none">
+                <div className="text-amber-200 tracking-[0.15em]">⧉ UI EDIT — drag to move · edge to resize · ▾ to collapse</div>
+                <div className="text-white/50 mt-1">changes land in worldData.__uiOverrides (the AI reads them)</div>
+              </div>
+            </div>
+          )}
+
           {/* GAMEPLAY MODE overlay — total-UI-close. The engine's OWN back button
               (top-left, below) stays; here we add only the ▣ reopen so play is
               clean with exactly one way out + one way back to the UI. */}
@@ -5780,6 +5896,21 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
               >
                 {inspectOn ? '◉ INSPECT ON' : '◎ INSPECT'}
+              </button>
+            )}
+            {/* UI EDIT — manual layout mode for worlds on the UI SYSTEM
+                (worldData.ui): drag/resize/collapse panels; gestures write
+                __uiOverrides for the solver AND the AI. Only offered when the
+                world actually publishes a ui tree. */}
+            {!isHub && uiSolvedRef.current && (
+              <button
+                onClick={() => { setUiEditOn(v => { uiEditOnRef.current = !v; if (!v) { uiRectsFpRef.current = -1 } else { uiEditDragRef.current = null } return !v }); setEditCoach(false) }}
+                title="UI edit mode — drag panels to move, edges to resize, ▾ to collapse. Changes persist in worldData.__uiOverrides."
+                className={uiEditOn
+                  ? 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-500/25 backdrop-blur border border-amber-400/60 text-amber-100 transition-colors'
+                  : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
+              >
+                {uiEditOn ? '⧉ UI EDIT ON' : '⧉ UI EDIT'}
               </button>
             )}
             {/* DESIGN MODE (SAVE STATES) — owner only. OFF (default): the owner gets

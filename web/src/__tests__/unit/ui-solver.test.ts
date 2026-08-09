@@ -236,6 +236,26 @@ describe('clipping + meter labels', () => {
   })
 })
 
+describe('panels table — UI EDIT’s hit list', () => {
+  it('top-level panels expose rect + affordances; children do not appear', () => {
+    const s = solve({ rev: 1, root: [
+      { id: 'a', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, pad: 0, children: [{ id: 'inner', kind: 'text', text: 'X' }] },
+      { id: 'b', kind: 'panel', anchor: { gx: 200, gy: 0 }, align: 'tl', w: 80, h: 40, draggable: false, collapsible: false, children: [] },
+    ] })
+    expect(s.panels.map((p) => p.id)).toEqual(['a', 'b'])
+    expect(s.panels[0]).toMatchObject({ draggable: true, collapsible: true, collapsed: false, ...s.rects['a'] })
+    expect(s.panels[1]).toMatchObject({ draggable: false, collapsible: false })
+  })
+  it('collapsed state from overrides is reflected in the panels table', () => {
+    const s = solve(
+      { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, pad: 2, children: [{ id: 'h', kind: 'text', text: 'HDR', fontSize: 10 }, { id: 'b', kind: 'text', text: 'BODY', fontSize: 10 }] }] },
+      { overrides: { p: { collapsed: true } } },
+    )
+    expect(s.panels[0].collapsed).toBe(true)
+    expect(s.panels[0].h).toBeCloseTo(2 + LINE * 10 + 2, 6)
+  })
+})
+
 describe('the anti-drift law itself', () => {
   it('every run, meter, and hit lies INSIDE its panel box', () => {
     const ui: UiTree = {
