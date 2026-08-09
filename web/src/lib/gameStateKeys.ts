@@ -20,6 +20,11 @@ export const PRESERVED_KEYS: ReadonlySet<string> = new Set([
   '__sandbox', '__house_requested', '__resets', '__built_ua', '__built_at',
   '__bridge_rev', 'rResetKey', '__k', '__fixedStep', '__seed',
   '__original',                                       // the captured original itself
+  // node-runtime INFRASTRUCTURE, not game progress: the registry is authored by
+  // builders and NOT rebuilt by any hook — the generic `__`-prefix sweep was
+  // deleting it on every R-reset (the recurring "__nodes WIPED" mystery,
+  // root-caused Aug 9 2026 on veilfire-3d).
+  '__nodes', '__nodeSeq', '__nodeStrict',
 ])
 
 /** Runtime keys rebuilt each frame — cleared on reset, never captured. */

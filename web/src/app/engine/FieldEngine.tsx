@@ -2060,7 +2060,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // world's declared __resets keys (e.g. TIDEGLASS's __tg) out of the live
         // snapshot, so the SAVE is purged too — a plain reload keeps __tg.
         try { if (spaceSlug) sessionStorage.setItem('cc-reset:' + spaceSlug, '1') } catch { /* private mode */ }
-        window.location.reload()
+        // SERVER HALF (Galen, Aug 9 — veilfire-3d): the owner tab's 2s sync had
+        // persisted the live run state into the space snapshot, so a client-only
+        // reset was undone seconds after the reload when the rev-watcher merged
+        // the un-reset server copy back in ("reset properly, then put me back
+        // where I was"). Reset the STORED snapshot too; its __bridge_rev bump
+        // also makes any other stale tab reload instead of syncing old state
+        // back. Guests 404 harmlessly (their state never syncs). Bounded so R
+        // never hangs on a dead network — reload fires either way.
+        const srvReset = spaceSlug
+          ? fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/reset`, { method: 'POST' }).catch(() => null)
+          : Promise.resolve(null)
+        void Promise.race([srvReset, new Promise(r => setTimeout(r, 1500))])
+          .then(() => window.location.reload())
       } else {
         // reset: forget this session's run state + saved stash, then reload fresh
         for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
