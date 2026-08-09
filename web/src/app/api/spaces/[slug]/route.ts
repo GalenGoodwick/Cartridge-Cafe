@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
 import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
+import { enqueueBake } from '@/lib/icon-bake-queue'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,6 +121,17 @@ export async function PATCH(
     data: update,
     select: { id: true, slug: true, name: true, description: true, isPublic: true },
   })
+
+  // WRITE-TIME BAKE: a world going public is "ready for the shelf" — warm its icon
+  // now so the first visitor LOADS a photo, not a placeholder. Fire-and-forget and
+  // hash-gated (skips if already fresh), so it never blocks this response and never
+  // re-bakes needlessly. Ongoing edits/drift are caught by the read-time staleness
+  // check + the heal sweep; this just covers the publish moment promptly.
+  if (update.isPublic === true) {
+    getSpaceSnapshot(space.id, true)
+      .then(snap => { if (snap) enqueueBake(updated.slug, snap as never) })
+      .catch(() => {})
+  }
 
   return NextResponse.json({ space: updated })
 }

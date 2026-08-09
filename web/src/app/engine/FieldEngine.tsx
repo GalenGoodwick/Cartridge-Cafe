@@ -95,12 +95,12 @@ function iconCacheSave(c: NonNullable<typeof cafeIconCache>): void {
     const bytes = new Uint8Array(c.atlas.buffer, c.atlas.byteOffset, c.atlas.byteLength)
     let bin = ''
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    localStorage.setItem('cc:cafeIconAtlas:v6', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
+    localStorage.setItem('cc:cafeIconAtlas:v7', JSON.stringify({ sig: c.sig, slots: c.slots, b64: btoa(bin) }))
   } catch { /* quota or private mode — cache stays page-local */ }
 }
 function iconCacheLoad(): typeof cafeIconCache {
   try {
-    const raw = localStorage.getItem('cc:cafeIconAtlas:v6')
+    const raw = localStorage.getItem('cc:cafeIconAtlas:v7')
     if (!raw) return null
     const { sig, slots, b64 } = JSON.parse(raw) as { sig: string; slots: Record<string, number>; b64: string }
     const bin = atob(b64)
@@ -5216,7 +5216,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // promotion that swaps in a SAME-LENGTH shader still busts the dedup and
     // repaints (djb2, base36; ':'-free so the delta parse below stays valid)
     const wgslHash = (s: string): string => { let h = 5381; for (let k = 0; k < s.length; k++) h = ((h * 33) ^ s.charCodeAt(k)) >>> 0; return h.toString(36) }
-    let lastSig = ''
+    let lastSig = ''          // the SHADER signature (drives the delta-repaint parse)
+    let lastBakedSig = ''     // the BAKED-photo set signature (name=hash per world)
+    let lastCombined = ''     // shader+baked together — the true "nothing changed" gate
     const byName: Record<string, { slot: number; wgsl: string; color: [number, number, number] }> = {}
     // STABLE atlas slots: world NAME → its fixed atlas cell, held for the life of
     // this mount (seeded from the cache below). A surviving world NEVER changes
@@ -5255,11 +5257,47 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         window.setTimeout(() => window.clearInterval(rv), 8000)
       }
     }
+    // decode a baked-photo PNG (base64) straight into one 64² atlas cell, packed
+    // 0xAABBGGRR to match the shader-rendered cells (renderOneIcon uses the same).
+    const decodeCell = async (pngB64: string): Promise<Uint32Array | null> => {
+      try {
+        const bin = atob(pngB64)
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }), { resizeWidth: 64, resizeHeight: 64, resizeQuality: 'high' })
+        const cv = new OffscreenCanvas(64, 64)
+        const ctx = cv.getContext('2d')
+        if (!ctx) { bmp.close?.(); return null }
+        ctx.drawImage(bmp, 0, 0, 64, 64)
+        bmp.close?.()
+        const data = ctx.getImageData(0, 0, 64, 64).data
+        const cell = new Uint32Array(64 * 64)
+        // FLIP Y: the PNG is top-row-first, but the door samples atlas cells
+        // bottom-row-first (matching the GPU-rendered shader cells), so an
+        // unflipped photo shows upside down. Write each source row to 63-y.
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const s = (y * 64 + x) * 4; cell[(63 - y) * 64 + x] = data[s] | (data[s + 1] << 8) | (data[s + 2] << 16) | 0xff000000 }
+        return cell
+      } catch { return null }
+    }
     const tick = async () => {
-      const [sp, sc] = await Promise.all([
+      const [sp, sc, bk] = await Promise.all([
         fetch('/api/spaces/browse').then(x => x.json()).catch(() => null),
         fetch('/api/engine/scene-icons').then(x => x.json()).catch(() => null),
+        fetch('/api/spaces/icons').then(x => x.json()).catch(() => null),
       ])
+      // BAKED PHOTOS: the eye's photograph of each world (NAME -> {png,hash}). This
+      // is the CANONICAL icon — it works for worlds whose look lives in running
+      // state (feedback / multi-node / step-hook games) that can't compose a
+      // standalone shader. Overlaid onto the atlas below, over the shader placeholder.
+      const bakedMap = new Map<string, { png: string; hash: string }>()
+      for (const b of ((bk?.icons || []) as Array<{ name?: string; png?: string; hash?: string }>)) {
+        if (b?.name && typeof b.png === 'string') bakedMap.set(b.name.toUpperCase(), { png: b.png, hash: String(b.hash ?? '') })
+      }
+      // house SCENES bake through the same pipeline; their photos ride in on the
+      // scene-icons feed (png field). Merge them so scene bubbles wear real frames.
+      for (const b of ((sc?.icons || []) as Array<{ name?: string; png?: string; hash?: string }>)) {
+        if (b?.name && typeof b.png === 'string') bakedMap.set(b.name.toUpperCase(), { png: b.png, hash: String(b.hash ?? '') })
+      }
       if ((!sp && !sc) || stop) {
         // no data (offline / API down): resolve the first-load spinners to
         // emblems rather than letting them sweep forever
@@ -5275,7 +5313,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // every world save — order-derived slots made the sig churn, forcing a
       // full shelf re-render on every visit (and mid-session). Names are stable;
       // now the sig only changes when a world's shader or the roster truly does.
-      const worlds = [...players, ...scenes.filter(s => !seen.has(s.name))]
+      // worlds with NO composable shader (browse returned no iconWgsl) but a baked
+      // photo still deserve a cell — add them so they get a slot for the overlay.
+      // These are exactly the games the old shader path could never icon.
+      const sceneNames = new Set(scenes.map(s => s.name))
+      const bakedOnly = [...bakedMap.keys()]
+        .filter(nm => !seen.has(nm) && !sceneNames.has(nm))
+        .map(nm => ({ name: nm, hue: 0.6, iconWgsl: '' }))
+      const worlds = [...players, ...scenes.filter(s => !seen.has(s.name)), ...bakedOnly]
         .sort((a, b) => a.name.localeCompare(b.name)).slice(0, 64)
       // seed stable slots from the cache once, so a world keeps the very cell the
       // cached atlas already painted it into (no first-tick reshuffle on return)
@@ -5302,20 +5347,73 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // icons are cheap stills, not a per-frame GPU cost. (Scales to any count:
       // only the ≤64 on-shelf worlds ever render, and only once each.)
       const sig = next.map(i => `${nameOfSlot[i.slot]}:${wgslHash(i.wgsl)}`).join('|')   // name-keyed: immune to roster reordering; content-keyed: catches same-length swaps
-      if (sig === lastSig) return
-      // SAME ROSTER, few changed shaders → repaint just those slots in place
-      // (renderOneIcon draws into the live atlas). The full 64-shader re-render
-      // only happens when worlds appear/disappear and slots actually shift.
+      // fold the baked-photo set into the change gate so a freshly-baked icon
+      // re-triggers a render+overlay even when the shader parts didn't move.
+      const bakedSig = [...bakedMap.entries()].map(([n, b]) => `${n}=${b.hash}`).sort().join('|')
+      const combined = sig + '#' + bakedSig
+      if (combined === lastCombined) return
+      const bakedChanged = bakedSig !== lastBakedSig
       const rDelta = rendererRef.current
-      if (lastSig && rDelta) {
+      const shaderChanged = sig !== lastSig
+      const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean; __cafeBaked?: Set<string> }
+      // tell the hover animator which worlds wear a baked PHOTO, so it never
+      // shader-repaints over them ("hovering changes the icon").
+      w.__cafeBaked = new Set(bakedMap.keys())
+      // reusable: patch every baked photo into its atlas cell. Grows the atlas to
+      // cover all slots; returns the patched copy (or the base if nothing patched).
+      const overlayBaked = async (base: Uint32Array | null, slotsOut: Record<string, number>, loadingOut: Record<string, boolean>): Promise<Uint32Array | null> => {
+        if (!bakedMap.size) return base
+        const CELL = 64 * 64
+        const maxSlot = Math.max(-1, ...Object.values(slotOf))
+        const need = (maxSlot + 1) * CELL
+        const atlas = new Uint32Array(need)
+        if (base) atlas.set(base.subarray(0, Math.min(base.length, need)))
+        let patched = false
+        for (const [nm, b] of bakedMap) {
+          const sl = slotOf[nm]
+          if (sl == null || (sl + 1) * CELL > need) continue
+          const cell = await decodeCell(b.png)
+          if (!cell) continue
+          atlas.set(cell, sl * CELL)
+          slotsOut[nm] = sl; delete loadingOut[nm]   // a photographed world always has its cell
+          patched = true
+        }
+        return patched ? atlas : base
+      }
+
+      // ── LIGHT PATH — the shader roster is UNCHANGED (backing out to the hub:
+      // the cache already holds every shader cell). Do NOT re-render 64 shaders
+      // (64 blocking GPU readbacks starve the render loop and FREEZE the cursor);
+      // just re-apply the baked photos onto the cached atlas and upload. ──
+      if (!shaderChanged && rDelta) {
+        const slots = { ...(w.__cafeIconSlots || {}) }
+        const loading = { ...(w.__cafeIconLoading || {}) }
+        // the cached shelf is already up — never spinner on the way back to the hub
+        w.__cafeIconReady = true
+        const base = cafeIconCache?.atlas || rDelta.getIconAtlasCPU() || null
+        const atlas = await overlayBaked(base, slots, loading)
+        if (atlas) rDelta.uploadIconAtlas(atlas)
+        w.__cafeIconSlots = slots; w.__cafeIconLoading = loading
+        lastSig = sig; lastBakedSig = bakedSig; lastCombined = combined
+        if (atlas) { cafeIconCache = { sig, atlas, slots: { ...slots } }; const c0 = cafeIconCache; setTimeout(() => iconCacheSave(c0), 0) }
+        return
+      }
+
+      // SAME ROSTER, few changed shaders → repaint just those slots in place.
+      // Only when NO baked photos exist (the delta caches getIconAtlasCPU, which
+      // lacks the GPU-only overlays); with baked photos a shader change takes the
+      // full path below so the overlay is re-applied.
+      if (lastSig && rDelta && !bakedChanged && bakedMap.size === 0) {
         const parse = (g: string) => new Map(g.split('|').map(e => { const c = e.lastIndexOf(':'); return [e.slice(0, c), e.slice(c + 1)] as [string, string] }))
         const a = parse(lastSig), b = parse(sig)
         const sameRoster = a.size === b.size && [...b.keys()].every(k => a.has(k))
         if (sameRoster) {
-          const changed = next.filter(i => a.get(nameOfSlot[i.slot]) !== b.get(nameOfSlot[i.slot]))
+          // never shader-repaint a world that wears a baked photo — its cell is a
+          // real frame, not a shader; a delta repaint would paint over it.
+          const changed = next.filter(i => !bakedMap.has(nameOfSlot[i.slot]) && a.get(nameOfSlot[i.slot]) !== b.get(nameOfSlot[i.slot]))
           if (changed.length > 0 && changed.length <= 8) {
             for (const it of changed) rDelta.renderOneIcon(it.slot, it.wgsl, it.color, 0.5)
-            lastSig = sig
+            lastSig = sig; lastBakedSig = bakedSig; lastCombined = combined
             const cpu = rDelta.getIconAtlasCPU()
             const w2 = window as unknown as { __cafeIconSlots?: Record<string, number> }
             if (cpu) { cafeIconCache = { sig, atlas: cpu, slots: { ...(w2.__cafeIconSlots || {}) } }; const c2 = cafeIconCache; setTimeout(() => iconCacheSave(c2), 0) }
@@ -5323,9 +5421,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
         }
       }
-      lastSig = sig
+      lastSig = sig; lastBakedSig = bakedSig; lastCombined = combined
       const r = rendererRef.current
-      const w = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeIconLoading?: Record<string, boolean>; __cafeIconReady?: boolean }
       // Re-dressing the shelf must not undress it: a door that already wears a
       // face KEEPS it while the new atlas renders (its old pixels are still in
       // the buffer at its STABLE cell — slotOf never moves a surviving world).
@@ -5356,11 +5453,24 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // any candidate that never got a slot (emblem/feedback world) stops
       // spinning now — it resolves to its living emblem, not an endless spinner.
       for (const sl of okSlots) if (nameOfSlot[sl]) slots[nameOfSlot[sl]] = sl
+      // PLACEHOLDER IS READY: the shader/emblem shelf is up now. Clear the spinner
+      // HERE — do NOT make it wait on the baked-photo decodes below. The photos are
+      // the canonical icon but they swap in progressively; a joiner must never stare
+      // at a spinner while the eye's frames stream in (or while a cold shelf bakes).
       for (const nm of Object.keys(loading)) delete loading[nm]
       w.__cafeIconReady = true
+      // OVERLAY the baked photos — the canonical icon, over the shader placeholder,
+      // so any world the eye has photographed shows its REAL running look. We patch
+      // a CPU copy and re-upload so the cache (and next visit) keeps the real faces.
+      let finalAtlas = r?.getIconAtlasCPU() || null
+      if (r) {
+        const patched = await overlayBaked(finalAtlas, slots, loading)
+        if (patched && patched !== finalAtlas) { r.uploadIconAtlas(patched); finalAtlas = patched }
+      }
+      w.__cafeIconSlots = { ...slots }   // publish the baked slots (photos swapped in)
       // leave the finished atlas behind for the next visit to main — in memory
       // AND in sessionStorage, so it survives the full navigation back from a world
-      const atlasCPU = r?.getIconAtlasCPU()
+      const atlasCPU = finalAtlas
       if (atlasCPU) {
         cafeIconCache = { sig, atlas: atlasCPU, slots: { ...slots } }
         const c = cafeIconCache
@@ -5381,11 +5491,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const animIv = setInterval(() => {
       const r = rendererRef.current
       if (stop || !r) return
-      const live = (window as unknown as { __cafeIconSlots?: Record<string, number> }).__cafeIconSlots || {}
-      // only animate a bubble that actually has a rendered icon (emblem worlds skip)
-      const cur = hovered && live[hovered] != null ? byName[hovered] : null
+      const wl = window as unknown as { __cafeIconSlots?: Record<string, number>; __cafeBaked?: Set<string> }
+      const live = wl.__cafeIconSlots || {}
+      const baked = wl.__cafeBaked || new Set<string>()
+      // animate a bubble ONLY if it wears a rendered SHADER icon — never a baked
+      // PHOTO (re-rendering its shader on hover would paint over the photograph),
+      // and never an emblem world (no slot).
+      const cur = hovered && live[hovered] != null && !baked.has(hovered) ? byName[hovered] : null
       if (cur) { animName = hovered; r.renderOneIcon(cur.slot, cur.wgsl, cur.color, performance.now() / 1000) }
-      else if (animName) { const it = byName[animName]; animName = null; if (it) r.renderOneIcon(it.slot, it.wgsl, it.color, 0.5) }
+      else if (animName) { const it = byName[animName]; const nm = animName; animName = null; if (it && !baked.has(nm)) r.renderOneIcon(it.slot, it.wgsl, it.color, 0.5) }
     }, 33)
     return () => { stop = true; clearInterval(iv); clearInterval(animIv); window.removeEventListener('cafe:hover', onHover) }
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,0 +1,73 @@
+/** The EYE, callable from any server route. Ships a world snapshot to the
+ *  render-service (Deno + software-Vulkan on Railway), which boots it, runs the
+ *  real step-hooks for N ticks, reads the framebuffer, and returns pixel-stats +
+ *  a base64 PNG. Extracted from the bridge so icon-baking, probes, and any other
+ *  server code share ONE caller instead of hand-rolling the fetch. If the service
+ *  is unset/down the caller still gets a structured {ok:false} it can fall back on. */
+
+export type RenderSnapshot = {
+  fields?: unknown[]
+  visualTypes?: unknown[]
+  modules?: unknown[]
+  worldData?: Record<string, unknown>
+  stepHooks?: unknown[]
+} | null | undefined
+
+export type RenderOpts = {
+  name?: unknown
+  ticks?: unknown
+  size?: unknown
+  input?: unknown
+  trace?: unknown
+}
+
+export async function renderSnapshot(
+  snap: RenderSnapshot,
+  opts: RenderOpts,
+): Promise<Record<string, unknown>> {
+  const base = process.env.RENDER_SERVICE_URL
+  const secret = process.env.RENDER_SECRET
+  if (!base || !secret) {
+    return { ok: false, error: 'render service not configured (no eyes over HTTP yet) — use describe_scene / health for structural eyes', configured: false }
+  }
+  const state = {
+    fields: snap?.fields ?? [],
+    visualTypes: snap?.visualTypes ?? [],
+    modules: snap?.modules ?? [],
+    worldData: snap?.worldData ?? {},
+    stepHooks: snap?.stepHooks ?? [],
+  }
+  if (!Array.isArray(state.fields) || state.fields.length === 0) {
+    return { ok: false, error: 'nothing to render — the world has no fields yet' }
+  }
+  const url = base.replace(/\/+$/, '') + '/render'
+  const payload: Record<string, unknown> = { state, size: 256 }
+  if (typeof opts.name === 'string') payload.name = opts.name
+  if (opts.ticks != null) payload.ticks = Number(opts.ticks)
+  if (opts.size != null) payload.size = Math.min(512, Math.max(64, Number(opts.size) || 256))
+  // synthetic input — the HANDS: a preset string ('auto'|'run-right'|'tap-action'
+  // |'sweep-cursor') or an explicit timeline array. Lets the render VERIFY the
+  // world reacts to controls, not just that it draws.
+  if (typeof opts.input === 'string' || Array.isArray(opts.input)) payload.input = opts.input
+  if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the __vf state trace per sampled tick
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 25_000)
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer))
+    if (!r.ok) return { ok: false, error: `render service ${r.status}: ${(await r.text()).slice(0, 200)}` }
+    const out = await r.json()
+    // hint the caller how to READ the render, since it's raw pixel-stats not prose
+    if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.' +
+      (out.inputReport
+        ? ` inputReport.respondsToInput=${out.inputReport.respondsToInput}: ${out.inputReport.note}`
+        : ' For anything INTERACTIVE, re-probe with {"input":"auto"} (or "run-right"/"tap-action"/"sweep-cursor") — it presses the controls and tells you if the world actually reacts.')
+    return out
+  } catch (e) {
+    return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work` }
+  }
+}

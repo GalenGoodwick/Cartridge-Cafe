@@ -632,6 +632,15 @@ try {
   // layout is saved the bubbles land settled; only a genuinely new world (the
   // newborn branch) wakes the field, so unchanged rosters never re-animate.
   if (U.mineKey !== mineKey) { U.mineKey = mineKey; U.pollT = 0; U.hintedEmpty = false; U.sharedAt = 0
+    // FLASH GUARD: the new view's roster only lands when the async browse poll
+    // resolves (seconds on a cold Neon). Until then the PREVIOUS view's bubbles
+    // keep rendering — and MY WORLDS / THE ORPHANAGE seat your PRIVATE worlds, so
+    // flipping back to main would paint those private icons for a beat before the
+    // re-poll trims them. Drop the visibility-sensitive player worlds (every
+    // space: launch) from the render list NOW; the immediate re-poll re-adds the
+    // ones the new view actually wants, correctly filtered. Canonical scenes and
+    // the category bubbles carry over so the shelf never blinks empty.
+    U.order = U.order.filter(n => !(U.bubbles[n] && String(U.bubbles[n].launch || '').startsWith('space:')))
     // NESTED PRESENCE (web/docs/presence-nesting-spec.md) — emit this view's
     // location path on view change (deduped by mineKey, no React-state lag). The
     // shell keys the live-cursor room off it. STEP 1: only PLAYER WORLDS acts on
