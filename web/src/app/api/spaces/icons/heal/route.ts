@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isAdmin } from '@/lib/adminAuth'
 import { bakeAllUnhealthy } from '@/lib/icon-bake-queue'
+import { loadScene, listScenes, hydrateAllScenes } from '../../../engine/store'
+import { getLineage } from '../../../engine/lineage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300   // a full sweep photographs many worlds through the eye
@@ -36,11 +38,37 @@ async function run(req: NextRequest): Promise<NextResponse> {
     })
     .map(({ slug, sn }) => ({ slug, snap: sn as never }))
 
+  // house SCENES bake through the same pipeline (keyed scene:<liveName>, matching
+  // what scene-icons serves). Since lazy bake is off, the sweep is how scenes
+  // (veilfire etc.) get their photo. Skip CAFE/SUB-MAIN/branches/private.
+  const sceneWorlds: Array<{ slug: string; snap: never }> = []
+  try {
+    await hydrateAllScenes()
+    for (const name of listScenes()) {
+      if (name === 'CAFE' || name === 'SUB-MAIN' || name.includes(' ⑂ ') || name.includes('␂')) continue
+      let liveName = name
+      try {
+        const lin = await getLineage(name)
+        if (lin?.mainHolder && lin.original && lin.mainHolder !== lin.original
+            && !lin.mainHolder.startsWith('space:') && loadScene(lin.mainHolder)) liveName = lin.mainHolder
+      } catch { /* base is a fine fallback */ }
+      let scene: Snap = null
+      try { scene = (loadScene(liveName) as unknown as Snap) } catch { continue }
+      if (!scene) continue
+      if ((scene as { worldData?: { __private?: boolean } })?.worldData?.__private) continue
+      const blank = !(scene.fields?.length) && !(scene.stepHooks?.length) && !(scene.visualTypes?.length)
+      if (blank) continue
+      sceneWorlds.push({ slug: 'scene:' + liveName, snap: scene as never })
+    }
+  } catch { /* scenes are best-effort; spaces still sweep */ }
+
+  const all = [...worlds, ...sceneWorlds]
+
   // ?max=N caps how many worlds this run photographs — lets a first backfill go
   // in gentle batches instead of one long run that could strain the eye.
   const maxParam = Number(new URL(req.url).searchParams.get('max'))
   const maxBakes = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined
-  const summary = await bakeAllUnhealthy(worlds, { maxBakes })
+  const summary = await bakeAllUnhealthy(all, { maxBakes })
   return NextResponse.json({ ok: true, summary })
 }
 

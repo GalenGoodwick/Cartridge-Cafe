@@ -55,7 +55,12 @@ export async function GET() {
       icons.push({ name: (s.name || s.slug).toUpperCase(), hash, png: records[i]!.png_b64! })
     } else if (needsBake(health)) {
       // self-heal: queue it (deduped, rate-limited). 'black' worlds are left alone.
-      enqueueBake(s.slug, sn as never)
+      // LAZY BAKE IS OFF BY DEFAULT: on prod the per-lambda concurrency cap does
+      // NOT bound total load across Vercel's many instances, so bake-on-visit lets
+      // ordinary traffic stampede the (small software-GPU) eye and OOM it. Baking
+      // is a CONTROLLED op — the heal sweep + publish hook. Flip ICON_LAZY_BAKE=1
+      // only once there's a GLOBAL rate limit.
+      if (process.env.ICON_LAZY_BAKE === '1') enqueueBake(s.slug, sn as never)
     }
   })
 

@@ -54,7 +54,9 @@ export async function GET() {
       out.push({ name: up, hue: dominantHue(scene.fields || []), iconWgsl: iconWgsl || '', png: rec.png_b64, hash })
       continue
     }
-    if (needsBake(health)) enqueueBake(sceneSlug(liveName), scene as never)
+    // lazy bake OFF by default (see spaces/icons) — traffic must not stampede the
+    // eye. Controlled baking only: the heal sweep. Flip ICON_LAZY_BAKE=1 to re-enable.
+    if (process.env.ICON_LAZY_BAKE === '1' && needsBake(health)) enqueueBake(sceneSlug(liveName), scene as never)
     // no baked photo yet: fall back to the composed shader placeholder if it has
     // one; a scene that composes to NOTHING waits (emblem) until its bake lands.
     if (iconWgsl) out.push({ name: up, hue: dominantHue(scene.fields || []), iconWgsl })
