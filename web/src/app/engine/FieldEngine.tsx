@@ -4423,6 +4423,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const mode3D = renderModeRef.current === '3d' ? camera3DRef.current : undefined
       const stepHookData = renderer.hasStepHooks() ? { dt, worldData: sim.worldData } : undefined
       renderer.setWorldData(sim.worldData as Record<string, unknown>)   // sandboxed worlds: hooks run in the worker, but render layers (GPU text) still need hud
+      // DEV-ONLY escape hatch: local harnesses (headless pixel proofs, UI
+      // tuning) can reach the live sim. Stripped from prod builds by Next's
+      // NODE_ENV inlining.
+      if (process.env.NODE_ENV === 'development') { (window as unknown as { __ccDevSim?: unknown }).__ccDevSim = sim }
 
       // ── THE UI SYSTEM (one layout authority) ──
       // worldData.ui (declarative tree) → ui-solver → ONE rect table that the
@@ -4430,7 +4434,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // solve is pure arithmetic (µs); overrides come from UI EDIT / the world;
       // entity anchors ride worldData.__entities (the world's own projection).
       try {
-        const uiT = sim.worldData['ui'] as UiTree | undefined
+        // the HUB never shows a world's UI (same law as hud: the tree lingers
+        // in worldData after you leave — don't let it bleed onto the cafe)
+        const onHubUi = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
+        const uiT = onHubUi ? undefined : sim.worldData['ui'] as UiTree | undefined
         if (uiT && Array.isArray(uiT.root) && uiT.root.length) {
           const solved = solveUi({
             ui: uiT,
