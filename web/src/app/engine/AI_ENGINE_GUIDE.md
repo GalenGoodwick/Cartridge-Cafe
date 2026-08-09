@@ -719,13 +719,15 @@ Boundary modes: `"solid"`, `"wrap"`, `"open"`
 
 | Command | Parameters | Description |
 |---------|-----------|-------------|
-| `add_step_hook` | `hookId, author, description, code` | JavaScript executed every simulation tick. Same `hookId` REPLACES the existing hook; omitting `hookId` always appends a NEW one. |
+| `add_step_hook` | `hookId, author, description, code` | JavaScript executed every simulation tick. Same `hookId` REPLACES the existing hook **in place — its execution-order position is preserved**; omitting `hookId` always appends a NEW one at the end. |
 | `save_world` | `name` | **Finish the creation**: snapshot the live world as a named store scene. It appears on main's shelf automatically — this is how a live build becomes a WORLD. |
 | `remove_step_hook` | `hookId` | Remove hook |
 
 Step hooks run in the browser and have access to field state, world data, and can emit commands.
 
 **Verify your hooks after writing.** `GET` the bridge and check `stepHooks` — the count and ids, not just the first entry. The parameter is `hookId` (NOT `id`): a wrong key means every push appends another hook, ALL of them run every frame against the same worldData, and physics written in a hook integrates N times per tick. One agent stacked 49 copies this way and spent an hour debugging "impossible" speed. If you find duplicates, `remove_step_hook` each id, then add ONE.
+
+**HOOK ORDER IS EXECUTION ORDER — and it matters.** The `stepHooks` array runs top-to-bottom every frame, and hooks share one `worldData`. A world commonly has a **first** hook that sets up the frame's shared state — the player/camera node writing `gpuUniforms` (the "whiteboard"), or a world-frame node publishing geometry — that **every later hook reads that same frame**. If a downstream hook runs before that producer, it reads *last frame's* (stale) whiteboard, and the whole world subtly breaks: input dead, pickups dead, wrong geometry. Re-pushing an existing `hookId` now **replaces it in place** (its position is kept), so a normal edit-and-redeploy is safe. But be deliberate when you *reorder*: a NEW hook lands **last**. If a producer hook must run first, either give it a hookId that already sits first, or re-push the whole ordered set. After any multi-hook deploy, `GET` the bridge and confirm the **order** of `stepHooks[].id`, not just that they're all present. (This class of bug took veilfire-3d fully down on Aug 9 2026 when a re-push under an older engine moved its first-running player hook to last.)
 
 ### Build in NODES — one hook per job, and you OWN what you push
 

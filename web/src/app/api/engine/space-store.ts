@@ -682,13 +682,24 @@ export function applyCommandToSnapshotObject(
       // hotSwapLive to instantiate the sandbox in place when a snapshot adds hooks
       // to a world that has none. Until then, WARN so the builder isn't surprised.
       const wasHookless = snap.stepHooks.length === 0
-      snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
-      snap.stepHooks.push({
+      // REPLACE IN PLACE — the stepHooks array order IS the per-frame execution
+      // order (the runtime runs them top-to-bottom; __nodes slots aren't wired to
+      // execution yet). The old filter-then-push moved a re-pushed hook to the
+      // END, silently changing run order: re-deploying a world's FIRST hook (e.g.
+      // a player/frame node that sets up the gpuUniforms whiteboard every other
+      // hook reads) dropped it to last, so every downstream hook read a stale
+      // whiteboard and the whole world broke on the next reload — while the live
+      // tab (a Map, order-preserving) looked fine. Keeping the existing index
+      // makes a re-push a true replace. (Aug 9 2026, veilfire-3d — Galen/Fable.)
+      const newHook = {
         id: hookId,
         author: (cmd.author as string) ?? 'claude-code',
         description: (cmd.description as string) ?? '',
         code: cmd.code as string,
-      })
+      }
+      const existingIdx = snap.stepHooks.findIndex(h => h.id === hookId)
+      if (existingIdx >= 0) snap.stepHooks[existingIdx] = newHook
+      else snap.stepHooks.push(newHook)
       if (wasHookless) {
         result.warning = 'added the FIRST hook to this world — a player who already has it OPEN must RELOAD for the hook to run. The live hot-swap re-loads hooks into an existing sandbox but cannot create one in place, so a uniform-driven shader will render BLACK live until reload. Fresh page loads are unaffected.'
       }
