@@ -36,10 +36,35 @@ try {
   console.log(warm.ok ? "render backend warm — adapter OK" : `render backend WARN — ${JSON.stringify(warm.errors)}`);
 } catch (e) { console.error("render backend FAILED to warm:", e?.message || e); }
 
+// ── WATCHDOGS (Aug 9 — "the eye keeps crashing") ─────────────────────────────
+// The leak fix in render-core (cached device + destroy-in-finally) is the real
+// cure; these make ANY future failure mode recoverable. Railway's ALWAYS
+// restart policy only catches exits — a wedged process serves nothing forever.
+// So we EXIT on the two wedge signatures and let Railway resurrect us:
+//   1. RSS watchdog — memory past the ceiling → exit(70) after the response.
+//   2. HANG watchdog — a render in flight past its deadline → exit(71). A
+//      wedged lavapipe call can't be cancelled from JS; exit is the recovery.
+const MAX_RSS = (parseInt(Deno.env.get("RENDER_MAX_RSS_MB") || "900")) * 1024 * 1024;
+const HANG_MS_RENDER = parseInt(Deno.env.get("RENDER_HANG_MS") || "180000");     // 3 min — /render on lavapipe is seconds, minutes = wedged
+const HANG_MS_CLIP = parseInt(Deno.env.get("CLIP_HANG_MS") || "900000");         // 15 min — long clips are legitimately slow
+let inflight = null;   // { at, deadline, what }
+setInterval(() => {
+  if (inflight && Date.now() - inflight.at > inflight.deadline) {
+    console.error(`HANG WATCHDOG: ${inflight.what} in flight ${Math.round((Date.now() - inflight.at) / 1000)}s — exiting for Railway to restart`);
+    Deno.exit(71);
+  }
+  const rss = Deno.memoryUsage().rss;
+  if (!inflight && rss > MAX_RSS) {
+    console.error(`RSS WATCHDOG: ${Math.round(rss / 1048576)}MB > ${Math.round(MAX_RSS / 1048576)}MB ceiling — exiting for Railway to restart`);
+    Deno.exit(70);
+  }
+}, 5000);
+let renders = 0;
+
 Deno.serve({ port: PORT }, async (req) => {
   const url = new URL(req.url);
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/")) {
-    return new Response("ok", { status: 200 });
+    return Response.json({ ok: true, renders, rssMb: Math.round(Deno.memoryUsage().rss / 1048576), inflight: inflight ? Date.now() - inflight.at : 0 });
   }
   const isClip = url.pathname === "/clip";
   if (req.method !== "POST" || (url.pathname !== "/render" && !isClip)) {
@@ -73,6 +98,7 @@ Deno.serve({ port: PORT }, async (req) => {
     // world. Pass audio:false for a silent clip.
     const withAudio = body.audio !== false;
     try {
+      inflight = { at: Date.now(), deadline: HANG_MS_CLIP, what: "/clip" };
       // one tick per frame at dt=1/fps so animation/bells run at real speed; a
       // generous hook budget so a whole-world hook isn't guillotined mid-clip.
       const r = await renderProbe(state, {
@@ -95,16 +121,17 @@ Deno.serve({ port: PORT }, async (req) => {
       });
     } catch (e) {
       return Response.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
-    }
+    } finally { inflight = null; renders++; }
   }
 
   try {
+    inflight = { at: Date.now(), deadline: HANG_MS_RENDER, what: "/render" };
     const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input, trace: body.trace });
     const { png, frames: _frames, ...struct } = r;
     return Response.json({ ...struct, image: r.ok && png ? encodeBase64(png) : null, imageMime: "image/png" });
   } catch (e) {
     return Response.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
-  }
+  } finally { inflight = null; renders++; }
 });
 
 // Stitch a PNG sequence into an h264 mp4 via ffmpeg, optionally muxing a WAV

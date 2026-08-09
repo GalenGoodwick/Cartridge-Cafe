@@ -28,6 +28,25 @@ async function getAdapter() {
   return a;
 }
 
+/** ONE device per process — THE leak fix (Aug 9). Every render used to
+ *  requestDevice() and never destroy it: ~35 leaked lavapipe devices wedged
+ *  the Railway eye (hang, not exit — so ALWAYS-restart never fired). The
+ *  device is now cached and per-render resources are destroyed in a finally.
+ *  On device loss the cache clears so the next render re-requests. */
+let __device = null;
+async function getDevice() {
+  if (__device) return __device;
+  const adapter = await getAdapter();
+  if (!adapter) return null;
+  const d = await adapter.requestDevice();
+  __device = d;
+  d.lost?.then?.((info) => {
+    console.error("GPU device lost:", info?.message || info);
+    if (__device === d) __device = null;
+  }).catch?.(() => { if (__device === d) __device = null; });
+  return d;
+}
+
 /**
  * @param {object} state   { fields, visualTypes, modules, worldData, stepHooks }
  * @param {object} opts     { name?, ticks?=45, samples?=6, size?=400, time?, input? }
@@ -310,9 +329,8 @@ ${fieldChain}
   return vec4f(colr + vec3f(keep), 1.0);
 }`;
 
-  const adapter = await getAdapter();
-  if (!adapter) return { ok: false, png: null, errors: [{ message: "no GPU adapter (no Metal, no software Vulkan)" }], hookErrors };
-  const device = await adapter.requestDevice();
+  const device = await getDevice();
+  if (!device) return { ok: false, png: null, errors: [{ message: "no GPU adapter (no Metal, no software Vulkan)" }], hookErrors };
   const errors = [];
   device.pushErrorScope("validation");
   const mod = device.createShaderModule({ code: wgsl });
@@ -323,7 +341,9 @@ ${fieldChain}
   const se = await device.popErrorScope(); if (se) errors.push({ message: String(se.message || se) });
   if (!pipeline || errors.length) return { ok: false, png: null, errors, hookErrors, visual: vname };
 
-  // ── GPU resources (set up ONCE, reused per sample) ──
+  // ── GPU resources (set up ONCE per render, DESTROYED in the finally —
+  //     buffers/textures are the native allocations lavapipe can't afford to
+  //     leak; module/pipeline/bindgroup are GC-managed on the shared device) ──
   const tex = device.createTexture({ size: [S, S], format: "rgba8unorm", usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
   const ubuf = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const gbuf = device.createBuffer({ size: 1024, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -332,6 +352,7 @@ ${fieldChain}
   const bind = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: ubuf } }, { binding: 1, resource: { buffer: gbuf } }, { binding: 2, resource: { buffer: fbuf } }, { binding: 3, resource: { buffer: pbuf } }] });
   const bpr = Math.ceil(S * 4 / 256) * 256;
   const rb = device.createBuffer({ size: bpr * S, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+  try {
   const BG = [0.03, 0.02, 0.04]; const bgb = BG.map(v => Math.round(v * 255));
   const isBg = (r, g, b) => Math.abs(r - bgb[0]) + Math.abs(g - bgb[1]) + Math.abs(b - bgb[2]) < 26;
 
@@ -501,4 +522,10 @@ ${fieldChain}
     stateTrace: traceOn ? samples.map(s => ({ tick: s.tick, ...(s.state || {}) })) : undefined,   // PLAYTHROUGH — the __vf game state at each sampled tick
     audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
   };
+  } finally {
+    // the leak fix's other half: release every native allocation this render made
+    try { rb.destroy(); } catch { /* already gone */ }
+    try { tex.destroy(); } catch { /* already gone */ }
+    for (const b of [ubuf, gbuf, fbuf, pbuf]) { try { b.destroy(); } catch { /* already gone */ } }
+  }
 }
