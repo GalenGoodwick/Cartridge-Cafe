@@ -49,7 +49,7 @@ export interface UiNode {
   kind: 'panel' | 'col' | 'row' | 'text' | 'meter' | 'button' | 'spacer' | 'slot'
   hidden?: boolean
   // top-level panel placement
-  anchor?: { x?: number; y?: number; gx?: number; gy?: number; entity?: string; dx?: number; dy?: number }
+  anchor?: { x?: number; y?: number; gx?: number; gy?: number; entity?: string; below?: string; gap?: number; dx?: number; dy?: number }
   /** which POINT of the panel the anchor pins: tl tc tr cl c cr bl bc br (default c) */
   align?: 'tl' | 'tc' | 'tr' | 'cl' | 'c' | 'cr' | 'bl' | 'bc' | 'br'
   glass?: boolean | GlassStyle
@@ -317,9 +317,16 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
 }
 
 /** resolve a top-level panel's anchor to its top-left, given its size */
-function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities']): { x: number; y: number } {
+function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities'], rects?: SolvedUi['rects']): { x: number; y: number } {
   const a = node.anchor ?? {}
   let px = GRID / 2, py = GRID / 2
+  if (a.below != null && rects && rects[a.below]) {
+    // CHAINED PANEL: sit under an EARLIER panel's SOLVED rect (left edges
+    // aligned) — two stacked panels can never collide however tall the first
+    // grows. This is the containment law between siblings.
+    const r = rects[a.below]
+    return { x: r.x + (a.dx ?? 0), y: r.y + r.h + (a.gap ?? 4) + (a.dy ?? 0) }
+  }
   if (a.entity != null && entities) {
     const e = entities.find((e) => String(e.id) === String(a.entity) || e.label === a.entity)
     if (e) { px = e.sx; py = e.sy }
@@ -362,7 +369,7 @@ export function solveUi(input: SolveInput): SolvedUi {
     const size = layout(body, 0, 0, w, scratch)
     const h = ov.h ?? (panel.h != null && panel.h !== 'auto' ? units(panel.h, size.h) : size.h)
 
-    const tl = anchorTL(panel, w, h, entities)
+    const tl = anchorTL(panel, w, h, entities, out.rects)
     const x = tl.x + (ov.dx ?? 0)
     const y = tl.y + (ov.dy ?? 0)
 

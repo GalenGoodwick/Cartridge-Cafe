@@ -201,6 +201,9 @@ self.onmessage = function (ev) {
     __gframe++;
     const __viol = __guard ? new Map() : null;
     let __benchEvents = null;   // nodes benched THIS tick → main surfaces + bridges them
+    // UI PROVENANCE: watch wd.ui BETWEEN hooks — the hook that (re)assigns the
+    // tree owns it; INSPECT names it for any clicked UI text. Syncs via __-key.
+    let __uiRef = __sim.worldData.ui, __uiProv = msg.worldData.__uiProv || null;
     for (const h of __hooks) {
       if (__strict && __benched[h.id]) continue;   // benched node: hook does not run (zero cost)
       const __ownsRaw = __guard && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
@@ -244,6 +247,7 @@ self.onmessage = function (ev) {
           }
         }
       }
+      if (__sim.worldData.ui !== __uiRef) { __uiProv = h.id; __uiRef = __sim.worldData.ui; }
       // strike → bench: a violating TICK counts once; at BENCH_STRIKES the node
       // is benched (hook stops running next tick) and a bench EVENT goes up so
       // the main thread can surface it (banner + worldData + /admin data).
@@ -258,6 +262,7 @@ self.onmessage = function (ev) {
         }
       }
     }
+    if (__uiProv) __sim.worldData.__uiProv = __uiProv;
     if (__missing.size) {
       const m = 'sandbox has no sim.' + [...__missing].join('/sim.') + ' — a hook called it; returned a no-op. Mirror it in world-sandbox.ts.';
       __runErr = __runErr ? (__runErr + ' | ' + m) : m;

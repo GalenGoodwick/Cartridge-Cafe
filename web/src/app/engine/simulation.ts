@@ -489,6 +489,7 @@ export class FieldSimulation {
     let provArr: unknown = wdProv['gpuPopulation']
     let provLen = Array.isArray(provArr) ? (provArr as unknown[]).length : 0
     const popProv: { hook: string; from: number; to: number }[] = []
+    let uiRefProv: unknown = wdProv['ui']   // UI PROVENANCE (mirror of the worker's): who owns wd.ui
     for (const [hookId, hook] of this.stepHooks) {
       const t0 = performance.now()
       try {
@@ -506,6 +507,7 @@ export class FieldSimulation {
         popProv.push({ hook: hookId, from: provLen / 4, to: nowLen / 4 })
       }
       provArr = nowArr; provLen = nowLen
+      if (wdProv['ui'] !== uiRefProv) { wdProv['__uiProv'] = hookId; uiRefProv = wdProv['ui'] }
       const ms = performance.now() - t0
       hookTotal += ms
       const prev = this.hookPerf.perHook.get(hookId) ?? ms

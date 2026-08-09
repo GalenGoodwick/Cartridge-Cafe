@@ -240,7 +240,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the TRUE painted pixel under the cursor live — shown in the console header.
   const [inspectHover, setInspectHover] = useState<{ hex: string; x: number; y: number } | null>(null)
   const inspectPixRef = useRef<{ data: ImageData; w: number; h: number } | null>(null)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; source?: string | null }[]>([])
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; ui?: { id: string; text: string; panel: string | null; hook: string | null } | null; source?: string | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -2908,6 +2908,48 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           if (!nodeI.length) nodeI = null
         }
       } catch { /* provenance is a bonus, never break inspect */ }
+      // THE UI SYSTEM — clicked UI resolves from the SOLVED rect table (the
+      // same geometry the pixels came from): smallest containing node wins,
+      // its panel + authoring hook (wd.__uiProv) are named, and the node's
+      // DECLARATION (the UiNode subtree from wd.ui) ships as source — a
+      // clicked label backtracks to the exact tree node that produced it.
+      let uiI: { id: string; text: string; panel: string | null; hook: string | null } | null = null
+      try {
+        const solvedI = uiSolvedRef.current
+        const cvRU = canvas.getBoundingClientRect()
+        if (solvedI) {
+          const sideI = Math.min(cvRU.width, cvRU.height)
+          const gxI = (e.clientX - cvRU.left - (cvRU.width - sideI) / 2) * (512 / sideI)
+          const gyI = (e.clientY - cvRU.top - (cvRU.height - sideI) / 2) * (512 / sideI)
+          let best: { id: string; area: number } | null = null
+          for (const idU in solvedI.rects) {
+            const r = solvedI.rects[idU]
+            if (gxI >= r.x && gxI <= r.x + r.w && gyI >= r.y && gyI <= r.y + r.h) {
+              const area = r.w * r.h
+              if (!best || area < best.area) best = { id: idU, area }
+            }
+          }
+          if (best) {
+            const bid = best.id.replace(/:(\d+|t|l)$/, '')
+            const panelI = solvedI.panels.find(p => gxI >= p.x && gxI <= p.x + p.w && gyI >= p.y && gyI <= p.y + p.h)
+            const runTxt = solvedI.runs.filter(rn => rn.id === best!.id || rn.id.replace(/:(\d+|t|l)$/, '') === bid).map(rn => rn.text).join(' ')
+            uiI = { id: bid, text: runTxt.slice(0, 60), panel: panelI ? panelI.id : null, hook: (sim?.worldData?.['__uiProv'] as string | undefined) ?? null }
+            // source = the node's own declaration from the world's ui tree
+            const uiTreeI = sim?.worldData?.['ui'] as { root?: unknown[] } | undefined
+            const findNode = (nodes: unknown[]): unknown => {
+              for (const nd of nodes || []) {
+                const n = nd as { id?: string; children?: unknown[] }
+                if (n?.id === bid) return n
+                const hit = n?.children ? findNode(n.children) : null
+                if (hit) return hit
+              }
+              return null
+            }
+            const nodeI2 = uiTreeI?.root ? findNode(uiTreeI.root) : null
+            if (nodeI2) source = JSON.stringify(nodeI2, null, 1)
+          }
+        }
+      } catch { /* ui naming is a bonus, never break inspect */ }
       // HUD TEXT is DOM overlay, invisible to every canvas resolver (Galen:
       // "press b to start text") — hit-test worldData.hud entries by their %
       // positions and approximate text box, name the containing/nearest one.
@@ -2929,7 +2971,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
         }
       } catch { /* hud naming is a bonus */ }
-      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, hud: hudI, source }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, hud: hudI, ui: uiI, source }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
         const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
@@ -5677,6 +5719,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     className="block w-full text-left text-white/75 hover:text-sky-200 truncate">
                     ({en.x},{en.y}) {en.field ?? 'no field'} · {en.visual ?? '—'} {en.color ? <span style={{ color: en.color }}>■ {en.color}</span> : null}
                     {en.entity ? <span className="text-amber-300"> › entity #{en.entity.id}{en.entity.label ? ' (' + en.entity.label + ')' : ''}</span> : null}
+                    {en.ui ? <span className="text-amber-300"> › UI "{en.ui.text}" ({en.ui.id}{en.ui.panel && en.ui.panel !== en.ui.id ? ' ∈ ' + en.ui.panel : ''}) · {en.ui.hook ?? 'ui'}</span> : null}
                     {en.hud ? <span className="text-cyan-300"> › HUD "{en.hud.text}" ({en.hud.id})</span> : null}
                     {en.node ? <span className="text-fuchsia-300"> › {en.node.map(n => `${n.hook} #${n.idx}·k${n.kind}@${n.d}px`).join(' · ')}</span> : null}
                     {en.source ? <span className="text-emerald-300"> · src ✓</span> : null}

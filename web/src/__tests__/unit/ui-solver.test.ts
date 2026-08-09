@@ -298,3 +298,20 @@ describe('the anti-drift law itself', () => {
     for (const h of s.hits) expect(inside(h.x, h.y, h.w, h.h), `hit ${h.id}`).toBe(true)
   })
 })
+
+describe('below-chaining — stacked panels can never collide', () => {
+  it('a below-anchored panel sits under the earlier panel however tall it grows', () => {
+    const mk = (desc: string) => solveUi({ ui: { rev: 1, root: [
+      { id: 'top', kind: 'panel', anchor: { gx: 100, gy: 50 }, align: 'tl', w: 100, pad: 5, children: [
+        { id: 'd', kind: 'text', wrap: true, text: desc, fontSize: 8 } ] },
+      { id: 'under', kind: 'panel', anchor: { below: 'top', gap: 6 }, w: 100, pad: 4, children: [
+        { kind: 'text', text: 'ROW', fontSize: 9 } ] },
+    ] } })
+    const a = mk('short')
+    const b = mk('a very long description that wraps into many lines and grows the panel far taller than before, pushing everything down')
+    expect(a.rects['under'].y).toBeCloseTo(a.rects['top'].y + a.rects['top'].h + 6, 6)
+    expect(b.rects['under'].y).toBeCloseTo(b.rects['top'].y + b.rects['top'].h + 6, 6)
+    expect(b.rects['under'].y).toBeGreaterThan(a.rects['under'].y)
+    expect(b.rects['under'].x).toBe(b.rects['top'].x)
+  })
+})
