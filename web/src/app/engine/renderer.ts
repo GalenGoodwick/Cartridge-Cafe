@@ -2113,13 +2113,140 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
    *  hooks), which starved the text pass of hud data. Set every frame. */
   private _wdFeed: Record<string, unknown> | null = null
   setWorldData(wd: Record<string, unknown> | null): void { this._wdFeed = wd }
+
+  // ── THE UI LAYER (worldData.ui → ui-solver → real engine pixels) ─────────
+  // ONE layout authority: FieldEngine solves the world's declarative UI tree
+  // and hands the resolved tables here. Boxes (glass panels + meter track/
+  // fill) draw as SDF rounded rects; text runs ride the same glyph atlas as
+  // world hud text. Everything is design units on the resting letterboxed
+  // square (side=min(W,H), centered — UI never follows the grid camera);
+  // px = unit × side/512. No DOM: probes, recordings, and the REC button
+  // all see the real UI.
+  private _uiSolved: import('./ui-solver').SolvedUi | null = null
+  setUiSolved(s: import('./ui-solver').SolvedUi | null): void { this._uiSolved = s }
+  private _boxPipeline: GPURenderPipeline | null = null
+  private _boxBuf: GPUBuffer | null = null
+  private _boxBG: GPUBindGroup | null = null
+  private _boxScreenBuf: GPUBuffer | null = null
+  private static readonly BOX_MAX = 512
+  /** css color → premultipliable rgba (supports #rgb/#rrggbb/rgba()/rgb()) */
+  private static cssColor(c: string | undefined, fallback: [number, number, number, number]): [number, number, number, number] {
+    if (!c) return fallback
+    const hx = /^#([0-9a-f]{6})/i.exec(c)
+    if (hx) { const v = parseInt(hx[1], 16); return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255, 1] }
+    const h3 = /^#([0-9a-f]{3})$/i.exec(c)
+    if (h3) { const v = h3[1]; return [parseInt(v[0] + v[0], 16) / 255, parseInt(v[1] + v[1], 16) / 255, parseInt(v[2] + v[2], 16) / 255, 1] }
+    const m = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(c)
+    if (m) return [Number(m[1]) / 255, Number(m[2]) / 255, Number(m[3]) / 255, m[4] != null ? Number(m[4]) : 1]
+    return fallback
+  }
+  private ensureBoxLayer(): boolean {
+    const device = this.device
+    if (!device) return false
+    if (this._boxPipeline && this._boxBuf) return true
+    try {
+      this._boxBuf = device.createBuffer({ size: FieldRenderer.BOX_MAX * 64, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })
+      this._boxScreenBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+      const mod = device.createShaderModule({ code: /* wgsl */`
+struct UiBox { rect: vec4f, bg: vec4f, border: vec4f, misc: vec4f }; // rect=px x,y,w,h · misc=radius,borderW,glowR,0
+@group(0) @binding(0) var<storage, read> boxes: array<UiBox>;
+@group(0) @binding(1) var<uniform> screen: vec2f;
+struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @interpolate(flat) ii: u32 };
+@vertex fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VO {
+  let b = boxes[ii];
+  let g = b.misc.z + 2.0;                       // expand the quad by the glow reach
+  var corner = array<vec2f, 6>(vec2f(0.0,0.0), vec2f(1.0,0.0), vec2f(0.0,1.0), vec2f(1.0,0.0), vec2f(1.0,1.0), vec2f(0.0,1.0))[vi];
+  let px = b.rect.xy - vec2f(g) + corner * (b.rect.zw + vec2f(g * 2.0));
+  var o: VO;
+  o.pos = vec4f(px.x / screen.x * 2.0 - 1.0, 1.0 - px.y / screen.y * 2.0, 0.0, 1.0);
+  o.p = px; o.ii = ii;
+  return o;
+}
+@fragment fn fs(v: VO) -> @location(0) vec4f {
+  let b = boxes[v.ii];
+  let half = b.rect.zw * 0.5;
+  let c = b.rect.xy + half;
+  let r = min(b.misc.x, min(half.x, half.y));
+  let q = abs(v.p - c) - half + vec2f(r);
+  let d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r;   // rounded-rect SDF
+  let fill = smoothstep(0.75, -0.75, d);
+  let bw = max(b.misc.y, 1.0);
+  let ring = smoothstep(bw * 0.5 + 0.75, bw * 0.5 - 0.75, abs(d + bw * 0.5));
+  let glow = select(0.0, exp(-max(d, 0.0) / max(b.misc.z, 0.001)) * 0.5, b.misc.z > 0.01) * step(0.0, d);
+  var col = b.bg.rgb * b.bg.a * fill;
+  var a = b.bg.a * fill;
+  col = mix(col, b.border.rgb * b.border.a, ring * b.border.a);
+  a = max(a, ring * b.border.a);
+  col += b.border.rgb * glow * b.border.a;
+  a = max(a, glow * b.border.a);
+  return vec4f(col, a);
+}` })
+      const bgl = device.createBindGroupLayout({ entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      ] })
+      this._boxBG = device.createBindGroup({ layout: bgl, entries: [
+        { binding: 0, resource: { buffer: this._boxBuf } },
+        { binding: 1, resource: { buffer: this._boxScreenBuf } },
+      ] })
+      this._boxPipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+        vertex: { module: mod, entryPoint: 'vs' },
+        fragment: { module: mod, entryPoint: 'fs', targets: [{ format: this.canvasFormat!, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }] },
+        primitive: { topology: 'triangle-list' },
+      })
+      return true
+    } catch { return false }
+  }
+  /** glass panels + meters from the solved UI — draws BEFORE the glyph pass */
+  private renderUiBoxes(encoder: GPUCommandEncoder, view: GPUTextureView, W: number, H: number): void {
+    const device = this.device
+    const s = this._uiSolved
+    if (!device || !s || (!s.boxes.length && !s.meters.length)) return
+    if (!this.ensureBoxLayer() || !this._boxPipeline || !this._boxBuf || !this._boxScreenBuf || !this._boxBG) return
+    const side = Math.min(W, H)
+    const k = side / 512
+    const ox = (W - side) / 2, oy = (H - side) / 2
+    const inst = new Float32Array(FieldRenderer.BOX_MAX * 16)
+    let n = 0
+    const put = (x: number, y: number, w: number, h: number, bg: [number, number, number, number], border: [number, number, number, number], radius: number, borderW: number, glowR: number) => {
+      if (n >= FieldRenderer.BOX_MAX) return
+      const o = n * 16
+      inst[o] = ox + x * k; inst[o + 1] = oy + y * k; inst[o + 2] = w * k; inst[o + 3] = h * k
+      inst.set(bg, o + 4); inst.set(border, o + 8)
+      inst[o + 12] = radius * k; inst[o + 13] = borderW; inst[o + 14] = glowR; inst[o + 15] = 0
+      n++
+    }
+    const CC = FieldRenderer.cssColor
+    for (const b of s.boxes) {
+      put(b.x, b.y, b.w, b.h, CC(b.style.bg, [0.02, 0.05, 0.08, 0.72]), CC(b.style.border, [0.3, 0.86, 1, 0.55]), b.style.radius ?? 6, 1.5, (b.style.glow ? 8 : 0))
+    }
+    for (const m of s.meters) {
+      const hue = CC(m.hue, [0.31, 0.85, 1, 1])
+      put(m.x, m.y, m.w, m.h, [0.01, 0.03, 0.05, 0.85], [hue[0] * 0.5, hue[1] * 0.5, hue[2] * 0.5, 0.5], 2, 1, 0) // track
+      if (m.fill > 0.005) put(m.x + 1, m.y + 1, Math.max(1, (m.w - 2) * m.fill), m.h - 2, [hue[0], hue[1], hue[2], 0.9], [0, 0, 0, 0], 2, 0, 0) // fill
+    }
+    if (!n) return
+    device.queue.writeBuffer(this._boxBuf, 0, inst, 0, n * 16)
+    device.queue.writeBuffer(this._boxScreenBuf, 0, new Float32Array([W, H, 0, 0]))
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'load', storeOp: 'store' }] })
+    pass.setPipeline(this._boxPipeline)
+    pass.setBindGroup(0, this._boxBG)
+    pass.draw(6, n)
+    pass.end()
+  }
   private renderTextLayer(encoder: GPUCommandEncoder, view: GPUTextureView, worldData: Record<string, unknown> | undefined, W: number, H: number, dpr: number, camera?: { x: number; y: number }, zoom?: number): void {
     const device = this.device
     const wdT = worldData ?? this._wdFeed ?? undefined
-    if (!device || !wdT) return
-    if (wdT['__gpuText'] !== true) return                  // GPU text = WORLD-space mode, opt-in (screen UI is DOM — the boundary, Aug 6)
-    const hud = wdT['hud']
-    if (!Array.isArray(hud) || !hud.length) return
+    if (!device) return
+    // two glyph sources share ONE buffer fill + ONE pass (two writeBuffers
+    // before submit would clobber — the queue executes both before the pass):
+    //  1. solved UI runs (worldData.ui via the ui-solver) — always on
+    //  2. world hud text — WORLD-space mode, opt-in via __gpuText
+    const uiRuns = this._uiSolved?.runs
+    const gpuHud = wdT?.['__gpuText'] === true ? wdT['hud'] : undefined
+    const hud = Array.isArray(gpuHud) && gpuHud.length ? gpuHud : []
+    if (!hud.length && !(uiRuns && uiRuns.length)) return
     if (!this.ensureTextLayer() || !this._txtPipeline || !this._txtBuf || !this._txtScreenBuf || !this._txtBG) return
     const inst = new Float32Array(FieldRenderer.TXT_MAX * 8)
     let n = 0
@@ -2172,6 +2299,30 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
           n++
         }
         x += fs * 0.62
+      }
+    }
+    // SOLVED UI RUNS — pre-broken, pre-clipped lines from the ui-solver, in
+    // design units on the resting square. The solver already did wrap,
+    // truncation, and alignment; this just places glyph quads.
+    if (uiRuns && uiRuns.length) {
+      const sideU = Math.min(W, H)
+      const kU = sideU / 512
+      const oxU = (W - sideU) / 2, oyU = (H - sideU) / 2
+      for (const run of uiRuns) {
+        const fsP = run.fs * kU
+        const [r, g, b] = hex(run.color)
+        let x = oxU + run.x * kU
+        const y = oyU + run.y * kU
+        for (let i = 0; i < run.text.length && n < FieldRenderer.TXT_MAX; i++) {
+          const code = run.text.charCodeAt(i)
+          if (code >= 33 && code < 127) {
+            const o = n * 8
+            inst[o] = x; inst[o + 1] = y; inst[o + 2] = fsP * 1.15; inst[o + 3] = code - 32
+            inst[o + 4] = r; inst[o + 5] = g; inst[o + 6] = b; inst[o + 7] = 1
+            n++
+          }
+          x += fsP * 0.62
+        }
       }
     }
     this._txtCount = n
@@ -2505,7 +2656,9 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
       }
     }
 
-    // GPU TEXT LAYER — world hud text as real engine pixels, always on top
+    // THE UI LAYER — solved glass boxes + meters under the text (one authority)
+    try { this.renderUiBoxes(encoder, textureView, bufferW, bufferH) } catch { /* ui is a layer, never a fault */ }
+    // GPU TEXT LAYER — solved UI runs + world hud text as real engine pixels, always on top
     try { this.renderTextLayer(encoder, textureView, stepHookData?.worldData, bufferW, bufferH, dpr, camera, zoom) } catch { /* text is a layer, never a fault */ }
 
     device.queue.submit([encoder.finish()])

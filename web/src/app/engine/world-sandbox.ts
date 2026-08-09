@@ -664,9 +664,9 @@ export class WorldSandbox {
       for (const k of Object.keys(incoming)) {
         if (k === 'save' && this.saveInject) continue   // the loaded save outranks stale replies
         if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
-        if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === '__play_sound' || k === '__play_music' ||
+        if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
-            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh')) {
+            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects')) {   // __uiRects is HOST-owned (the ui-solver writes it) — a worker echo is one tick stale and would clobber a fresh solve past the change-fingerprint gate
           wd[k] = incoming[k]
         }
       }
@@ -759,7 +759,7 @@ export class WorldSandbox {
 // host-managed blobs the hook never reads — cloning them across the worker
 // boundary every frame is slow AND makes the round-trip time VARIABLE, which
 // surfaces as an irregular update rate (warp/jitter). Drop them from the send.
-const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'gpuPopulation', 'hud', '__play_sound', '__play_music'])
+const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'gpuPopulation', 'hud', 'ui', '__play_sound', '__play_music'])
 
 /** minimal, cheap-to-clone payload: the hook's inputs and its own state, never
  *  the host's heavy blobs or the hook's own outputs (which it overwrites). */

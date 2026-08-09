@@ -18,6 +18,7 @@ import { NodeGraphOverlay, buildNodeGraph, type AiNodeGraph } from './ai-view/No
 import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
 import { BuilderBoxPanel } from './builderbox/BuilderBoxPanel'
 import { WorldSandbox } from './world-sandbox'
+import { solveUi, hitUi, type UiTree, type SolvedUi, type UiOverride } from './ui-solver'
 import { ArenaClient, fetchArenaRooms } from './arena-client'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -933,6 +934,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const hudContainerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)   // the top-right UI dock — its bottom seats the VOTE button
   const hudElementCacheRef = useRef<Map<string, HTMLElement>>(new Map())
+  // THE UI SYSTEM — this frame's solved layout (rects/boxes/runs/hits from
+  // worldData.ui via the ui-solver) + a geometry fingerprint so __uiRects only
+  // republishes on real change
+  const uiSolvedRef = useRef<SolvedUi | null>(null)
+  const uiRectsFpRef = useRef(-1)
   const nameToIdRef = useRef<Map<string, string>>(new Map())
   const lastFieldCountRef = useRef<number>(0)
 
@@ -2923,6 +2929,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       return
     }
 
+    // THE UI SYSTEM's click routing — solved button rects are the ONE hit
+    // truth (the same rects the glass/glyph passes drew). Convert the click to
+    // design units on the resting letterboxed square (UI never follows the
+    // camera), hit-test, and deliver via the existing __uiClick channel; a UI
+    // hit is swallowed so it never doubles as a game/world click.
+    if (uiSolvedRef.current && sim) {
+      const rectU = canvas.getBoundingClientRect()
+      const sideU = Math.min(rectU.width, rectU.height)
+      if (sideU > 0) {
+        const gx = (e.clientX - rectU.left - (rectU.width - sideU) / 2) * (512 / sideU)
+        const gy = (e.clientY - rectU.top - (rectU.height - sideU) / 2) * (512 / sideU)
+        const action = hitUi(uiSolvedRef.current, gx, gy)
+        if (action) {
+          const wd = sim.worldData as Record<string, unknown>
+          wd['__uiClick'] = action
+          wd['__uiClickT'] = performance.now()
+          e.preventDefault(); e.stopPropagation()
+          return
+        }
+      }
+    }
+
     // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
     // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
     // the ENTRY click can't lock (it just swapped the world in); a deliberate
@@ -4395,6 +4423,38 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const mode3D = renderModeRef.current === '3d' ? camera3DRef.current : undefined
       const stepHookData = renderer.hasStepHooks() ? { dt, worldData: sim.worldData } : undefined
       renderer.setWorldData(sim.worldData as Record<string, unknown>)   // sandboxed worlds: hooks run in the worker, but render layers (GPU text) still need hud
+
+      // ── THE UI SYSTEM (one layout authority) ──
+      // worldData.ui (declarative tree) → ui-solver → ONE rect table that the
+      // glass/glyph passes, click routing, hooks, and the AI all read. The
+      // solve is pure arithmetic (µs); overrides come from UI EDIT / the world;
+      // entity anchors ride worldData.__entities (the world's own projection).
+      try {
+        const uiT = sim.worldData['ui'] as UiTree | undefined
+        if (uiT && Array.isArray(uiT.root) && uiT.root.length) {
+          const solved = solveUi({
+            ui: uiT,
+            entities: sim.worldData['__entities'] as Parameters<typeof solveUi>[0]['entities'],
+            overrides: sim.worldData['__uiOverrides'] as Record<string, UiOverride> | undefined,
+          })
+          uiSolvedRef.current = solved
+          renderer.setUiSolved(solved)
+          // publish the rect table for hooks + AI — the layout is READABLE data.
+          // Republish only when the geometry actually changed (cheap fingerprint)
+          // so the worker tick payload doesn't carry a fresh clone every frame.
+          let fp = solved.rev * 31 + solved.hits.length
+          for (const id in solved.rects) { const r = solved.rects[id]; fp = (fp * 31 + id.length + r.x * 7 + r.y * 13 + r.w * 3 + r.h) % 1e9 }
+          if (fp !== uiRectsFpRef.current) {
+            uiRectsFpRef.current = fp
+            sim.worldData['__uiRects'] = { rev: solved.rev, rects: solved.rects, hits: solved.hits.map(h => ({ id: h.id, action: h.action, x: h.x, y: h.y, w: h.w, h: h.h })) }
+          }
+        } else if (uiSolvedRef.current) {
+          uiSolvedRef.current = null
+          renderer.setUiSolved(null)
+          uiRectsFpRef.current = -1
+          delete sim.worldData['__uiRects']
+        }
+      } catch { /* the UI layer must never take down the frame */ }
 
       // ── Lossless frame memoization ──
       // Every visual is a pure function of (uv, time, params, uniforms). If no
