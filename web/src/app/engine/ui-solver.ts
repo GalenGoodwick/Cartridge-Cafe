@@ -86,7 +86,7 @@ export interface UiTree {
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }
-export interface SolvedBox extends Rect { id: string; style: Required<GlassStyle>; collapsed: boolean }
+export interface SolvedBox extends Rect { id: string; style: Required<GlassStyle>; collapsed: boolean; hole?: Rect }
 export interface SolvedRun { id: string; x: number; y: number; fs: number; color: string; text: string }
 export interface SolvedMeter extends Rect { id: string; fill: number; hue: string; label: string; fs: number; color: string }
 export interface SolvedHit extends Rect { id: string; action: string }
@@ -131,7 +131,7 @@ export function textW(text: string, fs: number): number {
  *  Deterministic and exact because the font is monospace. A word longer than
  *  the budget hard-breaks (never overflows the rect). */
 export function wrapText(text: string, fs: number, maxW: number): string[] {
-  const perLine = Math.max(1, Math.floor(maxW / (ADV * fs)))
+  const perLine = Math.max(1, Math.floor(maxW / (ADV * fs) + 1e-6))
   const out: string[] = []
   for (const para of String(text).split('\n')) {
     if (!para.length) { out.push(''); continue }
@@ -235,7 +235,7 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
         // non-wrap text CLIPS at the panel edge (the GPU has no overflow:hidden
         // — the solver is where clipping happens). '..' not '…': atlas is ASCII.
         const t = String(node.text ?? '')
-        const maxCh = Math.max(1, Math.floor(availW / (ADV * fs)))
+        const maxCh = Math.max(1, Math.floor(availW / (ADV * fs) + 1e-6))
         lines = [t.length > maxCh ? t.slice(0, Math.max(1, maxCh - 2)) + '..' : t]
       }
       const lh = LINE * fs
@@ -284,8 +284,11 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       const free = Math.max(0, inner - used)
       let cx = x + pad
       let maxH = 0
+      const rowEnd = x + pad + inner
       kids.forEach((k, i) => {
-        const kw = k.flex ? (free * (k.flex ?? 0)) / (flexTotal || 1) : Math.min(nat[i], inner)
+        const remain = Math.max(0, rowEnd - cx)
+        const kw = Math.min(k.flex ? (free * (k.flex ?? 0)) / (flexTotal || 1) : Math.min(nat[i], inner), remain)
+        if (kw <= 0.5 && !k.flex) return                    // no room left — clip, never overflow
         const r = layout(k, cx, y + pad, kw, ctx)
         cx += (k.flex ? kw : r.w) + gap
         maxH = Math.max(maxH, r.h)
@@ -364,12 +367,27 @@ export function solveUi(input: SolveInput): SolvedUi {
     const y = tl.y + (ov.dy ?? 0)
 
     // glass box under the content
+    let boxRef: SolvedBox | null = null
     if (panel.glass !== false) {
       const style: Required<GlassStyle> = typeof panel.glass === 'object' ? { ...theme, ...panel.glass } : theme
-      out.boxes.push({ id, x, y, w, h, style, collapsed })
+      boxRef = { id, x, y, w, h, style, collapsed }
+      out.boxes.push(boxRef)
     }
     // real layout at the anchored position
     layout(body, x, y, w, ctx)
+    // slot WINDOW: the panel's first slot punches a hole in the glass so the
+    // WORLD's own graphics (a shader portrait seated via __uiRects) show
+    // through undimmed — graphics anchored INTO the ui, never under it
+    if (boxRef && !collapsed) {
+      const findSlot = (n: UiNode): string | null => {
+        if (n.kind === 'slot') return n.id ?? null
+        for (const c of n.children ?? []) { const s = findSlot(c); if (s) return s }
+        return null
+      }
+      const sid = findSlot(body)
+      const sr = sid ? out.rects[sid] : null
+      if (sr) boxRef.hole = { x: sr.x, y: sr.y, w: sr.w, h: sr.h }
+    }
     // panel rect wins over the inner col rect (same id) — record final size
     out.rects[id] = { x, y, w, h }
     out.panels.push({ id, x, y, w, h, draggable: panel.draggable !== false, collapsible: panel.collapsible !== false, collapsed })

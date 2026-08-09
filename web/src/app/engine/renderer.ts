@@ -2095,7 +2095,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
 @fragment fn fs(v: VO) -> @location(0) vec4f {
   let ci = i32(v.ch);
   let cell = vec2f(f32(ci % 16), f32(ci / 16));
-  let uv = (cell + v.uv) / vec2f(16.0, 8.0);
+  let inset = vec2f(0.028, 0.021);            // ~2 atlas px — stop neighbor-cell bleed at large sizes
+  let uv = (cell + inset + v.uv * (vec2f(1.0) - inset * 2.0)) / vec2f(16.0, 8.0);
   let a = textureSample(atlas, samp, uv).a * v.color.a;
   return vec4f(v.color.rgb * a, a);
 }` })
@@ -2159,10 +2160,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
     if (!device) return false
     if (this._boxPipeline && this._boxBuf) return true
     try {
-      this._boxBuf = device.createBuffer({ size: FieldRenderer.BOX_MAX * 64, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })
+      this._boxBuf = device.createBuffer({ size: FieldRenderer.BOX_MAX * 80, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })
       this._boxScreenBuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
       const mod = device.createShaderModule({ code: /* wgsl */`
-struct UiBox { rect: vec4f, bg: vec4f, border: vec4f, misc: vec4f }; // rect=px x,y,w,h · misc=radius,borderW,glowR,0
+struct UiBox { rect: vec4f, bg: vec4f, border: vec4f, misc: vec4f, hole: vec4f }; // rect=px x,y,w,h · misc=radius,borderW,glowR,0 · hole=px window (w0 = none)
 @group(0) @binding(0) var<storage, read> boxes: array<UiBox>;
 @group(0) @binding(1) var<uniform> screen: vec2f;
 struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @interpolate(flat) ii: u32 };
@@ -2187,8 +2188,14 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
   let bw = max(b.misc.y, 1.0);
   let ring = smoothstep(bw * 0.5 + 0.75, bw * 0.5 - 0.75, abs(d + bw * 0.5));
   let glow = select(0.0, exp(-max(d, 0.0) / max(b.misc.z, 0.001)) * 0.5, b.misc.z > 0.01) * step(0.0, d);
-  var col = b.bg.rgb * b.bg.a * fill;
-  var a = b.bg.a * fill;
+  var fillH = fill;
+  if (b.hole.z > 0.5) {                       // slot WINDOW: glass keeps its border but the pane is open
+    let hq = abs(v.p - (b.hole.xy + b.hole.zw * 0.5)) - b.hole.zw * 0.5;
+    let hd = max(hq.x, hq.y);
+    fillH = fill * smoothstep(-0.75, 0.75, hd);
+  }
+  var col = b.bg.rgb * b.bg.a * fillH;
+  var a = b.bg.a * fillH;
   col = mix(col, b.border.rgb * b.border.a, ring * b.border.a);
   a = max(a, ring * b.border.a);
   col += b.border.rgb * glow * b.border.a;
@@ -2221,19 +2228,20 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     const side = Math.min(W, H)
     const k = side / 512
     const ox = (W - side) / 2, oy = (H - side) / 2
-    const inst = new Float32Array(FieldRenderer.BOX_MAX * 16)
+    const inst = new Float32Array(FieldRenderer.BOX_MAX * 20)
     let n = 0
-    const put = (x: number, y: number, w: number, h: number, bg: [number, number, number, number], border: [number, number, number, number], radius: number, borderW: number, glowR: number) => {
+    const put = (x: number, y: number, w: number, h: number, bg: [number, number, number, number], border: [number, number, number, number], radius: number, borderW: number, glowR: number, hole?: { x: number; y: number; w: number; h: number }) => {
       if (n >= FieldRenderer.BOX_MAX) return
-      const o = n * 16
+      const o = n * 20
       inst[o] = ox + x * k; inst[o + 1] = oy + y * k; inst[o + 2] = w * k; inst[o + 3] = h * k
       inst.set(bg, o + 4); inst.set(border, o + 8)
       inst[o + 12] = radius * k; inst[o + 13] = borderW; inst[o + 14] = glowR; inst[o + 15] = 0
+      if (hole) { inst[o + 16] = ox + hole.x * k; inst[o + 17] = oy + hole.y * k; inst[o + 18] = hole.w * k; inst[o + 19] = hole.h * k }
       n++
     }
     const CC = FieldRenderer.cssColor
     for (const b of s.boxes) {
-      put(b.x, b.y, b.w, b.h, CC(b.style.bg, [0.02, 0.05, 0.08, 0.72]), CC(b.style.border, [0.3, 0.86, 1, 0.55]), b.style.radius ?? 6, 1.5, (b.style.glow ? 8 : 0))
+      put(b.x, b.y, b.w, b.h, CC(b.style.bg, [0.02, 0.05, 0.08, 0.72]), CC(b.style.border, [0.3, 0.86, 1, 0.55]), b.style.radius ?? 6, 1.5, (b.style.glow ? 8 : 0), b.hole)
     }
     for (const m of s.meters) {
       const hue = CC(m.hue, [0.31, 0.85, 1, 1])
@@ -2241,7 +2249,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
       if (m.fill > 0.005) put(m.x + 1, m.y + 1, Math.max(1, (m.w - 2) * m.fill), m.h - 2, [hue[0], hue[1], hue[2], 0.9], [0, 0, 0, 0], 2, 0, 0) // fill
     }
     if (!n) return
-    device.queue.writeBuffer(this._boxBuf, 0, inst, 0, n * 16)
+    device.queue.writeBuffer(this._boxBuf, 0, inst, 0, n * 20)
     device.queue.writeBuffer(this._boxScreenBuf, 0, new Float32Array([W, H, 0, 0]))
     const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'load', storeOp: 'store' }] })
     pass.setPipeline(this._boxPipeline)
