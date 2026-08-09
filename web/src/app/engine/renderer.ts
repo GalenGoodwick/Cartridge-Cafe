@@ -2039,13 +2039,22 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   private _txtBG: GPUBindGroup | null = null
   private _txtCount = 0
   private static readonly TXT_MAX = 4096
+  /** game glyphs beyond ASCII — atlas cells 96+ (rows 6-7). APPEND ONLY:
+   *  reordering shifts every world's rendered symbols. */
+  private static readonly TXT_EXTRA = '\u00b7\u25cf\u25cb\u2605\u2b21\u2b20\u2715\u2713\u2192\u2190\u00b1\u2212\u26a0\u25b8\u25be\u25c2\u25b4\u25c9\u25ce\u221e\u2442\u2014\u2013\u25e7\u00d7\u00f7\u2265\u2264\u2248\u00b0\u232b\u2694\u266a'
+  /** char → atlas cell (ASCII 33-126 → 1-94, extras → 96+, unknown → −1) */
+  private static glyphCell(code: number, ch: string): number {
+    if (code >= 33 && code < 127) return code - 32
+    const k = FieldRenderer.TXT_EXTRA.indexOf(ch)
+    return k >= 0 ? 96 + k : -1
+  }
   private ensureTextLayer(): boolean {
     const device = this.device
     if (!device) return false
     if (this._txtPipeline && this._txtAtlas) return true
     if (typeof document === 'undefined') return false
     try {
-      const COLS = 16, ROWS = 6, CW = 72, CH = 96
+      const COLS = 16, ROWS = 8, CW = 72, CH = 96
       const cv = document.createElement('canvas')
       cv.width = COLS * CW; cv.height = ROWS * CH
       const cx = cv.getContext('2d')
@@ -2056,6 +2065,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       for (let c = 32; c < 128; c++) {
         const i = c - 32
         cx.fillText(String.fromCharCode(c), (i % COLS) * CW + CW / 2, Math.floor(i / COLS) * CH + CH / 2 + 2)
+      }
+      // GAME GLYPHS (rows 6-7): pips \u25cf\u25cb, \u2b21, \u2605, arrows \u2014 the cafe's HUD symbols
+      for (let gi = 0; gi < FieldRenderer.TXT_EXTRA.length; gi++) {
+        const cell = 96 + gi
+        cx.fillText(FieldRenderer.TXT_EXTRA[gi], (cell % COLS) * CW + CW / 2, Math.floor(cell / COLS) * CH + CH / 2 + 2)
       }
       this._txtAtlas = device.createTexture({ size: [cv.width, cv.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT })
       device.queue.copyExternalImageToTexture({ source: cv }, { texture: this._txtAtlas }, [cv.width, cv.height])
@@ -2081,7 +2095,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) 
 @fragment fn fs(v: VO) -> @location(0) vec4f {
   let ci = i32(v.ch);
   let cell = vec2f(f32(ci % 16), f32(ci / 16));
-  let uv = (cell + v.uv) / vec2f(16.0, 6.0);
+  let uv = (cell + v.uv) / vec2f(16.0, 8.0);
   let a = textureSample(atlas, samp, uv).a * v.color.a;
   return vec4f(v.color.rgb * a, a);
 }` })
@@ -2291,10 +2305,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
       const clipR = fx0 + fw9                                           // GPU overflow:hidden at the frame edge
       const txt = String(el['text'])
       for (let i = 0; i < txt.length && n < FieldRenderer.TXT_MAX; i++) {
-        const code = txt.charCodeAt(i)
-        if (code >= 33 && code < 127 && x + fs * 0.75 <= clipR + 2) {
+        const cellI = FieldRenderer.glyphCell(txt.charCodeAt(i), txt[i])
+        if (cellI >= 0 && x + fs * 0.75 <= clipR + 2) {
           const o = n * 8
-          inst[o] = x; inst[o + 1] = y; inst[o + 2] = fs * 1.15; inst[o + 3] = code - 32
+          inst[o] = x; inst[o + 1] = y; inst[o + 2] = fs * 1.15; inst[o + 3] = cellI
           inst[o + 4] = r; inst[o + 5] = g; inst[o + 6] = b; inst[o + 7] = 1
           n++
         }
@@ -2314,10 +2328,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
         let x = oxU + run.x * kU
         const y = oyU + run.y * kU
         for (let i = 0; i < run.text.length && n < FieldRenderer.TXT_MAX; i++) {
-          const code = run.text.charCodeAt(i)
-          if (code >= 33 && code < 127) {
+          const cellU = FieldRenderer.glyphCell(run.text.charCodeAt(i), run.text[i])
+          if (cellU >= 0) {
             const o = n * 8
-            inst[o] = x; inst[o + 1] = y; inst[o + 2] = fsP * 1.15; inst[o + 3] = code - 32
+            inst[o] = x; inst[o + 1] = y; inst[o + 2] = fsP * 1.15; inst[o + 3] = cellU
             inst[o + 4] = r; inst[o + 5] = g; inst[o + 6] = b; inst[o + 7] = 1
             n++
           }
