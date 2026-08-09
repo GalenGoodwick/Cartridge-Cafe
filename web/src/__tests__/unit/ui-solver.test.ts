@@ -236,6 +236,24 @@ describe('clipping + meter labels', () => {
   })
 })
 
+describe('clickable rows — engine-routed list menus', () => {
+  it('a row with click gets a hit rect spanning the whole row', () => {
+    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 120, pad: 0, children: [
+      { id: 'r1', kind: 'row', click: 'mod-y', gap: 2, children: [{ kind: 'text', text: 'Y', fontSize: 9 }, { kind: 'spacer', flex: 1 }, { kind: 'text', text: 'RANGE', fontSize: 9 }] },
+      { id: 'r2', kind: 'row', click: 'mod-d', gap: 2, children: [{ kind: 'text', text: 'D', fontSize: 9 }, { kind: 'spacer', flex: 1 }, { kind: 'text', text: 'DAMAGE', fontSize: 9 }] },
+    ] }] })
+    const h1 = s.hits.find((h) => h.action === 'mod-y')!
+    const h2 = s.hits.find((h) => h.action === 'mod-d')!
+    expect(h1).toMatchObject({ x: s.rects['p'].x, w: 120 })
+    expect(h2.y).toBeCloseTo(h1.y + h1.h, 6)
+    expect(hitUi(s, h2.x + 5, h2.y + 2)).toBe('mod-d')
+  })
+  it('a meter defaults to filling its row width', () => {
+    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 150, pad: 5, children: [{ id: 'm', kind: 'meter', value: 0.5 }] }] })
+    expect(s.rects['m'].w).toBe(140)
+  })
+})
+
 describe('panels table — UI EDIT’s hit list', () => {
   it('top-level panels expose rect + affordances; children do not appear', () => {
     const s = solve({ rev: 1, root: [

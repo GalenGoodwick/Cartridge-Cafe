@@ -206,11 +206,19 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
   const fs = node.fontSize ?? DEF_FS
   const color = node.color ?? '#cfe8ff'
 
+  // ANY node may declare click:'action' — its resolved rect becomes an engine
+  // hit rect (button does this implicitly; rows/texts/meters opt in, which is
+  // how list-row menus get engine-routed clicks with zero hand rect math)
+  const sized = (w: number, h: number): { w: number; h: number } => {
+    if (node.click && node.kind !== 'button') ctx.out.hits.push({ id, action: node.click, x, y, w, h })
+    return { w, h }
+  }
+
   switch (node.kind) {
     case 'spacer': {
       const h = units(node.h, 0)
       ctx.out.rects[id] = { x, y, w: availW, h }
-      return { w: availW, h }
+      return sized(availW, h)
     }
     case 'slot': {
       // reserved rect the WORLD draws into (shader graphics anchored INTO the
@@ -218,7 +226,7 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       const w = Math.min(units(node.w, 48), availW)
       const h = units(node.h, w) // default square
       ctx.out.rects[id] = { x, y, w, h }
-      return { w, h }
+      return sized(w, h)
     }
     case 'text': {
       let lines: string[]
@@ -240,10 +248,10 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       })
       const h = lines.length * lh
       ctx.out.rects[id] = { x, y, w: node.wrap ? availW : Math.min(w, availW), h }
-      return { w: node.wrap ? availW : Math.min(w, availW), h }
+      return sized(node.wrap ? availW : Math.min(w, availW), h)
     }
     case 'meter': {
-      const w = Math.min(units(node.w, 96), availW)
+      const w = Math.min(units(node.w, availW), availW) // default: fill the row
       const h = units(node.h, METER_H)
       ctx.out.meters.push({ id, x, y, w, h, fill: Math.max(0, Math.min(1, node.value ?? 0)), hue: node.hue ?? '#4fd8ff', label: node.label ?? '', fs, color })
       // the label rides INSIDE the bar (pentarch vitals style), vertically centered
@@ -252,7 +260,7 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
         ctx.out.runs.push({ id: `${id}:l`, x: x + lfs * 0.4, y: y + (h - LINE * lfs) / 2, fs: lfs, color, text: String(node.label) })
       }
       ctx.out.rects[id] = { x, y, w, h }
-      return { w, h }
+      return sized(w, h)
     }
     case 'button': {
       const label = String(node.text ?? '')
@@ -284,7 +292,7 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       })
       const h = maxH + pad * 2
       ctx.out.rects[id] = { x, y, w: availW, h }
-      return { w: availW, h }
+      return sized(availW, h)
     }
     case 'col':
     case 'panel': {
@@ -299,7 +307,7 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       })
       const h = cy + pad - y
       ctx.out.rects[id] = { x, y, w: availW, h }
-      return { w: availW, h }
+      return sized(availW, h)
     }
   }
   return { w: 0, h: 0 }
