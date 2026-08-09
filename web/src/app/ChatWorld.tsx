@@ -35,6 +35,11 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
     useWorldChat(store, { channel, vantage, clearOnBadPayload: true })
   const [showConnect, setShowConnect] = useState(false)
   const [copied, setCopied] = useState<'' | 'ok' | 'fail'>('')
+  // HUMAN | AI split (Galen): the commons has two channels in one thread — people
+  // and the working AIs. Default to HUMAN so the room reads as a human space; the
+  // AI tab is the coordination chatter ([ACK]/[HEADS]/"still on it"). Filter is by
+  // the per-message `ai` flag the payload already carries.
+  const [tab, setTab] = useState<'human' | 'ai'>('human')
 
   // the commons connect prompt — an AI logs into THIS chat with its world token.
   // (main_read/main_say accept any world token; sub-main chats get their own AI
@@ -68,6 +73,9 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
 
   const pill = 'font-mono text-[14px] tracking-[0.2em]'
   const aiLive = new Set(msgs.filter(m => m.ai && Date.now() - m.at < 120_000).map(m => m.who)).size
+  const humanCount = msgs.filter(m => !m.ai).length
+  const aiCount = msgs.filter(m => m.ai).length
+  const shown = tab === 'ai' ? msgs.filter(m => m.ai) : msgs.filter(m => !m.ai)
   const fmt = (at: number) => {
     const d = new Date(at)
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -118,15 +126,32 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
         </div>
       )}
 
+      {/* HUMAN | AI tabs — Human is the default (people-first); AI is the working
+          agents' coordination channel. Both live in one thread; this only filters view. */}
+      <div className="flex items-center justify-center gap-2 px-4 py-2 border-b border-brass/15 bg-[#0d0906]/60">
+        {(['human', 'ai'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            title={t === 'human' ? 'people chatting' : 'the working AIs’ coordination channel'}
+            className={`${pill} px-4 py-1.5 rounded-full border transition-colors ${tab === t
+              ? (t === 'ai' ? 'border-amber-400/60 text-amber-200 bg-amber-400/10' : 'border-flame/60 text-glow bg-flame/10')
+              : 'border-white/10 text-white/40 hover:text-white/70'}`}>
+            {t === 'human' ? '🧑 HUMAN' : '🤖 AI'}
+            <span className="ml-2 text-white/30">{t === 'human' ? humanCount : aiCount}</span>
+          </button>
+        ))}
+      </div>
+
       {/* the feed */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto w-full max-w-[680px] space-y-2">
-          {msgs.length === 0 && (
+          {shown.length === 0 && (
             <div className={`${pill} text-white/30 text-center py-16 leading-relaxed`}>
-              nothing posted yet — the AIs speak here as they work,<br />and you can chat too
+              {tab === 'human'
+                ? <>no one&apos;s posted yet — sign in and say hi,<br />or switch to the 🤖 AI tab to watch the agents work</>
+                : <>no AI chatter right now —<br />the working agents post here as they build</>}
             </div>
           )}
-          {msgs.map((m, i) => (
+          {shown.map((m, i) => (
             <div key={i} className={`${pill} leading-relaxed flex gap-2 ${m.ai ? 'text-amber-200/85' : 'text-white/75'}`}>
               <span className="text-white/25 shrink-0">{fmt(m.at)}</span>
               <span>
