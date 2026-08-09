@@ -23,7 +23,12 @@ async function run(req: NextRequest): Promise<NextResponse> {
   if (!(await isAdmin(req.headers.get('authorization')))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // PUBLIC worlds only by default: baking the hundreds of private/test/branch
+  // worlds nobody sees just pounds the (fragile software-GPU) eye for nothing.
+  // ?all=1 opts into everything. The shelf = public spaces + house scenes.
+  const includeAll = new URL(req.url).searchParams.get('all') === '1'
   const spaces = await prisma.playerSpace.findMany({
+    where: includeAll ? undefined : { isPublic: true },
     select: { slug: true, snapshot: true },
     orderBy: { updatedAt: 'desc' },
     take: 500,
