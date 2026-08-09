@@ -36,7 +36,11 @@ async function run(req: NextRequest): Promise<NextResponse> {
     })
     .map(({ slug, sn }) => ({ slug, snap: sn as never }))
 
-  const summary = await bakeAllUnhealthy(worlds)
+  // ?max=N caps how many worlds this run photographs — lets a first backfill go
+  // in gentle batches instead of one long run that could strain the eye.
+  const maxParam = Number(new URL(req.url).searchParams.get('max'))
+  const maxBakes = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined
+  const summary = await bakeAllUnhealthy(worlds, { maxBakes })
   return NextResponse.json({ ok: true, summary })
 }
 

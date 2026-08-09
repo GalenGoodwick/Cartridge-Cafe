@@ -13,7 +13,12 @@ import {
   type IconRecord, type IconHealth,
 } from './icon-bake'
 
-const MAX_CONCURRENT = 3
+// The eye is a small software-GPU instance — a burst of renders OOMs/wedges it
+// (it took the prod eye down once). Keep lazy baking to a trickle, and make the
+// sweep strictly one-at-a-time with a pause between real renders (below).
+const MAX_CONCURRENT = 2
+const SWEEP_DELAY_MS = 600
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 const inFlight = new Set<string>()
 const pending: Array<() => Promise<void>> = []
 let active = 0
@@ -55,24 +60,25 @@ export function enqueueBake(slug: string, snap: RenderSnapshot): void {
 
 export type HealSummary = { checked: number; baked: number; ok: number; black: number; skipped: number }
 
-/** Deterministic sweep: check every given world and re-bake the unhealthy ones,
- *  bounded to MAX_CONCURRENT at a time. Used by the heal endpoint / cron. */
+/** Deterministic sweep: check every given world and re-bake the unhealthy ones —
+ *  ONE render at a time, with a pause after each real bake, so a backfill can
+ *  never overload the eye (a concurrent sweep is what took it down before). Only
+ *  worlds that actually hit the eye (missing/stale) incur the delay; ok/black are
+ *  fast slot reads. `maxBakes` caps how many renders one run performs. */
 export async function bakeAllUnhealthy(
   worlds: Array<{ slug: string; snap: RenderSnapshot }>,
+  opts: { maxBakes?: number } = {},
 ): Promise<HealSummary> {
+  const cap = opts.maxBakes ?? Infinity
   const summary: HealSummary = { checked: 0, baked: 0, ok: 0, black: 0, skipped: 0 }
-  let i = 0
-  async function worker(): Promise<void> {
-    while (i < worlds.length) {
-      const w = worlds[i++]
-      summary.checked++
-      const before = await bakeIconIfNeeded(w.slug, w.snap).catch(() => 'skipped' as const)
-      if (before === 'ok') summary.ok++
-      else if (before === 'black') summary.black++
-      else if (before === 'missing' || before === 'stale') summary.baked++
-      else summary.skipped++
-    }
+  for (const w of worlds) {
+    if (summary.baked >= cap) break
+    summary.checked++
+    const before = await bakeIconIfNeeded(w.slug, w.snap).catch(() => 'skipped' as const)
+    if (before === 'ok') summary.ok++
+    else if (before === 'black') summary.black++
+    else if (before === 'missing' || before === 'stale') { summary.baked++; await sleep(SWEEP_DELAY_MS) }
+    else summary.skipped++
   }
-  await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT, worlds.length || 1) }, worker))
   return summary
 }
