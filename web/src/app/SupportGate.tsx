@@ -45,7 +45,18 @@ export default function SupportGate({ children }: { children: React.ReactNode })
       // optimization pass exists (resolution downscale, shader culling, atlas
       // limits), we wall off small/touch screens by size, gracefully. A curious
       // visitor on a big touchscreen laptop can still STEP IN ANYWAY.
+      //
+      // UA BACKSTOP: an in-app webview (Android System WebView, `wv`) can report
+      // NO touch API and a ~980px layout width — slipping BOTH heuristics below,
+      // then reaching the renderer and dying on a null WebGPU adapter (an
+      // SM-S942B did exactly this). Matching an actual-phone UA closes that gap;
+      // a phone is never judged desktop-'ok'. Desktop UAs (incl. Firefox-Linux,
+      // Mac/Win Chrome) don't match, and iPad reports as Mac so the touch+width
+      // branch still catches it.
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+      const phoneUA = /iPhone|iPod|Windows Phone|IEMobile|BlackBerry|Opera Mini|Android.*Mobile|Mobile.*Android/i.test(ua)
       const smallOrTouch =
+        phoneUA ||
         window.innerWidth < 820 ||
         (('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1100)
       if (smallOrTouch) { setVerdict('mobile'); return }
