@@ -1428,6 +1428,10 @@ export class FieldRenderer {
   isLost(): boolean { return this._lost }
 
   uploadIconAtlas(data: Uint32Array): void {
+    // mirror every full upload into the CPU copy: getIconAtlasCPU must reflect
+    // what's actually on the GPU (cache restores + baked overlays included), not
+    // just the last from-scratch render — a stale mirror re-blanked cells later
+    this._iconAtlasCPU = data
     if (!this.device) return
     const bytes = Math.max(4, data.byteLength)
     if (!this.iconBuffer || this.iconBufferCapacity < bytes) {
@@ -1499,7 +1503,13 @@ export class FieldRenderer {
     const rendered: number[] = []
     const S = 64
     const maxSlot = Math.max(...items.map(i => i.slot)) + 1
-    const atlas = new Uint32Array(maxSlot * S * S)
+    // seed from the CURRENT atlas, never zeros: the progressive uploads below
+    // push the whole buffer each time, so a zero-seeded rebuild blanked every
+    // cell not in `items` (retained faces, baked photos) for the whole pass —
+    // doors flashed black/stale while the shelf re-rendered behind them
+    const prev = this._iconAtlasCPU
+    const atlas = new Uint32Array(Math.max(maxSlot * S * S, prev?.length ?? 0))
+    if (prev) atlas.set(prev)
     const target = device.createTexture({
       size: [S, S], format: 'rgba8unorm',
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
@@ -1640,7 +1650,10 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       device.pushErrorScope('validation')
       const module = device.createShaderModule({ code: src })
       const info = await module.getCompilationInfo()
-      const pipeline = device.createRenderPipeline({
+      // ASYNC pipeline build: the sync createRenderPipeline compiles on the main
+      // thread — up to 64 of these on a return to main stacked into a multi-second
+      // stall that froze the page (and the hub's glyph cursor with it)
+      const pipeline = await device.createRenderPipelineAsync({
         layout: 'auto',
         vertex: { module, entryPoint: 'vs' },
         fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
@@ -1708,7 +1721,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       device.pushErrorScope('validation')
       const module = device.createShaderModule({ code: src })
       const info = await module.getCompilationInfo()
-      const pipeline = device.createRenderPipeline({
+      // async for the same reason as _iconPipeline: sync compiles stall the page
+      const pipeline = await device.createRenderPipelineAsync({
         layout: 'auto', vertex: { module, entryPoint: 'vs' },
         fragment: { module, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] },
         primitive: { topology: 'triangle-list' },

@@ -3404,6 +3404,15 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           return
         }
       }
+      // SWAP GATE: a trackpad's inertia tail rides through the door — the camera
+      // reset runs early in the load, so a late coasting wheel event re-zoomed
+      // the fresh camera and STUCK ("main is randomly zoomed in" after backing
+      // out of a world). Swallow camera moves for a beat after any swap.
+      if (performance.now() - swapAtRef.current < 1500) return
+      // THE HUB NEVER WHEEL-ZOOMS THE GRID: the hub scene paints the full
+      // viewport (its constellation zoom is Z/X → the hook's own cam), so a grid
+      // zoom only crops the painting into the void. Worlds keep wheel zoom.
+      if (hubCursorRef.current) return
       if (renderModeRef.current === '3d') {
         // 3D mode: dolly camera along view direction
         const cam3D = camera3DRef.current
@@ -5335,6 +5344,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (!cafeIconCache) cafeIconCache = iconCacheLoad()
     if (cafeIconCache) {
       const cached = cafeIconCache
+      // claim the cached sig SYNCHRONOUSLY — restore() below only lands once the
+      // GPU device is ready, and the first tick can beat it. With lastSig still
+      // '' that tick read the unchanged roster as all-new and took the 64-shader
+      // heavy path on every return to main — the cursor-freeze (and the stale
+      // shader icon flashing over a world's baked photo) the LIGHT PATH below
+      // exists to prevent.
+      lastSig = cached.sig
       const restore = () => {
         const r = rendererRef.current
         // r.isReady(): the renderer OBJECT exists well before its async GPU
@@ -5542,8 +5558,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       w.__cafeIconLoading = loading
       // ONLY worlds whose shader actually rendered (non-black) get an atlas slot;
       // state/feedback worlds render black in isolation → no slot → living emblem.
-      const okSlots = (r && items.length)
-        ? await r.renderWorldIconAtlas(items, 0.5, (sl) => {
+      // A world with a baked PHOTO is excluded from the shader pass entirely: its
+      // cell is a real frame — the progressive shader render was painting the
+      // composed (old-champion) icon over it for a beat before the overlay put
+      // the photo back. Photos land via overlayBaked below; skipping them here
+      // also shrinks the heavy pass as photo coverage grows.
+      const shaderItems = items.filter(i => !bakedMap.has(nameOfSlot[i.slot]))
+      const okSlots = (r && shaderItems.length)
+        ? await r.renderWorldIconAtlas(shaderItems, 0.5, (sl) => {
             // per-icon: reveal it the instant it lands, clear its spinner
             const nm = nameOfSlot[sl]
             if (nm) { slots[nm] = sl; delete loading[nm] }
