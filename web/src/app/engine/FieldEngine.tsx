@@ -6378,7 +6378,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               // (the connect-prompt plugs into the commons, not this tab) — so
               // the indicator confirms the plug-in prompt worked, cafe-wide.
               const connected = agentConnected || aiOnCommons
-              const connectable = !!spaceSlug || !!lastSceneRef.current?.includes(' ⑂ ')
               const dot = <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : connected ? 'bg-emerald-400' : 'bg-white/25'}`} />
               const label = busy ? 'AI EDITING' : connected ? 'AI LIVE' : 'AI UNPLUGGED'
               // AI EDITING is a transient status flash, not an invitation — leave it
@@ -6390,14 +6389,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   </div>
                 )
               }
-              // The pill is ALWAYS clickable and always opens the ONE connect door —
-              // whether unplugged (an invitation) or LIVE (manage / re-copy the key).
-              // In a space it opens the space-scoped plug; on the plain hub there's no
-              // space, so route to the account-level CONNECT AI dialog (same as the
-              // account dropdown). This is why the hub pill used to be a dead div.
-              const onPill = connectable
-                ? openConnectAi
-                : () => window.dispatchEvent(new CustomEvent('cafe:open-connect'))
+              // The pill is ALWAYS clickable and always opens the ONE connect door:
+              // the account-level CONNECT AI dialog (copy your reusable player key),
+              // the SAME dialog as the account dropdown — no matter where you click.
+              // It used to fork by context (in a space it minted a NEW uc_st_ each
+              // click, on the hub it copied your existing key), which is why "connect
+              // AI" surfaced two different dialogs. The deliberate world-key mint still
+              // lives on the explicit ⚡ CONNECT AI button, in-world where it belongs.
+              const onPill = () => window.dispatchEvent(new CustomEvent('cafe:open-connect'))
               return (
                 <button onClick={onPill} title={connected ? 'manage the AI connection' : 'connect an AI'}
                   className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
