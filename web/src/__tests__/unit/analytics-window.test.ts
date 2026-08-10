@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampHours } from '@/lib/analytics-window'
+import { clampHours, sceneWorldLabel } from '@/lib/analytics-window'
 
 describe('clampHours (admin analytics ?hours=N → safe SQL interval integer)', () => {
   it('defaults to 12 for missing / junk / non-positive input', () => {
@@ -29,5 +29,21 @@ describe('clampHours (admin analytics ?hours=N → safe SQL interval integer)', 
       expect(h).toBeGreaterThanOrEqual(1)
       expect(h).toBeLessThanOrEqual(168)
     }
+  })
+})
+
+describe('sceneWorldLabel (presence scene → readable world for playtime report)', () => {
+  it('takes the segment after the last colon', () => {
+    expect(sceneWorldLabel('main/players/space:tideglass')).toBe('tideglass')
+    expect(sceneWorldLabel('main/world:QUANTIC DOJO')).toBe('QUANTIC DOJO')
+    expect(sceneWorldLabel('space:veilfire-3d')).toBe('veilfire-3d')
+  })
+  it('passes through a bare scene name unchanged', () => {
+    expect(sceneWorldLabel('CAFE')).toBe('CAFE')
+    expect(sceneWorldLabel('SUB-MAIN')).toBe('SUB-MAIN')
+  })
+  it('never returns empty on odd input', () => {
+    expect(sceneWorldLabel('trailing:')).toBe('trailing:')   // empty tail → keep the raw
+    expect(sceneWorldLabel('')).toBe('')
   })
 })

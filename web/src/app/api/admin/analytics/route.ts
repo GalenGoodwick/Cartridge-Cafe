@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/adminAuth'
 import { prisma } from '@/lib/prisma'
-import { clampHours } from '@/lib/analytics-window'
+import { clampHours, sceneWorldLabel } from '@/lib/analytics-window'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +67,30 @@ export async function GET(req: NextRequest) {
           LIMIT 40`)
       : null
 
+    // PLAYTIME — how long bodies actually stayed (from play_session, the durable
+    // heartbeat consumer). newcomerSeconds = time logged by visitors whose first
+    // page-visit was in the window. Table may not exist until the first beat ever
+    // lands — tolerate that with an empty result.
+    type PlayRow = { scene: string; sessions: number; total_seconds: number; median_seconds: number; newcomer_seconds: number }
+    const playtimeRows: PlayRow[] = wantPaths
+      ? await prisma.$queryRawUnsafe<PlayRow[]>(`
+          WITH firsts AS (
+            SELECT vid, min(ts) AS first_seen FROM "Visit"
+            WHERE kind = 'page' AND vid IS NOT NULL GROUP BY vid
+          )
+          SELECT p.scene,
+                 count(*)::int AS sessions,
+                 sum(p.seconds)::int AS total_seconds,
+                 percentile_cont(0.5) WITHIN GROUP (ORDER BY p.seconds)::int AS median_seconds,
+                 coalesce(sum(p.seconds) FILTER (WHERE f.first_seen > now() - interval '${hours} hours'), 0)::int AS newcomer_seconds
+          FROM play_session p
+          LEFT JOIN firsts f ON f.vid = p.vid
+          WHERE p.last_beat_at > now() - interval '${hours} hours' AND p.seconds > 0
+          GROUP BY p.scene
+          ORDER BY total_seconds DESC
+          LIMIT 40`).catch(() => [] as PlayRow[])
+      : []
+
     return NextResponse.json({
       summary: {
         pages: Number(summary?.pages ?? 0),
@@ -75,7 +99,18 @@ export async function GET(req: NextRequest) {
       },
       bridgePerHour: perHour.map(r => ({ hour: r.hour.toISOString(), n: Number(r.n) })),
       topTalkers: talkers.map(r => ({ who: r.who ?? 'untagged', hits: Number(r.n), last: r.last.toISOString() })),
-      ...(wantPaths ? { window: { hours }, worldPaths: worldPaths ?? [] } : {}),
+      ...(wantPaths ? {
+        window: { hours },
+        worldPaths: worldPaths ?? [],
+        playtime: playtimeRows.map(r => ({
+          world: sceneWorldLabel(r.scene),
+          scene: r.scene,
+          sessions: r.sessions,
+          totalSeconds: r.total_seconds,
+          medianSeconds: r.median_seconds,
+          newcomerSeconds: r.newcomer_seconds,
+        })),
+      } : {}),
     })
   } catch {
     return NextResponse.json({ error: 'analytics unavailable' }, { status: 500 })

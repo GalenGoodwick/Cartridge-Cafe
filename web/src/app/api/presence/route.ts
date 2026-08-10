@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { visitorId, isHeadlessUA } from '@/lib/visits'
 
 // Who's inside each world right now. Clients heartbeat their scene every ~12s;
 // anyone silent for 30s has left; a closed tab says goodbye instantly.
@@ -12,7 +13,7 @@ import prisma from '@/lib/prisma'
 const STALE_MS = 30_000
 
 type Rooms = Map<string, Map<string, number>>
-const g = globalThis as unknown as { __ccPresence?: Rooms; __ccPresenceTable?: boolean }
+const g = globalThis as unknown as { __ccPresence?: Rooms; __ccPresenceTable?: boolean; __ccPlayTable?: boolean }
 const mem = (g.__ccPresence ||= new Map())
 
 async function ensureTable(): Promise<void> {
@@ -24,6 +25,51 @@ async function ensureTable(): Promise<void> {
        seen timestamptz NOT NULL DEFAULT now()
      )`)
   g.__ccPresenceTable = true
+}
+
+// PLAYTIME (a durable CONSUMER of the same heartbeat — not a rival occupancy
+// source; see PRESENCE.md). Occupancy is cc_presence (ephemeral, 30s TTL). This
+// retains how long each body actually stayed: on every beat we extend the open
+// session (or start a new one after a gap), so playtime = Σ real beat intervals,
+// gap-capped so a walked-away tab can't inflate it. Self-creating, like Visit.
+const PLAY_GAP_S = 45   // a beat within this window continues the session
+const PLAY_CAP_S = 30   // max seconds credited per beat (guards sleep/long gaps)
+async function ensurePlayTable(): Promise<void> {
+  if (g.__ccPlayTable) return
+  await prisma.$executeRawUnsafe(
+    `CREATE TABLE IF NOT EXISTS play_session (
+       id bigserial PRIMARY KEY,
+       sess text NOT NULL,
+       scene text NOT NULL,
+       vid text,
+       started_at timestamptz NOT NULL DEFAULT now(),
+       last_beat_at timestamptz NOT NULL DEFAULT now(),
+       seconds int NOT NULL DEFAULT 0
+     )`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS play_session_scene_idx ON play_session (scene, last_beat_at)`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS play_session_sess_idx ON play_session (sess, last_beat_at)`)
+  g.__ccPlayTable = true
+}
+
+/** Accrue playtime for one beat. Best-effort — a failure here must NEVER affect
+ *  occupancy (its own try/catch at the call site). Skips AI/dev markers and bots
+ *  (they don't "play"). vid ties the session to the analytics visitor so we can
+ *  ask "how long did NEWCOMERS stay?". */
+async function accruePlaytime(id: string, scene: string, req: NextRequest): Promise<void> {
+  if (id.startsWith('ai:') || id.startsWith('dev:')) return
+  const ua = req.headers.get('user-agent') || ''
+  if (isHeadlessUA(ua)) return
+  await ensurePlayTable()
+  const vid = visitorId(req.headers.get('x-forwarded-for')?.split(',')[0] || '', ua)
+  const extended = await prisma.$executeRawUnsafe(
+    `UPDATE play_session
+        SET seconds = seconds + LEAST(GREATEST(EXTRACT(EPOCH FROM (now() - last_beat_at))::int, 0), ${PLAY_CAP_S}),
+            last_beat_at = now()
+      WHERE sess = $1 AND scene = $2 AND last_beat_at > now() - interval '${PLAY_GAP_S} seconds'`,
+    id, scene)
+  if (!extended) {
+    await prisma.$executeRawUnsafe(`INSERT INTO play_session (sess, scene, vid) VALUES ($1, $2, $3)`, id, scene, vid)
+  }
 }
 
 function memSweep() {
@@ -104,6 +150,9 @@ export async function POST(req: NextRequest) {
       await prisma.$executeRawUnsafe(
         `INSERT INTO cc_presence (id, scene, seen) VALUES ($1, $2, now())
          ON CONFLICT (id) DO UPDATE SET scene = $2, seen = now()`, id, scene)
+      // durable playtime rides the SAME beat — best-effort, isolated so a failure
+      // (or the table not existing yet) can never break the occupancy heartbeat
+      try { await accruePlaytime(id, scene as string, req) } catch { /* playtime is analytics, not a gate */ }
     }
     return NextResponse.json({ ok: true })
   } catch {
