@@ -889,7 +889,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const staged = (window as unknown as { __cafeIconAtlas?: Uint32Array }).__cafeIconAtlas
     if (staged && staged.length) applyAtlas(staged)
     window.addEventListener('cafe:icon-atlas', onAtlas)
+    // BFCACHE IS A LIE for this engine: browser-back restores the page's frozen
+    // heap instead of loading it, and the plumbing wakes up half-dead — the
+    // pagehide handler already disconnected the presence socket (a manual
+    // socket.io disconnect never auto-reconnects), hook/worker clocks are stale,
+    // and the GPU device may be lost — while the rAF loop resumes and paints
+    // shader-time animation over frozen uniforms. The visible symptom: the hub
+    // glyph pinned over the door you left through, forever ("cursor location
+    // freeze" on browser-back, Aug 10). One honest reload turns browser-back
+    // into the same clean load the ◂ button does. persisted=true is strictly
+    // a bfcache restore, so this never fires on a normal load (no loop).
+    const onPageShow = (e: PageTransitionEvent) => { if (e.persisted) window.location.reload() }
+    window.addEventListener('pageshow', onPageShow)
     return () => {
+      window.removeEventListener('pageshow', onPageShow)
       window.removeEventListener('cafe:muted', onMute)
       window.removeEventListener('pointerdown', onGesture, { capture: true })
       window.removeEventListener('keydown', onGesture, { capture: true })
