@@ -6282,19 +6282,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               const connectable = !!spaceSlug || !!lastSceneRef.current?.includes(' ⑂ ')
               const dot = <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
               const label = busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'
-              // UNPLUGGED is really an invitation — make it the CONNECT AI button
-              if (!busy && !agentConnected && connectable) {
+              // AI EDITING is a transient status flash, not an invitation — leave it
+              // as a plain indicator so it doesn't beg to be clicked mid-edit.
+              if (busy) {
                 return (
-                  <button onClick={openConnectAi} title="plug an AI into this world"
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
-                    {dot}{label}<span className="text-emerald-300/70">· connect</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
+                    {dot}{label}
+                  </div>
                 )
               }
+              // The pill is ALWAYS clickable and always opens the ONE connect door —
+              // whether unplugged (an invitation) or LIVE (manage / re-copy the key).
+              // In a space it opens the space-scoped plug; on the plain hub there's no
+              // space, so route to the account-level CONNECT AI dialog (same as the
+              // account dropdown). This is why the hub pill used to be a dead div.
+              const onPill = connectable
+                ? openConnectAi
+                : () => window.dispatchEvent(new CustomEvent('cafe:open-connect'))
               return (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
-                  {dot}{label}
-                </div>
+                <button onClick={onPill} title={agentConnected ? 'manage the AI connection' : 'connect an AI'}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
+                  {dot}{label}<span className="text-emerald-300/70">{agentConnected ? '· manage' : '· connect'}</span>
+                </button>
               )
             })()}
             {/* SPACE flows — folded in from the retired SpaceToolbar. The buttons

@@ -19,17 +19,18 @@ export const authBlock = (origin: string, token: string) =>
 export const guideStep = (origin: string) =>
   `GET ${origin}/api/engine/guide and read it (markdown) — the CORE contracts plus an INDEX of every capability. When a task touches an indexed capability (films, solvers, audio, multiplayer, …), fetch its full recipe: ${origin}/api/engine/guide?section=<name>.`
 
-/** The watcher section — the collaboration protocol's wake mechanics. */
-export const staySummonable = (origin: string) =>
-  `STAY AWAKE — set this up FIRST, before any build: run a background watcher that polls the bridge with {"type":"main_read"} every ~60s (or SSE-streams ${origin}/api/engine/commons) and WAKES you when a message has kind "summon" or "wake", mentions you, is from me, OR is your own self-ping. That watcher is how you hear a summons — and how you catch your own ping to keep going. Without one you are deaf between prompts. Re-arm it every session; it dies with your session.`
-
-/** The keepalive — ping-self as the final act so the watcher re-invokes you. */
-export const neverGoIdle = (origin: string) =>
-  `NEVER GO IDLE — the LAST thing you do every turn, after all other work: post your self-ping with {"type":"main_say","from":"<your name>","text":"↺ still on it"}, then send your final message and stop. You auto-stop right after; a moment later your watcher (above) catches that ping and re-invokes you — so you continue instead of going dark. Arm the watcher FIRST, ping yourself LAST: that handoff is the only thing that survives the auto-stop.`
+// The wake mechanics — background watcher + self-ping keepalive ("stay alive")
+// and waking a peer AI ("co-ping") — used to live INLINE in every connect prompt.
+// They now live in their canonical home, the guide's Wake Mechanics section
+// (GET /api/engine/guide?section=wake-mechanics, with the full poll loop) and,
+// for Claude Code, the /stay-alive and /co-ping skills. The prompt just points
+// there instead of carrying the whole protocol — leaner paste, one source.
+export const stayAwakePointer = (origin: string) =>
+  `To stay reachable between prompts, run a background watcher + self-ping keepalive — the guide's Wake Mechanics has the exact loop: ${origin}/api/engine/guide?section=wake-mechanics (in Claude Code, the /stay-alive skill sets it up; /co-ping wakes a peer AI).`
 
 /** The goal — bind the AI to the protocol as its standing goal (it self-enforces). */
 export const followProtocol = (origin: string) =>
-  `SET YOUR GOAL — right after the guide, make FOLLOWING THIS PROTOCOL your standing goal and post it once: {"type":"main_say","from":"<your name>","text":"GOAL: follow the connect protocol — stay awake, enter the eye before I trust any build, ping to persist, coordinate on the commons, never build blind."}. The goal you hold decides everything you do next — re-affirm this one whenever you drift, and let every step below serve it.`
+  `SET YOUR GOAL — right after the guide, make FOLLOWING THIS PROTOCOL your standing goal and post it once: {"type":"main_say","from":"<your name>","text":"GOAL: follow the connect protocol — enter the eye before I trust any build, coordinate on the commons, never build blind."}. The goal you hold decides everything you do next — re-affirm this one whenever you drift, and let every step below serve it.`
 
 /** The eye gate — verify you can SEE before you trust any build. */
 export const enterTheEye = (origin: string) =>
@@ -51,9 +52,8 @@ ${authBlock(origin, token)}
 5. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
 6. ${enterTheEye(origin)}
 7. ${useTheWorktree()}
-8. ${staySummonable(origin)}
-9. ${neverGoIdle(origin)}
-Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
+Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.
+${stayAwakePointer(origin)}`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
 export const volunteerPrompt = (token: string, origin = cafeOrigin()) =>
@@ -137,7 +137,7 @@ Before doing ANYTHING else:
 3. STAND BY. Do not build yet — I am writing your brief right now. It will
    appear in worldData.creation_brief. When it does: build exactly that,
    then set worldData.brief_done = true.
-4. ${staySummonable(origin)}
+${stayAwakePointer(origin)}
 You may open your world's page in your own (headless) browser as your eyes —
 GET the bridge URL and use space.viewUrl (it can change when I name the world).
 Your view is yours: it never takes my seat and never counts in head-counts.`

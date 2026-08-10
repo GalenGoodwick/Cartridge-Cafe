@@ -10,8 +10,7 @@ import TournamentBar from '@/app/TournamentBar'
 import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 import AdInterstitial from '@/app/AdInterstitial'
-import ConnectAiPanel from '@/app/ConnectAiPanel'
-import McpConnectPanel from '@/app/McpConnectPanel'
+import ConnectPanel from '@/app/ConnectPanel'
 import ManagePanel from '@/app/engine/ManagePanel'
 import { startCafeAudio, setScene as setAudioScene, sfx, isMuted, setMuted } from '@/app/engine/cafe-audio'
 
@@ -237,8 +236,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // hue 0..1, size. Lives in localStorage and rides to the shader via
   // window.__cafeIcon (packed at the uniform tail by the hook).
   const [iconOpen, setIconOpen] = useState(false)
-  const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — your personal player key
-  const [mcpOpen, setMcpOpen] = useState(false)   // "Connect via MCP" — add the cafe as an MCP server
+  const [connectOpen, setConnectOpen] = useState(false)   // "Connect AI" — one modal, two tabs (paste-a-prompt · MCP server)
   // FIRST-VISIT ORIENTATION — shown once per person. localStorage covers this
   // browser (incl. a guest who then signs up, same tab); the server flag
   // (/api/oriented, keyed by user id) covers cross-device + after sign-up.
@@ -1107,6 +1105,15 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       if (votingRef.current) { window.dispatchEvent(new CustomEvent('cafe:close-reckoning')); return }
       if (confirmRef.current) stay(); else openConfirm()
     }
+    // the ONE account-level CONNECT AI door, reachable from anywhere (account
+    // dropdown AND the engine's hub status pill) so there's a single dialog no
+    // matter which control you click. Same sign-in guard as the dropdown item.
+    const onOpenConnect = async () => {
+      const w = (window as unknown as { __cafeWho?: { id: string } | null }).__cafeWho
+      if (!w) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
+      setConnectOpen(true)
+    }
+    window.addEventListener('cafe:open-connect', onOpenConnect)
     window.addEventListener('cafe:back', onBack)
     window.addEventListener('cafe:launch', onLaunch)
     window.addEventListener('cafe:hover', onHover)
@@ -1121,6 +1128,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     window.addEventListener('keydown', onDbgKey)
     window.addEventListener('resize', onResize)
     return () => {
+      window.removeEventListener('cafe:open-connect', onOpenConnect)
       window.removeEventListener('cafe:back', onBack)
       window.removeEventListener('cafe:launch', onLaunch)
       window.removeEventListener('cafe:hover', onHover)
@@ -1904,12 +1912,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                           if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
                           setIconOpen(true)
                         } },
-                      { label: '⚿ CONNECT AI', onClick: async () => {
-                          setAcctOpen(false)
-                          if (!who) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
-                          setConnectOpen(true)
-                        } },
-                      { label: '⧉ CONNECT VIA MCP', onClick: () => { setAcctOpen(false); setMcpOpen(true) } },
+                      { label: '⚿ CONNECT AI', onClick: () => { setAcctOpen(false); window.dispatchEvent(new CustomEvent('cafe:open-connect')) } },
                     ].map(it => (
                       <button key={it.label} onClick={it.onClick}
                         className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors">
@@ -1968,11 +1971,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           </div>
           )}
 
-          {/* CONNECT AI — mint your personal player key (chat commons + build your worlds) */}
-          {connectOpen && <ConnectAiPanel onClose={() => setConnectOpen(false)} />}
-
-          {/* CONNECT VIA MCP — add the cafe as an MCP server (Claude Code / Cursor) */}
-          {mcpOpen && <McpConnectPanel onClose={() => setMcpOpen(false)} />}
+          {/* CONNECT AI — one modal, two tabs: paste-a-prompt (mint your player key,
+              chat commons + build your worlds) · MCP server (Claude Code / Cursor) */}
+          {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
 
           {/* ⚙ MANAGE — your worlds & branches (open/rename/delete) */}
           {manageOpen && <ManagePanel onClose={() => { setManageOpen(false); setManagePreview(null) }} onPreview={setManagePreview}

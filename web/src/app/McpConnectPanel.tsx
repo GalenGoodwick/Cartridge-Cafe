@@ -1,34 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { copyText } from '@/lib/copyText'
 
 /** CONNECT VIA MCP — the other door, for MCP clients (Claude Code, Cursor). One
  *  command adds cartridge.cafe as an MCP server; the AI then has the guide, the
  *  bridge, and the EYE (render_probe), and can brew worlds through the guest door
  *  (no account). Static content — nothing to mint, nothing installs on the human's
- *  machine beyond the standard `claude mcp add`. Sibling of ConnectAiPanel; opened
- *  from the same account dropdown, right under CONNECT AI. */
+ *  machine beyond the standard `claude mcp add`. The MCP-server door body,
+ *  rendered inside <ConnectPanel/> as the second tab (which owns modal chrome). */
 const ADD_CMD = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
 const JSON_CFG = '{ "mcpServers": { "cartridge-cafe": { "command": "npx", "args": ["-y", "cartridge-cafe-mcp"] } } }'
 
-export default function McpConnectPanel({ onClose }: { onClose: () => void }) {
+export default function McpConnectPanel() {
   const [copied, setCopied] = useState('')
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
   const copy = (t: string, k: string) =>
     copyText(t).then(ok => { setCopied(ok ? k : 'fail:' + k); setTimeout(() => setCopied(''), 1600) })
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono" onClick={onClose}>
-      <div className="w-80 max-w-[92vw] rounded-xl border border-brass/40 bg-void/95 backdrop-blur p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <div className="text-[16px] tracking-[0.2em] text-flame">⧉ CONNECT VIA MCP</div>
-          <button onClick={onClose} aria-label="close" className="text-glow/50 hover:text-glow text-sm leading-none px-1">×</button>
-        </div>
+    <>
         <div className="text-[13px] text-glow/45 leading-relaxed mb-2">
           Add cartridge.cafe to <b>Claude Code</b> / Cursor as an MCP server. Your AI gets the guide, the bridge, and <b>the eye</b> — and can brew worlds through the guest door (no account needed).
         </div>
@@ -45,7 +35,6 @@ export default function McpConnectPanel({ onClose }: { onClose: () => void }) {
           className="w-full rounded-md border border-brass/30 px-3 py-2 text-left text-[12px] text-steamer/80 hover:text-glow break-all transition-colors">
           {copied === 'json' ? 'copied ✓' : copied === 'fail:json' ? '⚠ copy blocked' : JSON_CFG}
         </button>
-      </div>
-    </div>
+    </>
   )
 }

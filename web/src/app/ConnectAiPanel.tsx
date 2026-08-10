@@ -37,7 +37,9 @@ function readCached(): { prefix: string; raw: string } | null {
 function writeCached(prefix: string, raw: string) { try { localStorage.setItem(KEY_LS, JSON.stringify({ prefix, raw })) } catch {} }
 function clearCached() { try { localStorage.removeItem(KEY_LS) } catch {} }
 
-export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
+/** The CONNECT-AI body (paste-a-prompt door). Rendered inside <ConnectPanel/>,
+ *  which owns the modal chrome (overlay, tab bar, Escape/× close). */
+export default function ConnectAiPanel() {
   const [state, setState] = useState<{ signedIn: boolean; keys: Array<{ prefix: string; createdAt: string }> } | null>(null)
   const [fresh, setFresh] = useState<string | null>(null)   // raw key, shown once
   const [busy, setBusy] = useState(false)
@@ -54,11 +56,6 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
 
   const load = () => fetch('/api/player-token').then(r => r.json()).then(setState).catch(() => {})
   useEffect(() => { load() }, [])
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const prompt = (tok: string) => playerConnectPrompt(tok)
 
@@ -71,10 +68,13 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
         writeCached(d.prefix, d.token); setCached({ prefix: d.prefix, raw: d.token })   // remember it so "copy my current key" works later
         setFresh(d.token)
         load()
-        // The prompt lands on the clipboard the moment it exists — copying must
-        // not cost an extra click (Galen). The mint click is the user gesture;
-        // if the clipboard still refuses, copy() opens the manual-select box.
-        copy(prompt(d.token), 'prompt')
+        // Best-effort auto-copy the moment the key exists — a convenience, not the
+        // reliable path. It runs AFTER the await, so the click's user-activation is
+        // already spent: clipboard writes usually reject here (and the execCommand
+        // fallback too). So it's SILENT — a failure must NOT flip the button to
+        // "COPY BLOCKED" before the user ever clicks it. The visible COPY button
+        // below is the reliable path: it copies inside its own click gesture.
+        copy(prompt(d.token), 'prompt', true)
       }
     } finally { setBusy(false) }
   }
@@ -83,11 +83,13 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
     try { await fetch('/api/player-token', { method: 'DELETE' }); clearCached(); setCached(null); setFresh(null); load() } finally { setBusy(false) }
   }
   // when even the fallback can't write the clipboard, show the text itself so
-  // the player can select-and-copy by hand — never a dead button
-  const copy = (t: string, k: string) => {
+  // the player can select-and-copy by hand — never a dead button. `silent` is for
+  // best-effort auto-copies (e.g. right after mint, past the gesture window): on
+  // failure they stay quiet instead of falsely warning about a copy nobody asked for.
+  const copy = (t: string, k: string, silent = false) => {
     copyText(t).then(ok => {
       if (ok) { setManual(null); setCopied(k); setTimeout(() => setCopied(''), 1600) }
-      else { setManual(t); setCopied('fail:' + k); setTimeout(() => setCopied(''), 2400) }
+      else if (!silent) { setManual(t); setCopied('fail:' + k); setTimeout(() => setCopied(''), 2400) }
     })
   }
 
@@ -107,12 +109,7 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm font-mono" onClick={onClose}>
-      <div className="w-80 max-w-[92vw] rounded-xl border border-brass/40 bg-void/95 backdrop-blur p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <div className="text-[16px] tracking-[0.2em] text-flame">⚿ CONNECT AI</div>
-          <button onClick={onClose} aria-label="close" className="text-glow/50 hover:text-glow text-sm leading-none px-1">×</button>
-        </div>
+    <>
         <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
           Your personal key — it lets an AI chat the commons and build <b>your own</b> worlds. Shown once, revocable.
         </div>
@@ -207,7 +204,6 @@ export default function ConnectAiPanel({ onClose }: { onClose: () => void }) {
             {!!state?.keys?.length && <div className="text-[14px] text-glow/30 text-center">{state.keys[0].prefix} · active{cachedIsActive ? ' · remembered here' : ''}</div>}
           </div>
         )}
-      </div>
-    </div>
+    </>
   )
 }
