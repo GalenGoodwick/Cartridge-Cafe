@@ -1301,7 +1301,33 @@ a threshold. Rules:
   logically not. Snap past a threshold: `if (v >= 0.85) v = 1`.
 - **Reset per-session state on `worldData.__fresh`** (the loader sets it after
   restoring a save): timers, key latches, boot flags — while keeping the
-  restored progress itself.
+  restored progress itself. Consume it with a **worker-global latch**, never by
+  `delete wd.__fresh` alone — the flag can persist on the main thread (the
+  worker→main merge deliberately never syncs its delete back), so an unlatch-ed
+  wipe re-fires EVERY tick (this froze a whole world: movement pinned to spawn,
+  every entity erased per frame). Pattern: `if (wd.__fresh && !globalThis.__MY_FRESHED) { globalThis.__MY_FRESHED = 1; /* wipe */ } if (wd.__fresh) delete wd.__fresh`.
+
+### THE RESET LAW — `set_original` is the one way "game start" is defined
+
+A reset (the player's **R key**, and the `reset_world` bridge verb) is engine
+behavior, not game code: it **restores `worldData.__original`** — the baked
+snapshot of the world's progress keys at its intended starting state — clears
+everything not in it, and hard-reloads so hooks re-init. One path, no second
+mechanism. What that means for you as a builder:
+
+- **`set_original`** (bridge verb, no args) bakes the CURRENT snapshot's
+  progress keys as the canonical start. It auto-fires once when you set
+  `brief_done`, and you can re-run it anytime the intended start state changes.
+  Bake it while the world is actually AT its start — never mid-game (a baked
+  mid-game state becomes every player's "fresh start").
+- **No original baked = the empty original**: every progress key clears and
+  your hooks re-init their code defaults. If your defaults ARE the game start,
+  that's already correct — but bake anyway; it pins the contract against
+  drift.
+- Declare your state holders in **`worldData.__resets`** (e.g. `['__g']`) and
+  keep ALL game state in them — anything squirreled elsewhere won't reset.
+- Do NOT hand-roll your own R/reset handling in hooks; honor `__fresh` for
+  per-session latches (pattern above) and let the engine own the rest.
 - One-shot *celebrations* (captions, sounds) may be edge-fired — but gate them
   on the state check, so they re-announce correctly for restored winners.
 

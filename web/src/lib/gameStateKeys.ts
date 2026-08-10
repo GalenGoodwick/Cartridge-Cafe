@@ -32,6 +32,11 @@ export const DERIVED_KEYS: ReadonlySet<string> = new Set([
   'gpuUniforms', 'gpuPopulation', '__budget', '__fresh', '__trail', '__nudge',
   'cellSample', 'hud', 'last_hook_error', 'last_compile_error',
   '__hook_quarantined', '__hookError', 'music_mod', 'ai_focus', 'save2',
+  // engine-convention per-frame publishes: the inspect-entity list, the
+  // frame-cost ring, and population provenance are rebuilt continuously by
+  // hooks/engine — capturing them baked runtime junk into set_original's
+  // baseline (veilfire, Aug 9 2026).
+  '__entities', '__frameMeter', '__popProv',
 ])
 
 /** Named non-`__` game holders (the unified holder + legacy). __-prefixed
@@ -63,21 +68,31 @@ export function captureOriginal(wd: Record<string, unknown>): Record<string, unk
   return orig
 }
 
-/** The set_world_data patch that RESETS a world: restore each progress key from
- *  __original (if the world defined one), else delete it so the hook re-inits;
- *  and always clear DERIVED keys. A `null` value deletes the key (the documented
- *  set_world_data contract, honored by both the DB and the live sim). */
+/** ═══ THE RESET LAW (Galen, Aug 9 2026): a reset RESTORES `__original`. ═══
+ *
+ *  This is the ENGINE's single hard definition of "game start" — not a per-game
+ *  convention. `set_original` (bridge verb; auto-fired at brief_done) is the ONE
+ *  way to define it. A world with no baked original has the EMPTY original: every
+ *  progress key clears and the hooks re-init their code defaults — which is the
+ *  same operation, restore-from-{}. There is deliberately no second reset path.
+ *
+ *  The patch this returns is that restore: every progress key present in the
+ *  world OR in the original is targeted; targets found in the original restore
+ *  to their baked value, all others delete (`null` = delete, the documented
+ *  set_world_data contract, honored by both the DB and the live sim). DERIVED
+ *  keys always clear — runtime junk is never part of an original. */
 export function resetPatch(wd: Record<string, unknown>, opts: { clearPlayer?: boolean } = {}): Record<string, unknown> {
-  const original = (wd.__original && typeof wd.__original === 'object') ? wd.__original as Record<string, unknown> : null
+  const original: Record<string, unknown> =
+    (wd.__original && typeof wd.__original === 'object') ? wd.__original as Record<string, unknown> : {}
   const targets = new Set<string>(progressKeysOf(wd))
   for (const k of DERIVED_KEYS) if (k in wd) targets.add(k)
-  if (original) for (const k of Object.keys(original)) targets.add(k)   // restore even keys not currently present
+  for (const k of Object.keys(original)) targets.add(k)   // restore even keys not currently present
   if (opts.clearPlayer && 'save' in wd) targets.add('save')
   const patch: Record<string, unknown> = {}
   for (const k of targets) {
     if (PRESERVED_KEYS.has(k)) continue
-    if (original && !DERIVED_KEYS.has(k) && k in original) patch[k] = clone(original[k])   // restore original
-    else patch[k] = null                                                                   // else clear
+    if (!DERIVED_KEYS.has(k) && k in original) patch[k] = clone(original[k])   // restore original
+    else patch[k] = null                                                       // not in the original → not part of game start
   }
   return patch
 }
