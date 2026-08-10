@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
   const wantPaths = searchParams.get('paths') === '1'
   const wantAll = searchParams.get('alltime') === '1'
   const wantRefs = searchParams.get('refs') === '1'
+  const rawRef = searchParams.get('rawref')   // inspect raw rows for one referrer host (e.g. a Teams unfurl vs a real click)
   const hours = clampHours(searchParams.get('hours'))
   try {
     const [summary] = await prisma.$queryRaw<Array<{ pages: bigint; strangers: bigint; agents: bigint }>>`
@@ -121,6 +122,21 @@ export async function GET(req: NextRequest) {
           GROUP BY 1 ORDER BY hits DESC LIMIT 25`).catch(() => [] as RefRow[])
       : null
 
+    // ?rawref=<source> — the raw Visit rows for ONE referrer host, so a human
+    // click can be told from an unfurl bot (by user-agent) and you can see WHICH
+    // page they hit. `rawRef` is BOUND ($1), never interpolated — arbitrary host
+    // strings can't reach the query. The same host expression as the referrers
+    // block, so '(direct)' matches a null/empty referrer too.
+    type RawRow = { ts: Date; path: string; kind: string; who: string | null; ua: string | null }
+    const rawRows = rawRef
+      ? await prisma.$queryRawUnsafe<RawRow[]>(
+          `SELECT ts, path, kind, who, left(coalesce(ua,''), 220) AS ua
+           FROM "Visit"
+           WHERE kind = 'page' AND ts > now() - interval '${hours} hours'
+             AND coalesce(nullif(split_part(regexp_replace(ref, '^https?://(www\\.)?', ''), '/', 1), ''), '(direct)') = $1
+           ORDER BY ts DESC LIMIT 50`, rawRef).catch(() => [] as RawRow[])
+      : null
+
     return NextResponse.json({
       summary: {
         pages: Number(summary?.pages ?? 0),
@@ -150,6 +166,7 @@ export async function GET(req: NextRequest) {
         },
       } : {}),
       ...(wantRefs ? { referrers: (referrers ?? []).map(r => ({ source: r.source, hits: r.hits, visitors: r.visitors })) } : {}),
+      ...(rawRef ? { rawRef, rawRows: (rawRows ?? []).map(r => ({ ts: r.ts.toISOString(), path: r.path, kind: r.kind, who: r.who, ua: r.ua })) } : {}),
     })
   } catch {
     return NextResponse.json({ error: 'analytics unavailable' }, { status: 500 })
