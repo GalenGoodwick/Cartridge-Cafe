@@ -20,6 +20,9 @@ export type CommonsMessage = {
   ai?: boolean
   system?: boolean
   slug?: string
+  /** account behind a connected AI (auth.ownerId ?? auth.playerId) — lets the
+   *  AI-connect indicator show a viewer THEIR OWN agent, not any AI cafe-wide */
+  ownerId?: string | null
   /** bus events (lib/commons-bus): platform lifecycle, daemons key on kind */
   sys?: true
   kind?: string
@@ -55,13 +58,25 @@ export async function commonsRead(opts: { sub?: string | null; since?: number } 
  *  (default 8 min). Excludes the platform voice — `system`/`sys` bus events
  *  (quarantine, engine notices) carry `ai:true` too, so without this filter
  *  error noise would read as "an AI is here." Used by the AI-connect indicator
- *  so a lit pill means a connected agent, not a stray error. */
-export async function commonsPresentAI(windowMs = 8 * 60_000, sub?: string | null): Promise<string[]> {
-  const doc = (await loadGameSlot(commonsSlot(sub))) as { msgs?: CommonsMessage[] } | undefined
+ *  so a lit pill means a connected agent, not a stray error.
+ *
+ *  When `ownerId` is given, returns ONLY the AIs plugged in under that account
+ *  (the token's owner/player id, stamped on each post) — so a viewer's pill
+ *  reflects THEIR OWN agent, not any AI live cafe-wide. A null/absent `ownerId`
+ *  means "no account to match" and returns none (an anonymous viewer has no AI).
+ *  Pass `ownerId: '*'` for the legacy cafe-wide "any AI" behaviour. */
+export async function commonsPresentAI(
+  opts: { windowMs?: number; sub?: string | null; ownerId?: string | null } = {},
+): Promise<string[]> {
+  const windowMs = opts.windowMs ?? 8 * 60_000
+  const ownerId = opts.ownerId
+  if (ownerId !== '*' && !ownerId) return []   // no account → no "their AI"
+  const doc = (await loadGameSlot(commonsSlot(opts.sub))) as { msgs?: CommonsMessage[] } | undefined
   const all: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []
   const now = Date.now()
   return Array.from(new Set(all
     .filter(m => m.ai && !m.sys && !m.system && m.who !== 'engine' && m.who !== 'cafe' && now - m.at < windowMs)
+    .filter(m => ownerId === '*' || m.ownerId === ownerId)
     .map(m => m.who)))
 }
 
@@ -79,6 +94,7 @@ export async function commonsPost(msg: {
   ai?: boolean
   system?: boolean
   slug?: string
+  ownerId?: string | null
   sub?: string | null
   sys?: true
   kind?: string
@@ -96,6 +112,7 @@ export async function commonsPost(msg: {
     ...(msg.ai ? { ai: true } : {}),
     ...(msg.system ? { system: true } : {}),
     ...(msg.slug ? { slug: msg.slug } : {}),
+    ...(msg.ownerId != null ? { ownerId: msg.ownerId } : {}),
     ...(msg.sys ? { sys: true as const } : {}),
     ...(msg.kind ? { kind: msg.kind } : {}),
     ...(msg.data ? { data: msg.data } : {}),

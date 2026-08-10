@@ -1171,7 +1171,10 @@ export async function POST(req: NextRequest) {
           const text = String(cmd.text ?? '').trim().slice(0, 1000)
           if (!text) { results.push({ error: 'main_say needs a non-empty text' }); continue }
           const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
-          const { posted, count } = await commonsPost({ who, text, ai: true, slug: auth.slug, sub })
+          // account behind this AI: player key → playerId, space token → ownerId.
+          // Stamped so the AI-connect pill can show a viewer THEIR OWN agent.
+          const ownerId = auth.ownerId ?? auth.playerId ?? null
+          const { posted, count } = await commonsPost({ who, text, ai: true, slug: auth.slug, ownerId, sub })
           results.push({ ok: true, commons: scope, posted, count })
           continue
         }

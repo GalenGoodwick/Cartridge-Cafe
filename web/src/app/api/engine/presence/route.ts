@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { commonsPresentAI } from '@/lib/commons'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/engine/presence
- * Is any REAL connected AI live on the cafe commons right now? Powers the
- * "AI UNPLUGGED / AI LIVE" indicator so a viewer can see the plug-in prompt
- * actually landed an agent — independent of any one world's SSE stream.
- * Public + non-sensitive (an AI's presence is already shown in the builder UI);
- * returns just a boolean + the active names. Excludes engine/system bus noise.
+ * Is THE VIEWER's OWN AI live on the cafe commons right now? Powers the
+ * "AI UNPLUGGED / AI LIVE" indicator so a signed-in user sees the plug-in
+ * prompt landed THEIR agent — not any AI cafe-wide (someone else's connected
+ * AI must not light your pill). Scoped by the viewer's account: an AI stamps
+ * its owner/player id on every commons post; we match that to the session user.
+ * Anonymous viewers have no agent → { ai:false }. Excludes engine/system noise.
  */
 export async function GET() {
   try {
-    const names = await commonsPresentAI()
+    const session = await getServerSession(authOptions)
+    const userId = session?.user?.id ?? null
+    const names = userId ? await commonsPresentAI({ ownerId: userId }) : []
     return NextResponse.json(
       { ai: names.length > 0, count: names.length, names },
       { headers: { 'Cache-Control': 'no-store' } },
