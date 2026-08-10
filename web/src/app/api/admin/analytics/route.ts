@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
   }
   const { searchParams } = new URL(req.url)
   const wantPaths = searchParams.get('paths') === '1'
+  const wantAll = searchParams.get('alltime') === '1'
+  const wantRefs = searchParams.get('refs') === '1'
   const hours = clampHours(searchParams.get('hours'))
   try {
     const [summary] = await prisma.$queryRaw<Array<{ pages: bigint; strangers: bigint; agents: bigint }>>`
@@ -91,6 +93,34 @@ export async function GET(req: NextRequest) {
           LIMIT 40`).catch(() => [] as PlayRow[])
       : []
 
+    // ALL-TIME — the lifetime picture. NOTE: vid is a salted DAILY hash, so
+    // `distinct vid` counts a returning person once PER DAY → visitorDays is an
+    // UPPER BOUND on unique humans, not a head-count (there is no lifetime-person
+    // id, by privacy design). strangerDays excludes signed-in `who`.
+    type AllRow = { pages: bigint; visitor_days: bigint; stranger_days: bigint; since: Date | null }
+    const [allTime] = wantAll
+      ? await prisma.$queryRaw<AllRow[]>`
+          SELECT count(*) FILTER (WHERE kind = 'page') AS pages,
+                 count(DISTINCT vid) FILTER (WHERE kind = 'page' AND (who IS DISTINCT FROM 'headless')) AS visitor_days,
+                 count(DISTINCT vid) FILTER (WHERE kind = 'page' AND who IS NULL) AS stranger_days,
+                 min(ts) FILTER (WHERE kind = 'page') AS since
+          FROM "Visit"`
+      : [undefined]
+
+    // REFERRERS — where the traffic comes from, over the window. Reduce each
+    // referrer to its host (reddit.com, google.com, t.co…); a missing referrer is
+    // (direct) — a typed URL, a bookmark, or an app with no Referer header.
+    type RefRow = { source: string; hits: number; visitors: number }
+    const referrers = wantRefs
+      ? await prisma.$queryRawUnsafe<RefRow[]>(`
+          SELECT coalesce(nullif(split_part(regexp_replace(ref, '^https?://(www\\.)?', ''), '/', 1), ''), '(direct)') AS source,
+                 count(*)::int AS hits,
+                 count(DISTINCT vid)::int AS visitors
+          FROM "Visit"
+          WHERE kind = 'page' AND ts > now() - interval '${hours} hours'
+          GROUP BY 1 ORDER BY hits DESC LIMIT 25`).catch(() => [] as RefRow[])
+      : null
+
     return NextResponse.json({
       summary: {
         pages: Number(summary?.pages ?? 0),
@@ -111,6 +141,15 @@ export async function GET(req: NextRequest) {
           newcomerSeconds: r.newcomer_seconds,
         })),
       } : {}),
+      ...(wantAll ? {
+        allTime: {
+          pages: Number(allTime?.pages ?? 0),
+          visitorDays: Number(allTime?.visitor_days ?? 0),   // distinct daily-vids — UPPER BOUND on unique people
+          strangerDays: Number(allTime?.stranger_days ?? 0),
+          since: allTime?.since ? new Date(allTime.since).toISOString() : null,
+        },
+      } : {}),
+      ...(wantRefs ? { referrers: (referrers ?? []).map(r => ({ source: r.source, hits: r.hits, visitors: r.visitors })) } : {}),
     })
   } catch {
     return NextResponse.json({ error: 'analytics unavailable' }, { status: 500 })
