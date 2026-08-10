@@ -98,10 +98,18 @@ export async function POST(req: NextRequest) {
     if (body.action === 'save' && body.scene) {
       // FORK-ON-OVERWRITE: never clobber an existing world in place. A save onto
       // an existing name mints the NEXT version instead — so a build can't erase
-      // main or a branch (the branch-create/auth hole). Pass overwrite:true only
-      // for a deliberate head-update (the eye already saves to fresh names).
+      // main or a branch (the branch-create/auth hole).
+      //
+      // overwrite:true SKIPS that safety net (edit-the-head-in-place), so it is a
+      // PRIVILEGED op — the client can NOT be trusted to opt out of forking. Only
+      // a caller with GOVERN authority over THIS exact scene may set it: admin, or
+      // the owner of the caller's own branch. mayWriteScene(...,'govern') denies a
+      // house/open-ground world to non-admins, so a guest editing a canonical
+      // world (globewarp, …) ALWAYS forks to their own branch even if the request
+      // carries overwrite:true — closing the guest-clobbers-canonical hole.
       let target = body.name
-      if (body.overwrite !== true && loadScene(target)) {
+      const mayOverwrite = body.overwrite === true && await mayWriteScene(req, target, 'govern')
+      if (!mayOverwrite && loadScene(target)) {
         const bm = target.match(/^(.*⑂\s*.+?)\s*·\s*v(\d+)\s*$/)
         if (bm) {
           let n = parseInt(bm[2], 10)
