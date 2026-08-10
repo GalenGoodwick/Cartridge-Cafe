@@ -546,6 +546,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     // 2) FLUSH on leave — a final save so nothing since the last debounce is lost.
     // NOT a reset: it persists the current state. Only for persist worlds.
     const flush = () => {
+      // never flush before the load completed (an early close would persist a
+      // half-booted state over the real save) — and NEVER during an R reset:
+      // the reset nulls the player rows, then reloads; this pagehide flush was
+      // re-writing the pre-reset state right after the purge (the second half
+      // of "reset doesn't stick").
+      if (!autoSaveReadyRef.current) return
       const wd = simulationRef.current?.worldData
       // SAVE STATES: final capture on leave so nothing since the last debounce is lost
       if (wd && romBaselineRef.current && autoSaveReadyRef.current) {
@@ -2079,11 +2085,36 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         const srvReset: Promise<unknown> = spaceSlug
           ? fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/reset`, { method: 'POST', credentials: 'same-origin' }).catch(() => null)
           : Promise.resolve(null)
-        void Promise.race([srvReset, new Promise(r => setTimeout(r, 6000))])
+        // PLAYER HALF (Galen, Aug 10 — "tideglass and veilfire keep reloading
+        // the game state as it is"): the world reset alone is NOT a fresh game,
+        // because boot's tryLoad pours the player's own :__autosave/:__state
+        // rows right back in. R must reset THIS PLAYER too: null both rows
+        // (the loaders skip null data) in the same await barrier. And silence
+        // every save writer FIRST — the frame-loop autosave and the pagehide
+        // flush all gate on autoSaveReadyRef, and either one firing after the
+        // purge would write the pre-reset state straight back (the flush fires
+        // ON the reload we're about to trigger).
+        autoSaveReadyRef.current = false
+        const baseR = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
+        const nullSlot = (slot: string) => fetch('/api/engine/save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slot, data: null, scope: 'user', anon: whoRef.current }),
+        }).catch(() => null)
+        const playerReset = Promise.allSettled([nullSlot(`${baseR}:__autosave`), nullSlot(`${baseR}:__state`)])
+        void Promise.race([Promise.all([srvReset, playerReset]), new Promise(r => setTimeout(r, 6000))])
           .then(() => window.location.reload())
       } else {
         // reset: forget this session's run state + saved stash, then reload fresh
         for (const k of Object.keys(sim.worldData)) if (k.startsWith('__')) delete sim.worldData[k]
+        // PLAYER HALF (same law as spaces): a scene's per-player rows would
+        // reload the purged state right back — null them and the local copy.
+        delete sim.worldData['save']
+        autoSaveSerRef.current = ''; stateSaveSerRef.current = ''
+        const baseS = (playScene || '').split(' ⑂ ')[0]
+        if (baseS) for (const suf of [':__autosave', ':__state']) {
+          void fetch('/api/engine/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slot: baseS + suf, data: null, scope: 'user', anon: whoRef.current }) }).catch(() => null)
+        }
         playLoadedRef.current = null   // force the load effect to re-run this scene
         setReloadTick(v => v + 1)
       }
