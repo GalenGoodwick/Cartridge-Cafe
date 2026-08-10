@@ -1160,10 +1160,12 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     if (typeof BroadcastChannel === 'undefined') return
     const tabId = Math.random().toString(36).slice(2)
     const bc = new BroadcastChannel('cc-tab')
+    let closed = false   // announce() runs from an async .finally — the effect may
+                         // have already torn down and closed the channel by then
     const takeSeat = () => { activeTabRef.current = true; setBlocked(false); pause(false) }
     // announce we hold the seat, stamped with WHO we are, so siblings can tell
     // "same player, newer tab" (bump) from "a different identity" (leave alone).
-    const announce = () => bc.postMessage({ type: 'claim', tabId, who: identityRef.current })
+    const announce = () => { if (closed) return; try { bc.postMessage({ type: 'claim', tabId, who: identityRef.current }) } catch { /* channel closed mid-teardown */ } }
     const claim = () => { takeSeat(); announce() }   // the PLAY HERE button
     claimRef.current = claim
     bc.onmessage = (e) => {
@@ -1180,7 +1182,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     fetch('/api/auth/session').then(r => r.json()).then(s => {
       identityRef.current = (s?.user?.id as string) || 'anon'
     }).catch(() => {}).finally(announce)
-    return () => bc.close()
+    return () => { closed = true; bc.close() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

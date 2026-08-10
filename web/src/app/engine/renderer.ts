@@ -756,11 +756,22 @@ export class FieldRenderer {
     // Presence staging buffer — created dynamically in schedulePresenceReadback
     // sized to numFields * bytesPerRow * gridSize for per-field rendering
 
+    // TEARDOWN RACE: init awaits through heavy shader compiles; a dispose()
+    // (StrictMode remount / navigation away — common on a heavy world like
+    // tideglass) nulls this.device mid-flight. The pipeline builders deref
+    // this.device, so building after a dispose throws "null is not an object" as
+    // an UNHANDLED rejection. `device` is our local, live handle; if this.device
+    // no longer IS it, the renderer was torn down — bail cleanly. JS is single-
+    // threaded, so dispose can only run at an await, never between this guard and
+    // the builder's synchronous createPipelineLayout — so a guard before each
+    // builder call fully closes it.
+    if (this.device !== device) return false
     // Build base pipeline
     const baseFragModule = device.createShaderModule({ code: buildBaseFragmentShader() })
     this.basePipeline = await this.createRenderPipeline(baseFragModule, this.baseTextureBindGroupLayout!, undefined)
 
     // Build mask clear pipeline
+    if (this.device !== device) return false   // disposed during the base-pipeline await
     const maskClearFragModule = device.createShaderModule({ code: buildMaskClearShader() })
     this.maskClearPipeline = await this.createMaskClearPipeline(maskClearFragModule)
 

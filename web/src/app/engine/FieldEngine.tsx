@@ -3497,11 +3497,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     let cancelled = false
 
     async function initEngine() {
-    let ok = await renderer.init(canvas!)
+    // init() can REJECT if a teardown (StrictMode remount / navigation) nulls the
+    // device mid-init — treat a throw exactly like a failed init, never let it
+    // escape as an unhandled rejection. The cancelled-guard below then handles the
+    // unmount silently; a genuine transient earns the one retry.
+    let ok = false
+    try { ok = await renderer.init(canvas!) } catch { ok = false }
     if (!ok && !cancelled) {
       // transient device loss (tab remounts, GPU pressure) — one retry earns a lot
       await new Promise(r => setTimeout(r, 700))
-      ok = await renderer.init(canvas!)
+      try { ok = await renderer.init(canvas!) } catch { ok = false }
     }
     if (cancelled) return   // StrictMode/remount cleanup — not a failure, say nothing
     if (!ok) {
