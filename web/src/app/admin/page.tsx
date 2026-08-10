@@ -10,6 +10,15 @@ type Analytics = {
   summary: { pages: number; strangerUniques: number; agents: number }
   bridgePerHour: { hour: string; n: number }[]
   topTalkers: Talker[]
+  window?: { hours: number }
+  allTime?: { pages: number; visitorDays: number; strangerDays: number; since: string | null }
+  referrers?: { source: string; hits: number; visitors: number }[]
+  worldPaths?: { path: string; hits: number; visitors: number; strangers: number; newcomers: number }[]
+  playtime?: { world: string; scene: string; sessions: number; totalSeconds: number; medianSeconds: number; newcomerSeconds: number }[]
+}
+type Stats = {
+  users: { rows_nonGuest: number; guests: number; newRows_7d: number }
+  worlds: { total: number; public: number; new_7d: number }
 }
 type Hazard = { name?: string; reason?: string; phase?: string; line?: number; col?: number; snippet?: string; author?: string; gpuModel?: string; stack?: string }
 type FaultReport = { at: string; phase: string; url?: string; scene?: string; hazards: Hazard[] }
@@ -25,6 +34,7 @@ export default function AdminPage() {
   const [busy, setBusy] = useState('')
   const [openRoot, setOpenRoot] = useState('')
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [stats, setStats] = useState<Stats | null>(null)
   const [faults, setFaults] = useState<FaultReport[] | null>(null)
   const [faultFilter, setFaultFilter] = useState('')
 
@@ -37,8 +47,12 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    fetch('/api/admin/analytics').then(r => r.ok ? r.json() : null)
+    // one richer pull: 48h bridge watch + lifetime totals + traffic sources +
+    // who-played-what over the last day (newcomers & playtime).
+    fetch('/api/admin/analytics?paths=1&alltime=1&refs=1&hours=24').then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setAnalytics(d) }).catch(() => {})
+    fetch('/api/admin/stats').then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setStats(d) }).catch(() => {})
     loadFaults()
   }, [])
 
@@ -134,6 +148,70 @@ export default function AdminPage() {
     </div>
   )
 
+  const fmtDur = (s: number) => (s >= 3600 ? (s / 3600).toFixed(1) + 'h' : s >= 60 ? Math.round(s / 60) + 'm' : Math.round(s) + 's')
+
+  // AT A GLANCE — accounts, lifetime reach, where traffic comes from, and which
+  // worlds newcomers played + how long they stayed. Merges worldPaths (visits,
+  // newcomers) with playtime (sessions, median dwell) keyed by the world label.
+  const Overview = () => {
+    const a = analytics
+    if (!stats && !a?.allTime) return null
+    const label = (path: string) => { try { return decodeURIComponent(path.split('/').filter(Boolean).pop() || path) } catch { return path } }
+    const worlds = new Map<string, { label: string; visitors?: number; newcomers?: number; median?: number; total?: number }>()
+    for (const w of a?.worldPaths ?? []) { const l = label(w.path); worlds.set(l.toLowerCase(), { label: l, visitors: w.visitors, newcomers: w.newcomers }) }
+    for (const p of a?.playtime ?? []) { const k = p.world.toLowerCase(); const e = worlds.get(k) ?? { label: p.world }; e.median = p.medianSeconds; e.total = p.totalSeconds; worlds.set(k, e) }
+    const worldRows = [...worlds.values()].sort((x, y) => (y.newcomers ?? 0) - (x.newcomers ?? 0) || (y.total ?? 0) - (x.total ?? 0)).slice(0, 12)
+    const win = a?.window?.hours ? `LAST ${a.window.hours}H` : 'RECENT'
+    const refs = (a?.referrers ?? []).filter(r => r.source !== 'cartridge.cafe').slice(0, 8)   // drop internal nav
+    return (
+      <div style={{ marginBottom: 30, padding: '16px 18px', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 12, background: 'rgba(20,14,10,0.55)' }}>
+        <div style={{ fontSize: 12, letterSpacing: '0.2em', color: '#ffb25a', marginBottom: 12 }}>AT A GLANCE</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          {stats && <Stat label="ACCOUNTS" value={stats.users.rows_nonGuest} />}
+          {stats && <Stat label="GUESTS" value={stats.users.guests} />}
+          {stats && <Stat label="WORLDS" value={stats.worlds.total} />}
+          {a?.allTime && <Stat label="VIEWS · ALL TIME" value={a.allTime.pages} />}
+          {a?.allTime && <Stat label="VISITORS ≤" value={a.allTime.visitorDays} />}
+          {a?.allTime && <Stat label="STRANGERS" value={a.allTime.strangerDays} />}
+        </div>
+        {a?.allTime?.since && (
+          <div style={{ fontSize: 10, color: '#c9b89655', marginBottom: 16 }}>
+            since {new Date(a.allTime.since).toLocaleDateString()} · <b>VISITORS ≤</b> counts distinct daily ids (a returning person once per day) — an upper bound, not a head-count
+          </div>
+        )}
+        {refs.length > 0 && (
+          <>
+            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>WHERE THEY COME FROM · {win}</div>
+            <div style={{ marginBottom: 16 }}>
+              {refs.map(r => (
+                <div key={r.source} style={{ display: 'flex', gap: 10, padding: '4px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
+                  <span style={{ flex: 1, fontSize: 13, color: r.source === '(direct)' ? '#c9b89690' : '#d8cbb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.source}</span>
+                  <span style={{ fontSize: 13, color: '#c9b896', width: 88, textAlign: 'right' }}>{r.visitors.toLocaleString()} visitors</span>
+                  <span style={{ fontSize: 11, color: '#c9b89660', width: 70, textAlign: 'right' }}>{r.hits.toLocaleString()} hits</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {worldRows.length > 0 && (
+          <>
+            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>WORLDS · {win} · newcomers &amp; how long they stay</div>
+            <div>
+              {worldRows.map(w => (
+                <div key={w.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
+                  <span style={{ flex: 1, fontSize: 13, color: '#ffdba8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.label}</span>
+                  <span style={{ fontSize: 12, color: '#9be3a8', width: 62, textAlign: 'right' }}>{w.newcomers ?? 0} new</span>
+                  <span style={{ fontSize: 12, color: '#c9b896', width: 58, textAlign: 'right' }}>{w.visitors ?? '·'} vis</span>
+                  <span style={{ fontSize: 12, color: '#ffb25a', width: 78, textAlign: 'right' }}>{w.median != null ? fmtDur(w.median) + ' med' : '·'}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
   const BridgeWatch = () => {
     if (!analytics) return null
     const { summary, bridgePerHour, topTalkers } = analytics
@@ -181,6 +259,7 @@ export default function AdminPage() {
         <div style={{ fontSize: 13, color: '#c9b89680', marginBottom: 28 }}>
           One row per world. A branch&rsquo;s switch covers all its versions. PRIVATE = unlisted everywhere; the direct /hub link still works.
         </div>
+        <Overview />
         <BridgeWatch />
         {err && <div style={{ color: '#ff8080', fontSize: 16 }}>{err}</div>}
         {!err && !roots && <div style={{ color: '#c9b896', fontSize: 14 }}>fetching the shelf…</div>}
