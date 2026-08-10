@@ -2066,12 +2066,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         // the un-reset server copy back in ("reset properly, then put me back
         // where I was"). Reset the STORED snapshot too; its __bridge_rev bump
         // also makes any other stale tab reload instead of syncing old state
-        // back. Guests 404 harmlessly (their state never syncs). Bounded so R
-        // never hangs on a dead network — reload fires either way.
-        const srvReset = spaceSlug
-          ? fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/reset`, { method: 'POST' }).catch(() => null)
+        // back. Guests 404 harmlessly (their state never syncs).
+        //
+        // AWAIT the reset before reloading (Galen, Aug 9). The old 1.5s race
+        // reloaded when EITHER the reset OR the timer won — but resetWorld does
+        // several DB round-trips and for an owner with real state can exceed
+        // 1.5s, so the reload beat the reset and the fresh page fetched the
+        // STILL-un-reset snapshot: "R reloads in the exact same space." Now the
+        // fetch resolving means the server has written the reset, so the reload's
+        // snapshot fetch is guaranteed clean. The 6s cap is a dead-network
+        // backstop ONLY — a normal reset finishes well under a second.
+        const srvReset: Promise<unknown> = spaceSlug
+          ? fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/reset`, { method: 'POST', credentials: 'same-origin' }).catch(() => null)
           : Promise.resolve(null)
-        void Promise.race([srvReset, new Promise(r => setTimeout(r, 1500))])
+        void Promise.race([srvReset, new Promise(r => setTimeout(r, 6000))])
           .then(() => window.location.reload())
       } else {
         // reset: forget this session's run state + saved stash, then reload fresh
