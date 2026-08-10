@@ -67,13 +67,19 @@ async function run(req: NextRequest): Promise<NextResponse> {
     }
   } catch { /* scenes are best-effort; spaces still sweep */ }
 
-  const all = [...worlds, ...sceneWorlds]
+  let all = [...worlds, ...sceneWorlds]
+
+  // ?slug=<slug> targets ONE world (a space slug or 'scene:<Name>') — heal a
+  // single heavy world in ISOLATION (fresh eye, no accumulated pipelines) or
+  // retry a specific failure, without sweeping everything.
+  const slugParam = new URL(req.url).searchParams.get('slug')
+  if (slugParam) all = all.filter(w => w.slug === slugParam || w.slug === 'scene:' + slugParam)
 
   // ?max=N caps how many worlds this run photographs — lets a first backfill go
   // in gentle batches instead of one long run that could strain the eye.
   const maxParam = Number(new URL(req.url).searchParams.get('max'))
   const maxBakes = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined
-  const summary = await bakeAllUnhealthy(all, { maxBakes })
+  const summary = await bakeAllUnhealthy(all, { maxBakes, force: new URL(req.url).searchParams.get('force') === '1' })
   return NextResponse.json({ ok: true, summary })
 }
 

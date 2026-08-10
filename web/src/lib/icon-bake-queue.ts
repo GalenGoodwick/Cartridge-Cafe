@@ -34,12 +34,12 @@ function pump(): void {
 /** Bake ONE world now (awaited). Loads its stored record, and only calls the eye
  *  if the icon is missing or stale for the world's current look. Returns the
  *  health it found (before any bake) so sweeps can summarize. */
-export async function bakeIconIfNeeded(slug: string, snap: RenderSnapshot): Promise<IconHealth> {
+export async function bakeIconIfNeeded(slug: string, snap: RenderSnapshot, force = false): Promise<IconHealth> {
   const hash = iconSnapshotHash(snap as never)
   const key = iconSlotKey(slug)
   const existing = (await loadGameSlot(key).catch(() => undefined)) as IconRecord | undefined
   const health = iconHealth(existing, hash)
-  if (!needsBake(health)) return health
+  if (!force && !needsBake(health)) return health
   const res = await bakeIconRecord(snap, hash, renderSnapshot, Date.now())
   // transient failure (eye down) → do NOT persist, so it retries next time
   if (res.ok) await saveGameSlot(key, res.record).catch(() => {})
@@ -67,14 +67,14 @@ export type HealSummary = { checked: number; baked: number; ok: number; black: n
  *  fast slot reads. `maxBakes` caps how many renders one run performs. */
 export async function bakeAllUnhealthy(
   worlds: Array<{ slug: string; snap: RenderSnapshot }>,
-  opts: { maxBakes?: number } = {},
+  opts: { maxBakes?: number; force?: boolean } = {},
 ): Promise<HealSummary> {
   const cap = opts.maxBakes ?? Infinity
   const summary: HealSummary = { checked: 0, baked: 0, ok: 0, black: 0, skipped: 0 }
   for (const w of worlds) {
     if (summary.baked >= cap) break
     summary.checked++
-    const before = await bakeIconIfNeeded(w.slug, w.snap).catch(() => 'skipped' as const)
+    const before = await bakeIconIfNeeded(w.slug, w.snap, opts.force).catch(() => 'skipped' as const)
     if (before === 'ok') summary.ok++
     else if (before === 'black') summary.black++
     else if (before === 'missing' || before === 'stale') { summary.baked++; await sleep(SWEEP_DELAY_MS) }
