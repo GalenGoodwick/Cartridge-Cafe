@@ -1333,6 +1333,31 @@ mechanism. What that means for you as a builder:
   keep ALL game state in them — anything squirreled elsewhere won't reset.
 - Do NOT hand-roll your own R/reset handling in hooks; honor `__fresh` for
   per-session latches (pattern above) and let the engine own the rest.
+
+#### `define_state` — declare your game state, the engine runs its lifecycle (v1)
+
+Instead of the `__resets` array + hand-rolled `if (!wd.__vf) wd.__vf = {}` init in
+every hook, **declare one manifest** and the engine drives init + reset off it:
+
+```json
+{ "type": "define_state", "manifest": {
+    "holder": "__vf",                       // the ONE worldData key all game state lives under
+    "base": { "hp": 1, "weapon": 2, "px": 0, "pz": -6 }   // the start state
+} }
+```
+
+What the engine then does, for free:
+- **INIT** — seeds `worldData.__vf` from `base` at load when it's absent, so every
+  hook can trust the holder exists (drop the `if (!wd.__vf)` guards).
+- **RESET** — R / `reset_world` restore the holder to `base` (a baked `set_original`
+  still wins as the on-disk truth). `__vf` is auto-treated as progress, so you no
+  longer need to list it in `__resets`.
+- The manifest is CONFIG — a reset never wipes it. The holder may not alias engine
+  infrastructure (`__nodes`, `gpuUniforms`, `save`, …); it must be your own key.
+
+Legacy-neutral: a world with no manifest behaves exactly as before. `persist` and
+`keepOnDeath` fields are accepted now (per-player save projection + death-keeps-items)
+but are driven in a later phase — declaring them today is forward-safe.
 - One-shot *celebrations* (captions, sounds) may be edge-fired — but gate them
   on the state check, so they re-announce correctly for restored winners.
 

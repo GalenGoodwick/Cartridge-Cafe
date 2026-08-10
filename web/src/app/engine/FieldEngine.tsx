@@ -8,7 +8,7 @@ import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
 import { deriveContext, can, type WorldContext } from '@/lib/worldContext'
-import { resetPatch } from '@/lib/gameStateKeys'
+import { resetPatch, initHolderPatch } from '@/lib/gameStateKeys'
 import { FocusChip } from './WorldChrome'
 import type { FieldEffectData } from './renderer'
 import { FieldSimulation } from './simulation'
@@ -2571,6 +2571,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             for (const k of ['__chapters', '__trig', ...extra]) delete snapshot.worldData[k]
           }
           Object.assign(sim.worldData, stripSave(snapshot.worldData))
+          // GAME-STATE INIT (DESIGN-game-state.md v1): seed the declared holder from
+          // the manifest `base` when absent, so hooks can trust it exists (no more
+          // per-hook `if(!wd.__vf)wd.__vf={}`). No-op without a manifest; never
+          // overwrites a present holder (a loaded save / restored original wins).
+          {
+            const initPatch = initHolderPatch(sim.worldData as Record<string, unknown>)
+            for (const [k, v] of Object.entries(initPatch)) (sim.worldData as Record<string, unknown>)[k] = v
+          }
           if (reset) sim.worldData.__fresh = true   // tell the hook to reset per-session latches
           // SAVE STATES: this snapshot IS the ROM — capture the boot baseline (from the
           // SNAPSHOT, never the live sim, so player state can't bake into the baseline).

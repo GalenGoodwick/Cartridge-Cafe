@@ -741,6 +741,32 @@ export async function POST(req: NextRequest) {
         results.push({ type: 'reset_world', ...out, next: 'open tabs must HARD-REFRESH to pick up the reset (a running tab would otherwise sync its old state back).' })
         continue
       }
+      // define_state — declare the game-state MANIFEST (DESIGN-game-state.md v1):
+      // { holder, base?, version?, persist?, keepOnDeath? }. The engine drives
+      // INIT (seed holder from base at load) + RESET (restore holder to base)
+      // off it — replacing hand-rolled `if(!wd.X)X={}` + __resets. Validated
+      // then persisted as the worldData.__state config key (never reset).
+      if (cmd.type === 'define_state' && isSpaceScoped) {
+        const m = (cmd.manifest ?? cmd.state) as Record<string, unknown> | undefined
+        const holder = m && typeof m.holder === 'string' ? m.holder.trim() : ''
+        if (!m || !holder) {
+          results.push({ type: 'define_state', ok: false, error: 'define_state needs { manifest: { holder: "<worldData key>", base?: {...} } }' })
+          continue
+        }
+        if (holder.startsWith('key_') || holder.startsWith('mouse_') || ['__nodes','__nodeSeq','__sandbox','__bridge_rev','__original','gpuUniforms','gpuPopulation','save'].includes(holder)) {
+          results.push({ type: 'define_state', ok: false, error: `holder "${holder}" collides with engine infrastructure — game state must be its own key (e.g. "__vf")` })
+          continue
+        }
+        const manifest: Record<string, unknown> = { holder }
+        if (typeof m.version === 'number') manifest.version = m.version
+        if (m.base && typeof m.base === 'object') manifest.base = m.base
+        if (Array.isArray(m.persist)) manifest.persist = m.persist.filter(x => typeof x === 'string')
+        if (Array.isArray(m.keepOnDeath)) manifest.keepOnDeath = m.keepOnDeath.filter(x => typeof x === 'string')
+        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __state: manifest } })
+        results.push({ type: 'define_state', ok: true, manifest,
+          next: `game state declared under "${holder}". The engine now seeds it from base at load and restores it on R/reset_world. Bake the true start with set_original.` })
+        continue
+      }
       // set_original — bake the world's CURRENT progress state as its canonical
       // ORIGINAL (what R-reset / reset_world restores). Auto-capture fires at
       // brief_done; this is the MANUAL bake the original-state ship advertised
