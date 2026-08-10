@@ -172,40 +172,6 @@ export async function createBranch(d: CreateBranchDeps, labelRaw: string) {
   }
 }
 
-export interface BeginAlterDeps {
-  spaceSlug?: string
-  plugToken: string | null
-  setAlterWarnOpen: (b: boolean) => void
-  setPlugBusy: (b: boolean) => void
-  setPlugToken: (t: string | null) => void
-  openPlug: () => void
-}
-/** ALTER, confirmed: keep a pre-alter save point (identical saves dedup), mint
- *  the live-scoped token, open the plug box. The altered world IS main — the
- *  save point is the way back. */
-export async function beginAlter(d: BeginAlterDeps) {
-  if (!d.spaceSlug) return
-  d.setAlterWarnOpen(false)
-  try {
-    await fetch(`/api/spaces/${encodeURIComponent(d.spaceSlug)}/versions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: 'before alter' }),
-    })
-  } catch { /* the save point is a courtesy, not a gate */ }
-  if (!d.plugToken) {
-    d.setPlugBusy(true)
-    try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(d.spaceSlug)}/token`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'live alter' }),
-      })
-      const dd = await r.json()
-      if (r.ok) d.setPlugToken(dd.token)
-    } finally { d.setPlugBusy(false) }
-  }
-  d.openPlug()   // unified: top-most, competitors (edit coach / console) closed
-}
-
 /* ───────────────────────── world-swap hygiene + load ───────────────────── */
 
 export interface ResetWorldIdentityDeps extends EngineRefs {

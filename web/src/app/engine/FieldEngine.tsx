@@ -181,10 +181,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
   const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
-  // ALTER — the owner's CONNECT AI on a live space edits MAIN directly (a space
-  // token is live-scoped, there is no eye on the DB path). The warning box makes
-  // that explicit before any token is handed out; a pre-alter save point is kept.
-  const [alterWarnOpen, setAlterWarnOpen] = useState(false)
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
@@ -337,8 +333,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (alterWarnOpen) setAlterWarnOpen(false)
-      else if (plugOpen) setPlugOpen(false)
+      if (plugOpen) setPlugOpen(false)
       else if (instrOpen) { setInstrOpen(false); setInstrEdit(false) }
       else if (branchesOpen) setBranchesOpen(false)
       else return
@@ -347,13 +342,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     }
     window.addEventListener('keydown', onEsc, { capture: true })
     return () => window.removeEventListener('keydown', onEsc, { capture: true })
-  }, [alterWarnOpen, plugOpen, instrOpen, branchesOpen])
+  }, [plugOpen, instrOpen, branchesOpen])
 
   // tell the shell when a panel is up so its overlays (count pills, hover
   // cards) duck out from under the modal
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen || alterWarnOpen }))
-  }, [plugOpen, instrOpen, branchesOpen, alterWarnOpen])
+    window.dispatchEvent(new CustomEvent('cafe:modal', { detail: plugOpen || instrOpen || branchesOpen }))
+  }, [plugOpen, instrOpen, branchesOpen])
   const [branchList, setBranchList] = useState<Array<{ name: string; author: string; v: number }>>([])
   // every world gets a chat — one commons per family (voting discussion included)
   const [worldChatOpen, setWorldChatOpen] = useState(false)
@@ -1700,9 +1695,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       'Edit freely; saving opens your own branch of it. The original is immortal.')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
-
-  /** ALTER, confirmed — scene-io.beginAlter */
-  const beginAlter = useCallback(() => sceneIO.beginAlter({ spaceSlug, plugToken, setAlterWarnOpen, setPlugBusy, setPlugToken, openPlug }), [spaceSlug, plugToken, openPlug])
 
   const handleSaveScene = useCallback(() => sceneIO.saveScenePrompted({ simulationRef, rendererRef, allStepHookSnapshots, showToast, refreshSceneList }), [showToast, refreshSceneList])
 
@@ -5614,7 +5606,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
   const selectedField = selection.selectedFieldId ? fields.get(selection.selectedFieldId) : null
 
-  // CONNECT AI open flow — shared by the ⚡ CONNECT AI / ALTER button AND the
+  // CONNECT AI open flow — shared by the ⚡ CONNECT AI button AND the
   // "AI UNPLUGGED" status pill (clicking the pill should DO the obvious thing).
   const openConnectAi = async () => {
     // an AI prompt box: its key mint needs a session. Auth FIRST.
@@ -5627,8 +5619,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       }
       setMe(sess.user.email || sess.user.name || null)
     }
-    // owner on their LIVE space: CONNECT AI *is* ALTER — warn before handing the key
-    if (can(ctx, 'alterLive') && !plugOpen) { setAlterWarnOpen(true); return }
+    // owner on their own LIVE space: editing goes through a BRANCH, never live
+    // main — the working world is never mutated. Open CREATE BRANCH; the AI edits
+    // the branch, then SET HEAD publishes it as the new version. (No more ALTER.)
+    if (can(ctx, 'branchToEdit') && !plugOpen) { handleBranch(); return }
     setPlugOpen(v => !v)
     if (!plugToken && spaceSlug) {
       setPlugBusy(true)
@@ -6250,12 +6244,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 immortal — you branch it or brew your own), so it's gone there. */}
             {(spaceSlug || lastSceneRef.current?.includes(' ⑂ ')) && <button
               onClick={openConnectAi}
-              title={can(ctx, 'alterLive')
-                ? 'plug an AI into the LIVE world — it alters main directly, no branch'
+              title={can(ctx, 'branchToEdit')
+                ? 'edit on a branch — your live world stays untouched until you publish it'
                 : undefined}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
-              {can(ctx, 'alterLive') ? '⚡ ALTER' : '⚡ CONNECT AI'}
+              ⚡ CONNECT AI
             </button>}
             {(isOwner || !spaceId) && spaceSlug && (
               <button
@@ -6505,7 +6499,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
                   <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
-                  <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI to build or alter it.</div>
+                  <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI; edits open a branch you publish.</div>
                   <div><span className="text-white/90">◆ MAKE ICON</span> — have your AI author the world&apos;s shelf badge.</div>
                   <div><span className="text-emerald-300">⑂ CREATE BRANCH</span> — fork this world to challenge it in the vote.</div>
                   <div><span className="text-amber-300">⚔ VOTE</span> — open the reckoning (needs at least one branch).</div>
@@ -6527,67 +6521,32 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             <BranchesPanel cellBase={cellBase} cellData={cellData} setCellData={setCellData} cellDraft={cellDraft} setCellDraft={setCellDraft} saveCellDoc={saveCellDoc} whoRef={whoRef} setBranchesOpen={setBranchesOpen} branchList={branchList} handleLoadScene={handleLoadScene} spaceSlug={spaceSlug} discOpen={discOpen} setDiscOpen={setDiscOpen} />
           )}
 
-          {/* ALTER — the warning gate in front of the owner's live plug: no token
-              until the owner has read what "live" means. BRANCH INSTEAD is the out. */}
-          {alterWarnOpen && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setAlterWarnOpen(false)}>
-              <div className="max-w-md w-[92%] rounded-xl border border-amber-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
-                <div className="text-[16px] tracking-[0.25em] text-amber-300/90 mb-3">⚠ ALTER THE LIVE WORLD</div>
-                <p className="text-white/70 text-[16px] mb-2">
-                  This plugs an AI straight into the LIVE world — <span className="text-amber-200">no branch is made</span>.
-                  Every edit lands on main, for everyone, as it happens.
-                </p>
-                <p className="text-white/50 text-[16px] mb-4">
-                  A save point of the world as it stands is kept first; what the AI leaves becomes the new main.
-                  ⏱ VERSIONS is the way back.
-                </p>
-                <div className="flex gap-2 justify-end">
-                  <button
-                    className="text-[14px] tracking-[0.15em] border border-white/20 rounded px-3 py-1.5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-                    onClick={() => { setAlterWarnOpen(false); handleBranch() }}
-                  >
-                    ⑂ BRANCH INSTEAD
-                  </button>
-                  <button
-                    className="text-[14px] tracking-[0.15em] rounded px-3 py-1.5 bg-amber-500/80 hover:bg-amber-400 text-black transition-colors"
-                    onClick={beginAlter}
-                  >
-                    ALTER LIVE
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* CONNECT AI / ALTER — the plug box: everything an agent needs to edit
-              this branch, or (owner on a live space) to alter main directly */}
+          {/* CONNECT AI — the plug box: everything an agent needs to edit this
+              branch (or build a queued draft directly). Editing an established
+              live world no longer happens here — that routes through a branch. */}
           {plugOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
             const mintFailed = !plugToken && !plugBusy   // no key — a copyable briefing would be dead on arrival
             const tok = plugToken || (plugBusy ? '…minting…' : '(no key — see below)')
             const cur = lastSceneRef.current || ''
             const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
-            // the space token edits LIVE (no eye on the DB path) — the box must say so
-            const alter = !bm && !!spaceSlug && !!isOwner
             const briefing = worldBriefingPrompt({
-              token: tok, worldName: cur || spaceSlug || '', alter: !!alter,
+              token: tok, worldName: cur || spaceSlug || '',
               branch: bm ? { base: bm[1], by: bm[2], version: bm[3] } : null,
               brief: plugBrief, origin,
             })
             return (
               <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
-                <div className={`max-w-lg w-[92%] rounded-xl border ${alter ? 'border-amber-400/25' : 'border-white/15'} bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85`} onClick={e => e.stopPropagation()}>
+                <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className={`text-[16px] tracking-[0.25em] ${alter ? 'text-amber-300/80' : 'text-white/50'}`}>{alter ? '⚡ ALTER THE LIVE WORLD' : '⚡ CONNECT YOUR AI'}</div>
+                    <div className="text-[16px] tracking-[0.25em] text-white/50">⚡ CONNECT YOUR AI</div>
                     <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
                       <span className={`inline-block w-2 h-2 rounded-full ${agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
                       {agentConnected ? 'LIVE' : 'WAITING'}
                     </div>
                   </div>
                   <p className="text-white/60 mb-2 text-[16px]">
-                    {alter
-                      ? 'Describe the alteration, then paste this to any AI (Claude, or anything that speaks HTTP). It edits the LIVE world — main changes as it works. When it settles, SAVE VERSION records the result.'
-                      : 'Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). It builds in this branch; the eye versions every settled edit.'}
+                    Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). The eye versions every settled edit.
                   </p>
                   {mintFailed ? (
                     <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-[16px] leading-relaxed text-amber-100/90">
@@ -6601,29 +6560,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   ) : (
                     <>
                       <input value={plugBrief} onChange={e => setPlugBrief(e.target.value)} maxLength={500}
-                        placeholder={alter ? 'what should the AI alter in the live world? (optional)' : 'what should the AI build in this branch? (optional)'}
+                        placeholder="what should the AI build here? (optional)"
                         className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[17px] text-white/90 outline-none focus:border-white/35 mb-3" />
                       <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[16px] text-emerald-200/90 select-all max-h-56 overflow-y-auto">{briefing}</pre>
                     </>
                   )}
                   <div className="flex gap-2 mt-3 justify-end">
-                    {alter && spaceSlug && (
-                      <button
-                        className="text-[14px] tracking-[0.15em] border border-emerald-400/30 text-emerald-200/90 hover:bg-emerald-400/10 rounded px-3 py-1 transition-colors mr-auto"
-                        title="snapshot the altered world as a version — it is already main; this records it"
-                        onClick={async () => {
-                          try {
-                            const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ note: plugBrief.trim() ? `alter: ${plugBrief.trim().slice(0, 80)}` : 'alter' }),
-                            }).then(x => x.json())
-                            showToast(r.deduped ? `no change since v${r.version?.version} — nothing to save` : `altered world saved as v${r.version?.version} — it is main`, 'success')
-                          } catch { showToast('could not save version', 'error') }
-                        }}
-                      >
-                        ✓ SAVE VERSION
-                      </button>
-                    )}
                     {!mintFailed && (
                       <button
                         className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"

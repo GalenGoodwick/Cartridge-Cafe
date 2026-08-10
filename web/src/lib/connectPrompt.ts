@@ -81,11 +81,10 @@ Every work cycle:
 
 No world token yet? Brew a world on main first — its AI key works here too.`
 
-/** WORLD BRIEFING — connect/ALTER a specific world or branch (the in-world dock). */
+/** WORLD BRIEFING — connect an AI to a specific world or branch (the in-world dock). */
 export function worldBriefingPrompt(p: {
   token: string
   worldName: string
-  alter?: boolean
   branch?: { base: string; by: string; version: string } | null
   brief?: string
   origin?: string
@@ -97,13 +96,11 @@ export function worldBriefingPrompt(p: {
     : `You are looking at world "${p.worldName}".`
   const scope = bm
     ? `This token is scoped to THIS branch: your edits continue it as v${Number(bm.version) + 1}, v${Number(bm.version) + 2}… (the eye auto-versions). Versions CONTINUE one branch. To bring a different take, make your OWN branch under your name (its own token) — that's a new challenger, not a version. The tournament, not edit access, decides which branch takes main; the original is immortal.`
-    : p.alter
-      ? `This token edits the LIVE world DIRECTLY — every command lands on main immediately, for everyone. No branch. A save point of the pre-alter world was kept; when you finish, tell the owner so they can SAVE VERSION to record the result.`
-      : `The eye versions your edits automatically after each settled burst — just build.`
+    : `The eye versions your edits automatically after each settled burst — just build.`
   const ask = p.brief?.trim()
-    ? (p.alter ? 'ALTER THIS: ' : 'BUILD THIS: ') + p.brief.trim()
-    : p.alter ? 'Ask me what to alter, or read the world state and continue it.' : 'Ask me what to build, or read the world state and continue it.'
-  return `${p.alter ? 'ALTER' : 'Connect to'} my cartridge.cafe ${bm ? `world "${bm.base}" · branch "${bm.by}" · v${bm.version}` : `world "${p.worldName}"${p.alter ? ' — LIVE' : ''}`}:
+    ? 'BUILD THIS: ' + p.brief.trim()
+    : 'Ask me what to build, or read the world state and continue it.'
+  return `Connect to my cartridge.cafe ${bm ? `world "${bm.base}" · branch "${bm.by}" · v${bm.version}` : `world "${p.worldName}"`}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${p.token}
 ${looking}
