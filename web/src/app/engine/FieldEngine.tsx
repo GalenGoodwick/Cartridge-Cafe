@@ -4840,6 +4840,28 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [terminalLog, setTerminalLog] = useState<TerminalEntry[]>([])
   const [agentConnected, setAgentConnected] = useState(false)
 
+  // Cafe-wide AI presence: is ANY connected AI live on the commons right now?
+  // The agentConnected flag above is per-tab, per-world (this browser's SSE to
+  // the agent channel). The connect-prompt plugs an AI into the COMMONS, not
+  // into this tab's stream — so the pill also consults commons presence, and a
+  // freshly plugged-in agent lights the indicator everywhere. Poll is cheap and
+  // read-only; the endpoint filters out engine/system bus noise.
+  const [aiOnCommons, setAiOnCommons] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/engine/presence', { cache: 'no-store' })
+        if (!r.ok) return
+        const d = await r.json()
+        if (alive) setAiOnCommons(!!d?.ai)
+      } catch { /* a dropped poll never changes the indicator */ }
+    }
+    poll()
+    const iv = setInterval(poll, 20_000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [])
+
   // SSE subscription to agent command channel
   useEffect(() => {
     let es: EventSource | null = null
@@ -6352,9 +6374,13 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               // busy is connection-independent: bridge writes (an AI editing
               // over HTTP, no SSE) must light the dot just like agent edits
               const busy = Date.now() - aiLastEditRef.current < 2500
+              // connected = this tab's agent SSE OR any AI live on the commons
+              // (the connect-prompt plugs into the commons, not this tab) — so
+              // the indicator confirms the plug-in prompt worked, cafe-wide.
+              const connected = agentConnected || aiOnCommons
               const connectable = !!spaceSlug || !!lastSceneRef.current?.includes(' ⑂ ')
-              const dot = <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
-              const label = busy ? 'AI EDITING' : agentConnected ? 'AI LIVE' : 'AI UNPLUGGED'
+              const dot = <span className={`inline-block w-2 h-2 rounded-full ${busy ? 'bg-amber-400 animate-pulse' : connected ? 'bg-emerald-400' : 'bg-white/25'}`} />
+              const label = busy ? 'AI EDITING' : connected ? 'AI LIVE' : 'AI UNPLUGGED'
               // AI EDITING is a transient status flash, not an invitation — leave it
               // as a plain indicator so it doesn't beg to be clicked mid-edit.
               if (busy) {
@@ -6373,9 +6399,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 ? openConnectAi
                 : () => window.dispatchEvent(new CustomEvent('cafe:open-connect'))
               return (
-                <button onClick={onPill} title={agentConnected ? 'manage the AI connection' : 'connect an AI'}
+                <button onClick={onPill} title={connected ? 'manage the AI connection' : 'connect an AI'}
                   className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
-                  {dot}{label}<span className="text-emerald-300/70">{agentConnected ? '· manage' : '· connect'}</span>
+                  {dot}{label}<span className="text-emerald-300/70">{connected ? '· manage' : '· connect'}</span>
                 </button>
               )
             })()}

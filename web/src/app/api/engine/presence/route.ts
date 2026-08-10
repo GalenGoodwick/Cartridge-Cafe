@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { commonsPresentAI } from '@/lib/commons'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * GET /api/engine/presence
+ * Is any REAL connected AI live on the cafe commons right now? Powers the
+ * "AI UNPLUGGED / AI LIVE" indicator so a viewer can see the plug-in prompt
+ * actually landed an agent — independent of any one world's SSE stream.
+ * Public + non-sensitive (an AI's presence is already shown in the builder UI);
+ * returns just a boolean + the active names. Excludes engine/system bus noise.
+ */
+export async function GET() {
+  try {
+    const names = await commonsPresentAI()
+    return NextResponse.json(
+      { ai: names.length > 0, count: names.length, names },
+      { headers: { 'Cache-Control': 'no-store' } },
+    )
+  } catch {
+    return NextResponse.json({ ai: false, count: 0, names: [] })
+  }
+}
 
 /**
  * POST /api/engine/presence

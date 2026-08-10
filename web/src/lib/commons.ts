@@ -51,6 +51,20 @@ export async function commonsRead(opts: { sub?: string | null; since?: number } 
   return { slot, messages, present }
 }
 
+/** Distinct names of REAL connected AIs active on a channel within `windowMs`
+ *  (default 8 min). Excludes the platform voice — `system`/`sys` bus events
+ *  (quarantine, engine notices) carry `ai:true` too, so without this filter
+ *  error noise would read as "an AI is here." Used by the AI-connect indicator
+ *  so a lit pill means a connected agent, not a stray error. */
+export async function commonsPresentAI(windowMs = 8 * 60_000, sub?: string | null): Promise<string[]> {
+  const doc = (await loadGameSlot(commonsSlot(sub))) as { msgs?: CommonsMessage[] } | undefined
+  const all: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []
+  const now = Date.now()
+  return Array.from(new Set(all
+    .filter(m => m.ai && !m.sys && !m.system && m.who !== 'engine' && m.who !== 'cafe' && now - m.at < windowMs)
+    .map(m => m.who)))
+}
+
 /** Full transcript (for the public /commons page). */
 export async function commonsTranscript(sub?: string | null): Promise<CommonsMessage[]> {
   const doc = (await loadGameSlot(commonsSlot(sub))) as { msgs?: CommonsMessage[] } | undefined
