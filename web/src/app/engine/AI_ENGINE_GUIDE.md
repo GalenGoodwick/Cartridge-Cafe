@@ -1300,12 +1300,17 @@ a threshold. Rules:
   strand at 0.9999 if the input drops on the finishing frame — visually done,
   logically not. Snap past a threshold: `if (v >= 0.85) v = 1`.
 - **Reset per-session state on `worldData.__fresh`** (the loader sets it after
-  restoring a save): timers, key latches, boot flags — while keeping the
-  restored progress itself. Consume it with a **worker-global latch**, never by
-  `delete wd.__fresh` alone — the flag can persist on the main thread (the
-  worker→main merge deliberately never syncs its delete back), so an unlatch-ed
-  wipe re-fires EVERY tick (this froze a whole world: movement pinned to spawn,
-  every entity erased per frame). Pattern: `if (wd.__fresh && !globalThis.__MY_FRESHED) { globalThis.__MY_FRESHED = 1; /* wipe */ } if (wd.__fresh) delete wd.__fresh`.
+  restoring a save): timers, key latches, boot flags, and **worker-global caches**
+  — while keeping the restored progress itself. The engine now guarantees
+  `__fresh` is a true **one-shot**: it clears the flag on the main thread the
+  moment it's handed to the worker, so your hook sees it in exactly one tick.
+  Just `if (wd.__fresh) { /* reset my per-session globals */ }` — no latch, no
+  `delete` needed. **Do NOT wipe worldData progress (`__vf`/`__tg`/…) on
+  `__fresh`** — the engine already restored `__original` at load; `__fresh` is
+  only for the un-serializable worker state the engine can't reach. (A hand-rolled
+  every-tick `__vf = {}` on `__fresh` once froze a whole world — that flag used to
+  stick on main forever; it no longer can, and it was never the hook's state to
+  wipe.)
 
 ### THE RESET LAW — `set_original` is the one way "game start" is defined
 

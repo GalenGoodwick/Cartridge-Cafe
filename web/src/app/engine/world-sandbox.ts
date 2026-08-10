@@ -741,6 +741,17 @@ export class WorldSandbox {
         ? pres.slice(0, 32).map((pp) => { const o = pp as { x?: number; y?: number }; return { x: Number(o.x) || 0, y: Number(o.y) || 0 } })
         : []
       this.worker.postMessage({ type: 'tick', worldData: payload, dt: useDt, fields })
+      // __fresh is a ONE-SHOT session-start signal (the loader sets it after a
+      // reset so hooks can clear per-session worker-globals — timers, caches,
+      // boot latches). It was delivered to the worker in THIS post (payload is a
+      // clone). The engine now OWNS the one-shot: clear it on main immediately so
+      // the worker sees it exactly once. Before this, main never cleared __fresh
+      // and the worker→main merge deliberately drops it — so a hook keying on
+      // __fresh re-fired EVERY tick. An unlatched wipe then ran forever (froze
+      // veilfire Aug 9: movement pinned to spawn, every entity erased per frame).
+      // Progress-state reset is NOT the hook's job — the engine already restored
+      // __original at load; __fresh is only for the un-serializable worker state.
+      if ('__fresh' in sim.worldData) delete sim.worldData['__fresh']
       this.inFlight = true
       this.lastPostAt = now      // hang-detector baseline for this in-flight tick
       this.lastTickAt = now      // wall-clock dt baseline for the NEXT tick
