@@ -571,22 +571,30 @@ export class FieldRenderer {
     if (!adapter) {
       console.error('No WebGPU adapter found')
       if (typeof window !== 'undefined') {
-        // Defer to the SupportGate. It renders the world under a curtain while
-        // it probes, so this init races AHEAD of the gate's verdict — on a
-        // WebGPU-off device we'd fire a redundant gpu-lost fault + telemetry
-        // before the gate concludes 'blocked' (the Windows-ARM cascade: 4
-        // events for one device). Wait for the gate; if it walls this device
-        // off, stay silent — it owns the "why" screen. Only fault when the gate
-        // said 'ok' (a genuine GPU loss on a supported machine) or there's no
-        // gate at all (the headless render probe).
-        const gate = (window as unknown as { __ccGate?: { verdict: 'ok' | 'mobile' | 'nogpu' | 'blocked' | null; ready?: Promise<'ok' | 'mobile' | 'nogpu' | 'blocked' | null> } }).__ccGate
-        if (gate) {
-          let v = gate.verdict
-          if (v == null && gate.ready) {
-            v = await Promise.race([gate.ready, new Promise<null>(r => setTimeout(() => r(null), 6000))])
-          }
-          if (v && v !== 'ok') return false   // gate walls it off & explains why
+        // FAIL-CLOSED defer to the SupportGate (v2). v1 faulted unless the gate
+        // said otherwise — and any miss (gate global absent in a stale
+        // bfcache/SPA bundle, race timeout, eval order) fell through to a
+        // redundant gpu-lost banner + telemetry on a device the gate already
+        // walls off (recurred in the field 75min after v1 shipped). Invariant
+        // now: this path may fault ONLY on the gate's AFFIRMATIVE 'ok' — a
+        // supported machine whose GPU died between the gate's probe and this
+        // init. Every other state — gate absent (headless probe: its own
+        // machinery reports; the console.error above stays), verdict still
+        // null after a bounded wait, or any non-ok verdict — is the gate's
+        // jurisdiction: return silently, its wall is the explanation.
+        type GateVerdict = 'ok' | 'mobile' | 'nogpu' | 'blocked' | null
+        const gate = (window as unknown as { __ccGate?: { verdict: GateVerdict; ready?: Promise<GateVerdict> } }).__ccGate
+        let v: GateVerdict = gate ? gate.verdict : null
+        if (gate && v == null && gate.ready) {
+          // gate concludes in ms-to-~2s; 3s bounds the wait, and its wall is
+          // already up regardless of what we do here
+          v = await Promise.race([gate.ready, new Promise<null>(r => setTimeout(() => r(null), 3000))])
         }
+        if (v !== 'ok') return false   // fail closed: no affirmative clearance, no fault
+        // once per page — a retried init must not double-report the same loss
+        const w = window as unknown as { __ccNoAdapterReported?: boolean }
+        if (w.__ccNoAdapterReported) return false
+        w.__ccNoAdapterReported = true
         // the same WebGL2 tell the SupportGate uses: alive = WebGPU
         // specifically is off (flag/policy); dead = acceleration off or the
         // GPU process crashed. Say the right fix, and REPORT it — an engine
@@ -601,7 +609,7 @@ export class FieldRenderer {
         try {
           void fetch('/api/engine/quarantine', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-            body: JSON.stringify({ phase: 'engine-init', url: window.location?.href, hazards: [{ name: 'no-adapter', reason: 'engine init: adapter null after retry · WebGL2 ' + gl2 + ' · ' + (navigator.userAgent || '').slice(0, 120) }] }),
+            body: JSON.stringify({ phase: 'engine-init', url: window.location?.href, hazards: [{ name: 'no-adapter', reason: 'engine init (gate-ok): adapter null after retry · WebGL2 ' + gl2 + ' · ' + (navigator.userAgent || '').slice(0, 120) }] }),
           }).catch(() => {})
         } catch { /* telemetry never blocks */ }
       }
