@@ -571,6 +571,22 @@ export class FieldRenderer {
     if (!adapter) {
       console.error('No WebGPU adapter found')
       if (typeof window !== 'undefined') {
+        // Defer to the SupportGate. It renders the world under a curtain while
+        // it probes, so this init races AHEAD of the gate's verdict — on a
+        // WebGPU-off device we'd fire a redundant gpu-lost fault + telemetry
+        // before the gate concludes 'blocked' (the Windows-ARM cascade: 4
+        // events for one device). Wait for the gate; if it walls this device
+        // off, stay silent — it owns the "why" screen. Only fault when the gate
+        // said 'ok' (a genuine GPU loss on a supported machine) or there's no
+        // gate at all (the headless render probe).
+        const gate = (window as unknown as { __ccGate?: { verdict: 'ok' | 'mobile' | 'nogpu' | 'blocked' | null; ready?: Promise<'ok' | 'mobile' | 'nogpu' | 'blocked' | null> } }).__ccGate
+        if (gate) {
+          let v = gate.verdict
+          if (v == null && gate.ready) {
+            v = await Promise.race([gate.ready, new Promise<null>(r => setTimeout(() => r(null), 6000))])
+          }
+          if (v && v !== 'ok') return false   // gate walls it off & explains why
+        }
         // the same WebGL2 tell the SupportGate uses: alive = WebGPU
         // specifically is off (flag/policy); dead = acceleration off or the
         // GPU process crashed. Say the right fix, and REPORT it — an engine

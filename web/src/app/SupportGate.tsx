@@ -8,10 +8,34 @@ import { useEffect, useState } from 'react'
  *  say so plainly instead of showing a broken black square. */
 type Verdict = 'ok' | 'mobile' | 'nogpu' | 'blocked' | null
 
+// Gate verdict, published globally so the ENGINE can consult it without React.
+// The gate renders {children} under a curtain while it probes (SEO/hydration),
+// so the world's renderer boots and hits requestAdapter BEFORE the async gate
+// verdict lands. On a WebGPU-off device both fail and the renderer fires a
+// redundant gpu-lost fault + telemetry ahead of the gate's authoritative
+// 'blocked'. renderer.ts awaits `ready` on its no-adapter path and stays silent
+// when the gate walls the device off — the gate owns the "why" screen.
+type GateGlobal = { verdict: Verdict; ready: Promise<Verdict>; _resolve: (v: Verdict) => void }
+const gate: GateGlobal = ((globalThis as unknown as { __ccGate?: GateGlobal }).__ccGate) ?? (() => {
+  let _resolve: (v: Verdict) => void = () => {}
+  const ready = new Promise<Verdict>(r => { _resolve = r })
+  const g: GateGlobal = { verdict: null, ready, _resolve }
+  ;(globalThis as unknown as { __ccGate?: GateGlobal }).__ccGate = g
+  return g
+})()
+function publishVerdict(v: Verdict) {
+  if (!v || gate.verdict) return   // publish the FIRST real verdict once
+  gate.verdict = v
+  gate._resolve(v)
+}
+
 export default function SupportGate({ children }: { children: React.ReactNode }) {
   const [verdict, setVerdict] = useState<Verdict>(null)
   const [why, setWhy] = useState('')
   const [copied, setCopied] = useState(false)
+
+  // mirror the React verdict into the global the engine reads
+  useEffect(() => { publishVerdict(verdict) }, [verdict])
 
   useEffect(() => {
     let reported = false
