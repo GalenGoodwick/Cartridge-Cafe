@@ -97,6 +97,28 @@ renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact m
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
+**When `render_probe` ABORTS — the LOCAL eye (heavy worlds).** The cloud probe
+renders on a SOFTWARE GPU (lavapipe) and times out on heavy worlds (tideglass,
+veilfire): you get `render service unreachable … This operation was aborted`,
+not a picture. That is the eye going DARK — **not a pass** — so never ship on
+it. Fall back to the local eye: headless Chrome on THIS machine's REAL GPU.
+From a local repo checkout with Playwright installed:
+
+```
+node web/local-eye.mjs <slug|url> [outPng] [waitMs]
+```
+
+It launches Chrome with `--use-angle=metal --enable-unsafe-webgpu`, loads the
+LIVE `/space/<slug>`, writes a screenshot PNG, and prints a report —
+`gateVerdict` (`ok` = a Metal WebGPU adapter was found, where lavapipe had
+none), `faults` (the engine's own `cc:fault`s), and `meanLum`/`coveragePct`
+measured off the SCREENSHOT (a WebGPU swapchain reads back black via `drawImage`
+— sample the screenshot, never the live canvas). Metal renders what lavapipe
+can't, so a world that aborts in the cloud still yields a real frame — then LOOK
+at the PNG. Bonus: it reads the live DEPLOYED world, so it also catches
+bridge-shipped hook/shader drift the cloud snapshot misses. (Two anonymous
+`401`s in the console are normal — an unsigned viewer's presence/save calls.)
+
 ### THE PIXEL-EYE LADDER — what each eye can and CANNOT see
 
 `render_probe` is one rung, not the whole truth. Two probe-clean builds have
@@ -112,7 +134,9 @@ and NAME the rungs you skipped when you report a build as done:
 3. **`render_probe`** — catches composed-compile + hook throws + reactivity;
    **blind to the POPULATION layer**: it binds the snapshot's static
    `gpuPopulation`, not what your hook pushes during probe ticks. Entities can
-   be missing from the PNG while healthy — and broken while looking fine.
+   be missing from the PNG while healthy — and broken while looking fine. And on
+   a HEAVY world it aborts entirely (software GPU) — then it sees nothing; use
+   the **local Metal eye** (`web/local-eye.mjs`, above) instead of shipping blind.
 4. **Play entry** — a real player enters `/space/<slug>` fresh and sees
    first-tick truth (boot state, composed shader, entities, input — together).
    No probe substitutes for this. If nobody ran it, your report must say so.
