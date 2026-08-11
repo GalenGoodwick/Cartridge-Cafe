@@ -33,6 +33,10 @@ export default function SupportGate({ children }: { children: React.ReactNode })
   const [verdict, setVerdict] = useState<Verdict>(null)
   const [why, setWhy] = useState('')
   const [copied, setCopied] = useState(false)
+  // which flavour of 'blocked' — decides which fix we lead with. 'webgpu-off' =
+  // WebGL2 alive but no WebGPU (enable it); 'accel-off'/'blocklist' = the GPU
+  // itself is unreachable (acceleration/driver).
+  const [blockedKind, setBlockedKind] = useState<'webgpu-off' | 'accel-off' | 'blocklist'>('accel-off')
 
   // mirror the React verdict into the global the engine reads
   useEffect(() => { publishVerdict(verdict) }, [verdict])
@@ -100,14 +104,15 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         // without asking the visitor anything.
         let gl2 = 'dead'
         try { const c = document.createElement('canvas'); const g = c.getContext('webgl2'); if (g) { const dbg = g.getExtension('WEBGL_debug_renderer_info'); gl2 = 'alive · ' + String(dbg ? g.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)).slice(0, 60) } } catch { /* dead */ }
+        const kind = fallback ? 'blocklist' : gl2 === 'dead' ? 'accel-off' : 'webgpu-off'
         const why2 = fallback
           ? 'hardware adapter: none · software fallback: present — acceleration off or GPU blocklisted'
           : gl2 === 'dead'
             ? 'no adapter + WebGL2 dead — graphics acceleration is OFF entirely: chrome://settings/system → use graphics acceleration → Relaunch'
             : 'no WebGPU adapter but WebGL2 is ' + gl2 + ' — WebGPU itself is switched off: chrome://flags/#enable-unsafe-webgpu, or an admin policy on a managed machine'
-        setVerdict('blocked'); setWhy(why2)
+        setBlockedKind(kind); setVerdict('blocked'); setWhy(why2)
         report('blocked', why2)
-      } catch (e) { const w2 = 'requestAdapter threw: ' + String(e).slice(0, 80); setVerdict('blocked'); setWhy(w2); report('blocked', w2) }
+      } catch (e) { const w2 = 'requestAdapter threw: ' + String(e).slice(0, 80); setBlockedKind('accel-off'); setVerdict('blocked'); setWhy(w2); report('blocked', w2) }
     }
     decide()
     // a phone held sideways, or a desktop window dragged tiny, re-checks
@@ -158,6 +163,16 @@ export default function SupportGate({ children }: { children: React.ReactNode })
             <>cartridge.cafe renders living worlds right on your device&rsquo;s GPU — that&rsquo;s a
               desktop-sized job, so the cafe is built for a laptop or desktop screen. Come
               find us there and the doors are wide open.</>
+          ) : blocked && blockedKind === 'webgpu-off' ? (
+            <>this browser can reach your GPU (WebGL works) but <b style={{ color: '#ffdba8' }}>WebGPU
+              is switched off</b> — the cafe needs it to render. Turn it on:<br /><br />
+              <b style={{ color: '#ffdba8' }}>1.</b> open <b style={{ color: '#ffdba8' }}>chrome://flags/#enable-unsafe-webgpu</b> →
+              set <b style={{ color: '#ffdba8' }}>Enabled</b> → Relaunch<br />
+              <b style={{ color: '#ffdba8' }}>2.</b> still dark? update to the latest{' '}
+              <b style={{ color: '#ffdba8' }}>Chrome</b> / <b style={{ color: '#ffdba8' }}>Edge</b> (or Safari 26+)<br />
+              <b style={{ color: '#ffdba8' }}>3.</b> on a work machine, or Windows-on-ARM / Linux,
+              WebGPU may be off by policy or not shipped yet — check{' '}
+              <b style={{ color: '#ffdba8' }}>chrome://gpu</b> (the &ldquo;WebGPU&rdquo; row) for the reason</>
           ) : blocked ? (
             <>your browser speaks WebGPU, but it can&rsquo;t reach your graphics card.
               Usually one of these relights it:<br /><br />
