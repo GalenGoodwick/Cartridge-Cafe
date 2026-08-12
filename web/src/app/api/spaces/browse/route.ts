@@ -5,14 +5,27 @@ import { prisma } from '@/lib/prisma'
 import { composeIcon, dominantHue, IconField } from '@/lib/icon-compose'
 import { handleOf } from '@/lib/notify'
 import { loadGameSlot } from '../../engine/store'
+import { cached } from '@/lib/ttl-cache'
 
 export const dynamic = 'force-dynamic'
+
+// The hub blocks its first paint on this feed, and it's expensive (pulls up to
+// 200 full snapshots + composes an icon per row + a directory rollup). Recompute
+// at most once per window PER VISITOR-CLASS instead of once per visitor: anon
+// callers all share the public list; each signed-in uid gets its own (it also
+// carries their private worlds). Staleness is bounded by BROWSE_TTL_MS.
+const BROWSE_TTL_MS = 20_000
 
 /** GET /api/spaces/browse — Public worlds gallery; signed-in callers also see
  *  their own private/blank worlds (fuel for the MY WORLDS submain) */
 export async function GET() {
   const session = await getServerSession(authOptions).catch(() => null)
   const uid = session?.user?.id
+  const payload = await cached('browse', uid || 'anon', BROWSE_TTL_MS, () => build(uid))
+  return NextResponse.json(payload)
+}
+
+async function build(uid: string | undefined) {
   const spaces = await prisma.playerSpace.findMany({
     where: uid ? { OR: [{ isPublic: true }, { ownerId: uid }] } : { isPublic: true },
     select: {
@@ -78,5 +91,5 @@ export async function GET() {
     return { handle: m.handle, name: m.name, hue: (typeof icon?.hue === 'number' ? icon.hue : m.worldHue), fx: typeof icon?.fx === 'number' ? icon.fx : null }
   }))
 
-  return NextResponse.json({ spaces: out, makers, sceneMakers })
+  return { spaces: out, makers, sceneMakers }
 }

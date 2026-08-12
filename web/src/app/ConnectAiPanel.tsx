@@ -1,7 +1,7 @@
 'use client'
 
 import { playerConnectPrompt, cafeOrigin } from '@/lib/connectPrompt'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { copyText } from '@/lib/copyText'
 
 /** One copyable, individually-SELECTABLE field (Base URL / key) — so a user can
@@ -40,7 +40,7 @@ function clearCached() { try { localStorage.removeItem(KEY_LS) } catch {} }
 /** The CONNECT-AI body (paste-a-prompt door). Rendered inside <ConnectPanel/>,
  *  which owns the modal chrome (overlay, tab bar, Escape/× close). */
 export default function ConnectAiPanel() {
-  const [state, setState] = useState<{ signedIn: boolean; keys: Array<{ prefix: string; createdAt: string }> } | null>(null)
+  const [state, setState] = useState<{ signedIn: boolean; keys: Array<{ prefix: string; createdAt: string }>; failed?: boolean } | null>(null)
   const [fresh, setFresh] = useState<string | null>(null)   // raw key, shown once
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState('')
@@ -54,8 +54,21 @@ export default function ConnectAiPanel() {
   const [showPaste, setShowPaste] = useState(false)
   const [pasteErr, setPasteErr] = useState('')
 
-  const load = () => fetch('/api/player-token').then(r => r.json()).then(setState).catch(() => {})
-  useEffect(() => { load() }, [])
+  // Never hang the dialog. The GET used to swallow any failure (.catch(()=>{})),
+  // so a slow/erroring /api/player-token (e.g. a degraded DB) left the primary
+  // body stuck on its "…" spinner forever — only the MCP link usable (the bug in
+  // Galen's screenshot). Now failure AND a 6s timeout both resolve to a fallback
+  // state, so the panel always lands on something actionable. A functional update
+  // never clobbers a real result that raced in first.
+  const load = () => fetch('/api/player-token', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+    .then(d => setState({ signedIn: !!d?.signedIn, keys: Array.isArray(d?.keys) ? d.keys : [] }))
+    .catch(() => setState(prev => prev ?? { signedIn: false, keys: [], failed: true }))
+  useEffect(() => {
+    load()
+    const t = setTimeout(() => setState(prev => prev ?? { signedIn: false, keys: [], failed: true }), 6000)
+    return () => clearTimeout(t)
+  }, [])
 
   const prompt = (tok: string) => playerConnectPrompt(tok)
 
@@ -82,6 +95,22 @@ export default function ConnectAiPanel() {
     setBusy(true)
     try { await fetch('/api/player-token', { method: 'DELETE' }); clearCached(); setCached(null); setFresh(null); load() } finally { setBusy(false) }
   }
+
+  // AUTO-GENERATE a key so the prompt is ready the instant the popup opens — the
+  // user shouldn't have to press "mint" for the default path (Galen). Only when
+  // signed in with NO key on the account: there's nothing to revoke, so it's safe
+  // to do silently. When a key already exists we NEVER auto-mint — minting a new
+  // one revokes the old, and that's the user's explicit choice (the MINT A NEW
+  // KEY button). If the browser already remembers a key, that one is reused as-is.
+  const autoMinted = useRef(false)
+  useEffect(() => {
+    if (autoMinted.current || busy || fresh) return
+    if (state?.signedIn && state.keys.length === 0) {
+      autoMinted.current = true
+      mint()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, busy, fresh])
   // when even the fallback can't write the clipboard, show the text itself so
   // the player can select-and-copy by hand — never a dead button. `silent` is for
   // best-effort auto-copies (e.g. right after mint, past the gesture window): on
@@ -108,6 +137,28 @@ export default function ConnectAiPanel() {
     writeCached(prefix, raw); setCached({ prefix, raw }); setPaste(''); setShowPaste(false)
   }
 
+  // The connect prompt for THIS browser's remembered key — always offer-able,
+  // independent of the server round-trip. Galen's law: CONNECT AI must ALWAYS
+  // show the prompt to copy, never gate it behind a spinner or a signed-out nag.
+  const cachedPromptBlock = (note?: string) => cached && (
+    <div className="space-y-2">
+      <button onClick={() => copy(prompt(cached.raw), 'prompt')}
+        className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-[14px] tracking-[0.15em] text-void font-bold transition-all">
+        {copied === 'prompt' ? 'COPIED ✓' : copied === 'fail:prompt' ? '⚠ COPY BLOCKED — select below' : '📋 COPY CONNECT PROMPT'}
+      </button>
+      <div className="space-y-1.5 pt-0.5">
+        <div className="text-[11px] tracking-[0.1em] text-glow/30">…or grab one piece:</div>
+        <CopyField label="Base URL" value={cafeOrigin()} onCopy={() => copy(cafeOrigin(), 'url')} copied={copied === 'url'} />
+        <CopyField label="Key" value={cached.raw} onCopy={() => copy(cached.raw, 'key')} copied={copied === 'key'} />
+      </div>
+      {manual !== null && (
+        <textarea readOnly value={manual} rows={6} onFocus={e => e.currentTarget.select()}
+          className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[12px] leading-relaxed text-glow/90 select-all resize-none" />
+      )}
+      {note && <div className="text-[12px] text-glow/40 leading-snug">{note}</div>}
+    </div>
+  )
+
   return (
     <>
         <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
@@ -120,11 +171,26 @@ export default function ConnectAiPanel() {
           It just needs an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
         </div>
         {!state ? (
-          // wait for the key state before deciding which box to show — never flash
-          // the wrong one (the "paste your key" box) before we know what you have
-          <div className="text-[14px] text-glow/35 text-center py-3 tracking-[0.15em]">…</div>
+          // still checking the account — but a spinner is never the whole story:
+          // if THIS browser remembers a key, hand over its prompt immediately
+          // (account controls fill in underneath once state resolves).
+          cached ? cachedPromptBlock() : (
+            <div className="text-[14px] text-glow/35 text-center py-3 tracking-[0.15em]">…</div>
+          )
+        ) : state.failed ? (
+          // account fetch failed (e.g. DB degraded). Don't misfire "sign in" at a
+          // user who IS signed in; if we hold a remembered key, offer it anyway.
+          cached ? cachedPromptBlock('couldn’t verify your account just now — this remembered key still works until you revoke it') : (
+            <div className="space-y-2">
+              <div className="text-[14px] text-amber-200/80 leading-snug">Couldn’t reach your account just now.</div>
+              <button onClick={() => { setState(null); load() }} className="w-full rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">RETRY</button>
+              <a href="/auth/signin" className="block text-center text-[13px] text-glow/40 hover:text-glow">or sign in</a>
+            </div>
+          )
         ) : !state.signedIn ? (
-          <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
+          cached ? cachedPromptBlock() : (
+            <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
+          )
         ) : fresh ? (
           <div className="space-y-2">
             <div className="text-[14px] text-emerald-300 tracking-[0.15em]">PASTE TO YOUR AI — shown once</div>
