@@ -1108,11 +1108,15 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     // the ONE account-level CONNECT AI door, reachable from anywhere (account
     // dropdown AND the engine's hub status pill) so there's a single dialog no
     // matter which control you click. Same sign-in guard as the dropdown item.
-    const onOpenConnect = async () => {
-      const w = (window as unknown as { __cafeWho?: { id: string } | null }).__cafeWho
-      if (!w) { const s = await fetch('/api/auth/session').then(r => r.json()).catch(() => null); if (!s?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return } }
-      setConnectOpen(true)
-    }
+    // ONE connect door: the hub pill AND the account dropdown both fire this, and
+    // it just OPENS the dialog — nothing else — so the two controls are identical.
+    // No sign-in redirect here: ConnectPanel now handles every state itself (signed
+    // out shows a sign-in link; a key remembered on this browser still copies;
+    // signed in auto-generates one). The old __cafeWho/session guard bounced the
+    // hub pill to /auth/signin whenever presence hadn't resolved yet (common while
+    // the DB is slow), which is exactly why the pill "didn't bring up the same
+    // popup as CONNECT AI." Opening in place is correct now.
+    const onOpenConnect = () => setConnectOpen(true)
     window.addEventListener('cafe:open-connect', onOpenConnect)
     window.addEventListener('cafe:back', onBack)
     window.addEventListener('cafe:launch', onLaunch)
