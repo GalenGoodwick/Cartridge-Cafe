@@ -257,24 +257,32 @@ server.tool(
 
 server.tool(
   'use_world',
-  'Resume editing a world you already own (brewed here, or on your account) — returns its build token (uc_st_) for the bridge, and adds it to my_worlds. Guest deeds are cookie-scoped to this machine. Get the slug from a browse_shelf play URL (/space/<slug>).',
-  { slug: z.string().describe('The world slug, e.g. "lumenwake" from /space/lumenwake') },
-  async ({ slug }) => {
-    // paired? any world the ACCOUNT owns opens, on any machine
-    if (account) {
-      const out = await bridgeFor(account.playerToken).bridgeSend({ type: 'use_world', slug }, { normalize: false })
-      const r = (out && out.results && out.results[0]) || out || {}
-      if (!r.token) return text({ error: r.error || `could not open "${slug}"` })
-      const world = { name: r.spaceName || slug, slug, token: r.token, viewUrl: `${BASE}/space/${slug}` }
+  'Resume editing a world you own — returns its build token (uc_st_) for the bridge, and adds it to my_worlds. Get the slug from a browse_shelf play URL (/space/<slug>). Three ways in, tried in order: (1) pass key: a uc_st_ world key opens instantly; a uc_pt_ player key opens any world THAT account owns; (2) the paired account (connect_account) opens any world it owns, on any machine; (3) with neither, it tells you to connect_account. The key path is how a human hands you one world by pasting its access key.',
+  {
+    slug: z.string().describe('The world slug, e.g. "lumenwake" from /space/lumenwake'),
+    key: z.string().optional().describe('OPTIONAL access key pasted by the owner: a uc_st_ world key (used directly) or a uc_pt_ player key (opens any world that account owns). Overrides the paired account for this call.'),
+  },
+  async ({ slug, key }) => {
+    const finish = (name, token) => {
+      const world = { name: name || slug, slug, token, viewUrl: `${BASE}/space/${slug}` }
       mine.push(world)
       return text({ ...world, next: 'Read world_state to see what is there, build with the bridge tool, and render_probe to SEE every change before you trust it.' })
     }
-    if (!(await ensureGuest())) return text({ error: 'could not open a session' })
-    const t = await jfetch(`/api/spaces/${slug}/token`, { method: 'POST', body: JSON.stringify({ name: 'mcp' }) })
-    if (!t.body?.token) return text({ error: t.body?.error || `could not get a token for "${slug}" — do you own it on this machine?` })
-    const world = { name: slug, slug, token: t.body.token, viewUrl: `${BASE}/space/${slug}` }
-    mine.push(world)
-    return text({ ...world, next: 'Read world_state to see what is there, build with the bridge tool, and render_probe to SEE every change before you trust it.' })
+    // (1) a pasted uc_st_ IS the world build token — nothing to exchange
+    if (key && key.startsWith('uc_st_')) return finish(slug, key)
+    // player key: inline-pasted one wins, else the paired account
+    const playerKey = (key && key.startsWith('uc_pt_')) ? key : account?.playerToken
+    if (playerKey) {
+      const out = await bridgeFor(playerKey).bridgeSend({ type: 'use_world', slug }, { normalize: false })
+      const r = (out && out.results && out.results[0]) || out || {}
+      if (!r.token) return text({ error: r.error || `could not open "${slug}" — does this key's account own it?` })
+      return finish(r.spaceName, r.token)
+    }
+    // no key, no account: the guest door is closed — point the way in
+    return text({
+      error: 'account required — the guest door is closed',
+      next: `To open "${slug}": either the owner pastes its access key — call use_world {slug:"${slug}", key:"uc_st_… or uc_pt_…"} — or run connect_account to pair your human's account (one click, persists across sessions), then retry.`,
+    })
   },
 )
 
