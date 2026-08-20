@@ -301,3 +301,17 @@ export function bakeSpaceOgCard(slug: string, snap: Snap, hash: string, name: st
 export function spaceLookHash(snap: unknown): string {
   return iconSnapshotHash(snap as never)
 }
+
+/** BAKE ON PUBLISH: warm a world's card the moment it goes public, so even the
+ *  FIRST share previews real pixels. Hash-gated (skips when the stored card
+ *  already matches the current look) and fire-and-forget at every call site —
+ *  it must never block or fail a publish. */
+export async function warmSpaceOgCard(slug: string, snap: unknown, name: string, owner: string): Promise<void> {
+  try {
+    const s = (snap ?? {}) as Snap
+    const hash = spaceLookHash(s)
+    const state = spaceOgState(await loadSpaceOgCard(slug), hash)
+    if (state === 'ok' || state === 'failed') return   // fresh, or a settled verdict for this content
+    await bakeSpaceOgCard(slug, s, hash, name, owner)
+  } catch { /* warm-up is a courtesy — the read-time self-heal covers everything */ }
+}

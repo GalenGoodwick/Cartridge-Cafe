@@ -16,6 +16,7 @@ import { mirrorWorldBlurb } from '../world-blurb'
 import { logVisit } from '@/lib/visits'
 import { bridgeOverLimit } from '@/lib/bridge-rate'
 import { validatePlayerToken } from '@/lib/player-token'
+import { warmSpaceOgCard } from '@/lib/og-card'
 import { slugify } from '@/lib/companion'
 import { canCreateWorld, createSpaceUniqueSlug, findOwnWorldByName } from '@/lib/world-create'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
@@ -801,7 +802,13 @@ export async function POST(req: NextRequest) {
             error: `publish refused — the shelf is for finished worlds. Missing: ${missing.join(', ')}.` })
           continue
         }
-        await prisma.playerSpace.update({ where: { id: auth.spaceId! }, data: { isPublic: true } })
+        const pubRow = await prisma.playerSpace.update({
+          where: { id: auth.spaceId! }, data: { isPublic: true },
+          select: { slug: true, name: true, owner: { select: { name: true } } },
+        })
+        // BAKE ON PUBLISH: warm the OG share card so even the world's FIRST
+        // share previews real pixels (hash-gated + never-throws inside).
+        void warmSpaceOgCard(pubRow.slug, pubSnap, pubRow.name || pubRow.slug, pubRow.owner?.name || 'someone')
         results.push({ type: cmd.type, ok: true, published: true, url: `https://cartridge.cafe/space/${auth.slug}`,
           next: 'on the public shelf.' })
         continue

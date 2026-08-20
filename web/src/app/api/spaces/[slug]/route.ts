@@ -6,6 +6,7 @@ import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../
 import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
 import { enqueueBake } from '@/lib/icon-bake-queue'
+import { warmSpaceOgCard } from '@/lib/og-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,7 @@ export async function PATCH(
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { id: true },
+    select: { id: true, name: true },
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
@@ -129,7 +130,13 @@ export async function PATCH(
   // check + the heal sweep; this just covers the publish moment promptly.
   if (update.isPublic === true) {
     getSpaceSnapshot(space.id, true)
-      .then(snap => { if (snap) enqueueBake(updated.slug, snap as never) })
+      .then(snap => {
+        if (!snap) return
+        enqueueBake(updated.slug, snap as never)
+        // …and the OG share card, so even the FIRST share previews real pixels
+        // (hash-gated + never-throws inside warmSpaceOgCard)
+        void warmSpaceOgCard(updated.slug, snap, updated.name || updated.slug, user.name || 'someone')
+      })
       .catch(() => {})
   }
 
