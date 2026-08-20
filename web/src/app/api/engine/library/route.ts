@@ -65,6 +65,31 @@ function sizesOf(s: Sceneish) {
   }
 }
 
+/** Grep one world's source (visual WGSL, step-hook code, module WGSL) for a
+ *  needle and return the artifacts that matched, each with a short single-line
+ *  snippet around the hit. This is how the library becomes searchable for
+ *  PRIMITIVES: an AI hunting a live example of `opSmoothUnion`, a boids hook, or
+ *  a superimposed aurora finds the worlds that actually use it — not just a name
+ *  it had to already know. Capped per world so one big shader can't flood it. */
+function searchScene(s: Sceneish, needle: string): Array<{ where: string; snippet: string }> {
+  const hits: Array<{ where: string; snippet: string }> = []
+  const scan = (where: string, text: unknown) => {
+    if (hits.length >= 6 || typeof text !== 'string') return
+    const i = text.toLowerCase().indexOf(needle)
+    if (i < 0) return
+    const start = Math.max(0, i - 40)
+    const snip = text.slice(start, i + needle.length + 40).replace(/\s+/g, ' ').trim()
+    hits.push({ where, snippet: (start > 0 ? '…' : '') + snip + '…' })
+  }
+  for (const v of s.visualTypes || []) scan(`visual:${v.name || '?'}`, v.wgsl)
+  for (const h of s.stepHooks || []) {
+    const hh = h as { id?: string; author?: string; code?: unknown }
+    scan(`hook:${hh.id || hh.author || '?'}`, hh.code)
+  }
+  for (const m of s.modules || []) scan(`module:${m.name || '?'}`, (m.name || '') + '\n' + (m.wgsl || ''))
+  return hits
+}
+
 export async function GET(req: NextRequest) {
   await hydrateAllScenes()
   const want = req.nextUrl.searchParams.get('world')
@@ -89,6 +114,41 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ world: { ...sourceOf(space.name, 'space', s, space.slug), private: !space.isPublic || undefined } })
     }
     return NextResponse.json({ error: 'World not found in the library' }, { status: 404 })
+  }
+
+  // ── content search across every world's source ──
+  const searchTerm = req.nextUrl.searchParams.get('search')?.trim()
+  if (searchTerm) {
+    const needle = searchTerm.toLowerCase()
+    const found: Array<Record<string, unknown>> = []
+    for (const name of listScenes()) {
+      if (name === 'CAFE' || name === 'SUB-MAIN') continue
+      let s: Sceneish | null = null
+      try { s = loadScene(name) as unknown as Sceneish | null } catch { continue }
+      if (!s) continue
+      const matches = searchScene(s, needle)
+      if (matches.length) found.push({ name, kind: 'house', ...sizesOf(s), matches })
+    }
+    const spaces = await prisma.playerSpace.findMany({
+      select: { slug: true, name: true, snapshot: true, isPublic: true },
+    })
+    for (const sp of spaces) {
+      const s = (sp.snapshot as unknown as Sceneish) || {}
+      const matches = searchScene(s, needle)
+      if (matches.length) {
+        found.push({ name: sp.name, kind: 'space', slug: sp.slug, ...(sp.isPublic ? {} : { private: true }), ...sizesOf(s), matches })
+      }
+    }
+    // most-relevant first: the worlds that use the term the most
+    found.sort((a, b) => (b.matches as unknown[]).length - (a.matches as unknown[]).length)
+    const capped = found.slice(0, 60)
+    return NextResponse.json({
+      search: searchTerm,
+      count: found.length,
+      shown: capped.length,
+      note: 'worlds whose source contains the term — GET ?world=<name> for full source',
+      worlds: capped,
+    })
   }
 
   // ── the catalogue ──
