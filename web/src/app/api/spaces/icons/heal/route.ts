@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isAdmin } from '@/lib/adminAuth'
 import { bakeAllUnhealthy } from '@/lib/icon-bake-queue'
+import { bakeSiteOgCard } from '@/lib/og-card'
 import { loadScene, listScenes, hydrateAllScenes } from '../../../engine/store'
 import { getLineage } from '../../../engine/lineage'
 
@@ -80,7 +81,13 @@ async function run(req: NextRequest): Promise<NextResponse> {
   const maxParam = Number(new URL(req.url).searchParams.get('max'))
   const maxBakes = Number.isFinite(maxParam) && maxParam > 0 ? maxParam : undefined
   const summary = await bakeAllUnhealthy(all, { maxBakes, force: new URL(req.url).searchParams.get('force') === '1' })
-  return NextResponse.json({ ok: true, summary })
+  // the site OG card bakes through the same sweep — it's one more photograph
+  // through the eye (slot og_card:site; see src/lib/og-card.tsx). Skipped on a
+  // targeted single-world heal (?slug=) — that's isolation mode for the eye.
+  const ogCard = slugParam
+    ? 'skipped'
+    : await bakeSiteOgCard().then(ok => ok ? 'ok' : 'failed').catch(() => 'failed')
+  return NextResponse.json({ ok: true, summary, ogCard })
 }
 
 export async function POST(req: NextRequest) { return run(req) }
