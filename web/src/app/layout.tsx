@@ -6,6 +6,7 @@ import { Providers } from './providers'
 import SupportGate from './SupportGate'
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
 import { ErrorNet } from '@/components/ErrorNet'
+import BiggerTable from './BiggerTable'
 
 const sourceSerif = Source_Serif_4({ subsets: ['latin'], variable: '--font-serif', display: 'swap' })
 const libreFranklin = Libre_Franklin({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Beacon />
         <ServiceWorkerRegistration />
         <ErrorNet />
+        <BiggerTable />
       </body>
     </html>
   )
