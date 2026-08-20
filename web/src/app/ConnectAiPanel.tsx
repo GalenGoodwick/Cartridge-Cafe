@@ -37,10 +37,37 @@ function readCached(): { prefix: string; raw: string } | null {
 function writeCached(prefix: string, raw: string) { try { localStorage.setItem(KEY_LS, JSON.stringify({ prefix, raw })) } catch {} }
 function clearCached() { try { localStorage.removeItem(KEY_LS) } catch {} }
 
+export type KeyState = { signedIn: boolean; keys: Array<{ prefix: string; createdAt: string }>; failed?: boolean; degraded?: boolean } | null
+
+/** What the server's answer proves about this browser's remembered key.
+ *  Galen hit the failure mode live (Aug 20): the panel first-painted the cached
+ *  key's confident copy UI, then the account state resolved, the prefix
+ *  mismatched, and the whole view yanked to the "not saved here" box — reading
+ *  as a phantom second window covering the first. The root causes: a stale
+ *  cached key was OFFERED before verification, and never purged after.
+ *   - 'unverified' : no server truth yet (loading / fetch failed / DB degraded /
+ *                    signed out) — keep offering the key, but say it's unverified.
+ *                    NEVER purge on a non-answer (degraded-poll law).
+ *   - 'active'     : server confirms the cached key IS the account's active key.
+ *   - 'stale'      : server PROVES it isn't (signed in, and the active key's
+ *                    prefix differs — or there is no active key at all). Purge it;
+ *                    a revoked key must never flash its copy UI again.
+ *   - 'none'       : nothing cached. */
+export function cachedKeyVerdict(
+  cached: { prefix: string; raw: string } | null,
+  state: KeyState,
+): 'none' | 'unverified' | 'active' | 'stale' {
+  if (!cached) return 'none'
+  if (!state || state.failed || state.degraded || !state.signedIn) return 'unverified'
+  const active = state.keys[0]?.prefix
+  if (active && cached.prefix === active) return 'active'
+  return 'stale'
+}
+
 /** The CONNECT-AI body (paste-a-prompt door). Rendered inside <ConnectPanel/>,
  *  which owns the modal chrome (overlay, tab bar, Escape/× close). */
 export default function ConnectAiPanel() {
-  const [state, setState] = useState<{ signedIn: boolean; keys: Array<{ prefix: string; createdAt: string }>; failed?: boolean } | null>(null)
+  const [state, setState] = useState<KeyState>(null)
   const [fresh, setFresh] = useState<string | null>(null)   // raw key, shown once
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState('')
@@ -62,7 +89,7 @@ export default function ConnectAiPanel() {
   // never clobbers a real result that raced in first.
   const load = () => fetch('/api/player-token', { cache: 'no-store' })
     .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-    .then(d => setState({ signedIn: !!d?.signedIn, keys: Array.isArray(d?.keys) ? d.keys : [] }))
+    .then(d => setState({ signedIn: !!d?.signedIn, keys: Array.isArray(d?.keys) ? d.keys : [], degraded: !!d?.degraded }))
     .catch(() => setState(prev => prev ?? { signedIn: false, keys: [], failed: true }))
   useEffect(() => {
     load()
@@ -71,6 +98,15 @@ export default function ConnectAiPanel() {
   }, [])
 
   const prompt = (tok: string) => playerConnectPrompt(tok)
+
+  // PURGE ON PROOF: the moment the server proves the remembered key stale
+  // (signed in + active prefix differs, or no active key), delete it — a revoked
+  // key must never first-paint its copy UI again. Only a real answer purges;
+  // loading / failed / degraded keep the key (see cachedKeyVerdict).
+  const verdict = cachedKeyVerdict(cached, state)
+  useEffect(() => {
+    if (verdict === 'stale') { clearCached(); setCached(null) }
+  }, [verdict])
 
   const mint = async () => {
     setBusy(true)
@@ -123,8 +159,8 @@ export default function ConnectAiPanel() {
   }
 
   const activePrefix = state?.keys?.[0]?.prefix ?? null
-  // the remembered key belongs to the active key iff its prefix matches
-  const cachedIsActive = !!(cached && activePrefix && cached.prefix === activePrefix)
+  // the remembered key belongs to the active key iff the server confirmed it
+  const cachedIsActive = verdict === 'active'
   // paste a key minted on another device — accept it only if it matches the active
   // key's prefix (so we never remember a stale or foreign key)
   const rememberPasted = () => {
@@ -172,9 +208,11 @@ export default function ConnectAiPanel() {
         </div>
         {!state ? (
           // still checking the account — but a spinner is never the whole story:
-          // if THIS browser remembers a key, hand over its prompt immediately
-          // (account controls fill in underneath once state resolves).
-          cached ? cachedPromptBlock() : (
+          // if THIS browser remembers a key, hand over its prompt immediately —
+          // HONESTLY marked as unverified, so if the check proves it stale the
+          // note resolves instead of the whole view yanking out from under a
+          // click (the "second window covered the first" bug, Aug 20).
+          cached ? cachedPromptBlock('checking this key is still current…') : (
             <div className="text-[14px] text-glow/35 text-center py-3 tracking-[0.15em]">…</div>
           )
         ) : state.failed ? (

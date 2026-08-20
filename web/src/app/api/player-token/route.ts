@@ -21,7 +21,9 @@ export async function GET() {
   try {
     return NextResponse.json({ signedIn: true, keys: await listPlayerTokens(me) })
   } catch {
-    return NextResponse.json({ signedIn: true, keys: [] })
+    // degraded, NOT "no keys" — a DB blip must be distinguishable from an empty
+    // answer, or the client purges a valid remembered key on it (degraded-poll law)
+    return NextResponse.json({ signedIn: true, keys: [], degraded: true })
   }
 }
 
