@@ -4,15 +4,17 @@ import { usePresenceBeat } from '@/lib/usePresenceBeat'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
-import TournamentBar from '@/app/TournamentBar'
 import ShareWorld from './ShareWorld'
 import FollowButton from './FollowButton'
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
- *  the space-only PLUMBING that lives invisibly here: the version arena and the
- *  delete / remix / call-a-vote flows. The dock's buttons dispatch window events
- *  (cafe:delete-world / cafe:remix-world / cafe:call-vote); this wrapper owns the
- *  modals + fetches. SpaceToolbar is gone — /space and /play render one chrome. */
+ *  the space-only PLUMBING that lives invisibly here: the delete / remix / flag
+ *  flows. The dock's buttons dispatch window events (cafe:delete-world /
+ *  cafe:remix-world / cafe:call-vote); this wrapper owns the modals + fetches.
+ *  BRANCH PARADIGM RETIRED (Galen, Aug 2026): the in-world branch arena — the
+ *  vote that competed MAIN vs a world's public branches — is gone. Remixing a
+ *  world FORKS it (an owned playerSpace with forkOf lineage), never enters a
+ *  challenger for a vote. SpaceToolbar is gone — /space and /play render one chrome. */
 export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
   spaceId: string
   spaceSlug: string
@@ -27,21 +29,6 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   const router = useRouter()
   const [dockBottom, setDockBottom] = useState(0)
   const [building, setBuilding] = useState(false)   // world is still blank-and-building → hide SHARE
-  const [branches, setBranches] = useState<{ slug: string; name: string }[]>([])
-  // THE RECKONING on a space page: same contract main's shell has — the arena
-  // reports its stage rect, the engine fits the grid into it, and hovering a
-  // candidate hot-loads that save point. Without this wiring the vote overlay
-  // sat ON TOP of the world (grid unfitted) and candidates never loaded.
-  const [voting, setVoting] = useState(false)
-  const [stageRect, setStageRect] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
-  const [previewVersion, setPreviewVersion] = useState<number | null>(null)
-  const [vp, setVp] = useState({ w: 1200, h: 800 })
-  useEffect(() => {
-    const onR = () => setVp({ w: window.innerWidth, h: window.innerHeight })
-    onR()
-    window.addEventListener('resize', onR)
-    return () => window.removeEventListener('resize', onR)
-  }, [])
   const [confirmDel, setConfirmDel] = useState(false)
   const [delErr, setDelErr] = useState('')
   const [flagOpen, setFlagOpen] = useState(false)
@@ -88,21 +75,6 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     () => (isOwner && (typeof document === 'undefined' || document.visibilityState !== 'hidden')) ? 'builders' : null,
     { id: 'dev:' + spaceSlug, intervalMs: 10_000, byeOnCleanup: true, enabled: isOwner && !versionView, deps: [spaceSlug, isOwner, versionView] },
   )
-
-  // The arena competes BRANCHES (forked child spaces), never versions (Galen:
-  // versions are one branch's private history; the vote decides between works).
-  const loadBranches = useCallback(async () => {
-    try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/children`)
-      const d = await r.json()
-      if (Array.isArray(d?.children)) setBranches(d.children.filter((c: { isPublic?: boolean }) => c.isPublic !== false))
-    } catch { /* offline — no arena */ }
-  }, [spaceSlug])
-  useEffect(() => {
-    loadBranches()
-    const t = setInterval(loadBranches, 30000)
-    return () => clearInterval(t)
-  }, [loadBranches])
 
   const deleteWorld = useCallback(async () => {
     setDelErr('')
@@ -183,28 +155,15 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
         spaceOwnerHandle={ownerHandle}
         spaceOwnerId={ownerId}
         isOwner={engineOwner}
-        versionView={previewVersion || versionView}
+        versionView={versionView}
         onDockRect={setDockBottom}
         onBuilding={setBuilding}
-        viewport={voting && stageRect
-          ? { top: stageRect.top, right: Math.max(0, vp.w - stageRect.right), bottom: Math.max(0, vp.h - stageRect.bottom), left: stageRect.left }
-          : null}
+        viewport={null}
       />
 
-      {/* the BRANCH arena: MAIN vs this world's public branches — the vote
-          decides between works, never between one branch's own save points
-          (versions are private history; SET MAIN in the tools handles those).
-          No branches → no vote bar at all. Hidden while building. */}
-      {!playMode && branches.length > 0 && <TournamentBar
-        slot={`tournament:space:${spaceSlug}`}
-        worlds={!building ? ['MAIN', ...branches.slice(0, 9).map(b => b.name)] : []}
-        visible
-        rail
-        railTop={dockBottom ? dockBottom + 8 : undefined}
-        onReckoning={(on) => { setVoting(on); if (!on) { setPreviewVersion(null); setStageRect(null) } }}
-        onPreview={() => { setPreviewVersion(null) }}
-        onStageRect={setStageRect}
-      />}
+      {/* BRANCH ARENA REMOVED (branch→fork transition): a world no longer hosts a
+          vote between MAIN and its public branches. Remixing forks the world into
+          the remixer's own owned playerSpace; there is no in-world challenger vote. */}
 
       {/* a world's OSD — captions/hints, restored from SpaceToolbar */}
       {caption && (caption.text || caption.kind === 'typing') && (
