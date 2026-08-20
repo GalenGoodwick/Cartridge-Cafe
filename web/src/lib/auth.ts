@@ -2,7 +2,6 @@ import { NextAuthOptions } from 'next-auth'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import GoogleProvider from 'next-auth/providers/google'
 import GitHubProvider from 'next-auth/providers/github'
-import CredentialsProvider from 'next-auth/providers/credentials'
 import prisma from './prisma'
 
 // ── Auth diagnostics (env-gated) ────────────────────────────────────────────
@@ -100,35 +99,12 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
 
-    // Guest — one world, no account. /api/auth/guest mints a temp user and a
-    // signed httpOnly cookie; this provider turns that cookie into a session.
-    // When the guest later signs in through a REAL door, /api/spaces/claim
-    // moves their world onto the new account (ownership follows the person).
-    CredentialsProvider({
-      id: 'guest',
-      name: 'Guest',
-      credentials: {},
-      async authorize(_credentials, req) {
-        const cookieHeader = (req?.headers as Record<string, string> | undefined)?.cookie || ''
-        const raw = cookieHeader.split('; ').find(c => c.startsWith('cc_guest='))?.slice(9)
-        if (!raw) return null
-        const { verifyChallengeCookie } = await import('./passkeys')
-        const guestId = verifyChallengeCookie(decodeURIComponent(raw))
-        if (!guestId) return null
-        const user = await prisma.user.findUnique({ where: { id: guestId } })
-        if (!user || user.status !== 'ACTIVE' || !user.email.endsWith('@guest.cartridge.cafe')) return null
-        return { id: user.id, email: user.email, name: user.name, isTemp: true } as { id: string; email: string; name: string | null; isTemp: boolean }
-      },
-    }),
   ],
   session: {
     strategy: 'jwt',
   },
   callbacks: {
     async signIn({ user, account }) {
-      // Skip status check for the guest door (already handled in authorize)
-      if (account?.provider === 'guest') return true
-
       // Check if user is banned (deleted users can reactivate by logging in)
       try {
         if (user?.email) {
@@ -158,7 +134,6 @@ export const authOptions: NextAuthOptions = {
         session.user.id = (token.sub || token.id) as string
         if (token.picture) session.user.image = token.picture as string
         if (token.name) session.user.name = token.name as string
-        if (token.isTemp) session.user.isTemp = true
       }
       return session
     },
@@ -168,15 +143,12 @@ export const authOptions: NextAuthOptions = {
         token.sub = user.id
         if (user.image) token.picture = user.image
         if (user.name) token.name = user.name
-        if ((user as { isTemp?: boolean }).isTemp) token.isTemp = true
       }
 
       // When session is updated (e.g. onboarding name change, account upgrade), persist to token
       if (trigger === 'update' && session) {
         if (session.name) token.name = session.name
         if (session.image) token.picture = session.image
-        // Allow clearing isTemp when account is upgraded
-        if (session.isTemp === false) token.isTemp = false
       }
       return token
     },

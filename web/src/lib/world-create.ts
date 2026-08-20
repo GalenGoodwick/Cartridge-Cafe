@@ -12,24 +12,13 @@ export const WORLD_CAP = 100
 
 export type CreateGate = { ok: true } | { ok: false; status: number; error: string }
 
-/** May this account create ANOTHER world right now? Enforces the world cap and,
- *  for guests, the 3-build taste limit. Create-only — never gate reads on this. */
-export async function canCreateWorld(
-  userId: string,
-  opts: { isGuest?: boolean; email?: string | null } = {},
-): Promise<CreateGate> {
+/** May this account create ANOTHER world right now? Enforces the world cap.
+ *  Create-only — never gate reads on this. (The guest 3-build quota died with
+ *  the guest door: every creator is a signed-in account now.) */
+export async function canCreateWorld(userId: string): Promise<CreateGate> {
   const owned = await prisma.playerSpace.count({ where: { ownerId: userId } })
   if (owned >= WORLD_CAP) {
     return { ok: false, status: 400, error: `world limit reached (${WORLD_CAP} per account) — delete one first` }
-  }
-  if (opts.isGuest && opts.email) {
-    const { guestBuildCount, GUEST_BUILDS } = await import('./guest-quota')
-    const { hydrateAllScenes, listScenes } = await import('@/app/api/engine/store')
-    await hydrateAllScenes()
-    const have = await guestBuildCount(userId, opts.email, listScenes())
-    if (have >= GUEST_BUILDS) {
-      return { ok: false, status: 403, error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }
-    }
   }
   return { ok: true }
 }

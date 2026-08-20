@@ -21,7 +21,7 @@ export async function GET() {
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  // NOTE: LISTING is never gated by the build quota — a guest who hit their
+  // NOTE: LISTING is never gated by the world cap — an account that hit it
   // 3-build limit must still be able to SEE the worlds they made. The quota
   // lives on the create paths only (canCreateWorld).
 
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
-  // one gate for every create path: world cap + (for guests) the 3-build limit
-  const gate = await canCreateWorld(user.id, { isGuest: session.user.isTemp, email: session.user.email })
+  // one gate for every create path: the world cap
+  const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   const body = await req.json()

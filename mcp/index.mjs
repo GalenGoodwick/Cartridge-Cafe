@@ -54,19 +54,6 @@ const jfetch = async (path, opts = {}) => {
   return { status: res.status, body }
 }
 
-async function ensureGuest() {
-  const s = await jfetch('/api/auth/session')
-  if (s.body?.user) return true
-  await jfetch('/api/auth/guest', { method: 'POST' })
-  const csrf = (await jfetch('/api/auth/csrf')).body?.csrfToken
-  await jfetch('/api/auth/callback/guest', {
-    method: 'POST', redirect: 'manual',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ csrfToken: csrf, json: 'true' }),
-  })
-  const s2 = await jfetch('/api/auth/session')
-  return !!s2.body?.user
-}
 
 const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s : JSON.stringify(s, null, 2) }] })
 
@@ -74,7 +61,7 @@ const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s
 // to the AI on connect, so the guide + the eye + node conventions aren't optional.
 const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or you build blind:
 1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
-2. brew_world (guest door, no account) for a build token, or use_world to resume one you own. To build AS your human's account (worlds born owned), run connect_account — it hands them a link, they click once, and the registration persists across sessions.
+2. connect_account FIRST (one human click — the registration persists across sessions), then brew_world for a build token or use_world to resume one you own. There is no guest door: every world is born owned by your human's account.
 3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
 4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.\n5. PLAY IT — for anything INTERACTIVE, call playthrough (or bridge {type:'playthrough', input:[timeline], ticks}): it runs the real hooks over TIME with pressed controls and returns the game STATE trace (position/hp/flags per tick). render_probe is one frame; playthrough is the play. Use it to prove it actually works, reproduce a cant-enter/softlock/unwinnable bug, and re-verify after a fix.
 6. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
@@ -115,8 +102,6 @@ server.tool(
       return text({ registered: true, handle: account.handle, since: account.pairedAt, note: 'already connected — worlds you brew are born owned by this account. Pass force:true to re-pair.' })
     }
 
-    // guest session FIRST so anything already brewed rides into the claim
-    await ensureGuest()
     const aiName = ai_name || 'AI companion'
     const r = await jfetch('/api/ai/pair', { method: 'POST', body: JSON.stringify({ action: 'init', aiName }) })
     if (!r.body?.code) return text({ error: r.body?.error || `pairing init failed (${r.status})` })
@@ -166,7 +151,7 @@ server.tool(
 
 server.tool(
   'brew_world',
-  'Create YOUR OWN world through the guest door — no account needed. Returns a build token (uc_st_) for the bridge. Guests get three creations; editing is unlimited. Sign in on the site later and everything transfers to your account.',
+  'Create YOUR OWN world — requires a connected account (run connect_account once). Returns a build token (uc_st_) for the bridge. Worlds are born owned by your human\'s account.',
   { name: z.string().describe('The world\'s name') },
   async ({ name }) => {
     // paired? build AS the account — the world is born owned, no deed to claim
@@ -178,18 +163,10 @@ server.tool(
       mine.push(world)
       return text({ ...world, ownedBy: account.handle, next: r.next })
     }
-    if (!(await ensureGuest())) return text({ error: 'could not open a guest session' })
-    // draft: born PRIVATE — publish_world (over the bridge) shelves it when finished
-    const w = await jfetch('/api/spaces', { method: 'POST', body: JSON.stringify({ name, draft: true }) })
-    if (!w.body?.space) return text({ error: w.body?.error || `create failed (${w.status})` })
-    const slug = w.body.space.slug
-    const t = await jfetch(`/api/spaces/${slug}/token`, { method: 'POST', body: JSON.stringify({ name: 'mcp' }) })
-    if (!t.body?.token) return text({ error: t.body?.error || 'token mint failed' })
-    const world = { name, slug, token: t.body.token, viewUrl: `${BASE}/space/${slug}` }
-    mine.push(world)
+    // no account, no world: the guest door is closed (no brewing without an account)
     return text({
-      ...world,
-      next: 'Read the guide (read_guide), then build with the bridge tool. EVERY field needs a visualType or it renders as nothing. render_probe after every change and LOOK at the image — a failed shader renders as nothing with no error. Ship worldData.vision + worldData.instructions, set brief_done, then send {"type":"publish_world"} — worlds are born PRIVATE and only publish_world puts a finished one on the shelf.',
+      error: 'account required — the guest door is closed',
+      next: 'Run connect_account: it returns a link for your human to click (sign in / sign up + REGISTER TOGETHER), then call connect_account {finish:true} to collect your key. Every world is born owned.',
     })
   },
 )

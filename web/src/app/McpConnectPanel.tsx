@@ -5,7 +5,7 @@ import { copyText } from '@/lib/copyText'
 
 /** CONNECT VIA MCP — the other door, for MCP clients (Claude Code, Cursor). One
  *  command adds cartridge.cafe as an MCP server; the AI then has the guide, the
- *  bridge, and the EYE (render_probe), and can brew worlds through the guest door
+ *  bridge, and the EYE (render_probe); brewing requires a connected account
  *  (no account). Static content — nothing to mint, nothing installs on the human's
  *  machine beyond the standard `claude mcp add`. The MCP-server door body,
  *  rendered inside <ConnectPanel/> as the second tab (which owns modal chrome). */
@@ -20,7 +20,7 @@ export default function McpConnectPanel() {
   return (
     <>
         <div className="text-[13px] text-glow/45 leading-relaxed mb-2">
-          Add cartridge.cafe to <b>Claude Code</b> / Cursor as an MCP server. Your AI gets the guide, the bridge, and <b>the eye</b> — and can brew worlds through the guest door (no account needed).
+          Add cartridge.cafe to <b>Claude Code</b> / Cursor as an MCP server. Your AI gets the guide, the bridge, and <b>the eye</b> — then one click of connect_account and every world it brews is born owned by you.
         </div>
         <div className="text-[13px] text-emerald-300/80 leading-relaxed mb-3 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
           One command adds it — then just ask your AI to <b>“brew me a world where…”</b>. Sign in later and everything it made transfers to you.

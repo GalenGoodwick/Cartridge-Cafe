@@ -60,7 +60,7 @@ function PairInner() {
     return card(<p className="text-muted">Loading…</p>)
   }
 
-  if (status === 'unauthenticated' || session?.user?.isTemp) {
+  if (status === 'unauthenticated') {
     return card(
       <>
         <h1 className="text-xl font-serif mb-2">Almost there</h1>

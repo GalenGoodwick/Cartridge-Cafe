@@ -3,7 +3,6 @@
 import { worldBriefingPrompt, iconAuthorPrompt } from '@/lib/connectPrompt'
 import { copyText } from '@/lib/copyText'
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { signIn } from 'next-auth/react'
 import ChatWorld from '../ChatWorld'
 import { io, type Socket } from 'socket.io-client'
 import { FieldRenderer } from './renderer'
@@ -5673,12 +5672,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const openConnectAi = async () => {
     // an AI prompt box: its key mint needs a session. Auth FIRST.
     if (!me) {
-      let sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-      if (!sess?.user) {
-        const g = await fetch('/api/auth/guest', { method: 'POST' }).then(r => r.json()).catch(() => null)
-        if (g?.ok) { await signIn('guest', { redirect: false }); sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null) }
-        if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
-      }
+      const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
+      if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
       setMe(sess.user.email || sess.user.name || null)
     }
     // owner on their own LIVE space: editing goes through a BRANCH, never live

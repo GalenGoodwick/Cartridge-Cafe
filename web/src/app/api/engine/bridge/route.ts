@@ -696,7 +696,7 @@ export async function POST(req: NextRequest) {
         if (cmd.type === 'create_world') {
           const rawName = typeof cmd.name === 'string' ? cmd.name.trim() : ''
           const name = (rawName || 'untitled world').slice(0, 60)
-          // one gate for every create path (world cap; guests handled on the human paths)
+          // one gate for every create path (the world cap)
           const gate = await canCreateWorld(auth.playerId)
           if (!gate.ok) { results.push({ type: cmd.type, error: gate.error }); continue }
           // GUARD: don't silently mint a same-name twin for the same owner (the

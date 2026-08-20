@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { signIn, signOut, useSession } from 'next-auth/react'
+import { signIn, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { NotifyMeButton } from '@/components/NotifyMeButton'
 
@@ -24,35 +24,16 @@ function SignInInner() {
   const [busy, setBusy] = useState(false)
   const { data: session } = useSession()
 
-  const [claimedN, setClaimedN] = useState<number | null>(null)
-
   // only offer doors that actually open
   useEffect(() => {
     fetch('/api/auth/providers').then(r => r.json()).then(setProviders).catch(() => setProviders({}))
   }, [])
 
-  // the deed follows the person: a real sign-in with a guest cookie claims
-  // the guest's world(s). No-op without one — safe to call every visit.
-  useEffect(() => {
-    if (!session?.user || session.user.isTemp) return
-    fetch('/api/spaces/claim', { method: 'POST' }).then(r => r.json())
-      .then(d => { if (d.claimed > 0) setClaimedN(d.claimed) }).catch(() => {})
-  }, [session])
-
-  // Enter through an OAuth door. A guest ALREADY holds a NextAuth session, and
-  // starting OAuth while signed in makes NextAuth try to LINK the provider onto
-  // the guest user — which throws OAuthAccountNotLinked the moment that email
-  // belongs to a real account (core callback-handler: userByAccount.id !== the
-  // session user → refuse; allowDangerousEmailAccountLinking never even runs
-  // because a session exists). So sign the guest session out FIRST, then start
-  // OAuth as a clean sign-in that resolves to the real account. The cc_guest
-  // cookie is separate (httpOnly) and survives signOut, so the claim effect
-  // above / AutoClaimDeed still carry the guest's world onto the account.
+  // Enter through an OAuth door.
   const enterThrough = async (provider: string) => {
     if (busy) return
     setBusy(true)
     try {
-      if (session?.user?.isTemp) await signOut({ redirect: false })
       await signIn(provider, { callbackUrl })
     } finally { setBusy(false) }
   }
@@ -76,17 +57,7 @@ function SignInInner() {
             <p className="font-sans text-xs text-grounds mt-3">a world needs a name on its deed.</p>
           </div>
           <div className="px-6 py-6 space-y-3">
-            {claimedN !== null && (
-              <p className="font-mono text-[14px] leading-relaxed text-flame/90 text-center pb-1">
-                deed signed — your {claimedN > 1 ? `${claimedN} worlds are` : 'world is'} yours for keeps.
-              </p>
-            )}
-            {session?.user?.isTemp && (
-              <p className="font-mono text-[14px] leading-relaxed text-brass text-center pb-1">
-                you&apos;re brewing as a guest. sign in through any door below and your world comes with you.
-              </p>
-            )}
-            {session?.user && !session.user.isTemp && (
+            {session?.user && (
               <div className="rounded-lg border border-brass/25 bg-void/30 px-4 py-3.5 space-y-2">
                 <div className="font-mono text-[14px] tracking-[0.25em] text-brass">YOU ARE IN AS {(session.user.email || '').toUpperCase()}</div>
                 <div className="pt-1">
@@ -100,12 +71,9 @@ function SignInInner() {
                 {ERROR_TEXT[errorCode] || ERROR_TEXT.Default}
               </p>
             )}
-            {/* The sign-in DOORS. Once you're in for REAL they vanish — the only
-                thing left is the post-auth card above. But a GUEST also has a
-                session (isTemp), and a guest's whole reason to be here is to sign
-                in / sign up (and carry their world over) — so guests see the doors
-                too. Only a real, non-temp account hides them. */}
-            {(!session?.user || session.user.isTemp) && <>
+            {/* The sign-in DOORS. Once you're in they vanish — the only
+                thing left is the post-auth card above. */}
+            {!session?.user && <>
             {(!providers || !!providers.google) && (
               <button
                 onClick={() => enterThrough('google')}
@@ -113,21 +81,6 @@ function SignInInner() {
                 className="w-full rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-colors disabled:opacity-50"
               >
                 CONTINUE WITH GOOGLE
-              </button>
-            )}
-            {providers && !!providers.guest && !session?.user && (
-              <button
-                onClick={async () => {
-                  if (busy) return
-                  setBusy(true)
-                  try {
-                    const r = await (await fetch('/api/auth/guest', { method: 'POST' })).json()
-                    if (r.ok) await signIn('guest', { callbackUrl: '/?brew=1' })
-                  } finally { setBusy(false) }
-                }}
-                className="w-full rounded-lg border border-dashed border-brass/40 hover:border-flame/60 text-grounds hover:text-steamer font-mono text-[16px] tracking-[0.2em] px-6 py-3 transition-all"
-              >
-                JUST TRY IT — BREW ONE WORLD AS A GUEST
               </button>
             )}
             {providers && !!providers.github && (
@@ -147,10 +100,8 @@ function SignInInner() {
               <br />worlds you make public can be branched by others · private stays yours.
             </div>
             </>}
-            {/* once signed in for REAL, the way onward — the doors above are gone.
-                (A guest still has doors to choose, so this only shows for a
-                non-temp account.) */}
-            {session?.user && !session.user.isTemp && (
+            {/* once signed in, the way onward — the doors above are gone. */}
+            {session?.user && (
               <a href={callbackUrl}
                 className="block w-full text-center rounded-lg bg-flame/90 hover:bg-glow text-void font-mono text-[16px] tracking-[0.2em] px-6 py-3.5 transition-colors">
                 ENTER THE CAFE →

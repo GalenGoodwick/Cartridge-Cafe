@@ -33,9 +33,8 @@ export async function POST(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  // one gate for every create path — fork used to skip the guest quota, letting
-  // a guest remix past their 3-build limit
-  const gate = await canCreateWorld(user.id, { isGuest: session.user.isTemp, email: session.user.email })
+  // one gate for every create path — fork must not skip the world cap
+  const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   // The copied snapshot must NOT inherit house-AI consent: __house_requested is

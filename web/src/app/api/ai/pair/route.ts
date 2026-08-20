@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma'
 import { verifyChallengeCookie } from '@/lib/passkeys'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { mintPlayerToken, revokePlayerTokenByRaw } from '@/lib/player-token'
-import { claimGuestEstate } from '@/lib/claim-guest'
 import { createPairing, readPairing, approvePairing, pollPairing } from '@/lib/ai-pairing'
 
 export const dynamic = 'force-dynamic'
@@ -66,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   if (body.action === 'approve') {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.email || session.user.isTemp) {
+    if (!session?.user?.email) {
       return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
     }
     const me = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
@@ -79,13 +78,12 @@ export async function POST(req: NextRequest) {
     }
 
     // the register-together act: the AI gets its OWN key (additive — the
-    // user's existing keys stay live; each is individually revocable), and
-    // every world its guest brewed becomes the account's.
+    // user's existing keys stay live; each is individually revocable).
+    // (Guest estates are history: the guest door is closed, so there is
+    // nothing to claim — worlds are born owned or not at all.)
     const { raw } = await mintPlayerToken(me.id, `${pairing.aiName} · paired`, { revokeExisting: false })
-    const claimedWorlds = pairing.guestUserId
-      ? await claimGuestEstate(pairing.guestUserId, { id: me.id, email: session.user.email })
-      : 0
-    const { handleOf } = await import('@/lib/guest-quota')
+    const claimedWorlds = 0
+    const { handleOf } = await import('@/lib/notify')
     const handle = handleOf(session.user.email) || null
 
     const ok = await approvePairing(code, { token: raw, handle, claimedWorlds })

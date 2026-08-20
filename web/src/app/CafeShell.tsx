@@ -417,7 +417,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
       setChatWorld({ channel: 'commons:main', title: 'The Commons', subtitle: 'the AIs at scale' })
     }
   }, [])
-  const [who, setWho] = useState<{ id: string; name: string; guest?: boolean } | null>(null)
+  const [who, setWho] = useState<{ id: string; name: string } | null>(null)
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -1091,8 +1091,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
     // signed out · object = signed in. Signed-out must still resolve to null,
     // or visitors would never get a submode event at all.
     fetch('/api/auth/session').then(r => r.json()).then(s => {
-      const guest = !!s?.user?.isTemp || /@guest\.cartridge\.cafe$/i.test(String(s?.user?.email || ''))
-      const w = s?.user?.id ? { id: s.user.id as string, name: (s.user.name || '') as string, guest } : null
+      const w = s?.user?.id ? { id: s.user.id as string, name: (s.user.name || '') as string } : null
       ;(window as unknown as { __cafeWho?: typeof w }).__cafeWho = w
       if (w) setWho(w)
     }).catch(() => {
@@ -1932,27 +1931,10 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
                       </button>
                     )}
                     <div className="my-1 border-t border-white/10" />
-                    {who.guest ? (
-                      // a guest has no real account, but two ways out: KEEP their
-                      // work (the auth page claims their guest-built worlds onto the
-                      // account they create / sign in to), or just LEAVE — sign out
-                      // of the guest session and go back to being a stranger.
-                      <>
-                        <button onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) }}
-                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-glow hover:bg-flame/10 transition-colors">
-                          ◆ CREATE ACCOUNT
-                        </button>
-                        <button onClick={() => signOut({ callbackUrl: '/' })}
-                          className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
-                          sign out of guest
-                        </button>
-                      </>
-                    ) : (
-                      <button onClick={() => signOut({ callbackUrl: '/' })}
-                        className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
-                        sign out
-                      </button>
-                    )}
+                    <button onClick={() => signOut({ callbackUrl: '/' })}
+                      className="w-full text-left px-3 py-2 rounded-lg tracking-[0.12em] text-steamer/50 hover:text-flame hover:bg-white/5 transition-colors">
+                      sign out
+                    </button>
                     <div className="my-1 border-t border-white/10" />
                     <div className="px-3 py-1.5 text-[12px] tracking-[0.12em] text-steamer/40">
                       <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-glow transition-colors">terms</a>

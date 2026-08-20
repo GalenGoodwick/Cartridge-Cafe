@@ -76,25 +76,6 @@ export async function POST(req: NextRequest) {
     if (!(await mayWriteScene(req, body.name))) {
       return NextResponse.json({ error: 'Not authorized to write this world' }, { status: 403 })
     }
-    // guest quota: three builds total (worlds + distinct branches). A new
-    // VERSION of an existing branch is iteration, not a new build — free.
-    {
-      const session = await getServerSession(authOptions)
-      if (session?.user?.isTemp && session.user.email) {
-        const { guestBuildCount, GUEST_BUILDS, distinctBranchBases, handleOf } = await import('@/lib/guest-quota')
-        const { prisma } = await import('@/lib/prisma')
-        const names = listScenes()
-        const base = String(body.name).replace(/ · v\d+$/, '')
-        const isNewBase = !distinctBranchBases(names, handleOf(session.user.email)).has(base)
-        if (isNewBase) {
-          const me = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
-          const have = me ? await guestBuildCount(me.id, session.user.email, names) : GUEST_BUILDS
-          if (have >= GUEST_BUILDS) {
-            return NextResponse.json({ error: `${GUEST_BUILDS} builds per guest — sign in to keep building (everything you made comes with you).` }, { status: 403 })
-          }
-        }
-      }
-    }
     if (body.action === 'save' && body.scene) {
       // FORK-ON-OVERWRITE: never clobber an existing world in place. A save onto
       // an existing name mints the NEXT version instead — so a build can't erase
@@ -104,9 +85,9 @@ export async function POST(req: NextRequest) {
       // PRIVILEGED op — the client can NOT be trusted to opt out of forking. Only
       // a caller with GOVERN authority over THIS exact scene may set it: admin, or
       // the owner of the caller's own branch. mayWriteScene(...,'govern') denies a
-      // house/open-ground world to non-admins, so a guest editing a canonical
+      // house/open-ground world to non-admins, so a non-admin editing a canonical
       // world (globewarp, …) ALWAYS forks to their own branch even if the request
-      // carries overwrite:true — closing the guest-clobbers-canonical hole.
+      // carries overwrite:true — closing the clobbers-canonical hole.
       let target = body.name
       const mayOverwrite = body.overwrite === true && await mayWriteScene(req, target, 'govern')
       if (!mayOverwrite && loadScene(target)) {
