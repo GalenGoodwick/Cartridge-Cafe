@@ -154,3 +154,150 @@ export function bakeSiteOgCard(): Promise<boolean> {
   })().finally(() => { inflight = null })
   return inflight
 }
+
+// ═══════════════════════ PER-WORLD CARDS (og_card:space:<slug>) ═══════════════════════
+// Same cure, generalized (Galen: "a link shows nothing" — the per-world card took
+// 14s at scrape time and still fell back). Differences from the site card:
+//  · staleness is the world's LOOK-SIGNATURE (iconSnapshotHash), not a clock —
+//    a card re-bakes only when the world actually changed
+//  · a render that fails on THIS content is recorded (failed:true) so an
+//    eye-hostile world (veilfire-class) serves its template instantly forever
+//    instead of re-hammering the eye on every scrape
+//  · private worlds get a NAMELESS generic card — the image route is public, and
+//    it must not leak a private world's pixels or name to a guessed URL
+
+import { iconSnapshotHash } from '@/lib/icon-bake'
+
+export type SpaceOgRecord = { at: number; hash: string; png_b64?: string; failed?: boolean }
+export type SpaceOgState = 'ok' | 'stale' | 'missing' | 'failed'
+
+export function spaceOgSlotKey(slug: string): string {
+  return 'og_card:space:' + slug
+}
+
+/** Pure verdict against the world's CURRENT look-hash.
+ *   ok      → serve the baked card
+ *   stale   → serve it anyway, re-bake in the background (look changed)
+ *   failed  → the eye already failed on THIS content: serve the template, do
+ *             NOT re-bake until the world changes
+ *   missing → no record: serve the template now, bake in the background */
+export function spaceOgState(record: SpaceOgRecord | null | undefined, currentHash: string): SpaceOgState {
+  if (!record) return 'missing'
+  if (record.hash !== currentHash) return 'stale'
+  if (record.failed) return 'failed'
+  if (!record.png_b64) return 'missing'
+  return 'ok'
+}
+
+export async function loadSpaceOgCard(slug: string): Promise<SpaceOgRecord | null> {
+  try {
+    const rec = (await loadGameSlot(spaceOgSlotKey(slug))) as SpaceOgRecord | undefined
+    return rec && typeof rec.hash === 'string' ? rec : null
+  } catch {
+    return null
+  }
+}
+
+function titlePlate(name: string, owner: string) {
+  return (
+    <div style={{ position: 'absolute', left: 56, bottom: 54, maxWidth: 900, display: 'flex', flexDirection: 'column', padding: '24px 40px', borderRadius: 18, background: 'rgba(9,7,12,0.9)', border: '1px solid rgba(185,122,42,0.4)', fontFamily: 'serif' }}>
+      <div style={{ display: 'flex', fontSize: 22, letterSpacing: 7, textTransform: 'uppercase', color: '#f0b45c' }}>cartridge.cafe</div>
+      <div style={{ display: 'flex', marginTop: 8, fontSize: 72, fontWeight: 700, color: '#fff', letterSpacing: -1, lineHeight: 1.02 }}>
+        {name.length > 30 ? name.slice(0, 30) + '…' : name}
+      </div>
+      <div style={{ display: 'flex', marginTop: 6, fontSize: 30, color: '#e8dcc4', fontStyle: 'italic' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
+    </div>
+  )
+}
+
+function spaceCardJsx(shot: string, name: string, owner: string) {
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', background: '#07060a', position: 'relative' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img alt="" src={shot} width={1200} height={630} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to top, rgba(7,6,10,0.5) 0%, rgba(7,6,10,0.12) 55%, rgba(7,6,10,0) 100%)' }} />
+      <div style={{ position: 'absolute', top: 26, left: 26, right: 26, bottom: 26, display: 'flex', border: '2px solid rgba(185,122,42,0.45)', borderRadius: 24 }} />
+      {titlePlate(name, owner)}
+    </div>
+  )
+}
+
+/** The night TEMPLATE — instant, no eye involved. Serves while a bake runs, and
+ *  permanently for eye-hostile or blank worlds. Nameless when private. */
+export function spaceTemplateResponse(name: string, owner: string, headers?: Record<string, string>): ImageResponse {
+  return new ImageResponse(
+    (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#07060a', position: 'relative', fontFamily: 'serif' }}>
+        <div style={{ position: 'absolute', bottom: -180, left: 100, width: 1000, height: 520, display: 'flex', background: 'radial-gradient(closest-side, rgba(90,200,255,0.18), rgba(90,200,255,0))' }} />
+        <div style={{ position: 'absolute', bottom: -140, right: 120, width: 820, height: 460, display: 'flex', background: 'radial-gradient(closest-side, rgba(220,110,235,0.16), rgba(220,110,235,0))' }} />
+        <div style={{ position: 'absolute', bottom: 150, left: 60, right: 60, height: 3, display: 'flex', background: 'linear-gradient(90deg, rgba(90,200,255,0), rgba(90,200,255,0.85), rgba(220,110,235,0.85), rgba(220,110,235,0))', boxShadow: '0 0 20px rgba(120,200,255,0.5)' }} />
+        <div style={{ position: 'absolute', top: 30, left: 30, right: 30, bottom: 30, display: 'flex', border: '2px solid rgba(185,122,42,0.5)', borderRadius: 26 }} />
+        <div style={{ display: 'flex', fontSize: 24, letterSpacing: 8, textTransform: 'uppercase', color: '#b97a2a' }}>cartridge.cafe</div>
+        <div style={{ display: 'flex', marginTop: 24, fontSize: 88, fontWeight: 700, color: '#ffdba8', letterSpacing: -1, maxWidth: 1020, textAlign: 'center', lineHeight: 1.05, textShadow: '0 0 30px rgba(245,176,76,0.4)' }}>
+          {name.length > 42 ? name.slice(0, 42) + '…' : name}
+        </div>
+        <div style={{ display: 'flex', marginTop: 20, fontSize: 34, color: '#c9b896', fontStyle: 'italic' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
+      </div>
+    ),
+    { ...OG_SIZE, headers },
+  )
+}
+
+async function renderSnap(snap: Snap): Promise<string | 'unusable' | null> {
+  const base = process.env.RENDER_SERVICE_URL
+  const secret = process.env.RENDER_SECRET
+  if (!base || !secret) return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 30_000)
+    const r = await fetch(base.replace(/\/+$/, '') + '/render', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: snap, size: 512, ticks: 40 }),
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(timer))
+    if (!r.ok) return null                    // transient (eye down) — retry next scrape
+    const out = await r.json()
+    if (!out?.ok) return null
+    // the eye RAN and the world drew nothing usable — a settled verdict for this content
+    if (!out.image || (typeof out.coveragePct === 'number' && out.coveragePct < 1)) return 'unusable'
+    return `data:image/png;base64,${out.image}`
+  } catch {
+    return null                               // abort/timeout — transient, retry later
+  }
+}
+
+// one bake per slug at a time; racing scrapes share it
+const spaceInflight = new Map<string, Promise<boolean>>()
+
+/** Render + compose + store a world's card. Persists a FAILURE record when the
+ *  eye ran and the world drew nothing (so we stop asking until it changes);
+ *  persists nothing on transient errors (eye down) so the next scrape retries. */
+export function bakeSpaceOgCard(slug: string, snap: Snap, hash: string, name: string, owner: string): Promise<boolean> {
+  const running = spaceInflight.get(slug)
+  if (running) return running
+  const job = (async () => {
+    if (!Array.isArray(snap.fields) || snap.fields.length === 0) {
+      await saveGameSlot(spaceOgSlotKey(slug), { at: Date.now(), hash, failed: true } satisfies SpaceOgRecord)
+      return false
+    }
+    const shot = await renderSnap(snap)
+    if (shot === null) { console.warn(`[og-card] space ${slug}: transient render failure`); return false }
+    if (shot === 'unusable') {
+      await saveGameSlot(spaceOgSlotKey(slug), { at: Date.now(), hash, failed: true } satisfies SpaceOgRecord)
+      console.warn(`[og-card] space ${slug}: world rendered nothing — template recorded`)
+      return false
+    }
+    const composed = new ImageResponse(spaceCardJsx(shot, name, owner), { ...OG_SIZE })
+    const bytes = Buffer.from(await composed.arrayBuffer())
+    if (bytes.length === 0) return false
+    await saveGameSlot(spaceOgSlotKey(slug), { at: Date.now(), hash, png_b64: bytes.toString('base64') } satisfies SpaceOgRecord)
+    return true
+  })().finally(() => { spaceInflight.delete(slug) })
+  spaceInflight.set(slug, job)
+  return job
+}
+
+export function spaceLookHash(snap: unknown): string {
+  return iconSnapshotHash(snap as never)
+}

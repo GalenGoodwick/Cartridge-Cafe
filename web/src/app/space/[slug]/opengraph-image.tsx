@@ -1,95 +1,68 @@
-import { ImageResponse } from 'next/og'
+import { after } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import {
+  loadSpaceOgCard, spaceOgState, bakeSpaceOgCard, spaceTemplateResponse, spaceLookHash,
+  OG_SIZE,
+} from '@/lib/og-card'
 
-// Per-world OG card. Phase 2 (Galen: "the OG maker reverts to a generic"): the
-// card now shows a REAL render of the world — the render-service renders the
-// world's own snapshot to a PNG, and we cover the card with it + a title scrim.
-// The generic NOCTURNE template is the FALLBACK when the render is unavailable
-// (service down, blank world, timeout) so a link never breaks.
+// Per-world OG card — SERVED, never rendered here (same law as the site card).
+// The old design rendered the world through the eye AT SCRAPE TIME: 14s on a
+// real public world (measured, tideglass Aug 20) — every scraper timed out and
+// shared links showed nothing. Now the finished card lives in slot
+// og_card:space:<slug>; this route is a byte copy. Staleness is the world's
+// LOOK-SIGNATURE (iconSnapshotHash): a card re-bakes (in the background, via
+// after()) only when the world actually changed. Eye-hostile worlds carry a
+// failure record and serve their night template instantly, forever, until they
+// change. PRIVATE worlds serve a NAMELESS generic card — this route is public,
+// and a guessed URL must not leak a private world's pixels or name.
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+// headroom for a background bake scheduled by after() (render-service round-trip)
+export const maxDuration = 60
 export const alt = 'A world on cartridge.cafe'
-export const size = { width: 1200, height: 630 }
+export const size = OG_SIZE
 export const contentType = 'image/png'
 
-type Snap = { fields?: unknown[]; visualTypes?: unknown[]; modules?: unknown[]; worldData?: Record<string, unknown>; stepHooks?: unknown[] }
-
-/** Render the world's own snapshot to a PNG data-URI via the render-service.
- *  Returns null on any failure — the caller falls back to the template. */
-async function renderWorld(snap: Snap | null): Promise<string | null> {
-  const base = process.env.RENDER_SERVICE_URL
-  const secret = process.env.RENDER_SECRET
-  if (!base || !secret || !snap || !Array.isArray(snap.fields) || snap.fields.length === 0) return null
-  try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 12_000)
-    const r = await fetch(base.replace(/\/+$/, '') + '/render', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
-      // a few ticks so time-based shaders develop past t=0 into a lit frame
-      body: JSON.stringify({ state: snap, size: 512, ticks: 40 }),
-      signal: ctrl.signal,
-    }).finally(() => clearTimeout(timer))
-    if (!r.ok) return null
-    const out = await r.json()
-    // only use a render that actually drew something (a blank/black frame is
-    // worse than the template — coveragePct<1 ≈ nothing rendered)
-    if (!out?.ok || !out.image || (typeof out.coveragePct === 'number' && out.coveragePct < 1)) return null
-    return `data:image/png;base64,${out.image}`
-  } catch {
-    return null
-  }
-}
+const CACHE_OK = 'public, s-maxage=86400, stale-while-revalidate=604800'
+const CACHE_SOON = 'public, s-maxage=300'
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const space = await prisma.playerSpace
-    .findUnique({ where: { slug }, select: { name: true, snapshot: true, owner: { select: { name: true } } } })
+    .findUnique({ where: { slug }, select: { name: true, snapshot: true, isPublic: true, owner: { select: { name: true } } } })
     .catch(() => null)
-  const name = space?.name || 'a world'
-  const owner = space?.owner?.name || 'someone'
-  const shot = await renderWorld((space?.snapshot as Snap) ?? null)
 
-  if (shot) {
-    // the REAL world, full-bleed, with a bottom scrim carrying the title
-    return new ImageResponse(
-      (
-        <div style={{ width: '100%', height: '100%', display: 'flex', background: '#07060a', position: 'relative' }}>
-          {/* the world render — 512² covering the 1200×630 card */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shot} width={1200} height={630} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-          {/* gentle overall darken so a bright render doesn't glare */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', background: 'linear-gradient(to top, rgba(7,6,10,0.5) 0%, rgba(7,6,10,0.12) 55%, rgba(7,6,10,0) 100%)' }} />
-          <div style={{ position: 'absolute', top: 26, left: 26, right: 26, bottom: 26, display: 'flex', border: '2px solid rgba(185,122,42,0.45)', borderRadius: 24 }} />
-          {/* the TITLE PLATE — a near-solid dark panel so the name reads over ANY
-              frame (a bright world used to swallow it, Galen). */}
-          <div style={{ position: 'absolute', left: 56, bottom: 54, maxWidth: 900, display: 'flex', flexDirection: 'column', padding: '24px 40px', borderRadius: 18, background: 'rgba(9,7,12,0.9)', border: '1px solid rgba(185,122,42,0.4)', fontFamily: 'serif' }}>
-            <div style={{ display: 'flex', fontSize: 22, letterSpacing: 7, textTransform: 'uppercase', color: '#f0b45c' }}>cartridge.cafe</div>
-            <div style={{ display: 'flex', marginTop: 8, fontSize: 72, fontWeight: 700, color: '#fff', letterSpacing: -1, lineHeight: 1.02 }}>
-              {name.length > 30 ? name.slice(0, 30) + '…' : name}
-            </div>
-            <div style={{ display: 'flex', marginTop: 6, fontSize: 30, color: '#e8dcc4', fontStyle: 'italic' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
-          </div>
-        </div>
-      ),
-      { ...size },
-    )
+  // unknown or PRIVATE world: a nameless card, long-cached — nothing to leak,
+  // nothing to bake. (Scrapers never get pointed here for private worlds — the
+  // page 404s them onto the site card — this guards direct URL guesses.)
+  if (!space || !space.isPublic) {
+    return spaceTemplateResponse('a world', 'someone', { 'Cache-Control': CACHE_OK })
   }
 
-  // FALLBACK — the NOCTURNE night template (render unavailable / blank world)
-  return new ImageResponse(
-    (
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#07060a', position: 'relative', fontFamily: 'serif' }}>
-        <div style={{ position: 'absolute', bottom: -180, left: 100, width: 1000, height: 520, display: 'flex', background: 'radial-gradient(closest-side, rgba(90,200,255,0.18), rgba(90,200,255,0))' }} />
-        <div style={{ position: 'absolute', bottom: -140, right: 120, width: 820, height: 460, display: 'flex', background: 'radial-gradient(closest-side, rgba(220,110,235,0.16), rgba(220,110,235,0))' }} />
-        <div style={{ position: 'absolute', bottom: 150, left: 60, right: 60, height: 3, display: 'flex', background: 'linear-gradient(90deg, rgba(90,200,255,0), rgba(90,200,255,0.85), rgba(220,110,235,0.85), rgba(220,110,235,0))', boxShadow: '0 0 20px rgba(120,200,255,0.5)' }} />
-        <div style={{ position: 'absolute', top: 30, left: 30, right: 30, bottom: 30, display: 'flex', border: '2px solid rgba(185,122,42,0.5)', borderRadius: 26 }} />
-        <div style={{ display: 'flex', fontSize: 24, letterSpacing: 8, textTransform: 'uppercase', color: '#b97a2a' }}>cartridge.cafe</div>
-        <div style={{ display: 'flex', marginTop: 24, fontSize: 88, fontWeight: 700, color: '#ffdba8', letterSpacing: -1, maxWidth: 1020, textAlign: 'center', lineHeight: 1.05, textShadow: '0 0 30px rgba(245,176,76,0.4)' }}>
-          {name.length > 42 ? name.slice(0, 42) + '…' : name}
-        </div>
-        <div style={{ display: 'flex', marginTop: 20, fontSize: 34, color: '#c9b896', fontStyle: 'italic' }}>by {owner.length > 30 ? owner.slice(0, 30) + '…' : owner}</div>
-      </div>
-    ),
-    { ...size },
-  )
+  const name = space.name || slug
+  const owner = space.owner?.name || 'someone'
+  const snap = (space.snapshot ?? {}) as Parameters<typeof bakeSpaceOgCard>[1]
+  const hash = spaceLookHash(snap)
+  const record = await loadSpaceOgCard(slug)
+  const state = spaceOgState(record, hash)
+
+  if ((state === 'ok' || state === 'stale') && record?.png_b64) {
+    if (state === 'stale') {
+      after(() => bakeSpaceOgCard(slug, snap, hash, name, owner).catch(() => {}))
+    }
+    return new Response(Buffer.from(record.png_b64, 'base64'), {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': CACHE_OK },
+    })
+  }
+
+  if (state === 'failed') {
+    // the eye already ran on exactly this content and got nothing — the template
+    // IS this world's card until the world changes. Long cache, no re-bake.
+    return spaceTemplateResponse(name, owner, { 'Cache-Control': CACHE_OK })
+  }
+
+  // missing (or stale-with-no-bytes): NEVER make a scraper wait on the eye —
+  // template now with a short cache, real card bakes behind the response.
+  after(() => bakeSpaceOgCard(slug, snap, hash, name, owner).catch(() => {}))
+  return spaceTemplateResponse(name, owner, { 'Cache-Control': CACHE_SOON })
 }
