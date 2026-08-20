@@ -2211,22 +2211,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           try { localStorage.setItem(`cc-save-${prevScene}`, JSON.stringify(stash)) } catch { /* full/blocked */ }
         }
 
-        // teardown the previous scene COMPLETELY — restoreFromSnapshots only
-        // adds, so every old field must be removed by hand. The old world's
-        // music must not follow the player through the door.
-        audioRef.current.stopScore()
-        audioRef.current.stopMusic(0.2)
-        for (const id of Array.from(sim.fields.keys())) {
-          renderer.removeAllFieldEffects(id)
-          sim.removeField(id)
-        }
-        sim.stepHooks.clear()
-        sim.interactionRules = []
-        sim.interactionEffects = []
-        for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
-        frameFingerprintRef.current = ''
-        audioRef.current?.stopScore()
-        audioRef.current?.stopMusic(0.3)   // no world's sound outlives it
+        // H3 FIX (Aug 2026): teardown moved BELOW the fetch + validity guards.
+        // The old order destroyed the live world (fields/hooks/worldData) and THEN
+        // fetched — so a slow or empty snapshot fetch left the guard bailing onto a
+        // BLANK world. Now we fetch first; a bad/stale fetch returns while the old
+        // world is still intact (faded black), so the veil lifts back onto the world
+        // you were on instead of nothing. Teardown runs only once a valid scene is in hand.
         // every world opens with a fresh eye — a zoom left over from another
         // scene must not follow the player through the door. CONTAIN, not cover:
         // the whole world at max size in the viewport; letterbox is honest,
@@ -2277,6 +2267,22 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
         if (playLoadedRef.current !== playScene) return
         const scene = data.scene || data.snapshot || data
         if (!scene || !scene.fields) return
+        // TEARDOWN — only now that a valid replacement scene is in hand (H3 fix).
+        // restoreFromSnapshots only ADDS, so every old field must be removed by hand;
+        // the old world's music must not follow the player through the door.
+        audioRef.current.stopScore()
+        audioRef.current.stopMusic(0.2)
+        for (const id of Array.from(sim.fields.keys())) {
+          renderer.removeAllFieldEffects(id)
+          sim.removeField(id)
+        }
+        sim.stepHooks.clear()
+        sim.interactionRules = []
+        sim.interactionEffects = []
+        for (const k of Object.keys(sim.worldData)) delete sim.worldData[k]
+        frameFingerprintRef.current = ''
+        audioRef.current?.stopScore()
+        audioRef.current?.stopMusic(0.3)   // no world's sound outlives it
         // A scene is a complete world — reset the shader registries (same rule as
         // handleLoadScene). Without this, the departed world's visuals ride along:
         // registries bloat, and worse, until the recompile lands the OLD pipeline
