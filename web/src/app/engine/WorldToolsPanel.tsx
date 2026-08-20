@@ -8,7 +8,7 @@ import { can, type WorldContext } from '@/lib/worldContext'
 import type { FieldSimulation } from './simulation'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 
-export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, winnerTakesMain, setWinnerTakesMain, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
+export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
   simulationRef: MutableRefObject<FieldSimulation | null>
   spaceId?: string
   spaceSlug?: string
@@ -21,8 +21,6 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
   presenceOffRef: MutableRefObject<boolean>
   setToolsTick: Dispatch<SetStateAction<number>>
   lineageBase: string
-  winnerTakesMain: boolean
-  setWinnerTakesMain: Dispatch<SetStateAction<boolean>>
   loadLineage: () => void
   lineageBusy: boolean
   lineageTrail: null | { name: string; by?: string | null; kind: string; slug?: string }[]
@@ -95,26 +93,12 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     })}
                   </div>
                   )}
-                  {/* OPT-IN OVERTURN — by default a challenger winning the vote only
-                      earns a podium; your main stays yours. Flip this and the
-                      popular winner takes main automatically. Owner-gated server-side. */}
-                  {canEditLaw && lineageBase && (
-                  <div className="flex items-center justify-between text-[16px]">
-                    <span>winner takes main</span>
-                    {toggleBtn(winnerTakesMain, async () => {
-                      const next = !winnerTakesMain
-                      setWinnerTakesMain(next)
-                      const r = await fetch('/api/engine/lineage/main-rule', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ base: lineageBase, winnerTakesMain: next }),
-                      }).catch(() => null)
-                      if (!r || !r.ok) setWinnerTakesMain(!next)   // revert on failure
-                    })}
-                  </div>
-                  )}
+                  {/* winner-takes-main RETIRED with the podium (branch→fork
+                      transition): world votes no longer exist, so no challenger
+                      can win — or take — anything. Your main is simply yours. */}
                   <div className="text-[14px] text-white/35 leading-relaxed">
                     {canEditLaw
-                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start. winner-takes-main hands the throne to a challenger that wins the vote — off by default, so your main stays yours (a win is only a podium)."
+                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
                   </div>
                 </div>

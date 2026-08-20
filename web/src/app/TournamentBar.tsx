@@ -104,10 +104,9 @@ function cellWinner(c: Cell, round: number): string | null {
   return best
 }
 
-export default function TournamentBar({ slot, worlds, branchesOf, visible, emptyHint, sceneKey, rail, railTop, onReckoning, onPreview, onStageRect }: {
+export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneKey, rail, railTop, onReckoning, onPreview, onStageRect }: {
   slot: string
   worlds?: string[]              // roster handed in (door pages: the visible bubbles)
-  branchesOf?: string            // world pages: self-fetch MAIN + this world's branches
   visible: boolean
   emptyHint?: string             // what to say while the arena waits for two contenders
   docked?: boolean               // deliberating: the bar rides along into worlds
@@ -295,12 +294,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
     return () => cancelAnimationFrame(id)
   }, [open])
 
-  const [selfRoster, setSelfRoster] = useState<string[]>([])
-  // for a world-page arena the candidates are base names ('MAIN', 'NAME ⑂ author');
-  // this maps each to a LOADABLE scene so the stage can preview it — MAIN → the
-  // base world, a branch → its newest saved version.
-  const previewMap = useRef<Record<string, string>>({})
-  const roster = branchesOf ? selfRoster : (worlds || [])
+  // PODIUM RETIRED (branch→fork transition): world-page arenas — which
+  // self-fetched MAIN + branches as contestants and promoted a champion to a
+  // podium copy — are gone. The roster is always handed in by the door page.
+  const roster = worlds || []
   const rosterRef = useRef(roster)
   rosterRef.current = roster
   const slotRef = useRef(slot)
@@ -351,53 +348,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
       document.removeEventListener('visibilitychange', onFocus)
     }
   }, [])
-
-  // world pages find their own contestants: MAIN + each branch, newest version
-  useEffect(() => {
-    if (!branchesOf || !visible) return
-    let stop = false
-    const scan = async () => {
-      try {
-        const j = await fetch('/api/engine/scene?action=list').then(r => r.json())
-        if (stop) return
-        const bestVer: Record<string, number> = {}
-        const bestName: Record<string, string> = {}
-        for (const n of (j.scenes || []) as string[]) {
-          if (!n.startsWith(branchesOf + ' ⑂ ')) continue
-          if (n.startsWith(branchesOf + ' ⑂ main · v') || n.startsWith(branchesOf + ' ⑂ winner · v')) continue   // podium copies already won — never contestants
-          const vAt = n.lastIndexOf(' · v')
-          const base = vAt > 0 ? n.slice(0, vAt) : n
-          const ver = vAt > 0 ? (parseInt(n.slice(vAt + 4), 10) || 0) : 0
-          if (!(base in bestVer) || ver >= bestVer[base]) { bestVer[base] = ver; bestName[base] = n }
-        }
-        const bases = Object.keys(bestName)
-        // challengers ONLY — the base world is not a contestant in its own
-        // arena (you are standing in it; it holds the throne, it doesn't run).
-        // Live docs that still carry MAIN in a cell heal via the PRUNE law.
-        previewMap.current = { ...bestName }
-        setSelfRoster(bases)
-      } catch { /* offline is fine */ }
-    }
-    scan()
-    const t = setInterval(scan, 15000)
-    return () => { stop = true; clearInterval(t) }
-  }, [branchesOf, visible])
-
-  // tournament → throne: when THIS world arena crowns a champion, nudge the server
-  // to promote it to the lineage's mainHolder. The server reads the arena's OWN
-  // stored champion and resolves it, so this can't spoof a winner — it just says
-  // "the arena settled, re-check the throne." World arenas only; skips a null
-  // champion so a between-rounds lull never demotes the reigning branch.
-  const promotedRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!branchesOf || !doc?.champion) return
-    if (promotedRef.current === doc.champion) return
-    promotedRef.current = doc.champion
-    fetch('/api/engine/lineage/promote', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base: branchesOf }),
-    }).catch(() => {})
-  }, [branchesOf, doc?.champion])
 
   const save = (d: TDoc) => {
     fetch('/api/engine/save', {
@@ -631,8 +581,7 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
    *  resolved by the shell — both render in place. */
   // door arenas hand the raw world name to the shell (it resolves 'space:slug');
   // a world-page arena resolves 'MAIN'/branch names to a loadable scene itself.
-  const previewName = (w: string) => branchesOf ? (previewMap.current[w] || w) : w
-  const load = (w: string) => { setFocus(w); loadChat(w); onPreview?.(previewName(w)) }
+  const load = (w: string) => { setFocus(w); loadChat(w); onPreview?.(w) }
   // the reckoning never opens onto a dead stage: the FIRST candidate of your
   // cell loads immediately (in deal order), so entering the vote always means
   // looking at a votable world. Your own hover/click takes over from there.
@@ -735,8 +684,6 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
 
   // an arena short of two contenders says so instead of vanishing
   if (!doc) {
-    // a world's own arena stays silent until real rivals exist — no nagging to branch
-    if (branchesOf) return null
     const hint = emptyHint
     if (!hint || roster.length >= 2) return null
     return (
@@ -881,17 +828,10 @@ export default function TournamentBar({ slot, worlds, branchesOf, visible, empty
           {showInstr && (
             <div className={`${pill} absolute bottom-full right-0 mb-9 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl z-20`}>
               <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
-              {branchesOf ? (
-                <>this arena asks one thing: should a <span className="text-amber-300">branch</span> replace{' '}
-                <span className="text-amber-300">{branchesOf.toLowerCase()}</span>&apos;s MAIN? load each contender (MAIN and every
-                branch), witness them all, then tap the <span className="text-amber-300">+</span> on the one that should hold the
-                name. your vote stays movable until the cell gathers its quorum of voices — the final voice locks everyone in.</>
-              ) : (
-                <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
-                witnessed every world in your cell, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
-                your vote. your vote stays movable until the cell gathers its quorum of voices (the final voice locks everyone in); every vote
-                nudges its world in the constellation, and a tier only crowns when a cell gathers a quorum, so no single vote decides it.</>
-              )}
+              <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
+              witnessed every world in your cell, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
+              your vote. your vote stays movable until the cell gathers its quorum of voices (the final voice locks everyone in); every vote
+              nudges its world in the constellation, and a tier only crowns when a cell gathers a quorum, so no single vote decides it.</>
             </div>
           )}
           <div className="grid grid-cols-5 gap-3">

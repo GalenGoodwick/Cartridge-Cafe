@@ -182,36 +182,8 @@ export function deriveContext(args: {
   return { surface: args.surface, kind, role, identity, view, lineage: args.lineage ?? null }
 }
 
-// ─── the one vote module's roster ───
-
-/** who competes in the vote for this context. main/sub-main/mine vote over
- *  WORLDS; a world votes over its BRANCHES; a space votes over its SAVE-POINTS.
- *  The reckoning UI, the TDoc, and the quorum law are identical across all of
- *  them — only this roster differs. `worlds` is the caller's already-known list
- *  (shelf bubbles / pinned shelf / your worlds / a space's versions); branch
- *  arenas self-fetch and pass null here so TournamentBar uses `branchesOf`. */
-export interface VoteRoster {
-  slot: string
-  worlds: string[] | null    // null = self-fetch the branch family (branchesOf)
-  branchesOf: string | null
-}
-
-export function rosterFor(ctx: WorldContext, opts: {
-  hubMode?: 'main' | 'mine' | 'submain'
-  subSlug?: string
-  mineWho?: string
-  worlds?: string[]          // shelf/pinned/mine bubbles, or a space's versions
-}): VoteRoster {
-  if (ctx.surface === 'hub') {
-    if (opts.hubMode === 'mine') return { slot: `tournament:mine:${opts.mineWho ?? ''}`, worlds: opts.worlds ?? [], branchesOf: null }
-    if (opts.hubMode === 'submain') return { slot: opts.subSlug ? `tournament:sub:${opts.subSlug}` : 'tournament:submain', worlds: opts.worlds ?? [], branchesOf: null }
-    return { slot: 'tournament:main', worlds: opts.worlds ?? [], branchesOf: null }
-  }
-  // inside a world:
-  if (ctx.kind === 'space') {
-    // a space votes over LIVE vs its own save-points (caller supplies the list)
-    return { slot: `tournament:space:${ctx.identity.slug}`, worlds: opts.worlds ?? [], branchesOf: null }
-  }
-  // a house/branch world votes over its branch family — self-fetched
-  return { slot: `tournament:world:${ctx.identity.base.toUpperCase()}`, worlds: null, branchesOf: ctx.identity.base }
-}
+// ─── the vote roster ───
+// rosterFor/VoteRoster DELETED (branch→fork transition): the reckoning is
+// MAIN-ONLY now. World/sub-main/mine arenas — and the branchesOf self-fetch
+// they described — are retired; the one roster left is the main shelf's,
+// handed to TournamentBar directly by CafeShell.

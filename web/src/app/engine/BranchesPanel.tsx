@@ -41,29 +41,9 @@ export function BranchesPanel({ cellBase, cellData, setCellData, cellDraft, setC
                   <div className="flex items-center gap-2 mb-3 text-[14px] text-white/40">
                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
                     <span>{viewers.length} here now</span>
-                    <span className="text-white/25">· ride, discuss — cast your vote in the ⚔ reckoning</span>
                   </div>
-                  {/* THE PODIUM — above main and the branches. The elected winner's
-                      frozen copy rides from here; main always stays the maker's. */}
-                  {(() => {
-                    const podium = branchList.find(bb => bb.author === 'winner' || bb.author.startsWith('winner · '))
-                    if (podium) {
-                      const of = String(podium.author.split(' · ').slice(1).join(' · ') || '')
-                      return (
-                        <button className="w-full text-left px-3 py-2 rounded-lg border border-amber-300/40 bg-amber-400/10 hover:bg-amber-400/20 transition-colors mb-1.5"
-                          onClick={() => { setBranchesOpen(false); handleLoadScene(podium.name) }}>
-                          <span className="text-amber-200">⚔ WINNER</span>
-                          <span className="text-white/45 text-[14px]"> — the vote's champion{of ? ` (${of})` : ''} · v{podium.v} · ride it</span>
-                        </button>
-                      )
-                    }
-                    return (
-                      <div className="w-full px-3 py-2 rounded-lg border border-white/10 border-dashed mb-1.5">
-                        <span className="text-white/35">⚔ no winner yet</span>
-                        <span className="text-white/25 text-[14px]"> — the vote decides; the champion stands here</span>
-                      </div>
-                    )
-                  })()}
+                  {/* THE PODIUM is RETIRED (branch→fork transition): world votes are
+                      gone, so no winner's frozen copy stands above main anymore. */}
                   <button className="w-full text-left px-3 py-2 rounded-lg border border-white/10 hover:border-white/30 hover:bg-white/5 transition-colors mb-1.5" onClick={() => {
                     setBranchesOpen(false)
                     // on a space, "main" is the space's own snapshot, not a scene named

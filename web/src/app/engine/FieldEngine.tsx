@@ -381,7 +381,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // original. When the tournament snags main from the founder, we reassure them —
   // their original is never gone; the ★ bookmark always returns them to it.
   const [worldLineage, setWorldLineage] = useState<{ original: string; mainHolder: string } | null>(null)
-  const [winnerTakesMain, setWinnerTakesMain] = useState(false)   // owner opt-in: a popular challenger can take main
+  // winnerTakesMain RETIRED with the podium (branch→fork transition): world
+  // votes no longer exist, so nothing can take main.
   const [verMax, setVerMax] = useState(1)   // highest existing version of the ridden branch — bounds the ▸ scroller
   const [verList, setVerList] = useState<number[]>([])   // the versions that ACTUALLY exist (deletions leave holes)
   // learn which versions this branch actually has, so the scroller can never
@@ -2007,17 +2008,6 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     const t = setInterval(load, 20000)
     return () => { stop = true; clearInterval(t) }
   }, [playScene, spaceSlug, riding, isHub])
-
-  // the owner's overturn rule for this world (winner-takes-main opt-in)
-  useEffect(() => {
-    if (!lineageBase || isHub) { setWinnerTakesMain(false); return }
-    let stop = false
-    fetch(`/api/engine/lineage/main-rule?base=${encodeURIComponent(lineageBase)}`)
-      .then(r => r.json())
-      .then(d => { if (!stop) setWinnerTakesMain(!!d?.winnerTakesMain) })
-      .catch(() => {})
-    return () => { stop = true }
-  }, [lineageBase, isHub, chromeVisible])
 
   // Reassure the FOUNDER when their world's main gets snagged. The founder is the
   // owner of the immortal original (its handle). If that's you and a challenger now
@@ -5798,7 +5788,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* WORLD TOOLS — one panel, every tier. Viewers see presence + contents;
               the owner (space) or branch-holder additionally gets law + keys + mgmt. */}
           {can(ctx, 'toolsPanel') && chromeVisible && (
-            <WorldToolsPanel simulationRef={simulationRef} spaceId={spaceId} spaceSlug={spaceSlug} isOwner={isOwner} lastSceneRef={lastSceneRef} setChromeVisible={setChromeVisible} ctx={ctx} presenceOff={presenceOff} setPresenceOff={setPresenceOff} presenceOffRef={presenceOffRef} setToolsTick={setToolsTick} lineageBase={lineageBase} winnerTakesMain={winnerTakesMain} setWinnerTakesMain={setWinnerTakesMain} loadLineage={loadLineage} lineageBusy={lineageBusy} lineageTrail={lineageTrail} lineageRemixes={lineageRemixes} />
+            <WorldToolsPanel simulationRef={simulationRef} spaceId={spaceId} spaceSlug={spaceSlug} isOwner={isOwner} lastSceneRef={lastSceneRef} setChromeVisible={setChromeVisible} ctx={ctx} presenceOff={presenceOff} setPresenceOff={setPresenceOff} presenceOffRef={presenceOffRef} setToolsTick={setToolsTick} lineageBase={lineageBase} loadLineage={loadLineage} lineageBusy={lineageBusy} lineageTrail={lineageTrail} lineageRemixes={lineageRemixes} />
           )}
 
           {gpuFailed && (
