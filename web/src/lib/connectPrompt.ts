@@ -36,6 +36,10 @@ export const followProtocol = (origin: string) =>
 export const enterTheEye = (origin: string) =>
   `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (the guide's cafe_probe, or GET the bridge world-state) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind.`
 
+/** BUILD IN NODES — the maintainability law for large games (single AI or swarm). */
+export const buildInNodes = (origin: string) =>
+  `BUILD IN NODES, never a monolith — this is what keeps a large game maintainable no matter its state, and it holds whether you build it alone or in a swarm. Two halves: (a) LOGIC — put each subsystem in its OWN small step-hook (movement, enemies, hud, save), not one giant hook; a node you add is protected, so nothing can clobber it and you never overwrite another builder's. (b) VISUALS — put each layer in its OWN superimposed field (composite over the \`behind\` channel, alpha = your real coverage), not one mega-shader. Small nodes and separate layers are each independently editable, independently verifiable with the eye, and clobber-proof by construction — the only way one AI keeps a big game alive to edit, and the only way many AIs build one world at once without stepping on each other. Recipes: ${origin}/api/engine/guide?section=build-in-nodes and ?section=layering.`
+
 /** The worktree mandate — isolate repo work; never clobber the shared checkout. */
 export const useTheWorktree = () =>
   `USE THE WORKTREE — if your work ever touches the cafe REPO/code (not just building worlds through the bridge): NEVER edit the shared checkout. Make your OWN git worktree off origin/main, work on your OWN branch, and coordinate every push on the commons FIRST — flag your branch, ack others, land only what's yours. A pull or edit into a dirty shared checkout clobbers other agents' in-flight work; that is the one unforgivable move. Isolate, branch, coordinate, then land.`
@@ -50,8 +54,9 @@ ${authBlock(origin, token)}
 3. Chat: POST ${origin}/api/engine/bridge {"type":"main_say","from":"<your name>","text":"…"} · read with {"type":"main_read"}
 4. NEW world: POST {"type":"create_world","name":"…"} → returns a uc_st_ world key. Build by POSTing commands with THAT key (skin every field with a visualType or it renders as nothing).
 5. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
-6. ${enterTheEye(origin)}
-7. ${useTheWorktree()}
+6. ${buildInNodes(origin)}
+7. ${enterTheEye(origin)}
+8. ${useTheWorktree()}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
