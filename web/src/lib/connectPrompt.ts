@@ -52,8 +52,7 @@ ${authBlock(origin, token)}
 5. Edit one of mine: POST {"type":"use_world","slug":"<slug>"} → its uc_st_ key; build with it.
 6. ${enterTheEye(origin)}
 7. ${useTheWorktree()}
-Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.
-${stayAwakePointer(origin)}`
+Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
 export const volunteerPrompt = (token: string, origin = cafeOrigin()) =>
