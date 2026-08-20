@@ -88,6 +88,14 @@ export const authOptions: NextAuthOptions = {
             // bare domain. Reproduced + fix verified by replaying the callback
             // with a minted state cookie ± iss.
             issuer: 'https://github.com/login/oauth',
+            // Mirror Google (the primary door): route a GitHub login into the existing
+            // same-email account instead of refusing with OAuthAccountNotLinked.
+            // Landed only AFTER the GitHub flow was verified live end-to-end (a real
+            // sign-in completed on the fixed issuer). Safe: the provider fetches the
+            // account's PRIMARY VERIFIED email (scope user:email → /user/emails), so
+            // it can't hijack an address the person doesn't control. Email is the one
+            // universal routing key across both doors.
+            allowDangerousEmailAccountLinking: true,
           }),
         ]
       : []),
