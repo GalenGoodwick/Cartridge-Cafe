@@ -98,3 +98,38 @@ export async function findOwnWorldByName(userId: string, name: string) {
     select: { slug: true, name: true },
   })
 }
+
+/** BRANCH→FORK (the fork paradigm): land a scene snapshot as a PRIVATE owned
+ *  playerSpace — the one way a remix of open ground becomes yours. Replaces the
+ *  old fork-on-overwrite branch mint (`BASE ⑂ handle · v1`), which produced an
+ *  ownerless scene that could never wear its maker's tag or reach the shelf.
+ *  Stamps `__branchedFrom` (display lineage) and links `forkOfId` when the base
+ *  is a real playerSpace. Caller must have passed canCreateWorld already. */
+export async function forkSnapshotToSpace(opts: {
+  userId: string
+  baseName: string                       // the world it came from (display name / scene name)
+  snapshot: Prisma.InputJsonValue        // the world content to land
+  label?: string                         // optional fork name; defaults to "<base> (fork)"
+}) {
+  const { slugify } = await import('./slug')
+  const name = (opts.label && opts.label.trim() ? opts.label.trim() : `${opts.baseName} (fork)`).slice(0, 60)
+  const snap = JSON.parse(JSON.stringify(opts.snapshot)) as { worldData?: Record<string, unknown> }
+  snap.worldData = { ...(snap.worldData || {}), __branchedFrom: opts.baseName }
+  const baseSpace = await prisma.playerSpace.findUnique({
+    where: { slug: slugify(opts.baseName) }, select: { id: true },
+  }).catch(() => null)
+  const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({
+    name,
+    slug,
+    ownerId: opts.userId,
+    isPublic: false,                     // born private; publishing is the owner's explicit act
+    forkOfId: baseSpace?.id ?? null,
+    description: `Forked from ${opts.baseName}`,
+    snapshot: snap as unknown as Prisma.InputJsonValue,
+  }))
+  // lineage rung: version 1 = what was forked (provenance, never load-bearing)
+  await prisma.spaceVersion.create({
+    data: { spaceId: space.id, version: 1, snapshot: snap as unknown as Prisma.InputJsonValue, authorId: opts.userId, note: `Forked from ${opts.baseName}` },
+  }).catch(() => {})
+  return space
+}

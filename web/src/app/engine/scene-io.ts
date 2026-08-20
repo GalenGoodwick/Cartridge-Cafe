@@ -77,8 +77,11 @@ export async function saveSceneAs(d: SaveSceneAsDeps, sceneName: string, extraWo
       body: JSON.stringify({ action: 'save', name: sceneName, scene: sceneData }),
     })
     if (!r.ok) return null
-    const dd = await r.json().catch(() => ({} as { savedAs?: string }))
-    return (dd.savedAs as string) || sceneName   // fork-on-overwrite may bump the version
+    const dd = await r.json().catch(() => ({} as { savedAs?: string; forkedSpace?: string }))
+    // FORK PARADIGM: a save onto a canonical world now lands as a private
+    // playerSpace the saver owns — follow it to its own page.
+    if (dd.forkedSpace) { window.location.href = `/space/${dd.forkedSpace}`; return null }
+    return (dd.savedAs as string) || sceneName   // an existing ⑂ branch may bump the version
   } catch { return null }
 }
 
@@ -149,27 +152,29 @@ export interface CreateBranchDeps {
   showToast: Toast
   openPlug: () => void
 }
-/** CREATE BRANCH, the methodical way (same contract as brewing a world):
- *  1 · name it in a real panel (blank = your default branch) · 2 · the branch
- *  opens and the CONNECT AI box appears with its scoped key + briefing. */
+/** FORK THIS WORLD (the fork paradigm — "create branch" retired): the remix
+ *  lands as a private playerSpace the remixer OWNS — maker tag, forkOf lineage,
+ *  shelf-capable — instead of an ownerless ⑂ scene. The fork's own /space page
+ *  is where CONNECT AI mints its key directly. */
 export async function createBranch(d: CreateBranchDeps, labelRaw: string) {
   if (!d.me) { window.location.href = '/auth/signin'; return }
   const src = d.lastSceneRef.current || d.playScene || d.spaceSlug || ''
   if (!src) { d.showToast('load a world first', 'error'); return }
-  const base = src.split(' ⑂ ')[0]
-  const user = d.me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
   const label = labelRaw.trim().replace(/[^a-z0-9 _-]/gi, '').replace(/\s+/g, ' ').slice(0, 40)
-  const name = label ? `${base} ⑂ ${user} · ${label} · v1` : `${base} ⑂ ${user} · v1`
-  // stamp the IMMEDIATE parent (src), not the flattened root — full genealogy
-  const savedAs = await d.saveSceneAs(name, { branchedFrom: src, branchedBy: user, branchedAt: Date.now() })
-  if (savedAs) {
-    d.lastSceneRef.current = savedAs      // follow the real (possibly fork-bumped) name
-    d.setPlugToken(null)                  // fresh branch → fresh scoped key
-    await d.mintBranchToken(savedAs)      // AWAIT: the scoped key is present the moment the box opens (no tokenless flash)
-    d.setBranchCreateOpen(false)
-    d.showToast(`branch opened: ${savedAs} — the eye is watching`, 'success')
-    d.openPlug()   // step 2 of the method: connect your AI — top-most, competitors closed
-  }
+  try {
+    const r = await fetch('/api/engine/scene/fork', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: src, label: label || undefined }),
+    })
+    const dd = await r.json().catch(() => ({} as { slug?: string; error?: string }))
+    if (r.ok && dd.slug) {
+      d.setBranchCreateOpen(false)
+      d.showToast(`forked — it's yours now: /space/${dd.slug}`, 'success')
+      window.location.href = `/space/${dd.slug}`
+    } else {
+      d.showToast(dd.error || 'fork failed', 'error')
+    }
+  } catch { d.showToast('fork failed — are you offline?', 'error') }
 }
 
 /* ───────────────────────── world-swap hygiene + load ───────────────────── */

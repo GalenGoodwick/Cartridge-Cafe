@@ -5,6 +5,8 @@ import { mayWriteScene } from '../scene-auth'
 import { saveScene, loadScene, listScenes, deleteScene, listSceneVersions, loadSceneVersion, revertScene, hydrateScene, hydrateAllScenes } from '../store'
 import { ensureLineage, getLineage } from '../lineage'
 import { isAdmin, isAdminToken } from '@/lib/adminAuth'
+import { prisma } from '@/lib/prisma'
+import { canCreateWorld, forkSnapshotToSpace } from '@/lib/world-create'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,10 +98,29 @@ export async function POST(req: NextRequest) {
           let n = parseInt(bm[2], 10)
           do { n++; target = `${bm[1]} · v${n}` } while (loadScene(target))   // branch → v(n+1)
         } else {
-          const author = (typeof body.author === 'string' && body.author) || 'ai'
-          let n = 1; const base = `${body.name} ⑂ ${author}`
-          target = `${base} · v${n}`
-          while (loadScene(target)) { n++; target = `${base} · v${n}` }        // canonical → a fresh branch
+          // FORK PARADIGM (Galen, Aug 2026): a save onto a canonical world no
+          // longer mints an ownerless `BASE ⑂ handle · v1` branch scene — it
+          // FORKS the save into a private playerSpace the saver OWNS (maker
+          // tag, forkOf lineage, shelf-capable). Existing ⑂ branches above
+          // keep their v(n+1) iteration until the sweep; new lines stop here.
+          const session = await getServerSession(authOptions)
+          const email = session?.user?.email
+          const user = email ? await prisma.user.findUnique({ where: { email }, select: { id: true } }) : null
+          if (!user) {
+            return NextResponse.json({ error: 'sign in to save your take on this world — it forks into a world YOU own' }, { status: 401 })
+          }
+          const gate = await canCreateWorld(user.id)
+          if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+          const label = (typeof body.author === 'string' && body.author && body.author !== 'ai')
+            ? `${body.name} · ${body.author}` : undefined
+          const space = await forkSnapshotToSpace({
+            userId: user.id, baseName: body.name, label,
+            snapshot: body.scene as never,
+          })
+          return NextResponse.json({
+            ok: true, forked: true, forkedSpace: space.slug, spaceName: space.name,
+            next: `your fork lives at /space/${space.slug} — private until you publish it`,
+          }, { status: 201 })
         }
       }
       // DEDUPE: a save-point identical to the version right before it shouldn't

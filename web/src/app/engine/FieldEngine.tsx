@@ -1696,8 +1696,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [me])
 
   // OPEN GROUND notice (Galen): entering a house world quietly says editing is
-  // allowed — once per world per session. Guests edit freely; a save opens
-  // their own branch of it (fork-on-overwrite), the original stays immortal.
+  // allowed — once per world per session. A save FORKS it into a world the
+  // saver owns (fork paradigm); the original stays immortal.
   const openGroundToldRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const cur = playScene || ''
@@ -1705,7 +1705,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
     if (openGroundToldRef.current.has(cur)) return
     openGroundToldRef.current.add(cur)
     showToast('☕ open ground — this house world is everyone’s to edit', 'info',
-      'Edit freely; saving opens your own branch of it. The original is immortal.')
+      'Edit freely; saving forks it into your own world. The original is immortal.')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
@@ -5998,17 +5998,17 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             >
               ? INSTRUCTIONS
             </button>
-            {/* CREATE BRANCH stands ABOVE the EDIT fold (Galen: out of the dropdown) —
-                branching is the front-door act, not a buried control. GREEN = the
+            {/* FORK stands ABOVE the EDIT fold (Galen: out of the dropdown) —
+                forking is the front-door act, not a buried control. GREEN = the
                 create action. Under it, the ◂/▸ browse row steps the family
-                (main → each branch head) — no sign-in needed. */}
+                (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
               <button
                 onClick={handleBranch}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
-                title={me ? 'open your own branch of this world — name it, then connect your AI' : 'sign in to branch this world'}
+                title={me ? 'fork this world — your own copy, a new world you own' : 'sign in to fork this world'}
               >
-                ⑂ CREATE BRANCH
+                ⑄ FORK THIS WORLD
               </button>
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
@@ -6022,13 +6022,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               {/* (the ⚖ "call a resolution/issue" button was removed — it wasn't
                   wired up yet. The world's ONE real vote is the ⚔ RECKONING that
                   TournamentBar seats just below this dock.) */}
-              {/* the methodical create panel: 1 · name it · 2 · AI connects with its
-                  scoped key (the plug box opens itself the moment the branch exists) */}
+              {/* the methodical fork panel: 1 · name it · 2 · say what it should
+                  become — the fork opens as YOUR world at /space/<slug> */}
               {branchCreateOpen && (
                 <div className="absolute right-full top-0 mr-2 z-50 w-72 max-h-[80vh] overflow-y-auto rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
-                  <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑂ CREATE BRANCH</div>
-                  {/* the one thing people ask: branch vs remix. Say it right here. */}
-                  <div className="text-[14px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">branch</span> challenges this world in its arena — win the vote for a podium; main stays with the maker.</div>
+                  <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑄ FORK THIS WORLD</div>
+                  <div className="text-[14px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">fork</span> is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
                   <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
                   <input
@@ -6054,7 +6053,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
                         <button onClick={() => { setPlugBrief(branchBrief); createBranch(branchLabel) }} disabled={!briefOk}
                           className="w-full px-2 py-1.5 rounded bg-emerald-400/20 border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 text-[14px] tracking-[0.15em] transition-colors disabled:opacity-40">
-                          OPEN + CONNECT AI
+                          FORK IT — IT BECOMES YOURS
                         </button>
                       </div>
                     </>)
@@ -6557,8 +6556,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
                   <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI; edits open a branch you publish.</div>
                   <div><span className="text-white/90">◆ MAKE ICON</span> — have your AI author the world&apos;s shelf badge.</div>
-                  <div><span className="text-emerald-300">⑂ CREATE BRANCH</span> — fork this world to challenge it in the vote.</div>
-                  <div><span className="text-amber-300">⚔ VOTE</span> — open the reckoning (needs at least one branch).</div>
+                  <div><span className="text-emerald-300">⑄ FORK THIS WORLD</span> — take your own copy; it becomes a new world you own, with lineage back here.</div>
                 </div>
                 <button onClick={dismissEditCoach}
                   className="mt-4 w-full rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 py-2 text-[14px] tracking-[0.2em] transition-colors">GOT IT</button>
