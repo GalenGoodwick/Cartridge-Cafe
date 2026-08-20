@@ -36,11 +36,10 @@ export async function GET(req: NextRequest) {
     guests: await safe('users.guests', 0, () => prisma.user.count({ where: isGuest })),
   }
 
-  // cafe-activity signals — real engagement (world made / passkey / companion / OAuth)
+  // cafe-activity signals — real engagement (world made / passkey / OAuth)
   const humans = {
     madeAWorld: await safe('humans.world', 0, () => prisma.user.count({ where: { ...notGuest, ownedSpaces: { some: {} } } })),
     withPasskey: await safe('humans.passkey', 0, () => prisma.user.count({ where: { ...notGuest, passkeys: { some: {} } } })),
-    withCompanion: await safe('humans.companion', 0, () => prisma.user.count({ where: { ...notGuest, companions: { some: {} } } })),
     everLoggedIn_sharedAuth: await safe('humans.session', 0, () => prisma.user.count({ where: { ...notGuest, sessions: { some: {} } } })),
     withOAuth_sharedAuth: await safe('humans.account', 0, () => prisma.user.count({ where: { ...notGuest, accounts: { some: {} } } })),
     verified: await safe('humans.verified', 0, () => prisma.user.count({ where: { ...notGuest, emailVerified: { not: null } } })),
@@ -52,14 +51,13 @@ export async function GET(req: NextRequest) {
     new_24h: await safe('worlds.new24h', 0, () => prisma.playerSpace.count({ where: { createdAt: since(DAY) } })),
     new_7d: await safe('worlds.new7d', 0, () => prisma.playerSpace.count({ where: { createdAt: since(7 * DAY) } })),
     guestMade: await safe('worlds.guest', 0, () => prisma.playerSpace.count({ where: { owner: isGuest } })),
-    aiMade: await safe('worlds.ai', 0, () => prisma.playerSpace.count({ where: { createdByCompanionId: { not: null } } })),
   }
 
   const recentWorlds = await safe('recentWorlds', [] as unknown[], async () =>
     (await prisma.playerSpace.findMany({
       orderBy: { createdAt: 'desc' }, take: 15,
-      select: { slug: true, name: true, createdAt: true, isPublic: true, createdByCompanionId: true, owner: { select: { email: true, name: true } } },
-    })).map(w => ({ slug: w.slug, name: w.name, at: w.createdAt, by: w.owner.email.endsWith(GUEST_SUFFIX) ? 'guest' : (w.owner.name || w.owner.email.split('@')[0]), guest: w.owner.email.endsWith(GUEST_SUFFIX), ai: !!w.createdByCompanionId, public: w.isPublic })))
+      select: { slug: true, name: true, createdAt: true, isPublic: true, owner: { select: { email: true, name: true } } },
+    })).map(w => ({ slug: w.slug, name: w.name, at: w.createdAt, by: w.owner.email.endsWith(GUEST_SUFFIX) ? 'guest' : (w.owner.name || w.owner.email.split('@')[0]), guest: w.owner.email.endsWith(GUEST_SUFFIX), public: w.isPublic })))
 
   const userTopDomains = await safe('topDomains', [] as { domain: string; count: number }[], async () =>
     (await prisma.$queryRawUnsafe(`SELECT split_part(email,'@',2) AS domain, count(*) AS c FROM "User" WHERE email NOT LIKE '%@guest.cartridge.cafe' GROUP BY domain ORDER BY c DESC LIMIT 15`) as Record<string, unknown>[]).map(r => ({ domain: String(r.domain), count: n(r.c) })))

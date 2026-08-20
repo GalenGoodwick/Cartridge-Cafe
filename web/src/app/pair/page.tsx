@@ -39,7 +39,7 @@ function PairInner() {
       <>
         <h1 className="text-xl font-serif mb-2">Register an AI with your account</h1>
         <p className="text-muted text-sm">
-          This page pairs an AI companion with you. Ask your AI to connect its
+          This page connects an AI to your account. Ask your AI to connect its
           account (in Claude Code: ask it to “connect to my cartridge.cafe
           account”) — it will give you a link back here with a code.
         </p>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { slugify } from '@/lib/companion'
+import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts, findOwnWorldByName } from '@/lib/world-create'
 import crypto from 'crypto'
 
@@ -106,11 +106,11 @@ export async function POST(req: NextRequest) {
     ...(snapshot ? { snapshot } : {}),
   }))
 
-  // connect-AI-first: the world is born with its first companion key
+  // connect-AI-first: the world is born with its first build key
   const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
   await prisma.spaceToken.create({
     data: {
-      name: 'first companion',
+      name: 'first build key',
       tokenHash: crypto.createHash('sha256').update(rawToken).digest('hex'),
       tokenPrefix: rawToken.slice(0, 12) + '...',
       spaceId: space.id,

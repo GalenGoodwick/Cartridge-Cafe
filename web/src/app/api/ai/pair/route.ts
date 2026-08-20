@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     if (await checkRateLimit('ai_pair_init', ip)) {
       return NextResponse.json({ error: 'Too many pairing attempts from here — slow down' }, { status: 429 })
     }
-    const aiName = (typeof body.aiName === 'string' && body.aiName.trim() ? body.aiName.trim() : 'AI companion').slice(0, 40)
+    const aiName = (typeof body.aiName === 'string' && body.aiName.trim() ? body.aiName.trim() : 'AI').slice(0, 40)
     // the AI's guest identity (from ITS cookie jar) rides along so its brews get claimed
     const rawCookie = req.cookies.get('cc_guest')?.value
     const guestUserId = rawCookie ? verifyChallengeCookie(rawCookie) : null

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     description: (sp.description as string) ?? null,
     isPublic: sp.isPublic !== false,
     // cross-env FKs don't travel — a ported space arrives unparented, unforked
-    parentSpaceId: null, forkOfId: null, createdByCompanionId: null,
+    parentSpaceId: null, forkOfId: null,
   }
   const out = await prisma.playerSpace.upsert({
     where: { slug: String(sp.slug) },

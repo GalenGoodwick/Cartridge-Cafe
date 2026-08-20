@@ -1,7 +1,7 @@
 import { isAdmin } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { slugify } from '@/lib/companion'
+import { slugify } from '@/lib/slug'
 import { createSpaceUniqueSlug, canCreateWorld } from '@/lib/world-create'
 import { usersByHandle } from '@/lib/notify'
 import { hydrateAllScenes, listScenes, loadScene } from '../../engine/store'

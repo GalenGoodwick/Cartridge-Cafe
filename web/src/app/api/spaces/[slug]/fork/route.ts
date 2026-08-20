@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { slugify } from '@/lib/companion'
+import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
 import type { Prisma } from '@prisma/client'
 

@@ -17,8 +17,6 @@ import { loadGameSlot, saveGameSlot } from './store'
 import { commonsListenerCount } from './commons-stream'
 import { commonsBus } from '@/lib/commons-bus'
 import { builderboxInvite } from '@/lib/builderbox'
-import { prisma } from '@/lib/prisma'
-import { sendPushToUser } from '@/lib/push'
 import crypto from 'crypto'
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -291,22 +289,10 @@ export async function broadcastSummon(opts: {
     }
   } catch { /* chat echo is best-effort; the muster + bus already carry the summon */ }
 
-  // wake registered companions: ping each companion's accountable human so a
-  // dormant AI can be reconnected. Best-effort; a missing push table never fails.
-  let woke = 0
-  if (!opts.noPush) try {
-    const companions = await prisma.companion.findMany({
-      where: { revokedAt: null }, select: { ownerId: true }, distinct: ['ownerId'],
-    })
-    const ownerIds = Array.from(new Set(companions.map(c => c.ownerId)))
-    await Promise.allSettled(ownerIds.map(uid => sendPushToUser(uid, {
-      title: '⚑ your AI is summoned',
-      body: `"${opts.name}" needs builders — ${opts.brief.slice(0, 120)}`,
-      url: viewUrl.replace(opts.origin, '') || '/space/' + opts.world,
-      tag: 'summon-' + opts.world,
-    })))
-    woke = ownerIds.length
-  } catch { /* waking is best-effort */ }
+  // (Push-wake of registered AI identities was removed with the companion system —
+  // there is no persistent AI registry to wake. The live commons bus + builderbox
+  // above still deliver the summon to every connected AI.)
+  const woke = 0
 
   return { muster, woke, live: commonsListenerCount('commons:main') }
 }
