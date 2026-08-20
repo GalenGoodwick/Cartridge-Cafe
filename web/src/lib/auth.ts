@@ -83,9 +83,11 @@ export const authOptions: NextAuthOptions = {
             // to match — next-auth v4 builds GitHub's client without one, so every
             // callback died with "issuer must be configured on the issuer"
             // (= the intermittent GitHub login failure; Google is immune because
-            // OIDC discovery sets its issuer). Reproduced + fix verified locally
-            // by replaying the callback with a minted state cookie ± iss.
-            issuer: 'https://github.com',
+            // OIDC discovery sets its issuer). GitHub's actual iss value, captured
+            // live from a prod callback: https://github.com/login/oauth — NOT the
+            // bare domain. Reproduced + fix verified by replaying the callback
+            // with a minted state cookie ± iss.
+            issuer: 'https://github.com/login/oauth',
           }),
         ]
       : []),
