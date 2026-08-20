@@ -43,7 +43,7 @@ export default function BiggerTable() {
   if (dismissed || playMode || !small) return null
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[65] max-w-[92vw] rounded-lg border border-[#b97a2a]/30 bg-[#171009]/90 backdrop-blur px-4 py-2.5 font-mono text-[13px] tracking-wider text-[#ffdba8]/90 shadow-lg">
+    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[65] max-w-[92vw] rounded-lg border border-[#b97a2a]/30 bg-[#171009]/90 backdrop-blur px-4 py-2.5 font-mono text-[13px] tracking-wider text-[#ffdba8]/90 shadow-lg">
       <div className="flex items-start gap-3">
         <div className="space-y-1">
           <div>▢ the cafe needs a bigger table — <span className="text-[#ffdba8]">maximize this window</span></div>
