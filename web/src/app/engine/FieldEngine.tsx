@@ -5682,10 +5682,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
       setMe(sess.user.email || sess.user.name || null)
     }
-    // owner on their own LIVE space: editing goes through a BRANCH, never live
-    // main — the working world is never mutated. Open CREATE BRANCH; the AI edits
-    // the branch, then SET HEAD publishes it as the new version. (No more ALTER.)
-    if (can(ctx, 'branchToEdit') && !plugOpen) { handleBranch(); return }
+    // owner on their own LIVE space: the AI edits the world DIRECTLY — the
+    // established version system (save points / SET MAIN) is the history and
+    // safety net, not a branch detour. (branch→fork transition: branch-to-edit
+    // retired with branch voting; a fork is simply a new world.)
     setPlugOpen(v => !v)
     if (!plugToken && spaceSlug) {
       setPlugBusy(true)
@@ -6307,8 +6307,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 immortal — you branch it or brew your own), so it's gone there. */}
             {(spaceSlug || lastSceneRef.current?.includes(' ⑂ ')) && <button
               onClick={openConnectAi}
-              title={can(ctx, 'branchToEdit')
-                ? 'edit on a branch — your live world stays untouched until you publish it'
+              title={ctx.role === 'ownerSpace' && ctx.view === 'live'
+                ? 'your AI edits this world live — versions keep every save point'
                 : undefined}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >

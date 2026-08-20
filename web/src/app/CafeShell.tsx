@@ -1363,9 +1363,8 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           While DOCKED, the main arena rides along into worlds (so a voter can
           see the contenders) and every other arena stands down. */}
       {/* the main arena STAYS on the hub — it no longer rides into worlds
-          (docked): inside a world the only vote you see is that world's own
-          branch arena. Traveling mid-deliberation lands you in the world;
-          the main reckoning waits back at the cafe. */}
+          (docked). Traveling mid-deliberation lands you in the world; the main
+          reckoning waits back at the cafe. Worlds themselves hold no vote. */}
       {scene === 'CAFE' && !mine && (
         <TournamentBar key="arena-main" visible={!modalUp && !confirmLeave} slot="tournament:main" worlds={mainRoster}
           bubbles={scene === 'CAFE' ? portals : undefined}
@@ -1375,33 +1374,10 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
           onCloseHome={() => { setDocked(false); if (sceneRef.current !== 'CAFE') go('CAFE') }}
           emptyHint="⚔ THE ARENA WAITS FOR WORLDS" />
       )}
-      {/* MY WORLDS (a player's own space) has NO arena — your personal shelf is
-          not a contest. Voting lives on main (champions) and inside a world (its
-          branches); a player space never enters the tournament. */}
-      {/* a sub-main arena runs only INSIDE a sub-main, where its contestants are
-          the WORLDS pinned to that shelf. The SUB-MAINS viewer (no slug) has no
-          arena — sub-mains are gatherings, not contestants; they never vote. */}
-      {scene === 'SUB-MAIN' && subMode?.slug && (
-        <TournamentBar key={`arena-sub-${subMode.slug}`} visible={!modalUp}
-          slot={`tournament:sub:${subMode.slug}`}
-          worlds={portals.map(pt => pt.name)}
-          bubbles={portals}
-          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }} onPreview={(w) => setPreviewScene(w ? (launchMapRef.current[w] || w) : null)} onStageRect={setStageRect}
-          emptyHint="⚔ PIN TWO WORLDS TO OPEN THIS ARENA" />
-      )}
-      {scene !== 'CAFE' && scene !== 'SUB-MAIN' && (
-        <TournamentBar
-          key={`arena-world-${scene.split(' ⑂ ')[0]}`}
-          visible={!modalUp && !confirmLeave}
-          slot={`tournament:world:${scene.split(' ⑂ ')[0]}`}
-          branchesOf={scene.split(' ⑂ ')[0]}
-          sceneKey={scene}
-          rail railTop={dockBottom ? dockBottom + 8 : undefined}
-          onReckoning={(on) => { setVoting(on); if (!on) { setPreviewScene(null); setStageRect(null) } }}
-          onPreview={setPreviewScene}
-          onStageRect={setStageRect}
-        />
-      )}
+      {/* THE RECKONING IS MAIN-ONLY (branch→fork transition, Aug 2026): the
+          sub-main arena and the per-world branch arena are retired. A remix is
+          a FORK — a new owned world — never a challenger entered in a vote.
+          The one tournament left is the main shelf's, mounted above. */}
 
       {/* a name surfaces where you're looking, then gets out of the way */}
       {portals.length > 0 && hover && !modalUp && !voting && (mouse.x !== 0 || mouse.y !== 0) && (

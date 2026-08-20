@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { can, type WorldContext, type Role, type WorldView, type WorldKind } from '@/lib/worldContext'
 
-/** Guards the ALTER removal: an owner on their own LIVE space must resolve to
- *  `branchToEdit` (CONNECT AI routes through a branch), and the old live-edit
- *  capability `alterLive` must no longer exist. */
+/** Guards the branch→fork transition: the branch-to-edit detour is RETIRED.
+ *  An owner's AI edits their live space directly — the version system (save
+ *  points / SET MAIN) is the history and safety net — so neither the old
+ *  `alterLive` nor the interim `branchToEdit` capability may exist. The owner
+ *  still holds the direct-edit capabilities (mintKey / setHead / worldTools). */
 const ctx = (over: Partial<WorldContext> & { role: Role; kind: WorldKind; view: WorldView }): WorldContext => ({
   surface: 'world',
   identity: { base: 'LIGHTHOUSE', slug: 'lighthouse', loaded: 'LIGHTHOUSE' },
@@ -11,19 +13,27 @@ const ctx = (over: Partial<WorldContext> & { role: Role; kind: WorldKind; view: 
   ...over,
 })
 
-describe('branchToEdit capability (ALTER removed)', () => {
-  it('is granted to the owner of their own live space', () => {
-    expect(can(ctx({ role: 'ownerSpace', kind: 'space', view: 'live' }), 'branchToEdit')).toBe(true)
+describe('branch-to-edit retired (fork paradigm)', () => {
+  it('branchToEdit is no longer a capability', () => {
+    // @ts-expect-error branchToEdit was removed — an owner's AI edits the live space directly
+    expect(can(ctx({ role: 'ownerSpace', kind: 'space', view: 'live' }), 'branchToEdit')).toBe(false)
   })
 
-  it('is denied to a non-owner, on a branch, or on a non-live view', () => {
-    expect(can(ctx({ role: 'juror', kind: 'space', view: 'live' }), 'branchToEdit')).toBe(false)
-    expect(can(ctx({ role: 'ownerBranch', kind: 'branch', view: 'branchHead' }), 'branchToEdit')).toBe(false)
-    expect(can(ctx({ role: 'ownerSpace', kind: 'space', view: 'version' }), 'branchToEdit')).toBe(false)
-  })
-
-  it('no longer exposes the old alterLive capability', () => {
-    // @ts-expect-error alterLive was removed — editing a live world now branches
+  it('the old alterLive capability is still gone too', () => {
+    // @ts-expect-error alterLive was removed long before the fork transition
     expect(can(ctx({ role: 'ownerSpace', kind: 'space', view: 'live' }), 'alterLive')).toBe(false)
+  })
+
+  it('the owner keeps the direct-edit surface: mintKey + setHead + worldTools on their live space', () => {
+    const live = ctx({ role: 'ownerSpace', kind: 'space', view: 'live' })
+    expect(can(live, 'mintKey')).toBe(true)     // CONNECT AI mints the space key directly
+    expect(can(live, 'setHead')).toBe(true)     // versions: crown a save point / restore
+    expect(can(live, 'worldTools')).toBe(true)
+  })
+
+  it('a read-only version view still grants no mutations', () => {
+    const versionView = ctx({ role: 'ownerSpace', kind: 'space', view: 'version' })
+    expect(can(versionView, 'setHead')).toBe(false)
+    expect(can(versionView, 'editLaw')).toBe(false)
   })
 })

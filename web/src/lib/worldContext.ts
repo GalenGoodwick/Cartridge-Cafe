@@ -65,7 +65,9 @@ export type Capability =
   | 'deleteWorld'   // remove this world
   | 'vote'          // cast in the tournament (universal — even anon is prompted)
   | 'editLaw'       // toggle multiplayer / restart-with-R
-  | 'branchToEdit'  // owner on their own live space: editing routes through a BRANCH, never live main
+  // 'branchToEdit' RETIRED (branch→fork transition, Aug 2026): an owner's AI
+  // edits their live space DIRECTLY; the version system (save points / SET
+  // MAIN) is the history and safety net. A fork is simply a new world.
 
 const isOwner = (r: Role) => r === 'ownerSpace' || r === 'ownerBranch'
 
@@ -87,7 +89,6 @@ export function can(ctx: WorldContext, cap: Capability): boolean {
     case 'setHead':      return isOwner(role) && (kind === 'space' || kind === 'branch') && mutable
     case 'makeIcon':     return isOwner(role) && (kind === 'space' || kind === 'branch')
     case 'deleteWorld':  return isOwner(role) && (kind === 'space' || kind === 'branch')
-    case 'branchToEdit': return role === 'ownerSpace' && kind === 'space' && view === 'live'
     default:             return false
   }
 }
