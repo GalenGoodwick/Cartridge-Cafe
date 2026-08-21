@@ -6729,6 +6729,12 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               // of the SAME world (the direct-join trap). Up = the base world's
               // room; a space named without lineage goes to the cafe.
               if (spaceId) {
+                // ASK before leaving (Galen: ESC or back = the exit dialog on every
+                // world). Cancelable: SpaceStage's gate preventDefaults and shows the
+                // confirm; with no listener (bare engine mounts) fall through to the
+                // old direct navigation.
+                const ask = new CustomEvent('cafe:back', { cancelable: true })
+                if (!window.dispatchEvent(ask)) return   // the exit gate took it
                 const base = (spaceName || '').split(' ⑂ ')[0].trim()
                 window.location.href = base && base !== (spaceName || '').trim() ? `/hub/${encodeURIComponent(base)}` : '/'
                 return
