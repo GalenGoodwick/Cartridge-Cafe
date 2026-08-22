@@ -20,6 +20,7 @@ import { warmSpaceOgCard } from '@/lib/og-card'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug, findOwnWorldByName } from '@/lib/world-create'
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
+import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
 
 export const maxDuration = 30
@@ -554,7 +555,7 @@ const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|des
 // NODE-GATE: commands whose effect is gated by node holds. The route stamps the
 // un-spoofable builder identity (holderOf(token)) onto these before they reach the
 // persist chokepoint — the client-supplied `author` field is never trusted for access.
-const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node', 'register_node', 'remove_node'])
+const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node', 'register_node', 'remove_node', 'dock_node', 'undock_node', 'node_history', 'node_revert'])
 
 export async function POST(req: NextRequest) {
   { const _auth = req.headers.get('authorization')
@@ -1204,6 +1205,27 @@ export async function POST(req: NextRequest) {
       // conversation (slot `roundtable:<rootSlug>`). Purely additive — stored in
       // the same KV as world-chat/tournament docs and polled the same way. The
       // legacy global token has no family, so these require a uc_st_ space token.
+      // ── the DOCK INTERNALS FEED: a docked builder streams status lines per node;
+      // anyone on the world reads them. Chatty by design → game slots, never the
+      // snapshot. Ring-capped (FEED_CAP) so a verbose AI can't grow it unbounded.
+      if ((cmd.type === 'node_feed' || cmd.type === 'node_feed_read') && isSpaceScoped) {
+        const nodeId = String(cmd.id ?? '')
+        if (!nodeId) { results.push({ type: cmd.type, error: 'needs {id: "<nodeId>"}' }); continue }
+        const slot = `nodefeed:${auth.spaceId}:${nodeId}`
+        const ring = ((await loadGameSlot(slot)) as FeedLine[] | undefined) ?? []
+        if (cmd.type === 'node_feed') {
+          const text = typeof cmd.text === 'string' ? cmd.text.trim() : ''
+          if (!text) { results.push({ type: cmd.type, error: 'needs {text}' }); continue }
+          const kind = (['status', 'dock', 'undock', 'error', 'revert'] as const).includes(cmd.kind as never) ? cmd.kind as FeedLine['kind'] : 'status'
+          const next = feedAppend(ring, { at: Date.now(), by: holderOf(req.headers.get('authorization')?.slice(7) || ''), kind, text })
+          await saveGameSlot(slot, next)
+          results.push({ ok: true, type: cmd.type, node: nodeId, lines: next.length })
+        } else {
+          results.push({ ok: true, type: cmd.type, node: nodeId, feed: ring.slice(-(Number(cmd.limit) || 40)) })
+        }
+        continue
+      }
+
       if (cmd.type === 'roundtable_say' || cmd.type === 'roundtable_read' || cmd.type === 'roundtable_nominate') {
         if (!auth.spaceId) {
           results.push({ error: 'roundtable requires a space token (uc_st_…) — it needs a world-family to belong to' })

@@ -3,6 +3,7 @@ import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
 import { canPush, stampHold, canRelease, holdStatus } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
+import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -720,6 +721,21 @@ export function applyCommandToSnapshotObject(
         const holder = String(cmd.__holder ?? '')
         if (autoNode && holder) stampHold(autoNode as Record<string, unknown>, holder, Number(cmd.__now ?? Date.now()))
       }
+      // PER-NODE VERSION CONTROL (co-build dock): every landed push appends this
+      // code as a rev on worldData.__nodeHist — the chain node_revert restores
+      // from, and the reason a broken node can heal instead of being stripped.
+      {
+        const wdH = snap.worldData as Record<string, unknown>
+        const hist = (wdH.__nodeHist && typeof wdH.__nodeHist === 'object' ? wdH.__nodeHist : (wdH.__nodeHist = {})) as NodeHist
+        appendNodeRev(hist, hookId, {
+          rev: Number((autoNode as Record<string, unknown> | null)?.rev) || 1,
+          code: String(cmd.code ?? ''),
+          at: Number(cmd.__now ?? Date.now()),
+          by: String(cmd.__holder ?? '') || 'anon',
+          note: typeof cmd.note === 'string' ? cmd.note.slice(0, 200) : undefined,
+        })
+        capWorldHistory(hist)
+      }
       // RUNG E build-time coordination: if this hook's auto-inferred owns overlaps
       // another node's lane, MESSAGE the AI (warnings, non-fatal). Nodes are the
       // owners — dock to the one that owns the slot (release yours + claim it),
@@ -783,6 +799,113 @@ export function applyCommandToSnapshotObject(
       if (n && canRelease(n, holder, cmd.__admin === true)) { delete n.holder; delete n.heldAt; result.ok = true; result.node = n }
       else if (n) { result.ok = false; result.error = `node "${id}" is held by ${n.holder ?? 'nobody'} — not yours to release` }
       else { result.ok = false; result.error = `no node "${id}" to release` }
+      break
+    }
+
+    case 'dock_node': {
+      // DOCK — the co-build unit of work: take the hold (same gate as a push)
+      // and come back with everything needed to work the node: its record, its
+      // version history (metas), and the current code. The internals feed rides
+      // the bridge layer (node_feed) — this is the snapshot half.
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      if (!id || !holder) { result.ok = false; result.error = 'dock_node needs an id (and a resolved builder identity)'; break }
+      const wd = snap.worldData as Record<string, unknown>
+      const nodes = (wd.__nodes && typeof wd.__nodes === 'object' ? wd.__nodes : (wd.__nodes = {})) as Record<string, Record<string, unknown>>
+      if (!nodes[id]) {
+        wd.__nodeSeq = (Number(wd.__nodeSeq) || 0) + 10
+        nodes[id] = { id, order: wd.__nodeSeq, owns: { uni: [] }, auto: true, rev: 1 }
+      }
+      const chk = canPush(nodes[id], holder, now, { override: cmd.__admin === true })
+      if (!chk.ok) { result.ok = false; result.error = chk.reason; break }
+      stampHold(nodes[id], holder, now)
+      const hist = (wd.__nodeHist ?? {}) as NodeHist
+      const hook = snap.stepHooks.find(h => h.id === id)
+      result.ok = true
+      result.node = nodes[id]
+      result.history = historyMeta(hist, id)
+      result.code = hook?.code ?? null
+      result.next = `you hold "${id}". Work it, then undock_node {id, code, note} to SUBMIT (a new version) or undock_node {id} to abandon. Post progress with node_feed.`
+      break
+    }
+
+    case 'undock_node': {
+      // UNDOCK — submit-or-abandon. With code: the submission lands through the
+      // SAME push path as add_step_hook (gate, auto-register, version capture),
+      // then the hold is released. Without code: just release (abandon; drafts
+      // were never the world's problem). Holder-only, admin override.
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const nodes = (snap.worldData as Record<string, unknown>)?.__nodes as Record<string, Record<string, unknown>> | undefined
+      const n = nodes?.[id]
+      if (!n) { result.ok = false; result.error = `no node "${id}" to undock from`; break }
+      if (!canRelease(n, holder, cmd.__admin === true)) { result.ok = false; result.error = `node "${id}" is held by ${n.holder ?? 'nobody'} — not yours to undock`; break }
+      if (typeof cmd.code === 'string' && cmd.code.trim()) {
+        const sub = applyCommandToSnapshotObject(snap, {
+          type: 'add_step_hook', hookId: id, code: cmd.code,
+          author: cmd.author, description: cmd.description, note: cmd.note ?? 'submitted on undock',
+          __holder: holder, __now: cmd.__now, __admin: cmd.__admin,
+        })
+        if (sub.ok === false) { result.ok = false; result.error = String(sub.error ?? 'submission rejected'); break }
+        result.submitted = true
+        result.rev = (nodes![id] as Record<string, unknown>).rev
+      }
+      delete n.holder; delete n.heldAt
+      result.ok = true
+      result.node = n
+      break
+    }
+
+    case 'node_history': {
+      // The node's version chain — metas by default (rev/at/by/note/bad/bytes);
+      // {rev: N} returns that one version WITH its code (for diffing/restore).
+      const id = String(cmd.id ?? '')
+      if (!id) { result.ok = false; result.error = 'node_history needs an id'; break }
+      const hist = ((snap.worldData as Record<string, unknown>).__nodeHist ?? {}) as NodeHist
+      if (cmd.rev !== undefined) {
+        const one = (hist[id] ?? []).find(r => r.rev === Number(cmd.rev))
+        if (!one) { result.ok = false; result.error = `node "${id}" has no rev ${cmd.rev} in history`; break }
+        result.ok = true; result.version = one
+      } else {
+        result.ok = true; result.history = historyMeta(hist, id)
+      }
+      break
+    }
+
+    case 'node_revert': {
+      // REVERT — restore a node to a known-good version WITHOUT touching the
+      // rest of the world. The bad rev is marked (never a future revert target),
+      // and the restore lands as a NEW version through the same push path —
+      // history is append-only, a revert is a forward move to old code. This is
+      // the per-node answer to quarantine: heal the node, don't strip it.
+      const id = String(cmd.id ?? '')
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      if (!id) { result.ok = false; result.error = 'node_revert needs an id'; break }
+      const wd = snap.worldData as Record<string, unknown>
+      const nodes = wd.__nodes as Record<string, Record<string, unknown>> | undefined
+      const n = nodes?.[id]
+      if (!n) { result.ok = false; result.error = `no node "${id}" to revert`; break }
+      const gate = canPush(n, holder, now, { override: cmd.__admin === true })
+      if (!gate.ok) { result.ok = false; result.error = gate.reason; break }
+      const hist = (wd.__nodeHist ?? {}) as NodeHist
+      const curRev = Number(n.rev) || 0
+      const target = cmd.rev !== undefined
+        ? (hist[id] ?? []).find(r => r.rev === Number(cmd.rev) && !r.bad) ?? null
+        : findRevertTarget(hist, id, curRev)
+      if (!target) { result.ok = false; result.error = `node "${id}" has no good version to revert to${cmd.rev !== undefined ? ` (rev ${cmd.rev} missing or marked bad)` : ''}`; break }
+      markRevBad(hist, id, curRev)
+      const sub = applyCommandToSnapshotObject(snap, {
+        type: 'add_step_hook', hookId: id, code: target.code,
+        note: `reverted to rev ${target.rev}` + (typeof cmd.reason === 'string' ? ` — ${cmd.reason.slice(0, 120)}` : ''),
+        __holder: holder, __now: cmd.__now, __admin: cmd.__admin,
+      })
+      if (sub.ok === false) { result.ok = false; result.error = String(sub.error ?? 'revert push rejected'); break }
+      result.ok = true
+      result.revertedTo = target.rev
+      result.markedBad = curRev
+      result.node = nodes![id]
       break
     }
 

@@ -154,6 +154,19 @@ export async function POST(req: NextRequest) {
         modules: modR.resolved,
         timestamp: Date.now(),
       }
+      // BRIDGE-OWNED REGISTRY KEYS survive tab syncs. The client's delta-adopt
+      // deliberately skips __ keys, so a tab's worldData may LACK __nodes /
+      // __nodeHist even though the server holds them — and this wholesale write
+      // would wipe them (the recurring "__nodes WIPED" incident class). Re-inject
+      // from the current snapshot whenever the incoming sync is silent on a
+      // registry key: the bridge is the only writer of these, never a tab.
+      {
+        const curWd = (current?.worldData ?? {}) as Record<string, unknown>
+        const inWd = snapshot.worldData as Record<string, unknown>
+        for (const k of ['__nodes', '__nodeSeq', '__nodeHist', '__nodeStrict']) {
+          if (inWd[k] === undefined && curWd[k] !== undefined) inWd[k] = curWd[k]
+        }
+      }
       await setSpaceSnapshot(body.spaceId, snapshot)
       return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId })
     }
