@@ -87,3 +87,18 @@ export async function handleSetCard(spaceId: string, cmd: Record<string, unknown
     next: 'card facts stamped on worldData.card — publish_world requires them; the /cards grid serves them.',
   }
 }
+
+/** The PUBLISH gate's card check (SEAM-B calls this; pure over its inputs so
+ *  the gate is testable without the bridge). Null = publishable; a string = the
+ *  exact refusal, pointing the builder at the fix. */
+export function publishCardError(
+  wd: Record<string, unknown>,
+  registry: TypeRegistry,
+): string | null {
+  const card = wd.card
+  if (!card || typeof card !== 'object') {
+    return 'worldData.card — every published world is a CARD with a mandatory type: card_types lists the vocabulary, then set_card {cardType:"<id>", tags?:[...]}'
+  }
+  const v = validateCard(card as { type?: unknown; tags?: unknown }, registry.types)
+  return v.ok ? null : v.error
+}

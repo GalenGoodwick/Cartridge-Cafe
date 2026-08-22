@@ -818,6 +818,14 @@ export async function POST(req: NextRequest) {
         if (typeof pubWd.vision !== 'string' || !(pubWd.vision as string).trim()) missing.push('worldData.vision')
         if (typeof pubWd.instructions !== 'string' || !(pubWd.instructions as string).trim()) missing.push('worldData.instructions')
         if (!pubWd.brief_done) missing.push('brief_done (itself gated on a WORKING visual — the render check)')
+        // SEAM-B (cards): the shelf is a card catalog — a published world owes
+        // its card (mandatory TYPE from the generated list + tags). See
+        // cards-registry.publishCardError; the map's publish-gate node owns this.
+        {
+          const { readTypeRegistry, publishCardError } = await import('../cards-registry')
+          const cardErr = publishCardError(pubWd, await readTypeRegistry())
+          if (cardErr) missing.push(cardErr)
+        }
         if (missing.length) {
           results.push({ type: cmd.type,
             error: `publish refused — the shelf is for finished worlds. Missing: ${missing.join(', ')}.` })

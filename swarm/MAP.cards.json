@@ -157,12 +157,18 @@
       "tests": [
         "src/__tests__/unit/cards-publish-gate.test.ts"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/__tests__/unit/cards-publish-gate.test.ts",
+      "statusNote": "✓unit-tested",
       "seams": [
         "SEAM-B: bridge/route.ts publish_world — the ≤10-line card requirement"
-      ]
+      ],
+      "evidence": {
+        "seam": "SEAM-B live in publish_world: publishCardError(wd, registry) appended to the missing[] gate; 4 tests on the pure check"
+      },
+      "keyState": {
+        "unit-tested": "pass"
+      }
     },
     {
       "id": "backfill-types",
@@ -184,9 +190,15 @@
       "tests": [
         "src/__tests__/unit/cards-backfill.test.ts"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/api/admin/backfill-card-types/route.ts, web/src/__tests__/unit/cards-backfill.test.ts"
+      "statusNote": "✓unit-tested",
+      "evidence": {
+        "self-hosted": "RUN ON DEV end-to-end: dry-run 30 planned (KEYHOLE→puzzle, ANT QUEST→adventure confident; scratch worlds→toy flagged), confirm typed 30/0 failed, catalog re-shot — UNTYPED gone, type-hued edges live (cards-typed-eye.png)"
+      },
+      "keyState": {
+        "unit-tested": "pass"
+      }
     },
     {
       "id": "cards-card",
@@ -428,12 +440,17 @@
         "cards-feed"
       ],
       "tests": [],
-      "status": "open",
+      "status": "green",
       "claim": null,
       "evidence": {
         "render-verified": "cards-live-eye.png (23203de) — LUMEN rings/THAW starfield/NODE-GATE live per-card; fallback chain in one frame",
         "visual-reference": "Galen ruling Aug 22: css version = the organized truth; one-canvas depth-2 reverted"
-      }
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      },
+      "statusNote": "✓render-verified  ✓visual-reference"
     }
   ]
 }
