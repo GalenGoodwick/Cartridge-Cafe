@@ -5,8 +5,10 @@
 // the TYPE line as the visual anchor / tags / two-line desc / maker+base.
 // Consumes EXACTLY the feed's Card shape (SPEC.cards.md) — no reaching around it.
 
+import { useState } from 'react'
 import type { Card } from '@/app/api/cards/route'
 import type { CardPresence } from './presence'
+import { LiveArt } from './LiveArt'
 
 /** A stable hue from the type id — every type owns a color edge, unassigned
  *  types included (the hash is the palette; no hand-kept color table). */
@@ -47,6 +49,9 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
 }) {
   const hue = typeHue(card.type || 'untyped')
   const typed = !!card.type
+  // the art chain: LIVE shader → baked PNG → hue placeholder. A compile fail
+  // or missing WebGPU demotes silently; the card never breaks.
+  const [liveOk, setLiveOk] = useState(true)
   return (
     <button
       data-floatcard
@@ -83,9 +88,11 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
 
       {/* the art window — the world's shader photo */}
       <div className={`relative mx-3 rounded-md overflow-hidden border border-white/10 bg-black ${featured ? 'aspect-[16/10]' : 'aspect-[16/10]'}`}>
-        {png
-          ? <img src={png} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.06]" />
-          : <PlaceholderArt card={card} />}
+        {card.iconWgsl && liveOk
+          ? <LiveArt wgsl={card.iconWgsl} hue={card.hue} onFail={() => setLiveOk(false)} />
+          : png
+            ? <img src={png} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.06]" />
+            : <PlaceholderArt card={card} />}
         {card.isBase && (
           <span className="absolute top-1.5 left-1.5 font-mono text-[10px] tracking-[0.2em] px-1.5 py-0.5 rounded bg-black/70 border border-amber-300/50 text-amber-200">
             BASE

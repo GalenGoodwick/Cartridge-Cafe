@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { handleOf } from '@/lib/notify'
+import { composeIcon, dominantHue, type IconField, type IconVisual } from '@/lib/icon-compose'
 import { rootBaseOf, orderGrid } from '@/lib/cards'
 import { cached } from '@/lib/ttl-cache'
 
@@ -28,6 +29,8 @@ export interface Card {
   tags: string[]
   desc: string
   icon: string | null
+  iconWgsl: string | null                 // the LIVE shader (cards-live-art); null = photo/placeholder
+  hue: number | null
   maker: { handle: string | null; name: string | null }
   base: string | null
   forkOf: string | null
@@ -51,6 +54,9 @@ export interface FeedRow {
   blurb: string
   vision: string
   isBase: boolean
+  // the LIVE art: the world's composed icon shader + dominant hue (cards-live-art)
+  iconWgsl: string | null
+  hue: number | null
 }
 
 export async function GET(req: Request) {
@@ -88,7 +94,16 @@ async function fetchRows(): Promise<FeedRow[]> {
   // strip each snapshot IMMEDIATELY — only the four card facts survive, so the
   // cache never holds (and the wire never sees) whole world snapshots.
   return spaces.map(({ snapshot, owner, _count, updatedAt, ...rest }) => {
-    const wd = (snapshot as { worldData?: Record<string, unknown> } | null)?.worldData || {}
+    const sn = snapshot as { worldData?: Record<string, unknown>; fields?: IconField[]; visualTypes?: IconVisual[]; modules?: IconVisual[] } | null
+    const wd = sn?.worldData || {}
+    // the LIVE art window: compose the world's icon shader (browse's law) —
+    // small WGSL strings; the grid compiles them client-side, PNG is the fallback
+    let iconWgsl: string | null = null
+    let hue: number | null = null
+    try {
+      iconWgsl = composeIcon(sn?.fields || [], sn?.visualTypes || [], wd.icon_wgsl, sn?.modules || [])
+      hue = dominantHue(sn?.fields || [])
+    } catch { /* un-iconable world — the PNG/placeholder chain carries it */ }
     // a guest account (@guest.cartridge.cafe) is unclaimed — no maker handle;
     // never leak the raw email (browse's law, kept here)
     const email = owner?.email || ''
@@ -102,6 +117,8 @@ async function fetchRows(): Promise<FeedRow[]> {
       blurb: typeof wd.blurb === 'string' ? wd.blurb : '',
       vision: typeof wd.vision === 'string' ? wd.vision : '',
       isBase: wd.__base === true,
+      iconWgsl,
+      hue,
     }
   })
 }
@@ -146,6 +163,7 @@ export function feedTab(rows: FeedRow[], tab: string): { base: Card | null; card
     { ...r, forkOf: r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null, base: baseSlug },
     { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
     true,
+    { iconWgsl: r.iconWgsl, hue: r.hue },
   )
   const cards = orderGrid(baseRow, family).map(toCard)
   return { base: baseRow ? toCard(baseRow) : null, cards }
@@ -158,6 +176,7 @@ function cardFromRow(
   row: { slug: string; name: string; updatedAt: number; forkOf: string | null; base: string | null; maker: Card['maker']; counts: Card['counts'] },
   wd: { card?: FeedRow['card']; blurb?: string; vision?: string; __base?: boolean },
   iconPresent: boolean,
+  live?: { iconWgsl: string | null; hue: number | null },
 ): Card {
   const type = typeof wd.card?.type === 'string' ? wd.card.type : ''
   const tags = Array.isArray(wd.card?.tags) ? wd.card.tags.filter((t): t is string => typeof t === 'string') : []
@@ -170,6 +189,8 @@ function cardFromRow(
     desc,
     // referenced by slug ONLY — the icon store serves the PNG; never inline b64
     icon: iconPresent ? `/api/spaces/icons/${encodeURIComponent(row.slug)}` : null,
+    iconWgsl: live?.iconWgsl ?? null,
+    hue: live?.hue ?? null,
     maker: row.maker,
     base: row.base,
     forkOf: row.forkOf,

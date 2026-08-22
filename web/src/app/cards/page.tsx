@@ -96,7 +96,7 @@ export default function CardsMain() {
         ) : (
           <>
             <CardTabs tabs={tabs.tabs} openGround={tabs.openGround} active={active} onPick={setActive} />
-            <div className="rounded-b-xl rounded-tr-xl border border-[#b97a2a]/25 bg-[#0d0906]/60 p-3.5">
+            <div className="pt-4">{/* no box — the cards float free in the void */}
               {tabs.tabs.length === 0 && active === 'open-ground' && (
                 <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.15em] text-white/30">
                   NO BASES FORGED YET — EVERY WORLD WAITS ON OPEN GROUND. THE FIRST ARCHETYPES ARE COMING.

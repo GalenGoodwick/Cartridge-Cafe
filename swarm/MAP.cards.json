@@ -367,6 +367,44 @@
         "visual-reference": "pass"
       },
       "statusNote": "✓render-verified  ✓visual-reference"
+    },
+    {
+      "id": "cards-live-art",
+      "element": "the art windows are ALIVE — each card's icon shader runs in WebGPU in the grid",
+      "kind": "render",
+      "pseudocode": "ONE shared WebGPU device; per-card canvas contexts; each card compiles its composeIcon WGSL (engine visual_* convention) inside a standalone wrapper (fullscreen tri, time uniform, uni() stub if unreferenced-undefined); compile error or no WebGPU → silent fallback to baked PNG → hue placeholder. IntersectionObserver gates rendering to visible cards; shared 30fps rAF loop. Feed carries iconWgsl+hue per card (composeIcon like browse).",
+      "connects": [
+        {
+          "to": "cards-card",
+          "via": "the art window tries LiveArt first, falls to png, then placeholder"
+        },
+        {
+          "to": "cards-feed",
+          "via": "Card gains iconWgsl (string|null) + hue (number|null)"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/LiveArt.tsx"
+      ],
+      "exports": [
+        "LiveArt"
+      ],
+      "dependsOn": [
+        "cards-card",
+        "cards-feed"
+      ],
+      "tests": [],
+      "status": "green",
+      "claim": null,
+      "evidence": {
+        "render-verified": "cards-live-eye.png — REAL WebGPU in the grid: LUMEN orb-rings, NODE-GATE PROOF field, THAW starfield all live; zero console errors; fallback chain (live→png→placeholder) visible in one frame",
+        "visual-reference": "matches the ruling: shader-image art windows are LIVE shaders, not static photos; box removed — cards float free in the void"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      },
+      "statusNote": "✓render-verified  ✓visual-reference"
     }
   ]
 }

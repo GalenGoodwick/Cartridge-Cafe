@@ -30,6 +30,8 @@ const row = (id: string, slug: string, over: Partial<FeedRow> = {}): FeedRow => 
   blurb: '',
   vision: '',
   isBase: false,
+  iconWgsl: null,
+  hue: null,
   ...over,
 })
 
