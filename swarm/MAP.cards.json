@@ -325,7 +325,7 @@
       "status": "green",
       "claim": null,
       "evidence": {
-        "render-verified": "superseded detail: mote canvas retired — the GPU void (GpuGrid pass 1) draws the space; Space keeps fog + cursor tilt",
+        "render-verified": "cards-space-eye.png — motes + fog render, cards hang at distinct phases",
         "visual-reference": "matches the ruling: the grid floats in the cafe void, not on a flat page; reduced-motion stills all"
       },
       "keyState": {
@@ -369,37 +369,36 @@
       "statusNote": "✓render-verified  ✓visual-reference"
     },
     {
-      "id": "cards-gpu-grid",
-      "element": "ONE WebGPU canvas draws the whole visual field — void + every card's art as scissored viewports in a single render pass; DOM is a thin overlay for text/inputs/hitboxes",
+      "id": "cards-live-art",
+      "element": "the art windows are ALIVE — each card's icon shader runs in WebGPU in the grid",
       "kind": "render",
-      "pseudocode": "fixed full-viewport canvas behind the DOM. One pass per frame (30fps): (1) void shader fullscreen (ember layers in WGSL), (2) per visible [data-artslot] rect: setViewport+setScissor → that card's pipeline (compiled from its composeIcon WGSL; uv from rect uniform since @builtin(position) is framebuffer-absolute) — live shaders and hue placeholders both GPU; baked-photo worlds stay DOM <img> (static pixels, DOM is the right tool). Compile fail → GPU hue placeholder. No WebGPU → onNoGpu → DOM fallback tier. Supersedes cards-live-art (30 canvases) + Space's 2D mote canvas.",
+      "pseudocode": "ONE shared WebGPU device; per-card canvas contexts; each card compiles its composeIcon WGSL (engine visual_* convention) inside a standalone wrapper (fullscreen tri, time uniform, uni() stub if unreferenced-undefined); compile error or no WebGPU → silent fallback to baked PNG → hue placeholder. IntersectionObserver gates rendering to visible cards; shared 30fps rAF loop. Feed carries iconWgsl+hue per card (composeIcon like browse).",
       "connects": [
         {
           "to": "cards-card",
-          "via": "the art window becomes a transparent data-artslot rect the GPU paints beneath"
+          "via": "the art window tries LiveArt first, falls to png, then placeholder"
         },
         {
-          "to": "cards-space",
-          "via": "the void moves INTO the pass; Space keeps fog + cursor tilt"
+          "to": "cards-feed",
+          "via": "Card gains iconWgsl (string|null) + hue (number|null)"
         }
       ],
       "files": [
-        "web/src/app/cards/GpuGrid.tsx"
+        "web/src/app/cards/LiveArt.tsx"
       ],
       "exports": [
-        "GpuGrid"
+        "LiveArt"
       ],
       "dependsOn": [
-        "cards-feed",
-        "cards-card"
+        "cards-card",
+        "cards-feed"
       ],
       "tests": [],
       "status": "green",
       "claim": null,
-      "note": "supersedes cards-live-art (evidence retained in git history 23203de)",
       "evidence": {
-        "render-verified": "cards-final-eye.png — ONE device/submit draws everything: WGSL ember void below the DOM, every art rect scissored in the overlay pass (THAW orbs, NODE-GATE rings, LUMEN×2 live; breathing hue placeholders; compile-fail correctly demotes MONISTARY to its baked PNG). Zero console errors.",
-        "visual-reference": "the cards are drawn ON the grid — DOM is a thin text/hitbox overlay between two GPU surfaces, per Galen depth-2 ruling"
+        "render-verified": "cards-live-eye.png — REAL WebGPU in the grid: LUMEN orb-rings, NODE-GATE PROOF field, THAW starfield all live; zero console errors; fallback chain (live→png→placeholder) visible in one frame",
+        "visual-reference": "matches the ruling: shader-image art windows are LIVE shaders, not static photos; box removed — cards float free in the void"
       },
       "keyState": {
         "render-verified": "pass",
