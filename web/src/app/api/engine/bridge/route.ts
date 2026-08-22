@@ -22,6 +22,7 @@ import { canCreateWorld, createSpaceUniqueSlug, findOwnWorldByName } from '@/lib
 import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
 import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
+import { handleCardTypes, handleProposeCardType, handleSetCard } from '../cards-registry'   // SEAM-A (cards)
 
 export const maxDuration = 30
 
@@ -686,6 +687,25 @@ export async function POST(req: NextRequest) {
       // Icon tokens brew the icon. Only that.
       if (auth.iconUserId && cmd.type !== 'set_player_icon') {
         results.push({ type: cmd.type, error: 'this token only brews the player icon — send set_player_icon' })
+        continue
+      }
+
+      // SEAM-A (cards) — the card-main registry verbs (logic lives in
+      // cards-registry.ts; DESIGN-card-main.md §2). card_types and
+      // propose_card_type serve ANY authed caller — a builder consults/grows
+      // the vocabulary before it even owns a world. set_card stamps THIS
+      // world's card facts, so it is space-scoped only (non-space callers fall
+      // through to their own scope errors below).
+      if (cmd.type === 'card_types') {
+        results.push(await handleCardTypes())
+        continue
+      }
+      if (cmd.type === 'propose_card_type') {
+        results.push(await handleProposeCardType({ label: cmd.label, desc: cmd.desc }))
+        continue
+      }
+      if (cmd.type === 'set_card' && isSpaceScoped) {
+        results.push(await handleSetCard(auth.spaceId!, cmd))
         continue
       }
 
