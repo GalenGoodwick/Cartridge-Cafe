@@ -405,6 +405,35 @@
         "visual-reference": "pass"
       },
       "statusNote": "✓render-verified  ✓visual-reference"
+    },
+    {
+      "id": "cards-live-art",
+      "element": "per-card WebGPU art windows (the CSS-organized version — Galen's ruling after trying one-canvas depth 2)",
+      "kind": "render",
+      "pseudocode": "LiveArt.tsx: shared device, per-card canvases, IntersectionObserver, 30fps loop; live → PNG → placeholder. Depth-2 one-canvas grid was TRIED and REVERTED (git e2d9277 → revert): margin-bob reflowed rows + boxless grid sprawled — CSS layout is the organized truth. Keep: box panel, steady grid, deal-in, hover tilt, void motes (Space 2D canvas), presence chips.",
+      "connects": [
+        {
+          "to": "cards-card",
+          "via": "art chain: LiveArt → png → placeholder"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/LiveArt.tsx"
+      ],
+      "exports": [
+        "LiveArt"
+      ],
+      "dependsOn": [
+        "cards-card",
+        "cards-feed"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "evidence": {
+        "render-verified": "cards-live-eye.png (23203de) — LUMEN rings/THAW starfield/NODE-GATE live per-card; fallback chain in one frame",
+        "visual-reference": "Galen ruling Aug 22: css version = the organized truth; one-canvas depth-2 reverted"
+      }
     }
   ]
 }

@@ -73,9 +73,8 @@ export default function CardsMain() {
       <style>{`
         .cardDeal { opacity: 0; animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards; }
         @keyframes cardDeal { from { opacity: 0; transform: translateY(10px) scale(1.04); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
-        /* the hang: each card drifts on its own phase (vars set per card) */
-        .cardBob { animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards, cardBob var(--bobDur, 6s) ease-in-out var(--bobDelay, 0s) infinite; }
-        @keyframes cardBob { 0%, 100% { margin-top: 0; } 50% { margin-top: -5px; } }
+        /* steady grid (Galen: organized beats floating) — the bob reflowed rows; gone */
+        .cardBob { animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards; }
         @media (prefers-reduced-motion: reduce) { .cardDeal, .cardBob { animation: none; opacity: 1; } }
       `}</style>
       <CatalogSpace>
@@ -96,7 +95,7 @@ export default function CardsMain() {
         ) : (
           <>
             <CardTabs tabs={tabs.tabs} openGround={tabs.openGround} active={active} onPick={setActive} />
-            <div className="pt-4">{/* no box — the cards float free in the void */}
+            <div className="rounded-b-xl rounded-tr-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-3.5">
               {tabs.tabs.length === 0 && active === 'open-ground' && (
                 <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.15em] text-white/30">
                   NO BASES FORGED YET — EVERY WORLD WAITS ON OPEN GROUND. THE FIRST ARCHETYPES ARE COMING.
