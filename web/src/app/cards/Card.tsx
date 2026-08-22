@@ -5,10 +5,8 @@
 // the TYPE line as the visual anchor / tags / two-line desc / maker+base.
 // Consumes EXACTLY the feed's Card shape (SPEC.cards.md) — no reaching around it.
 
-import { useState } from 'react'
 import type { Card } from '@/app/api/cards/route'
 import type { CardPresence } from './presence'
-import { LiveArt } from './LiveArt'
 
 /** A stable hue from the type id — every type owns a color edge, unassigned
  *  types included (the hash is the palette; no hand-kept color table). */
@@ -39,19 +37,20 @@ function PlaceholderArt({ card }: { card: Card }) {
   )
 }
 
-export function WorldCardView({ card, png, featured, index, onOpen, presence }: {
+export function WorldCardView({ card, png, featured, index, onOpen, presence, gpuOk }: {
   card: Card
   png?: string          // baked icon as a data URL (batch icons feed) — absent = placeholder
   featured?: boolean    // the base card — spans 2x2, larger art
   index: number         // deal-in stagger
   onOpen?: (slug: string) => void
   presence?: CardPresence   // who's inside / is its maker building right now
+  gpuOk: boolean            // the ONE canvas is live — art windows are GPU holes
 }) {
   const hue = typeHue(card.type || 'untyped')
   const typed = !!card.type
-  // the art chain: LIVE shader → baked PNG → hue placeholder. A compile fail
-  // or missing WebGPU demotes silently; the card never breaks.
-  const [liveOk, setLiveOk] = useState(true)
+  // the art chain: drawn ON the grid (the shared pass paints this card's rect)
+  // → baked PNG → DOM placeholder. gpuOk=false = no WebGPU on this machine.
+  const gpuArt = gpuOk && (!!card.iconWgsl || !png)
   return (
     <button
       data-floatcard
@@ -86,10 +85,10 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         </span>
       </div>
 
-      {/* the art window — the world's shader photo */}
-      <div className={`relative mx-3 rounded-md overflow-hidden border border-white/10 bg-black ${featured ? 'aspect-[16/10]' : 'aspect-[16/10]'}`}>
-        {card.iconWgsl && liveOk
-          ? <LiveArt wgsl={card.iconWgsl} hue={card.hue} onFail={() => setLiveOk(false)} />
+      {/* the art window — a HOLE the shared GPU pass paints through */}
+      <div className={`relative mx-3 rounded overflow-hidden border border-white/10 bg-black ${featured ? 'aspect-[16/10]' : 'aspect-[16/10]'}`}>
+        {gpuArt
+          ? <div data-artslot={card.slug} data-hue={card.hue ?? 0.08} className="absolute inset-0" />
           : png
             ? <img src={png} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.06]" />
             : <PlaceholderArt card={card} />}

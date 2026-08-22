@@ -10,6 +10,7 @@ import type { Card } from '@/app/api/cards/route'
 import { CardTabs, type TabInfo } from './Tabs'
 import { CardGrid } from './Grid'
 import { CatalogSpace } from './Space'
+import { GpuGrid, type GpuArt } from './GpuGrid'
 import { useCatalogPresence } from './presence'
 
 type TabsResp = { tabs: TabInfo[]; openGround: number }
@@ -22,6 +23,8 @@ export default function CardsMain() {
   const [pngBySlug, setPngBySlug] = useState<Map<string, string>>(new Map())
   const [q, setQ] = useState('')
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
+  const [gpuOk, setGpuOk] = useState(true) // the shared canvases carry all animated art
+  const [artFailed, setArtFailed] = useState<Set<string>>(new Set())  // compile-failed → prefer the baked PNG
 
   // tabs + the active tab from the URL (shareable catalog pages)
   useEffect(() => {
@@ -58,6 +61,13 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
+  // slug → live shader for the GPU pass (the whole visual field draws from this)
+  const arts = useMemo(() => {
+    const m = new Map<string, GpuArt>()
+    for (const c of grid?.cards ?? []) m.set(c.slug, { wgsl: c.iconWgsl, hue: c.hue })
+    return m
+  }, [grid])
+
   const shown = useMemo(() => {
     if (!grid) return null
     if (!q.trim()) return grid
@@ -69,7 +79,7 @@ export default function CardsMain() {
   }, [grid, q])
 
   return (
-    <main className="min-h-screen text-[#f0e6d2]">
+    <main className="min-h-screen text-[#f0e6d2] bg-[#0a0705]">
       <style>{`
         .cardDeal { opacity: 0; animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards; }
         @keyframes cardDeal { from { opacity: 0; transform: translateY(10px) scale(1.04); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
@@ -78,6 +88,8 @@ export default function CardsMain() {
         @keyframes cardBob { 0%, 100% { margin-top: 0; } 50% { margin-top: -5px; } }
         @media (prefers-reduced-motion: reduce) { .cardDeal, .cardBob { animation: none; opacity: 1; } }
       `}</style>
+      {gpuOk && <GpuGrid arts={arts} onNoGpu={() => setGpuOk(false)}
+        onArtFail={slug => setArtFailed(prev => prev.has(slug) ? prev : new Set(prev).add(slug))} />}
       <CatalogSpace>
 
       <div className="max-w-[1240px] mx-auto px-4 pt-8 pb-20">
@@ -104,7 +116,7 @@ export default function CardsMain() {
               )}
               {shown === null
                 ? <div className="py-24 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
-                : <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />}
+                : <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} gpuOk={gpuOk} artFailed={artFailed} onOpen={open} />}
             </div>
           </>
         )}
