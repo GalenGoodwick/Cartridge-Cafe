@@ -1,0 +1,1 @@
+{ "testCmd": "./node_modules/.bin/vitest run", "testCwd": "web" }

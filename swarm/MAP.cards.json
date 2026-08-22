@@ -1,0 +1,272 @@
+{
+  "name": "card-main",
+  "description": "Replace the visual main with the card catalog: MTG-ish cards on shader-grid pages, tabs per base (DESIGN-card-main.md; contracts in SPEC.cards.md)",
+  "nodes": [
+    {
+      "id": "contracts",
+      "element": "the shared shapes: WorldCard, TypeRegistry, Card, the feed API, seams",
+      "kind": "spec",
+      "keys": [
+        "spec-approved"
+      ],
+      "pseudocode": "SPEC.cards.md IS this node — green by use; change it only with a heal-wave to every dependent",
+      "files": [
+        "swarm/SPEC.cards.md"
+      ],
+      "dependsOn": [],
+      "tests": [],
+      "status": "green",
+      "claim": null,
+      "statusNote": "✓spec-approved",
+      "keyState": {
+        "spec-approved": "pass"
+      },
+      "evidence": {
+        "spec-approved": "authored per Galen directive Aug 22 (card main, mandatory type, tabs per base)"
+      }
+    },
+    {
+      "id": "cards-data",
+      "element": "the pure card core: type vocabulary, normalization, validation, lineage rooting, grid order",
+      "kind": "lib",
+      "pseudocode": "SEED_CARD_TYPES · normalizeTypeId/Tags · validateCard(candidate, registry) · proposeType · rootBaseOf(id, parents, bases) walks forkOf ≤8 hops cycle-safe · orderGrid(base, family) pins base first then updatedAt desc. EXTEND: cardFromRow(row, wd, iconPresent) assembling the Card shape from SPEC — pure, tested.",
+      "seed": {
+        "from": "web/src/lib/cards.ts",
+        "note": "working seed authored by the orchestrator — refine + complete, don't rewrite; tests are missing entirely (that's the work)"
+      },
+      "connects": [
+        {
+          "to": "cards-registry",
+          "via": "validateCard + SEED_CARD_TYPES are the registry's truth"
+        },
+        {
+          "to": "cards-feed",
+          "via": "rootBaseOf + orderGrid + cardFromRow shape the feed"
+        }
+      ],
+      "files": [
+        "web/src/lib/cards.ts",
+        "web/src/__tests__/unit/cards.test.ts"
+      ],
+      "exports": [
+        "SEED_CARD_TYPES",
+        "normalizeTypeId",
+        "normalizeTags",
+        "validateCard",
+        "proposeType",
+        "rootBaseOf",
+        "orderGrid",
+        "cardFromRow"
+      ],
+      "dependsOn": [
+        "contracts"
+      ],
+      "tests": [
+        "web/src/__tests__/unit/cards.test.ts"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/__tests__/unit/cards.test.ts"
+    },
+    {
+      "id": "cards-registry",
+      "element": "the generated type list as a live registry + the three bridge verbs",
+      "kind": "hook",
+      "pseudocode": "cards-registry.ts exports: readTypeRegistry() → slot cardtypes:index seeded from SEED_CARD_TYPES on first read · handleCardTypes() · handleProposeCardType({label,desc}) dedup via proposeType, persists · handleSetCard(spaceId, {type,tags}) validates via validateCard against live registry then writes worldData.card through the space-store snapshot path (bump __bridge_rev so tabs adopt). SEAM-A: one dispatch block in bridge/route.ts routing the three verbs here (space-scoped for set_card; card_types/propose work for any authed caller).",
+      "connects": [
+        {
+          "to": "publish-gate",
+          "via": "readTypeRegistry + validateCard gate publishing"
+        },
+        {
+          "to": "cards-feed",
+          "via": "type ids on worldData.card are what the feed serves"
+        }
+      ],
+      "files": [
+        "web/src/app/api/engine/cards-registry.ts",
+        "web/src/__tests__/unit/cards-registry.test.ts"
+      ],
+      "exports": [
+        "readTypeRegistry",
+        "handleCardTypes",
+        "handleProposeCardType",
+        "handleSetCard"
+      ],
+      "dependsOn": [
+        "cards-data"
+      ],
+      "tests": [
+        "web/src/__tests__/unit/cards-registry.test.ts"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/api/engine/cards-registry.ts, web/src/__tests__/unit/cards-registry.test.ts",
+      "seams": [
+        "SEAM-A: bridge/route.ts — one dispatch block for card_types/propose_card_type/set_card"
+      ]
+    },
+    {
+      "id": "cards-feed",
+      "element": "GET /api/cards — tabs list + a base tab's ordered card grid",
+      "kind": "hook",
+      "pseudocode": "?tabs=1 → public __base worlds as tabs + open-ground count. ?tab=<slug|open-ground> → { base: Card|null, cards: Card[] } via one playerSpace query (slug,name,ownerId,owner,forkOfId,isPublic,updatedAt,_count, snapshot worldData.card/blurb/vision/__base only — DON'T ship whole snapshots), rootBaseOf over the id→forkOfId map, orderGrid, cardFromRow. Icons referenced by slug (the icons endpoint serves PNGs) — never inline base64 in the feed.",
+      "connects": [
+        {
+          "to": "cards-grid",
+          "via": "the feed's Card[] is the only shape the UI consumes"
+        }
+      ],
+      "files": [
+        "web/src/app/api/cards/route.ts",
+        "web/src/__tests__/unit/cards-feed.test.ts"
+      ],
+      "exports": [],
+      "dependsOn": [
+        "cards-data"
+      ],
+      "tests": [
+        "web/src/__tests__/unit/cards-feed.test.ts"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/api/cards/route.ts, web/src/__tests__/unit/cards-feed.test.ts"
+    },
+    {
+      "id": "publish-gate",
+      "element": "publishing requires a valid card (the mandatory type)",
+      "kind": "hook",
+      "pseudocode": "SEAM-B inside publish_world: read registry, validateCard(wd.card); refuse with the exact missing-piece message pointing at card_types/set_card. ≤10 lines + import. Existing published worlds untouched. Test the gate logic via a pure helper if extracting one keeps the seam tiny.",
+      "connects": [],
+      "files": [
+        "web/src/__tests__/unit/cards-publish-gate.test.ts"
+      ],
+      "exports": [],
+      "dependsOn": [
+        "cards-registry"
+      ],
+      "tests": [
+        "web/src/__tests__/unit/cards-publish-gate.test.ts"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/__tests__/unit/cards-publish-gate.test.ts",
+      "seams": [
+        "SEAM-B: bridge/route.ts publish_world — the ≤10-line card requirement"
+      ]
+    },
+    {
+      "id": "backfill-types",
+      "element": "every existing public world gets a type — no card left typeless",
+      "kind": "tooling",
+      "keys": [
+        "unit-tested"
+      ],
+      "pseudocode": "admin route GET dry-run / POST confirm (mirror admin/branch-to-fork): for each public world without worldData.card, classify from vision+blurb+tags against the registry vocabulary (keyword heuristics now; AI classify later), write card via the same path as set_card. Report classified/uncertain; uncertain default 'toy' + flagged list for curation.",
+      "connects": [],
+      "files": [
+        "web/src/app/api/admin/backfill-card-types/route.ts",
+        "web/src/__tests__/unit/cards-backfill.test.ts"
+      ],
+      "exports": [],
+      "dependsOn": [
+        "cards-registry"
+      ],
+      "tests": [
+        "web/src/__tests__/unit/cards-backfill.test.ts"
+      ],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/api/admin/backfill-card-types/route.ts, web/src/__tests__/unit/cards-backfill.test.ts"
+    },
+    {
+      "id": "cards-card",
+      "element": "the card component — MTG anatomy: name+forks / shader image / type line / tags / desc / maker+base",
+      "kind": "render",
+      "pseudocode": "React, consumes exactly the Card shape. Baked icon <img> by slug; hover/focus swaps in the LIVE shader (defer engine embed — phase 2 evidence allows static+hover-zoom first). Dark ember house style; type line is the visual anchor. visual-reference: a rendered card vs the DESIGN §1 anatomy.",
+      "connects": [
+        {
+          "to": "cards-grid",
+          "via": "grid renders Card[] with this component"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/Card.tsx"
+      ],
+      "exports": [
+        "WorldCardView"
+      ],
+      "dependsOn": [
+        "cards-feed"
+      ],
+      "tests": [],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/cards/Card.tsx"
+    },
+    {
+      "id": "cards-grid",
+      "element": "the /cards page — a base tab's shader grid, base featured top-left",
+      "kind": "render",
+      "pseudocode": "flag-gated route /cards (NEXT_PUBLIC_CARDS_MAIN or ?flag): fetch ?tabs=1 + active tab feed; CSS grid, base card spans 2x2 top-left (featured), family fills reading order; responsive; search filters client-side. Main is UNTOUCHED.",
+      "connects": [
+        {
+          "to": "cards-tabs",
+          "via": "tab strip drives which grid renders"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/page.tsx",
+        "web/src/app/cards/Grid.tsx"
+      ],
+      "exports": [],
+      "dependsOn": [
+        "cards-card",
+        "cards-feed"
+      ],
+      "tests": [],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/cards/page.tsx, web/src/app/cards/Grid.tsx"
+    },
+    {
+      "id": "cards-tabs",
+      "element": "tabs: one per base + OPEN GROUND",
+      "kind": "render",
+      "pseudocode": "tab strip from ?tabs=1 (bases in a stable order + OPEN GROUND last); counts as badges; active tab in the URL (?tab=) so cards pages are shareable.",
+      "connects": [],
+      "files": [
+        "web/src/app/cards/Tabs.tsx"
+      ],
+      "exports": [],
+      "dependsOn": [
+        "cards-grid"
+      ],
+      "tests": [],
+      "status": "red",
+      "claim": null,
+      "statusNote": "missing: web/src/app/cards/Tabs.tsx"
+    },
+    {
+      "id": "cutover",
+      "element": "main → cards; the spatial system retires",
+      "kind": "deploy",
+      "pseudocode": "GATED ON GALEN'S EXPLICIT RULING — never claim, never build. When ruled: / renders the cards main, spatial constellation + deed + sub-main nav removed, ports (presence/search/entry/reckoning-tab) land per DESIGN §4.",
+      "connects": [],
+      "files": [],
+      "exports": [],
+      "dependsOn": [
+        "cards-tabs",
+        "publish-gate",
+        "backfill-types"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null,
+      "keyState": {
+        "playthrough-confirmed": "pending"
+      },
+      "statusNote": "·playthrough-confirmed"
+    }
+  ]
+}
