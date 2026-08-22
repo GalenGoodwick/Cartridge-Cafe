@@ -6,6 +6,7 @@
 // Consumes EXACTLY the feed's Card shape (SPEC.cards.md) — no reaching around it.
 
 import type { Card } from '@/app/api/cards/route'
+import type { CardPresence } from './presence'
 
 /** A stable hue from the type id — every type owns a color edge, unassigned
  *  types included (the hash is the palette; no hand-kept color table). */
@@ -36,24 +37,29 @@ function PlaceholderArt({ card }: { card: Card }) {
   )
 }
 
-export function WorldCardView({ card, png, featured, index, onOpen }: {
+export function WorldCardView({ card, png, featured, index, onOpen, presence }: {
   card: Card
   png?: string          // baked icon as a data URL (batch icons feed) — absent = placeholder
   featured?: boolean    // the base card — spans 2x2, larger art
   index: number         // deal-in stagger
   onOpen?: (slug: string) => void
+  presence?: CardPresence   // who's inside / is its maker building right now
 }) {
   const hue = typeHue(card.type || 'untyped')
   const typed = !!card.type
   return (
     <button
+      data-floatcard
       onClick={() => onOpen?.(card.slug)}
-      className={`cardDeal group relative flex flex-col text-left rounded-xl overflow-hidden border bg-[#120c08]
-        border-[#b97a2a]/25 hover:border-[#b97a2a]/60 transition-all duration-200 hover:-translate-y-1
+      className={`cardDeal cardBob group relative flex flex-col text-left rounded-xl overflow-hidden border bg-[#120c08]
+        border-[#b97a2a]/25 hover:border-[#b97a2a]/60 transition-colors duration-200
         focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60
         ${featured ? 'col-span-2 row-span-2' : ''}`}
       style={{
         animationDelay: `${Math.min(index, 24) * 35}ms`,
+        // the bob: each card hangs on its own slow phase (from its index seed)
+        ['--bobDur' as string]: `${5.5 + (index % 7) * 0.7}s`,
+        ['--bobDelay' as string]: `${-((index * 1.37) % 6)}s`,
         boxShadow: `0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 30px -18px rgba(0,0,0,0.9)`,
       }}
     >
@@ -66,6 +72,10 @@ export function WorldCardView({ card, png, featured, index, onOpen }: {
         <span className={`font-mono tracking-[0.12em] text-[#f0e6d2] truncate ${featured ? 'text-[19px]' : 'text-[14px]'}`}>
           {card.name.toUpperCase()}
         </span>
+        {presence && presence.devLive && (
+          <span className="shrink-0 font-mono text-[9.5px] tracking-[0.15em] px-1 py-px rounded border border-amber-300/50 text-amber-200 animate-pulse"
+            title="its maker is building right now">LIVE</span>
+        )}
         <span className="ml-auto shrink-0 font-mono text-[11px] text-white/35" title={`${card.counts.forks} forks`}>
           ⑄ {card.counts.forks}
         </span>
@@ -79,6 +89,13 @@ export function WorldCardView({ card, png, featured, index, onOpen }: {
         {card.isBase && (
           <span className="absolute top-1.5 left-1.5 font-mono text-[10px] tracking-[0.2em] px-1.5 py-0.5 rounded bg-black/70 border border-amber-300/50 text-amber-200">
             BASE
+          </span>
+        )}
+        {presence && presence.here > 0 && (
+          <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-black/70 border border-white/15 text-amber-100/90"
+            title={`${presence.here} inside right now`}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {presence.here}
           </span>
         )}
       </div>

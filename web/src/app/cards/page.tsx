@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Card } from '@/app/api/cards/route'
 import { CardTabs, type TabInfo } from './Tabs'
 import { CardGrid } from './Grid'
+import { CatalogSpace } from './Space'
+import { useCatalogPresence } from './presence'
 
 type TabsResp = { tabs: TabInfo[]; openGround: number }
 type GridResp = { base: Card | null; cards: Card[] }
@@ -19,6 +21,7 @@ export default function CardsMain() {
   const [grid, setGrid] = useState<GridResp | null>(null)
   const [pngBySlug, setPngBySlug] = useState<Map<string, string>>(new Map())
   const [q, setQ] = useState('')
+  const presence = useCatalogPresence()   // one beat + one rollup poll for every card
 
   // tabs + the active tab from the URL (shareable catalog pages)
   useEffect(() => {
@@ -66,13 +69,16 @@ export default function CardsMain() {
   }, [grid, q])
 
   return (
-    <main className="min-h-screen bg-[#0a0705] text-[#f0e6d2]"
-      style={{ background: 'radial-gradient(1100px 500px at 70% -10%, rgba(255,138,61,0.07), transparent 60%), #0a0705' }}>
+    <main className="min-h-screen text-[#f0e6d2]">
       <style>{`
-        .cardDeal { opacity: 0; animation: cardDeal .38s cubic-bezier(.2,.7,.3,1) forwards; }
-        @keyframes cardDeal { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
-        @media (prefers-reduced-motion: reduce) { .cardDeal { animation: none; opacity: 1; } }
+        .cardDeal { opacity: 0; animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards; }
+        @keyframes cardDeal { from { opacity: 0; transform: translateY(10px) scale(1.04); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+        /* the hang: each card drifts on its own phase (vars set per card) */
+        .cardBob { animation: cardDeal .45s cubic-bezier(.2,.7,.3,1) forwards, cardBob var(--bobDur, 6s) ease-in-out var(--bobDelay, 0s) infinite; }
+        @keyframes cardBob { 0%, 100% { margin-top: 0; } 50% { margin-top: -5px; } }
+        @media (prefers-reduced-motion: reduce) { .cardDeal, .cardBob { animation: none; opacity: 1; } }
       `}</style>
+      <CatalogSpace>
 
       <div className="max-w-[1240px] mx-auto px-4 pt-8 pb-20">
         {/* masthead */}
@@ -98,11 +104,12 @@ export default function CardsMain() {
               )}
               {shown === null
                 ? <div className="py-24 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
-                : <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} onOpen={open} />}
+                : <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />}
             </div>
           </>
         )}
       </div>
+      </CatalogSpace>
     </main>
   )
 }

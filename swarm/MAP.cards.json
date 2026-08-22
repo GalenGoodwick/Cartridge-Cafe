@@ -322,8 +322,17 @@
         "cards-grid"
       ],
       "tests": [],
-      "status": "open",
-      "claim": null
+      "status": "green",
+      "claim": null,
+      "evidence": {
+        "render-verified": "cards-space-eye.png — motes + fog render, cards hang at distinct phases",
+        "visual-reference": "matches the ruling: the grid floats in the cafe void, not on a flat page; reduced-motion stills all"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      },
+      "statusNote": "✓render-verified  ✓visual-reference"
     },
     {
       "id": "cards-presence",
@@ -347,8 +356,17 @@
         "cards-card"
       ],
       "tests": [],
-      "status": "open",
-      "claim": null
+      "status": "green",
+      "claim": null,
+      "evidence": {
+        "render-verified": "cards-presence-eye.png — REAL beats injected (2 players → THAW ●2 chip; dev:creature-lab → LIVE tag), rollup polled, chips rendered, beats self-expire 30s",
+        "visual-reference": "presence reads as inhabitation: ember-dot head-count on the art, LIVE pulse in the name bar"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      },
+      "statusNote": "✓render-verified  ✓visual-reference"
     }
   ]
 }

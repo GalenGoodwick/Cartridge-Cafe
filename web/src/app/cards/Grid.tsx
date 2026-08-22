@@ -6,11 +6,13 @@
 
 import type { Card } from '@/app/api/cards/route'
 import { WorldCardView } from './Card'
+import type { CardPresence } from './presence'
 
-export function CardGrid({ base, cards, pngBySlug, onOpen }: {
+export function CardGrid({ base, cards, pngBySlug, presence, onOpen }: {
   base: Card | null
   cards: Card[]            // feed order: base first (when present), then updatedAt desc
   pngBySlug: Map<string, string>
+  presence: Map<string, CardPresence>
   onOpen: (slug: string) => void
 }) {
   if (!cards.length) {
@@ -30,6 +32,7 @@ export function CardGrid({ base, cards, pngBySlug, onOpen }: {
           featured={!!base && c.slug === base.slug}
           index={i}
           onOpen={onOpen}
+          presence={presence.get(c.slug)}
         />
       ))}
     </div>
