@@ -62,11 +62,14 @@
         "contracts"
       ],
       "tests": [
-        "web/src/__tests__/unit/cards.test.ts"
+        "src/__tests__/unit/cards.test.ts"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/__tests__/unit/cards.test.ts"
+      "statusNote": "✓unit-tested",
+      "keyState": {
+        "unit-tested": "pass"
+      }
     },
     {
       "id": "cards-registry",
@@ -97,14 +100,17 @@
         "cards-data"
       ],
       "tests": [
-        "web/src/__tests__/unit/cards-registry.test.ts"
+        "src/__tests__/unit/cards-registry.test.ts"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/api/engine/cards-registry.ts, web/src/__tests__/unit/cards-registry.test.ts",
+      "statusNote": "✓unit-tested",
       "seams": [
         "SEAM-A: bridge/route.ts — one dispatch block for card_types/propose_card_type/set_card"
-      ]
+      ],
+      "keyState": {
+        "unit-tested": "pass"
+      }
     },
     {
       "id": "cards-feed",
@@ -126,11 +132,14 @@
         "cards-data"
       ],
       "tests": [
-        "web/src/__tests__/unit/cards-feed.test.ts"
+        "src/__tests__/unit/cards-feed.test.ts"
       ],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/api/cards/route.ts, web/src/__tests__/unit/cards-feed.test.ts"
+      "statusNote": "✓unit-tested",
+      "keyState": {
+        "unit-tested": "pass"
+      }
     },
     {
       "id": "publish-gate",
@@ -146,7 +155,7 @@
         "cards-registry"
       ],
       "tests": [
-        "web/src/__tests__/unit/cards-publish-gate.test.ts"
+        "src/__tests__/unit/cards-publish-gate.test.ts"
       ],
       "status": "red",
       "claim": null,
@@ -173,7 +182,7 @@
         "cards-registry"
       ],
       "tests": [
-        "web/src/__tests__/unit/cards-backfill.test.ts"
+        "src/__tests__/unit/cards-backfill.test.ts"
       ],
       "status": "red",
       "claim": null,
@@ -200,9 +209,17 @@
         "cards-feed"
       ],
       "tests": [],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/cards/Card.tsx"
+      "statusNote": "✓render-verified  ✓visual-reference",
+      "evidence": {
+        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere",
+        "visual-reference": "screenshot matches DESIGN-card-main.md §1 anatomy: name+forks bar, art window, type line (UNTYPED truthful pre-backfill), desc box, maker+base footer"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      }
     },
     {
       "id": "cards-grid",
@@ -225,9 +242,17 @@
         "cards-feed"
       ],
       "tests": [],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/cards/page.tsx, web/src/app/cards/Grid.tsx"
+      "statusNote": "✓render-verified  ✓visual-reference",
+      "evidence": {
+        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere",
+        "visual-reference": "screenshot matches DESIGN-card-main.md §1 anatomy: name+forks bar, art window, type line (UNTYPED truthful pre-backfill), desc box, maker+base footer"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      }
     },
     {
       "id": "cards-tabs",
@@ -243,9 +268,17 @@
         "cards-grid"
       ],
       "tests": [],
-      "status": "red",
+      "status": "green",
       "claim": null,
-      "statusNote": "missing: web/src/app/cards/Tabs.tsx"
+      "statusNote": "✓render-verified  ✓visual-reference",
+      "evidence": {
+        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere",
+        "visual-reference": "screenshot matches DESIGN-card-main.md §1 anatomy: name+forks bar, art window, type line (UNTYPED truthful pre-backfill), desc box, maker+base footer"
+      },
+      "keyState": {
+        "render-verified": "pass",
+        "visual-reference": "pass"
+      }
     },
     {
       "id": "cutover",
