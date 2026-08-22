@@ -300,6 +300,55 @@
         "playthrough-confirmed": "pending"
       },
       "statusNote": "·playthrough-confirmed"
+    },
+    {
+      "id": "cards-space",
+      "element": "the void — the catalog floats in the cafe's living space, not on a flat page",
+      "kind": "render",
+      "pseudocode": "canvas/WebGL backdrop behind the grid: drifting ember motes, depth fog, the radial warmth — the cafe's atmosphere. Cards float: per-card slow bob (randomized phase), cursor-tilt parallax, deal-in from depth. Grid stays a legible reading-order grid; prefers-reduced-motion → static. Cheap: one background canvas + CSS transforms, no per-card WebGL.",
+      "connects": [
+        {
+          "to": "cards-grid",
+          "via": "the grid renders INSIDE the space; Card gets a float/tilt wrapper"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/Space.tsx"
+      ],
+      "exports": [
+        "CatalogSpace"
+      ],
+      "dependsOn": [
+        "cards-grid"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null
+    },
+    {
+      "id": "cards-presence",
+      "element": "the catalog is inhabited — presence ported onto cards",
+      "kind": "render",
+      "pseudocode": "page heartbeats usePresenceBeat as main/cards. Per-card: ember-dot head-count chip (● N here) from the presence rollup the hub already reads; developer-live flame when ai:<slug>/dev:<slug> is fresh (the bridge/hub 'developer live' rule). Poll one rollup endpoint, never per-card fetches.",
+      "connects": [
+        {
+          "to": "cards-card",
+          "via": "Card gains presence:{here,devLive} — chip + flame in the name bar"
+        }
+      ],
+      "files": [
+        "web/src/app/cards/presence.ts"
+      ],
+      "exports": [
+        "useCatalogPresence"
+      ],
+      "dependsOn": [
+        "cards-feed",
+        "cards-card"
+      ],
+      "tests": [],
+      "status": "open",
+      "claim": null
     }
   ]
 }
