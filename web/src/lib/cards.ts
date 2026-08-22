@@ -96,3 +96,77 @@ export function orderGrid<T extends CardRow>(base: T | null, family: T[]): T[] {
     .sort((a, b) => b.updatedAt - a.updatedAt)
   return base ? [base, ...rest] : rest
 }
+
+// ── the CARD — SPEC.cards.md's one shape the feed serves and the UI consumes ──
+
+export interface Card {
+  slug: string; name: string
+  type: string; tags: string[]
+  desc: string                       // blurb, fallback first line of vision
+  icon: string | null                // /api/spaces/icons image for slug (PNG)
+  maker: { handle: string | null; name: string | null }
+  base: string | null                // rooting base slug (null = OPEN GROUND)
+  forkOf: string | null
+  counts: { forks: number; versions: number }
+  isBase: boolean
+  updatedAt: number
+}
+
+/** The playerSpace-ish row cardFromRow assembles from — the feed's select. */
+export interface SpaceRowLike {
+  slug: string
+  name?: string | null
+  updatedAt: Date | number
+  owner?: { email?: string | null; name?: string | null } | null
+  _count?: { forks?: number; versions?: number } | null
+}
+
+/** The worldData slice a card reads — never the whole snapshot. */
+export interface WorldDataSlice {
+  card?: { type?: unknown; tags?: unknown } | null
+  blurb?: unknown
+  vision?: unknown
+  __base?: unknown
+}
+
+/** Description: the builder's blurb, fallback the first non-empty line of the
+ *  vision — one line, whitespace collapsed, ≤180 chars (the blurb-mirror law). */
+function descOf(wd: WorldDataSlice | null | undefined): string {
+  const blurb = typeof wd?.blurb === 'string' ? wd.blurb.replace(/\s+/g, ' ').trim() : ''
+  if (blurb) return blurb.slice(0, 180)
+  const vision = typeof wd?.vision === 'string' ? wd.vision : ''
+  const line = vision.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).find(Boolean) || ''
+  return line.slice(0, 180)
+}
+
+/** Maker handle: email local-part, sanitized — the platform's one handle rule
+ *  (scene-auth.ts). Null when there is no usable email. */
+function handleOf(email: unknown): string | null {
+  if (typeof email !== 'string' || !email) return null
+  return email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || null
+}
+
+/** Assemble the Card the feed serves — PURE: a playerSpace-ish row + the
+ *  worldData slice + resolved lineage (base/forkOf slugs from rootBaseOf) +
+ *  icon presence. No I/O; the feed resolves, this shapes. */
+export function cardFromRow(
+  row: SpaceRowLike,
+  wd: WorldDataSlice | null | undefined,
+  lineage: { base: string | null; forkOf: string | null; iconPresent: boolean },
+): Card {
+  const type = typeof wd?.card?.type === 'string' ? normalizeTypeId(wd.card.type) : ''
+  return {
+    slug: row.slug,
+    name: row.name || row.slug,
+    type,                               // '' = untyped legacy (backfill's job)
+    tags: normalizeTags(wd?.card?.tags),
+    desc: descOf(wd),
+    icon: lineage.iconPresent ? `/api/spaces/icons/${encodeURIComponent(row.slug)}` : null,
+    maker: { handle: handleOf(row.owner?.email), name: row.owner?.name || null },
+    base: lineage.base,
+    forkOf: lineage.forkOf,
+    counts: { forks: row._count?.forks ?? 0, versions: row._count?.versions ?? 0 },
+    isBase: Boolean(wd?.__base),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.getTime() : row.updatedAt,
+  }
+}
