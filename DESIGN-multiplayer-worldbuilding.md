@@ -39,6 +39,11 @@ worldData.policy = {
 }
 ```
 
+**Grid dimensions are also set at fork time** (Galen, third pass): the world's
+coordinate space — 512×512 default, wide for side-scrollers (e.g. 4096×512),
+tall for climbers. Immutable with the rest of the contract; the fork dialog
+offers presets (square / wide / tall / custom) beside the policy presets.
+
 Named presets at fork time (the UI moment — a panel on the FORK dialog):
 
 | preset | build | play | the sentence on the button |
