@@ -330,6 +330,24 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                     >
                       revoke
                     </button>
+                    {/* BAN — a kick that sticks (member rows only): revokes
+                        their keys AND blocks re-entry for 30 days (invite,
+                        open-world self-mint). Revoke alone = a soft kick they
+                        can undo by rejoining. */}
+                    {t.name.startsWith('member:') && (
+                      <button
+                        onClick={async () => {
+                          const handle = t.name.slice(7)
+                          if (!window.confirm(`ban ${handle} from this world for 30 days? Their keys die now and no invite can readmit them until it lapses.`)) return
+                          const r = await fetch(`/api/spaces/${spaceSlug}/ban`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: window.location.origin }, body: JSON.stringify({ handle }) })
+                          if (r.ok) setTokens(prev => prev.filter(x => !(x.name === t.name))); else setError('ban failed')
+                        }}
+                        className="text-error/70 hover:text-error opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 font-bold"
+                        title="ban — revoke their keys AND block re-entry for 30 days"
+                      >
+                        ban
+                      </button>
+                    )}
                   </div>
                 ))}
                 {tokens.length === 0 && (

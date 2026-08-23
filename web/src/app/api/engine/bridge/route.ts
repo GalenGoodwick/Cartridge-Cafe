@@ -49,6 +49,7 @@ interface BridgeAuth {
   slug?: string
   spaceName?: string
   sceneName?: string        // set = branch-scoped (file-store scene); read/write isolated to it
+  memberHandle?: string     // set = a member:<handle> crew key (build yes, demolish no)
 }
 
 // Auth: ENGINE_AGENT_TOKEN or uc_st_ space token
@@ -64,7 +65,8 @@ async function authorize(req: NextRequest): Promise<BridgeAuth> {
   if (token.startsWith('uc_st_')) {
     const result = await validateSpaceToken(token)
     if (!result) return { authorized: false, spaceId: null, ownerId: null }
-    return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName }
+    const memberHandle = result.tokenName?.startsWith('member:') ? result.tokenName.slice(7) : undefined
+    return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName, memberHandle }
   }
 
   // Icon token path — minted by the BREW YOUR ICON panel, carried in the copied
@@ -557,6 +559,9 @@ const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|des
 // un-spoofable builder identity (holderOf(token)) onto these before they reach the
 // persist chokepoint — the client-supplied `author` field is never trusted for access.
 const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'release_node', 'register_node', 'remove_node', 'dock_node', 'undock_node', 'node_history', 'node_revert'])
+// destructive verbs also carry the identity stamps: the persist chokepoint
+// enforces holder/owner-only removal (grief gate — a crew builds, never wipes)
+const GRIEF_CMDS = new Set(['remove_step_hook', 'delete_field', 'reset', 'destroy_render_target'])
 
 export async function POST(req: NextRequest) {
   { const _auth = req.headers.get('authorization')
@@ -677,11 +682,12 @@ export async function POST(req: NextRequest) {
       // commands (holderOf = SHA-256 of the bearer token). This is what lets the
       // persist chokepoint enforce "you may only overwrite a node YOU hold." Admin
       // tokens carry an override. Overwrites any client-supplied __ value.
-      if (NODE_CMDS.has(cmd.type as string)) {
+      if (NODE_CMDS.has(cmd.type as string) || GRIEF_CMDS.has(cmd.type as string)) {
         const authHeader = req.headers.get('authorization') || ''
         cmd.__holder = holderOf(authHeader.slice(7))
         cmd.__now = Date.now()
         cmd.__admin = isAdminToken(authHeader, { allowLegacyAnthropicKey: true })
+        cmd.__member = auth.memberHandle !== undefined   // route truth, never the client's claim
       }
 
       // Icon tokens brew the icon. Only that.

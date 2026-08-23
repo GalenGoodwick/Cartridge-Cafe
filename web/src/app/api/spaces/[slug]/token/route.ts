@@ -86,6 +86,10 @@ export async function POST(
           SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${sp.id}`
         const policy = policyOf({ policy: rows[0]?.policy })
         const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
+        const { isBanned } = await import('@/lib/world-bans')
+        if (await isBanned(sp.id, handle)) {
+          return NextResponse.json({ error: 'you are banned from this world' }, { status: 403 })
+        }
         if (policy.build === 'anyone') {
           memberHandle = handle
           owned = { userId: sp.ownerId, spaceId: sp.id }

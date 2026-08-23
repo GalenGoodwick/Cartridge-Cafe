@@ -77,7 +77,8 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
       const list = ((await loadGameSlot(slot)) as Array<{ h: string; at: number; used?: { by: string; at: number } }> | undefined) ?? []
       const h = crypto.createHash('sha256').update(joinSecret).digest('hex')
       const inv = list.find(i => i.h === h && !i.used)
-      if (inv) {
+      const { isBanned } = await import('@/lib/world-bans')
+      if (inv && !(await isBanned(space.id, handle))) {
         const already = await prisma.spaceToken.findFirst({ where: { spaceId: space.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
         if (!already) {
           const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`

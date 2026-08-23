@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
-import { canPush, stampHold, canRelease, holdStatus } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
+import { canPush, stampHold, canRelease, holdStatus, type NodeRecord } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
 import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
 import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
@@ -30,6 +30,7 @@ export async function validateSpaceToken(rawToken: string): Promise<{
   ownerId: string
   slug: string
   spaceName: string
+  tokenName: string | null
 } | null> {
   if (!rawToken.startsWith('uc_st_')) return null
 
@@ -59,6 +60,7 @@ export async function validateSpaceToken(rawToken: string): Promise<{
     ownerId: token.space.ownerId,
     slug: token.space.slug,
     spaceName: token.space.name,
+    tokenName: token.name ?? null,
   }
 }
 
@@ -188,7 +190,7 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   remove_interaction: new Set(['type', 'ruleId']),
 }
 
-function emptySnapshot(): SceneSnapshot {
+export function emptySnapshot(): SceneSnapshot {
   return {
     name: '',
     fields: [],
@@ -335,6 +337,11 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'delete_field': {
+      if (cmd.__member === true && cmd.__admin !== true) {
+        result.ok = false
+        result.error = "member keys build — they don't demolish. delete_field needs the world owner's key (or hide it: set_visibility false)"
+        return result
+      }
       const id = cmd.fieldId as string
       snap.fields = snap.fields.filter(f => f.id !== id)
       // a field's overlap shaders die with it — an orphaned interactionEffect
@@ -480,6 +487,11 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'reset': {
+      if (cmd.__member === true && cmd.__admin !== true) {
+        result.ok = false
+        result.error = "member keys build — they don't demolish. RESET needs the world owner's key"
+        return result
+      }
       // NUCLEAR by contract (guide: "clears everything") — the owner's
       // category-law reset is lib/worldSave.resetWorld, a different operation.
       snap.fields = []
@@ -548,6 +560,11 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'destroy_render_target': {
+      if (cmd.__member === true && cmd.__admin !== true) {
+        result.ok = false
+        result.error = "member keys build — they don't demolish. destroy_render_target needs the world owner's key"
+        return result
+      }
       if (snap.renderTargets) {
         snap.renderTargets = snap.renderTargets.filter(t => t.name !== (cmd.name as string))
       }
@@ -656,6 +673,30 @@ export function applyCommandToSnapshotObject(
     case 'remove_step_hook': {
       // live engine accepts `name` as an alias for hookId — mirror that
       const hookId = (cmd.hookId as string) || (cmd.name as string) || ''
+      // GRIEF GATE (task: destructive verbs holder/owner-only). Removal is the
+      // sharpest verb a crew shares, so at this chokepoint:
+      //   · a node HELD by another fresh builder refuses removal for everyone
+      //     (same law as overwrite) — admin overrides
+      //   · a MEMBER key (__member, route-injected) may remove ONLY a node it
+      //     currently holds — dock_node first. That makes removal deliberate
+      //     and attributed (the dock trail), never a drive-by wipe.
+      {
+        const wdG = snap.worldData as Record<string, unknown>
+        const nodesG = (wdG.__nodes && typeof wdG.__nodes === 'object' ? wdG.__nodes : null) as Record<string, NodeRecord> | null
+        const st = holdStatus(nodesG?.[hookId] ?? null, String(cmd.__holder ?? ''), Number(cmd.__now ?? Date.now()))
+        if (cmd.__admin !== true) {
+          if (st === 'held') {
+            result.ok = false; result.gateRejected = true
+            result.error = `node "${hookId}" is HELD by another builder — it can't be removed out from under them`
+            return result
+          }
+          if (cmd.__member === true && st !== 'mine') {
+            result.ok = false; result.gateRejected = true
+            result.error = `member keys remove only nodes they hold — dock_node {"id":"${hookId}"} first (the hold makes removal deliberate and attributed), or ask the owner`
+            return result
+          }
+        }
+      }
       snap.stepHooks = snap.stepHooks.filter(h => h.id !== hookId)
       break
     }
