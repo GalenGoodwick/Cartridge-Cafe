@@ -137,6 +137,15 @@ The mechanics already exist — policy just decides who gets which key:
      dies (build rung). Galen: "that might be a ban" — yes, plus the above
      making bans rare because damage is revertable.
 - **Main wears the cartridge.cafe logo** (landed on the catalog masthead).
+- **FORKABILITY IS OPT-IN (Aug 23):** a player's world shows NO fork button and
+  refuses /fork (403) unless its maker enables "allow forking" in WORLD TOOLS
+  (worldData.forkable). Owners may always duplicate their own. Bases/blanks
+  enable it by nature. Unpublished worlds are invisible to strangers anyway
+  (404 before 403). The monetization tier (free/paid) later refines this flag.
+- **FORK IS INSTANT (Aug 23):** the parameters dialog is retired — one click →
+  the copy lands unpublished in your inventory → you arrive with the CONNECT
+  AI terminal open; the contract is declared ONCE from the terminal
+  (first-set immutability). Forks never inherit __base, isPublic, or policy.
 - **The catalog's tagline IS main's slogan-ticker** — one truth (lib/slogan.ts),
   live events glow over it on both surfaces (landed).
 - **"OPEN GROUND" is also the anyone-can-edit name**: the tab and the

@@ -33,6 +33,14 @@ export async function POST(
   if (!source || (!source.isPublic && source.ownerId !== user.id)) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
+  // FORKABILITY IS OPT-IN (Galen): the maker enables forking in WORLD TOOLS
+  // (worldData.forkable) — without it, nobody but the owner may copy the world.
+  {
+    const wd = (source.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
+    if (source.ownerId !== user.id && wd?.forkable !== true) {
+      return NextResponse.json({ error: 'this world is not forkable — its maker has not enabled forking' }, { status: 403 })
+    }
+  }
 
   // one gate for every create path — fork must not skip the world cap
   const gate = await canCreateWorld(user.id)

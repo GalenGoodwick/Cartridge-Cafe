@@ -93,12 +93,26 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     })}
                   </div>
                   )}
+                  {canEditLaw && (
+                  <div className="flex items-center justify-between text-[16px]">
+                    <span>allow forking</span>
+                    {toggleBtn(wd?.['forkable'] === true, () => {
+                      const sim = simulationRef.current
+                      if (!sim) return
+                      // FORKABILITY IS OPT-IN (Galen): no fork button, no fork
+                      // route, unless the maker enables it here. Off by default.
+                      sim.worldData['forkable'] = sim.worldData['forkable'] === true ? false : true
+                      persistBranchRules()
+                      setToolsTick(n => n + 1)
+                    })}
+                  </div>
+                  )}
                   {/* winner-takes-main RETIRED with the podium (branch→fork
                       transition): world votes no longer exist, so no challenger
                       can win — or take — anything. Your main is simply yours. */}
                   <div className="text-[14px] text-white/35 leading-relaxed">
                     {canEditLaw
-                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start."
+                      ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start. allow forking puts the FORK button on your world — anyone may take their own copy (off = your world cannot be forked)."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
                   </div>
                 </div>

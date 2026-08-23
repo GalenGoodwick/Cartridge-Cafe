@@ -6038,13 +6038,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 create action. Under it, the ◂/▸ browse row steps the family
                 (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
-              <button
+              {/* FORKABILITY IS OPT-IN (Galen): a player's world shows NO fork
+                  button unless its maker enabled forking in WORLD TOOLS. House
+                  scenes (open ground) remain forkable by nature. */}
+              {(spaceId ? simulationRef.current?.worldData?.['forkable'] === true : true) && <button
                 onClick={() => { if (spaceSlug) instantForkSpace(); else handleBranch() }}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
                 title={me ? 'fork this world — instantly yours; your AI does the rest' : 'sign in to fork this world'}
               >
                 ⑄ FORK THIS WORLD
-              </button>
+              </button>}
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
