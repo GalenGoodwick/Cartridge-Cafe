@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/engine/types'
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
 import { canPush, stampHold, canRelease, holdStatus, type NodeRecord } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
-import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
+import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, shouldAutoRevert, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
 import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
@@ -62,6 +62,50 @@ export async function validateSpaceToken(rawToken: string): Promise<{
     spaceName: token.space.name,
     tokenName: token.name ?? null,
   }
+}
+
+// ── RUNG 2 (co-build): runtime errors heal the node, never the builder's hope.
+// The live sandbox reports hook errors (hook-errors route) → each report on a
+// FRESH push (probation window) counts against that (node, rev). At the
+// threshold the node AUTO-REVERTS to its last good version — the bad rev is
+// marked and never a future target. A node with no good ancestor stays put
+// (its error chain is the builder's breadcrumb); the world never loses it.
+export const NODE_ERR_PROBATION_MS = 30 * 60_000   // only a fresh push is on probation
+
+/** Pure core: account one error against the node's CURRENT rev; auto-revert at
+ *  threshold. Mutates snap. Returns what happened (for telemetry/feed). */
+export function noteNodeError(
+  snap: SceneSnapshot,
+  hookId: string,
+  now: number,
+): { counted?: number; reverted?: number; noAncestor?: boolean } {
+  const wd = snap.worldData as Record<string, unknown>
+  const hist = (wd.__nodeHist && typeof wd.__nodeHist === 'object' ? wd.__nodeHist : null) as NodeHist | null
+  const chain = hist?.[hookId] ?? []
+  const cur = chain[chain.length - 1]
+  if (!cur) return {}
+  if (now - cur.at > NODE_ERR_PROBATION_MS) return {}   // an old, settled rev isn't on probation
+  const errs = (wd.__nodeErrs && typeof wd.__nodeErrs === 'object' ? wd.__nodeErrs : (wd.__nodeErrs = {})) as Record<string, { rev: number; n: number }>
+  const e = errs[hookId]?.rev === cur.rev ? errs[hookId] : (errs[hookId] = { rev: cur.rev, n: 0 })
+  e.n++
+  if (!shouldAutoRevert(e.n)) return { counted: e.n }
+  const r = applyCommandToSnapshotObject(snap, {
+    type: 'node_revert', id: hookId,
+    reason: `auto: ${e.n} errors on rev ${cur.rev}`,
+    __holder: 'auto-heal', __now: now, __admin: true,
+  })
+  delete errs[hookId]
+  if (r.ok !== true) return { counted: e.n, noAncestor: true }
+  return { counted: e.n, reverted: Number(r.revertedTo) }
+}
+
+/** The async wrapper hook-errors calls: fresh read-modify-write on the space. */
+export async function recordNodeError(spaceId: string, hookId: string): Promise<{ counted?: number; reverted?: number; noAncestor?: boolean }> {
+  const snap = await getSpaceSnapshot(spaceId, true)
+  if (!snap) return {}
+  const out = noteNodeError(snap, hookId, Date.now())
+  if (out.counted !== undefined) await setSpaceSnapshot(spaceId, snap)
+  return out
 }
 
 // --- Snapshot load/save ---
@@ -722,6 +766,24 @@ export function applyCommandToSnapshotObject(
           result.ok = false
           result.error = chk.reason
           result.gateRejected = true
+          return result
+        }
+      }
+      // ── THE CODE GATE (co-build rung 2, Galen's law): a broken push NEVER
+      // lands. Empty code never lands. The server compiles the hook EXACTLY the
+      // way the sandbox will — new Function('sim','dt',code), compile only,
+      // never invoked — and refuses on SyntaxError. The node simply remains at
+      // its last working version; a new node that never compiles never exists.
+      {
+        const codeStr = String(cmd.code ?? '')
+        if (!codeStr.trim()) {
+          result.ok = false
+          result.error = `empty hook code never lands — node "${hookId}" stays as it was. To remove a node, remove_step_hook (holder/owner).`
+          return result
+        }
+        try { new Function('sim', 'dt', codeStr) } catch (e) {
+          result.ok = false
+          result.error = `hook code does not compile — NOTHING landed; node "${hookId}" stays at its last version. ${e instanceof Error ? e.message : String(e)}`
           return result
         }
       }

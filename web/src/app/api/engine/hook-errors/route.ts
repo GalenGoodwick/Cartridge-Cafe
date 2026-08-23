@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { loadGameSlot, saveGameSlot } from '../store'
+import { prisma } from '@/lib/prisma'
+import { recordNodeError } from '../space-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,7 +74,21 @@ export async function POST(req: NextRequest) {
     while (buf.length > MAX_ENTRIES) buf.shift()
   }
   await saveGameSlot(key, buf)
-  return NextResponse.json({ ok: true, kept: buf.length })
+
+  // RUNG 2 (co-build): an error report on a space world counts against the
+  // node's CURRENT rev — a fresh push that keeps erroring AUTO-REVERTS to its
+  // last good version (the bad rev is marked; a node with no good ancestor
+  // stays, its error chain the builder's breadcrumb). Old settled revs are
+  // not on probation, so a griefer spamming this open route can at worst
+  // roll a just-pushed rev back to its immediate predecessor.
+  let heal: { counted?: number; reverted?: number; noAncestor?: boolean } = {}
+  if (body?.slug && entry.hookId !== 'sandbox') {
+    try {
+      const sp = await prisma.playerSpace.findUnique({ where: { slug: body.slug }, select: { id: true } })
+      if (sp) heal = await recordNodeError(sp.id, entry.hookId)
+    } catch { /* telemetry never throws */ }
+  }
+  return NextResponse.json({ ok: true, kept: buf.length, ...heal })
 }
 
 export async function GET(req: NextRequest) {
