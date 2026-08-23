@@ -83,30 +83,17 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
     setDelErr((await r.json().catch(() => null))?.error || 'could not delete')
   }, [spaceSlug])
 
-  // FORK-WITH-PARAMETERS (DESIGN-multiplayer-worldbuilding §2): forking opens
-  // the contract dialog — name + the social presets (+ grid dims once the
-  // engine honors them). The chosen contract is IMMUTABLE after this moment.
-  const [forkOpen, setForkOpen] = useState(false)
-  const [forkName, setForkName] = useState('')
-  const [forkPreset, setForkPreset] = useState('solo')
-  const PRESETS: Array<{ id: string; label: string; line: string }> = [
-    { id: 'solo', label: 'SOLO', line: 'I build · everyone plays' },
-    { id: 'open-ground', label: 'OPEN GROUND', line: 'everyone builds · everyone plays' },
-    { id: 'crew-world', label: 'CREW WORLD', line: 'my crew builds · everyone plays' },
-    { id: 'private-table', label: 'PRIVATE TABLE', line: 'invite-only · build and play' },
-  ]
   const remix = useCallback(async () => {
     setBusy(true)
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/fork`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: forkName.trim() || undefined, policy: forkPreset }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       })
       const d = await r.json()
-      if (r.ok) { window.location.href = `/space/${d.space.slug}` }
+      if (r.ok) { window.location.href = `/space/${d.space.slug}?connect=1` }
       else flash(d.error || 'Fork failed (sign in?)')
     } finally { setBusy(false) }
-  }, [spaceSlug, forkName, forkPreset])
+  }, [spaceSlug])
 
   const callVote = useCallback(async () => {
     if (!flagReason.trim()) { flash('Say what the conflict is'); return }
@@ -125,7 +112,10 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
   // the dock's buttons reach these flows through window events
   useEffect(() => {
     const onDel = () => { setDelErr(''); setConfirmDel(true) }
-    const onRemix = () => { setForkName(''); setForkPreset('solo'); setForkOpen(true) }
+    // INSTANT FORK (Galen: the prompt box was in the way) — the copy lands in
+    // your inventory and opens with the AI terminal; the contract is declared
+    // once, later, from the terminal (first-set immutability).
+    const onRemix = () => { remix() }
     const onVote = () => { setFlagReason(''); setFlagOpen(true) }
     window.addEventListener('cafe:delete-world', onDel)
     window.addEventListener('cafe:remix-world', onRemix)
@@ -135,7 +125,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       window.removeEventListener('cafe:remix-world', onRemix)
       window.removeEventListener('cafe:call-vote', onVote)
     }
-  }, [])
+  }, [remix])
 
   const btn = 'text-[14px] tracking-[0.15em] border rounded px-3 py-1.5 transition-colors'
 
@@ -193,42 +183,6 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       )}
 
       {msg && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[14px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
-
-      {/* THE FORK DIALOG — name + the social contract, chosen once, immutable */}
-      {forkOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4" onClick={() => setForkOpen(false)}>
-          <div className="max-w-md w-full rounded-xl border border-emerald-300/30 bg-black/90 backdrop-blur p-5 font-mono text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="text-emerald-200/90 tracking-[0.2em] text-[15px] mb-1">⑄ FORK THIS WORLD</div>
-            <p className="text-white/45 text-[13px] mb-3">A fork is a new world you own. Its terms are set NOW and never change.</p>
-            <div className="text-[11px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
-            <input autoFocus value={forkName} onChange={e => setForkName(e.target.value)} maxLength={60}
-              onKeyDown={e => { if (e.key === 'Escape') setForkOpen(false) }}
-              placeholder={`${name} (remix)`}
-              className="w-full mb-3 px-2.5 py-2 rounded bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50" />
-            <div className="text-[11px] tracking-[0.2em] text-white/40 mb-1.5">2 · THE SOCIAL CONTRACT <span className="text-amber-300/60">· immutable</span></div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {PRESETS.map(p => (
-                <button key={p.id} onClick={() => setForkPreset(p.id)}
-                  className={`text-left rounded-lg border px-3 py-2.5 transition-colors ${forkPreset === p.id
-                    ? 'border-emerald-300/70 bg-emerald-400/15 text-emerald-100'
-                    : 'border-white/15 text-white/60 hover:border-emerald-300/40'}`}>
-                  <div className="text-[12px] tracking-[0.15em]">{p.label}</div>
-                  <div className="text-[10.5px] text-white/40 mt-0.5">{p.line}</div>
-                </button>
-              ))}
-            </div>
-            <div className="text-[11px] tracking-[0.2em] text-white/40 mb-1.5">3 · GRID</div>
-            <div className="mb-4 px-3 py-2 rounded-lg border border-white/10 text-[12px] text-white/35">
-              512 × 512 <span className="text-white/25">· more dimensions arrive with the engine work</span>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className={`${btn} border-white/20 text-white/70 hover:bg-white/10`} onClick={() => setForkOpen(false)}>Cancel</button>
-              <button className={`${btn} border-emerald-400/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30`} disabled={busy}
-                onClick={remix}>FORK IT — IT BECOMES YOURS</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* delete confirm — reached by the dock's ✕ delete (cafe:delete-world) */}
       {confirmDel && (

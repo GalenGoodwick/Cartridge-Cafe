@@ -1689,6 +1689,33 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, labelRaw),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [me, playScene, spaceSlug, saveSceneAs, mintBranchToken, openPlug])
+  // a fresh fork arrives with the AI TERMINAL already opening (?connect=1) —
+  // the prompt line, not a form, is where creation happens (Galen's ruling)
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href)
+      if (url.searchParams.get('connect') === '1') {
+        url.searchParams.delete('connect')
+        window.history.replaceState(null, '', url.toString())
+        setTimeout(() => { openConnectAi() }, 1400)   // let the world settle first
+      }
+    } catch { /* ssr */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const instantForkSpace = useCallback(async () => {
+    if (!me) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.space?.slug) window.location.href = `/space/${d.space.slug}?connect=1`
+      else showToast(d?.error || 'fork failed', 'error')
+    } catch { showToast('fork failed — are you offline?', 'error') }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, spaceSlug])
+
   const handleBranch = useCallback(() => {
     if (!me) { window.location.href = '/auth/signin'; return }
     setBranchLabel(''); setBranchBrief('')
@@ -6004,9 +6031,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
               <button
-                onClick={handleBranch}
+                onClick={() => { if (spaceSlug) instantForkSpace(); else handleBranch() }}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
-                title={me ? 'fork this world — your own copy, a new world you own' : 'sign in to fork this world'}
+                title={me ? 'fork this world — instantly yours; your AI does the rest' : 'sign in to fork this world'}
               >
                 ⑄ FORK THIS WORLD
               </button>
