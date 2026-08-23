@@ -59,7 +59,7 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
       className={`cardDeal cardBob group relative flex flex-col text-left rounded-xl overflow-hidden border bg-[#120c08]
         border-[#b97a2a]/25 hover:border-[#b97a2a]/60 transition-colors duration-200
         focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60
-        ${featured ? 'col-span-2 row-span-2' : ''}`}
+        ${featured ? 'max-sm:col-span-full sm:col-span-2 sm:row-span-2' : ''}`}
       style={{
         animationDelay: `${Math.min(index, 24) * 35}ms`,
         // the bob: each card hangs on its own slow phase (from its index seed)

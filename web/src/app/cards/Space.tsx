@@ -68,6 +68,7 @@ export function CatalogSpace({ children }: { children: React.ReactNode }) {
   // the card under the pointer transforms (cheap at any card count)
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!window.matchMedia('(pointer: fine)').matches) return   // touch: tap enters, no tilt
     let cur: HTMLElement | null = null
     const onMove = (e: PointerEvent) => {
       const el = (e.target as HTMLElement | null)?.closest?.('[data-floatcard]') as HTMLElement | null

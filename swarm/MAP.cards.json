@@ -267,7 +267,8 @@
         "visual-reference": "pass"
       },
       "seams": [
-        "SEAM-C: CafeShell.tsx + lib/slogan.ts — the shared slogan truth (one import line)"
+        "SEAM-C: CafeShell.tsx + lib/slogan.ts — the shared slogan truth (one import line)",
+        "SEAM-D: SupportGate.tsx — /cards exempt from the mobile wall (worlds keep the gate per-world)"
       ]
     },
     {

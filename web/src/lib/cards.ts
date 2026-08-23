@@ -109,6 +109,7 @@ export interface Card {
   forkOf: string | null
   counts: { forks: number; versions: number }
   isBase: boolean
+  mobileReady: boolean               // the world declares it runs on touch/small screens
   updatedAt: number
 }
 
@@ -123,7 +124,7 @@ export interface SpaceRowLike {
 
 /** The worldData slice a card reads — never the whole snapshot. */
 export interface WorldDataSlice {
-  card?: { type?: unknown; tags?: unknown } | null
+  card?: { type?: unknown; tags?: unknown; mobile?: unknown } | null
   blurb?: unknown
   vision?: unknown
   __base?: unknown
@@ -167,6 +168,9 @@ export function cardFromRow(
     forkOf: lineage.forkOf,
     counts: { forks: row._count?.forks ?? 0, versions: row._count?.versions ?? 0 },
     isBase: Boolean(wd?.__base),
+    // mobile capability is DECLARED (card.mobile via set_card) or carried as the
+    // 'mobile' tag — a phone catalog only deals cards that actually run there
+    mobileReady: wd?.card?.mobile === true || normalizeTags(wd?.card?.tags).includes('mobile'),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.getTime() : row.updatedAt,
   }
 }

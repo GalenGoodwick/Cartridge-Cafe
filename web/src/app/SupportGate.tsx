@@ -63,6 +63,11 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         // pure-DOM rooms need no GPU — and the crawlable text surfaces
         // (/commons, /pages, legal) must never sit behind a GPU verdict
         if (path.startsWith('/admin') || path.startsWith('/commons') || path.startsWith('/pages') || path.startsWith('/terms') || path.startsWith('/privacy')) { setVerdict('ok'); return }
+        // SEAM-D (cards): the CATALOG is mobile-first (responsive grid, capped
+        // live art, mobile-ready filtering) — phones browse the cards freely;
+        // WORLDS keep the gate (a desktop-only game asks for the bigger table
+        // at ITS door, per-world). Galen's mobile ruling, Aug 22.
+        if (path.startsWith('/cards')) { setVerdict('ok'); return }
       } catch { /* ssr */ }
       // the escape hatch was used before and the engine worked → trust the
       // machine over the probe from then on

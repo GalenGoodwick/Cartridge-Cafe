@@ -26,6 +26,16 @@ export default function CardsMain() {
   const ticker = useCatalogTicker()       // main's slogan line, shared (lib/slogan.ts)
   // who's at the table — the masthead's SIGN IN / handle (chrome port: sign-in)
   const [me, setMe] = useState<{ email?: string | null; name?: string | null } | null | 'anon'>(null)
+  // MOBILE: a phone catalog deals only mobile-ready cards (some games can't run
+  // there at all) — but never an empty table: with no declared-mobile worlds yet,
+  // show everything behind an honest banner.
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse), (max-width: 640px)')
+    const set = () => setIsMobile(mq.matches)
+    set(); mq.addEventListener('change', set)
+    return () => mq.removeEventListener('change', set)
+  }, [])
   useEffect(() => {
     fetch('/api/auth/session').then(r => r.json())
       .then(s => setMe(s?.user ? s.user : 'anon')).catch(() => setMe('anon'))
@@ -66,7 +76,15 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
+  const mobileFiltered = useMemo(() => {
+    if (!grid || !isMobile) return { grid, hidden: 0 }
+    const ready = grid.cards.filter(c => c.mobileReady || (grid.base && c.slug === grid.base.slug))
+    if (ready.length <= (grid.base ? 1 : 0)) return { grid, hidden: -1 }   // none declared yet → show all, banner
+    return { grid: { base: grid.base, cards: ready }, hidden: grid.cards.length - ready.length }
+  }, [grid, isMobile])
+
   const shown = useMemo(() => {
+    const grid = mobileFiltered.grid
     if (!grid) return null
     if (!q.trim()) return grid
     const needle = q.trim().toLowerCase()
@@ -74,7 +92,7 @@ export default function CardsMain() {
       c.name.toLowerCase().includes(needle) || c.type.includes(needle) ||
       c.tags.some(t => t.includes(needle)) || (c.maker.handle ?? '').includes(needle)
     return { base: grid.base, cards: grid.cards.filter(c => (grid.base && c.slug === grid.base.slug) || hit(c)) }
-  }, [grid, q])
+  }, [mobileFiltered, q])
 
   return (
     <main className="min-h-screen text-[#f0e6d2]">
@@ -89,14 +107,14 @@ export default function CardsMain() {
 
       <div className="max-w-[1240px] mx-auto px-4 pt-8 pb-20">
         {/* masthead — the cafe's mark leads; the catalog is a page OF the cafe */}
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
           <h1 className="font-extrabold text-[19px] tracking-tight text-amber-300" style={{ fontFamily: 'inherit' }}>cartridge.cafe</h1>
           <span className="font-mono text-[12px] tracking-[0.35em] text-amber-200/70 pl-2 border-l border-white/15">THE CATALOG</span>
           <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
-            className="ml-auto w-64 max-w-[38vw] bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
+            className="ml-auto w-64 max-w-[38vw] max-sm:order-last max-sm:w-full max-sm:max-w-none bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
           />
           {me === 'anon' && (
             <a href={`/auth/signin?callbackUrl=${encodeURIComponent('/cards')}`}
@@ -118,6 +136,16 @@ export default function CardsMain() {
           <>
             <CardTabs tabs={tabs.tabs} openGround={tabs.openGround} active={active} onPick={setActive} />
             <div className="rounded-b-xl rounded-tr-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-3.5">
+              {isMobile && mobileFiltered.hidden === -1 && (
+                <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-amber-200/50">
+                  NO MOBILE-READY WORLDS ON THIS PAGE YET — SHOWING ALL (SOME MAY NEED A KEYBOARD)
+                </p>
+              )}
+              {isMobile && mobileFiltered.hidden > 0 && (
+                <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
+                  {mobileFiltered.hidden} DESKTOP-ONLY WORLD{mobileFiltered.hidden === 1 ? '' : 'S'} HIDDEN ON MOBILE
+                </p>
+              )}
               {tabs.tabs.length === 0 && active === 'open-ground' && (
                 <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.15em] text-white/30">
                   NO BASES FORGED YET — EVERY WORLD WAITS ON OPEN GROUND. THE FIRST ARCHETYPES ARE COMING.

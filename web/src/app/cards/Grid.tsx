@@ -23,7 +23,7 @@ export function CardGrid({ base, cards, pngBySlug, presence, onOpen }: {
     )
   }
   return (
-    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(215px,1fr))] [grid-auto-flow:dense]">
+    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(215px,1fr))] [grid-auto-flow:dense]">
       {cards.map((c, i) => (
         <WorldCardView
           key={c.slug}

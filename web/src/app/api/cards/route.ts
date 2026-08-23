@@ -36,6 +36,7 @@ export interface Card {
   forkOf: string | null
   counts: { forks: number; versions: number }
   isBase: boolean
+  mobileReady: boolean
   updatedAt: number
 }
 
@@ -195,6 +196,7 @@ function cardFromRow(
     base: row.base,
     forkOf: row.forkOf,
     counts: row.counts,
+    mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
     isBase: wd.__base === true,
     updatedAt: row.updatedAt,
   }
