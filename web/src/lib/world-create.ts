@@ -110,11 +110,14 @@ export async function forkSnapshotToSpace(opts: {
   baseName: string                       // the world it came from (display name / scene name)
   snapshot: Prisma.InputJsonValue        // the world content to land
   label?: string                         // optional fork name; defaults to "<base> (fork)"
+  policy?: { build: string; play: string }   // the fork's social contract (set once here, immutable after)
 }) {
   const { slugify } = await import('./slug')
   const name = (opts.label && opts.label.trim() ? opts.label.trim() : `${opts.baseName} (fork)`).slice(0, 60)
   const snap = JSON.parse(JSON.stringify(opts.snapshot)) as { worldData?: Record<string, unknown> }
   snap.worldData = { ...(snap.worldData || {}), __branchedFrom: opts.baseName }
+  delete snap.worldData.policy                     // never inherit the source's contract
+  if (opts.policy) snap.worldData.policy = opts.policy
   const baseSpace = await prisma.playerSpace.findUnique({
     where: { slug: slugify(opts.baseName) }, select: { id: true },
   }).catch(() => null)

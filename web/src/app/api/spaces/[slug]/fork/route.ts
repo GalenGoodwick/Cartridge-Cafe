@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
+import { normalizePolicy } from '@/lib/world-policy'
 import type { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -51,6 +52,16 @@ export async function POST(
   const name = (typeof body.name === 'string' && body.name.trim())
     ? body.name.trim().slice(0, 60)
     : `${source.name} (remix)`
+  // THE SOCIAL CONTRACT is chosen AT FORK (world-policy; immutable after).
+  // A fork never inherits the source's contract — its terms are the forker's
+  // to set, once. Malformed/absent → no policy key → the platform default.
+  const policy = normalizePolicy(body.policy)
+  if (source.snapshot && typeof source.snapshot === 'object') {
+    const snapObj = source.snapshot as { worldData?: Record<string, unknown> }
+    if (!snapObj.worldData) snapObj.worldData = {}
+    delete snapObj.worldData.policy
+    if (policy) snapObj.worldData.policy = policy
+  }
 
   // race-safe unique slug (the old findUnique-then-create raced on the final
   // insert). A fork of a PRIVATE world stays private — the default `true` used

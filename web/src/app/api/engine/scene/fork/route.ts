@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canCreateWorld, forkSnapshotToSpace } from '@/lib/world-create'
+import { normalizePolicy } from '@/lib/world-policy'
 import { hydrateScene, loadScene } from '../../store'
 import type { Prisma } from '@prisma/client'
 
@@ -32,11 +33,13 @@ export async function POST(req: NextRequest) {
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
   const label = typeof body?.label === 'string' ? body.label : undefined
+  const policy = normalizePolicy((body as { policy?: unknown })?.policy)
   // fork from the BASE display name (a fork of someone's branch credits the base line)
   const baseName = name.split(' ⑂ ')[0]
   const space = await forkSnapshotToSpace({
     userId: user.id, baseName, label,
     snapshot: scene as unknown as Prisma.InputJsonValue,
+    policy: policy ?? undefined,
   })
   return NextResponse.json({
     ok: true, forked: true, slug: space.slug, name: space.name,
