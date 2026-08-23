@@ -100,12 +100,35 @@ The mechanics already exist — policy just decides who gets which key:
 6. **arena wiring** — mpManifest on bases so crews co-exist as players while
    building (bloop's proven stack).
 
-## 7 · Open questions for Galen
+## 7 · GALEN'S RULINGS (Aug 22, second pass)
 
-- Does THE BLANK render as a card? (Proposed: yes — the first card of the
-  BASES row: pure black art, "fork me into anything.")
-- Can policy change after fork? (Proposed: owner may TIGHTEN anytime;
-  LOOSENING play→everyone is fine; loosening build to 'anyone' warns.)
-- Do 'anyone'-build worlds need a rate limit / ban list from day one?
-  (Proposed: yes — the roundtable spec's ban tool, world-scoped.)
-- MY/OUR: one merged grid with OUR badges, or two sections?
+- **BLANKS ARE FUNCTIONING WORLDS, and there are TWO: BLANK 2D and BLANK 3D**
+  (more added as we go). A blank is a working minimal world for its dimension
+  — render loop, input plumbed, camera, one field — with NOTHING in it. The
+  root layer of the fork tree. Distinction from a BASE: a blank is a
+  DIMENSION substrate; a base is a GENRE engine (blank-2d → platformer-2d-base
+  → someone's fell). Blanks show as cards.
+- **NO policy change after fork — ever.** "That isn't fair to people." The
+  social contract is immutable from the moment of forking.
+- **SHARING A LINK IS SHARING OWNERSHIP.** The invite mechanism IS the world
+  link: whoever holds the link holds build access at ownership level. No
+  separate invite/accept flow — possession of the link is membership. (An
+  'invited' world's link is a bearer credential; treat it with key seriousness:
+  the /pair-style page mints their member key on first visit.)
+- **MAKE PLAYABLE / MAKE UNPLAYABLE replaces Public/Private** as the world
+  toggle everywhere in the UI. A world is PLAYABLE (on the shelf, enterable)
+  or UNPLAYABLE (hidden). isPublic stays as the column; the language changes.
+- **The griefing problem** (players deleting/overwriting each other's work):
+  defense in depth, mostly already built —
+  1. Node holds: a held node refuses a foreign overwrite (live).
+  2. Per-node version history + node_revert: NOTHING is ever truly lost —
+     any clobber or delete heals to last-good (live).
+  3. Provenance: every landed rev records its builder (holderOf) — griefing
+     is attributable, not anonymous (live).
+  4. Destructive verbs tightened: remove_step_hook / remove_node / field
+     deletion allowed only to the node's HOLDER or the world OWNER (build rung).
+  5. The BAN: world-scoped ban tool (owner + unkickable-admin model from the
+     roundtable spec) — a banned member's key is revoked and their link access
+     dies (build rung). Galen: "that might be a ban" — yes, plus the above
+     making bans rare because damage is revertable.
+- **Main wears the cartridge.cafe logo** (landed on the catalog masthead).
