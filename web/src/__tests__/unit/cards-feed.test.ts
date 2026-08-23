@@ -32,6 +32,8 @@ const row = (id: string, slug: string, over: Partial<FeedRow> = {}): FeedRow => 
   isBase: false,
   iconWgsl: null,
   hue: null,
+  isPublic: true,
+  forkable: false,
   ...over,
 })
 
@@ -168,7 +170,7 @@ beforeEach(() => {
 })
 
 describe('GET /api/cards', () => {
-  it('?tabs=1 → the fixed strip counts (published / bases / mine)', async () => {
+  it('?tabs=1 → the fixed strip counts (published / forkable / mine / shared)', async () => {
     // the GET path runs the real strip — feed it PRISMA-shaped rows
     findMany.mockResolvedValue(fixture().map(r => ({
       id: r.id, slug: r.slug, name: r.name, forkOfId: r.forkOfId, isPublic: true,
@@ -180,8 +182,9 @@ describe('GET /api/cards', () => {
     const res = await GET(new Request('http://cafe.test/api/cards?tabs=1'))
     const d = await res.json()
     expect(d.published).toBe(fixture().length)
-    expect(d.bases).toBe(fixture().filter((r: FeedRow) => r.isBase).length)
-    expect(d.mine).toBeNull()   // no session in tests = signed out
+    expect(d.forkable).toBe(fixture().filter((r: FeedRow) => r.isBase || r.forkable).length)
+    expect(d.mine).toBeNull()    // no session in tests = signed out
+    expect(d.shared).toBeNull()
   })
 
   it('?tab=<base> → { base, cards } with the base pinned first', async () => {

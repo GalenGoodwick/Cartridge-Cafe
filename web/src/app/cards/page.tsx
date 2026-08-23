@@ -14,7 +14,7 @@ import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 
-type GridResp = { bases?: Card[]; cards: Card[]; base?: Card | null; signedOut?: boolean }
+type GridResp = { cards: Card[]; base?: Card | null; signedOut?: boolean }
 
 export default function CardsMain() {
   const [counts, setCounts] = useState<TabCounts | null>(null)
@@ -44,7 +44,7 @@ export default function CardsMain() {
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
       setActive(want || 'published')
-    }).catch(() => setCounts({ published: 0, bases: 0, mine: null }))
+    }).catch(() => setCounts({ published: 0, forkable: 0, mine: null, shared: null }))
   }, [])
 
   // the active tab's cards
@@ -69,21 +69,20 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
-  const isFamily = active !== 'published' && active !== 'mine'
+  const FIXED = ['published', 'forkable', 'mine', 'shared']
+  const isFamily = !FIXED.includes(active)
   const familyName = isFamily ? (grid?.base?.name ?? active) : null
 
   // search + the mobile capability filter, over whatever the tab dealt
   const shown = useMemo(() => {
     if (!grid) return null
-    let bases = grid.bases ?? []
     let cards = grid.cards
     let hidden = 0
     if (isMobile) {
       const readyCards = cards.filter(c => c.mobileReady || !c.playable || (grid.base && c.slug === grid.base?.slug))
-      if (readyCards.length > 0 || bases.some(b => b.mobileReady)) {
+      if (readyCards.length > 0) {
         hidden = cards.length - readyCards.length
         cards = readyCards
-        bases = bases.filter(b => b.mobileReady)
       } else hidden = -1   // nothing declares mobile yet → show all, honest banner
     }
     if (q.trim()) {
@@ -91,10 +90,9 @@ export default function CardsMain() {
       const hit = (c: Card) =>
         c.name.toLowerCase().includes(needle) || c.type.includes(needle) ||
         c.tags.some(t => t.includes(needle)) || (c.maker.handle ?? '').includes(needle)
-      bases = bases.filter(hit)
       cards = cards.filter(c => (grid.base && c.slug === grid.base?.slug) || hit(c))
     }
-    return { bases, cards, base: grid.base ?? null, signedOut: grid.signedOut === true, hidden }
+    return { cards, base: grid.base ?? null, signedOut: grid.signedOut === true, hidden }
   }, [grid, q, isMobile])
 
   return (
@@ -150,25 +148,27 @@ export default function CardsMain() {
 
               {shown === null ? (
                 <div className="py-24 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
-              ) : active === 'mine' && shown.signedOut ? (
+              ) : (active === 'mine' || active === 'shared') && shown.signedOut ? (
                 <div className="py-24 text-center font-mono text-[13px] tracking-[0.15em] text-white/40">
-                  SIGN IN TO SEE YOUR WORLDS — OWNED, SHARED WITH YOU, AND YOUR UNPUBLISHED DRAFTS
+                  {active === 'mine'
+                    ? 'SIGN IN TO SEE YOUR WORLDS — OWNED, INCLUDING YOUR UNPUBLISHED DRAFTS'
+                    : 'SIGN IN TO SEE WORLDS SHARED WITH YOU'}
                 </div>
               ) : (
                 <>
-                  {/* PUBLISHED: the BASES lead — the starting points, forkable by nature */}
-                  {active === 'published' && shown.bases.length > 0 && (
-                    <div className="mb-5">
-                      <div className="px-1 pb-2 font-mono text-[11px] tracking-[0.3em] text-amber-200/60">
-                        BASES — START HERE · fork one and it becomes yours
-                      </div>
-                      <CardGrid base={null} cards={shown.bases} pngBySlug={pngBySlug} presence={presence} onOpen={open} />
-                      <div className="mt-5 mb-2 px-1 font-mono text-[11px] tracking-[0.3em] text-white/35">ALL WORLDS</div>
-                    </div>
+                  {active === 'forkable' && (
+                    <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.3em] text-amber-200/60">
+                      START HERE — FORK ONE AND IT BECOMES YOURS · bases first
+                    </p>
                   )}
                   {active === 'mine' && (
                     <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
-                      YOURS AND SHARED WITH YOU · UNPUBLISHED DRAFTS ARE VISIBLE ONLY HERE
+                      YOUR WORLDS · UNPUBLISHED DRAFTS ARE VISIBLE ONLY HERE
+                    </p>
+                  )}
+                  {active === 'shared' && (
+                    <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
+                      SHARED WITH YOU — WORLDS WHERE YOU HOLD A MEMBER KEY
                     </p>
                   )}
                   <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />

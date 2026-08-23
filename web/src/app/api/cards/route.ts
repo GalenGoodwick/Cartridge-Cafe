@@ -61,39 +61,44 @@ export interface FeedRow {
   // the LIVE art: the world's composed icon shader + dominant hue (cards-live-art)
   iconWgsl: string | null
   hue: number | null
+  isPublic: boolean
+  forkable: boolean
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const tab = url.searchParams.get('tab')
   const rows = await cached('cards', 'public', CARDS_TTL_MS, fetchRows)
-  // THE TWO TABS (Galen's ruling): PUBLISHED (bases featured on top) and
-  // MY/OUR WORLDS (owned ∪ member, drafts included). Family pages
-  // (?tab=<baseSlug>) and open-ground remain as click-through pages.
+  // THE FOUR TABS (Galen's ruling): PUBLISHED · FORKABLE (bases + worlds with
+  // forking enabled — the start-here surface) · MY WORLDS (owned) · SHARED
+  // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
+  // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(feedPublished(rows))
-  if (tab === 'mine') {
-    const mine = await fetchMineRows()
-    if (mine === null) return NextResponse.json({ bases: [], cards: [], signedOut: true })
-    return NextResponse.json(feedMine(rows, mine))
+  if (tab === 'forkable') return NextResponse.json(feedForkable(rows))
+  if (tab === 'mine' || tab === 'shared') {
+    const own = await fetchMineRows(tab)
+    if (own === null) return NextResponse.json({ cards: [], signedOut: true })
+    return NextResponse.json(feedMine(rows, own))
   }
   if (tab) {
     const out = feedTab(rows, tab)
     const known = tab === OPEN_GROUND || out.base !== null
     return NextResponse.json(known ? out : { ...out, error: `no base "${tab}"` }, known ? undefined : { status: 404 })
   }
-  // ?tabs=1 (and the bare GET) → the fixed strip + counts (mine needs a session)
-  const mine = await fetchMineRows()
+  // ?tabs=1 (and the bare GET) → the fixed strip counts (mine/shared need a session)
+  const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
   return NextResponse.json({
     published: rows.length,
-    bases: rows.filter(r => r.isBase).length,
+    forkable: rows.filter(r => r.isBase || r.forkable).length,
     mine: mine === null ? null : mine.length,
+    shared: shared === null ? null : shared.length,
   })
 }
 
 /** MY/OUR: the signed-in maker's worlds — OWNED plus MEMBER (a live
  *  member:<handle> key on the world). Includes UNPUBLISHED (drafts); never
  *  cached (per-user truth). Null = signed out. */
-async function fetchMineRows(): Promise<FeedRow[] | null> {
+async function fetchMineRows(kind: 'mine' | 'shared'): Promise<FeedRow[] | null> {
   let email: string | null | undefined
   try {
     const session = await getServerSession(authOptions)
@@ -104,10 +109,9 @@ async function fetchMineRows(): Promise<FeedRow[] | null> {
   if (!me) return null
   const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
   const spaces = await prisma.playerSpace.findMany({
-    where: { OR: [
-      { ownerId: me.id },
-      { tokens: { some: { revokedAt: null, name: `member:${handle}` } } },
-    ] },
+    where: kind === 'mine'
+      ? { ownerId: me.id }
+      : { ownerId: { not: me.id }, tokens: { some: { revokedAt: null, name: `member:${handle}` } } },
     select: {
       id: true, slug: true, name: true, forkOfId: true, isPublic: true, updatedAt: true,
       owner: { select: { name: true, email: true } },
@@ -120,9 +124,24 @@ async function fetchMineRows(): Promise<FeedRow[] | null> {
   return stripRows(spaces)
 }
 
-/** PUBLISHED: every playable card; the BASES ride separately as the featured
- *  row (they are not repeated in the main grid). */
-export function feedPublished(rows: FeedRow[]): { bases: Card[]; cards: Card[] } {
+/** FORKABLE — the start-here surface: bases + every published world whose
+ *  maker enabled forking. Bases lead, then by recency. */
+export function feedForkable(rows: FeedRow[]): { cards: Card[] } {
+  const pool = rows.filter(r => r.isBase || r.forkable)
+  const roots = rootRows(rows)
+  const slugOf = new Map(rows.map(r => [r.id, r.slug]))
+  const toCard = (r: FeedRow) => cardFromRow(
+    { ...r, forkOf: r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null, base: roots.get(r.id) ? slugOf.get(roots.get(r.id)!) ?? null : null },
+    { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
+    true,
+  )
+  const bases = pool.filter(r => r.isBase).sort((a, b) => b.updatedAt - a.updatedAt)
+  const rest = pool.filter(r => !r.isBase).sort((a, b) => b.updatedAt - a.updatedAt)
+  return { cards: [...bases, ...rest].map(toCard) }
+}
+
+/** PUBLISHED: every playable card, one grid, recency order. */
+export function feedPublished(rows: FeedRow[]): { cards: Card[] } {
   const roots = rootRows(rows)
   const slugOf = new Map(rows.map(r => [r.id, r.slug]))
   const idToSlug = (r: FeedRow) => r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null
@@ -131,14 +150,12 @@ export function feedPublished(rows: FeedRow[]): { bases: Card[]; cards: Card[] }
     { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
     true,
   )
-  const bases = rows.filter(r => r.isBase).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard)
-  const cards = rows.filter(r => !r.isBase).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard)
-  return { bases, cards }
+  return { cards: [...rows].sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
 }
 
 /** MY/OUR: mine (drafts included) in recency order; rooting resolves against
  *  the public rows too (a draft fork of a public base still knows its base). */
-export function feedMine(publicRows: FeedRow[], mine: FeedRow[]): { bases: Card[]; cards: Card[] } {
+export function feedMine(publicRows: FeedRow[], mine: FeedRow[]): { cards: Card[] } {
   const all = [...mine, ...publicRows.filter(p => !mine.some(m => m.id === p.id))]
   const roots = rootRows(all)
   const slugOf = new Map(all.map(r => [r.id, r.slug]))
@@ -147,7 +164,7 @@ export function feedMine(publicRows: FeedRow[], mine: FeedRow[]): { bases: Card[
     { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
     true,
   )
-  return { bases: [], cards: mine.sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
+  return { cards: mine.sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
 }
 
 // ── the one query (+ per-instance TTL collapse, browse-style) ──
@@ -202,6 +219,7 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       iconWgsl,
       hue,
       isPublic: (rest as { isPublic?: boolean }).isPublic !== false,
+      forkable: wd.forkable === true,
     }
   })
 }

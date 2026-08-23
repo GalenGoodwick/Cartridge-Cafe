@@ -1,22 +1,26 @@
 'use client'
 
-// cards-tabs — THE TWO TABS (Galen's ruling): PUBLISHED (bases featured on
-// top) and MY / OUR WORLDS (owned ∪ member, drafts included). A family page
-// (?tab=<baseSlug>) appears as a contextual third tab while you're on it.
+// cards-tabs — THE FOUR TABS (Galen's ruling): PUBLISHED · FORKABLE (the
+// start-here surface: bases + worlds whose makers enabled forking) ·
+// MY WORLDS (owned) · SHARED WORLDS (member, not owner). A base's family
+// page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
 
-export interface TabCounts { published: number; bases: number; mine: number | null }
+export interface TabCounts { published: number; forkable: number; mine: number | null; shared: number | null }
 
 export function CardTabs({ counts, active, familyName, onPick }: {
   counts: TabCounts
   active: string
-  familyName?: string | null    // set while visiting a base family page
+  familyName?: string | null
   onPick: (slug: string) => void
 }) {
+  const fixed = ['published', 'forkable', 'mine', 'shared']
   const tabs: Array<{ slug: string; label: string; count: number | null }> = [
     { slug: 'published', label: 'PUBLISHED', count: counts.published },
-    ...(familyName && active !== 'published' && active !== 'mine'
+    { slug: 'forkable', label: 'FORKABLE', count: counts.forkable },
+    ...(familyName && !fixed.includes(active)
       ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
-    { slug: 'mine', label: 'MY / OUR WORLDS', count: counts.mine },
+    { slug: 'mine', label: 'MY WORLDS', count: counts.mine },
+    { slug: 'shared', label: 'SHARED WORLDS', count: counts.shared },
   ]
   return (
     <div className="flex items-end gap-1 overflow-x-auto pb-0 -mb-px" role="tablist" aria-label="the catalog">

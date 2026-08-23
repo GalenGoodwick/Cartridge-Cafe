@@ -289,8 +289,8 @@
       "claim": null,
       "statusNote": "✓render-verified  ✓visual-reference",
       "evidence": {
-        "render-verified": "tab-published.png + tab-mine.png — the TWO TABS live: PUBLISHED (bases featured row + all worlds) and MY/OUR (owned ∪ member incl. UNPUBLISHED drafts with badges + lineage footers)",
-        "visual-reference": "matches the two-tab ruling; family pages ride as contextual tabs"
+        "render-verified": "tab-forkable.png — THE FOUR TABS live: PUBLISHED · FORKABLE (start-here, bases first) · MY WORLDS · SHARED WORLDS; mine/shared counts null anonymous",
+        "visual-reference": "matches the four-tab ruling (my/our split; forkable graduated from a row to a tab)"
       },
       "keyState": {
         "render-verified": "pass",
