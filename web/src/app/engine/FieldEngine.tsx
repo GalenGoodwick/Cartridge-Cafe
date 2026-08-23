@@ -6283,7 +6283,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 ]}
               />
             )}
-            {!isHub && <button
+            {/* BRANCHES retired on spaces (branch→fork transition): a player
+                world's challengers are FORKS with lineage, not branch cells.
+                Legacy scenes keep the viewer for their surviving ⑂ heads. */}
+            {!isHub && !spaceSlug && <button
               onClick={() => { setBranchesOpen(v => !v); loadBranchHeads() }}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
@@ -6583,9 +6586,9 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <div className="text-[14px] leading-relaxed text-white/70 space-y-1.5">
                   <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
                   <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
-                  <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>
+                  {!spaceSlug && <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>}
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
-                  <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to an AI; edits open a branch you publish.</div>
+                  <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to your AI; it edits live, and versions keep every save point.</div>
                   <div><span className="text-white/90">◆ MAKE ICON</span> — have your AI author the world&apos;s shelf badge.</div>
                   <div><span className="text-emerald-300">⑄ FORK THIS WORLD</span> — take your own copy; it becomes a new world you own, with lineage back here.</div>
                 </div>
