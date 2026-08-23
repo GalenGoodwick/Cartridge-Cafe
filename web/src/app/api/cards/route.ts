@@ -40,6 +40,7 @@ export interface Card {
   isBase: boolean
   mobileReady: boolean
   playable: boolean                  // isPublic — false = a draft (MY/OUR only)
+  edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
   updatedAt: number
 }
 
@@ -63,6 +64,8 @@ export interface FeedRow {
   hue: number | null
   isPublic: boolean
   forkable: boolean
+  buildMode: 'anyone' | 'invited' | 'owner'
+  members: number                    // live member:<handle> keys (distinct handles)
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -151,6 +154,7 @@ async function fetchMineRows(kind: 'mine' | 'shared'): Promise<FeedRow[] | null>
       id: true, slug: true, name: true, forkOfId: true, isPublic: true, updatedAt: true,
       owner: { select: { name: true, email: true } },
       _count: { select: { forks: true, versions: true } },
+      tokens: { where: { revokedAt: null, name: { startsWith: 'member:' } }, select: { name: true } },
       snapshot: true,
     },
     orderBy: { updatedAt: 'desc' },
@@ -216,6 +220,7 @@ async function fetchRows(): Promise<FeedRow[]> {
       updatedAt: true,
       owner: { select: { name: true, email: true } },
       _count: { select: { forks: true, versions: true } },
+      tokens: { where: { revokedAt: null, name: { startsWith: 'member:' } }, select: { name: true } },
       snapshot: true,
     },
     orderBy: { updatedAt: 'desc' },
@@ -230,8 +235,8 @@ async function fetchRows(): Promise<FeedRow[]> {
 
 // strip each snapshot IMMEDIATELY — only the card facts survive, so the
 // cache never holds (and the wire never sees) whole world snapshots.
-function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | null; email: string | null } | null; _count: { forks: number; versions: number }; updatedAt: Date; id: string; slug: string; name: string; forkOfId: string | null; isPublic: boolean }>): FeedRow[] {
-  return spaces.map(({ snapshot, owner, _count, updatedAt, ...rest }) => {
+function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | null; email: string | null } | null; _count: { forks: number; versions: number }; tokens?: Array<{ name: string | null }>; updatedAt: Date; id: string; slug: string; name: string; forkOfId: string | null; isPublic: boolean }>): FeedRow[] {
+  return spaces.map(({ snapshot, owner, _count, tokens, updatedAt, ...rest }) => {
     const sn = snapshot as { worldData?: Record<string, unknown>; fields?: IconField[]; visualTypes?: IconVisual[]; modules?: IconVisual[] } | null
     const wd = sn?.worldData || {}
     // the LIVE art window: compose the world's icon shader (browse's law) —
@@ -259,6 +264,9 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       hue,
       isPublic: (rest as { isPublic?: boolean }).isPublic !== false,
       forkable: wd.forkable === true,
+      buildMode: (() => { const p = wd.policy as { build?: string } | undefined
+        return p?.build === 'anyone' ? 'anyone' : p?.build === 'invited' ? 'invited' : 'owner' })(),
+      members: new Set((tokens ?? []).map(t => t.name)).size,
     }
   })
 }
@@ -336,6 +344,10 @@ function cardFromRow(
     forkOf: row.forkOf,
     counts: row.counts,
     playable: (row as { isPublic?: boolean }).isPublic !== false,
+    edit: (() => { const r = row as { buildMode?: string; members?: number }
+      return r.buildMode === 'anyone' ? { mode: 'open' as const, editors: 0 }
+        : r.buildMode === 'invited' ? { mode: 'crew' as const, editors: (r.members ?? 0) + 1 }
+        : { mode: 'static' as const, editors: 1 } })(),
     mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
     isBase: wd.__base === true,
     updatedAt: row.updatedAt,

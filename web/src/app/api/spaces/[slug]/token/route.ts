@@ -85,9 +85,16 @@ export async function POST(
         const rows = await prisma.$queryRaw<{ policy: unknown }[]>`
           SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${sp.id}`
         const policy = policyOf({ policy: rows[0]?.policy })
+        const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
         if (policy.build === 'anyone') {
-          memberHandle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
+          memberHandle = handle
           owned = { userId: sp.ownerId, spaceId: sp.id }
+        } else if (policy.build === 'invited') {
+          // an existing MEMBER (joined via a one-time invite link) re-mints
+          // their own build key; the roster row is the authority
+          const member = await prisma.spaceToken.findFirst({
+            where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
+          if (member) { memberHandle = handle; owned = { userId: sp.ownerId, spaceId: sp.id } }
         }
       }
     }
@@ -105,12 +112,20 @@ export async function POST(
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
 
-  // Limit to 10 tokens per space
-  const count = await prisma.spaceToken.count({
-    where: { spaceId: owned.spaceId, revokedAt: null },
-  })
-  if (count >= 10) {
-    return NextResponse.json({ error: 'Maximum 10 tokens per space' }, { status: 400 })
+  // Limit to 10 tokens per space — MEMBER keys are exempt (a crew can be big);
+  // instead a member's re-mint retires their own older member rows.
+  if (memberHandle) {
+    await prisma.spaceToken.updateMany({
+      where: { spaceId: owned.spaceId, revokedAt: null, name: `member:${memberHandle}` },
+      data: { revokedAt: new Date() },
+    })
+  } else {
+    const count = await prisma.spaceToken.count({
+      where: { spaceId: owned.spaceId, revokedAt: null, name: { not: { startsWith: 'member:' } } },
+    })
+    if (count >= 10) {
+      return NextResponse.json({ error: 'Maximum 10 tokens per space' }, { status: 400 })
+    }
   }
 
   // Generate token: uc_st_ + 32 random hex chars

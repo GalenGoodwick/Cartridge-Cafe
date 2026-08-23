@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { policyOf } from '@/lib/world-policy'
 import { notFound } from 'next/navigation'
 import { getServerSession } from 'next-auth'
@@ -8,7 +9,7 @@ import SpaceStage from './SpaceStage'
 
 interface SpacePageProps {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ version?: string }>
+  searchParams: Promise<{ version?: string; join?: string }>
 }
 
 export async function generateMetadata({ params }: SpacePageProps) {
@@ -34,8 +35,9 @@ export async function generateMetadata({ params }: SpacePageProps) {
 
 export default async function SpacePage({ params, searchParams }: SpacePageProps) {
   const { slug } = await params
-  const { version } = await searchParams
-  const versionView = version ? parseInt(version, 10) : undefined
+  const search = await searchParams
+  const { version } = search
+  const versionView = typeof version === 'string' ? parseInt(version, 10) : undefined
 
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
@@ -57,7 +59,51 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
     ? (await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } }))?.id
     : null
 
-  if (!space.isPublic && userId !== space.ownerId) notFound()
+  // THE JOIN DOOR (one-time invite links, task #5): ?join=<secret> consumed
+  // BEFORE any gate — a valid invite mints membership (member:<handle> key
+  // row) and from that moment every gate below sees a member. Signed-out
+  // holders bounce through sign-in and return with the join intact.
+  const joinSecret = typeof search?.join === 'string' ? search.join : null
+  if (joinSecret) {
+    if (!session?.user?.email) {
+      redirect(`/auth/signin?callbackUrl=${encodeURIComponent(`/space/${slug}?join=${joinSecret}`)}`)
+    }
+    const email = session.user.email
+    const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+    if (userId && userId !== space.ownerId && handle) {
+      const { loadGameSlot, saveGameSlot } = await import('../../api/engine/store')
+      const crypto = (await import('crypto')).default
+      const slot = `invites:${space.id}`
+      const list = ((await loadGameSlot(slot)) as Array<{ h: string; at: number; used?: { by: string; at: number } }> | undefined) ?? []
+      const h = crypto.createHash('sha256').update(joinSecret).digest('hex')
+      const inv = list.find(i => i.h === h && !i.used)
+      if (inv) {
+        const already = await prisma.spaceToken.findFirst({ where: { spaceId: space.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
+        if (!already) {
+          const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
+          await prisma.spaceToken.create({ data: {
+            name: `member:${handle}`,
+            tokenHash: crypto.createHash('sha256').update(raw).digest('hex'),
+            tokenPrefix: raw.slice(0, 12) + '...',
+            spaceId: space.id,
+          } })
+        }
+        inv.used = { by: handle, at: Date.now() }
+        await saveGameSlot(slot, list)
+      }
+    }
+    redirect(`/space/${slug}`)   // clean URL; gates below now see a member
+  }
+
+  if (!space.isPublic && userId !== space.ownerId) {
+    // an unpublished CREW world still opens for its members (SHARED WORLDS law)
+    const email = session?.user?.email
+    const handle = email ? email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+    const member = handle ? await prisma.spaceToken.findFirst({
+      where: { spaceId: space.id, revokedAt: null, name: `member:${handle}` }, select: { id: true },
+    }) : null
+    if (!member) notFound()
+  }
 
   // THE SOCIAL CONTRACT's play gate (world-policy): a playable world whose
   // contract restricts play ('invited'/'builders') opens only to the owner and

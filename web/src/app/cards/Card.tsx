@@ -119,6 +119,13 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
           style={{ color: typed ? `hsl(${hue} 65% 68%)` : 'rgba(255,255,255,0.3)' }}>
           {typed ? card.type.replace(/-/g, ' ') : 'untyped'}
         </span>
+        <span className={`shrink-0 font-mono text-[9.5px] tracking-[0.12em] px-1 py-px rounded border ${
+          card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90'
+          : card.edit.mode === 'crew' ? 'border-sky-300/40 text-sky-200/80'
+          : 'border-white/15 text-white/30'}`}
+          title={card.edit.mode === 'open' ? 'anyone can build here' : card.edit.mode === 'crew' ? 'a crew builds here' : 'only its maker builds here'}>
+          {card.edit.mode === 'open' ? 'OPEN EDIT' : card.edit.mode === 'crew' ? `${card.edit.editors} EDITORS` : 'STATIC'}
+        </span>
         {card.tags.length > 0 && (
           <span className="font-mono text-[10px] text-white/35 truncate">
             {card.tags.slice(0, featured ? 6 : 3).map(t => '·' + t).join(' ')}
