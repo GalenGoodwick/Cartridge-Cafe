@@ -72,6 +72,9 @@ export async function POST(
     // a fork is NEVER a base — __base is the house's declaration, not heritage
     // (inheriting it gave every fork of a base its own catalog tab)
     delete snapObj.worldData.__base
+    // forkability is OPT-IN per world, never inherited: a fork of a forkable
+    // world is born unforkable until ITS maker flips the World Tools toggle
+    delete snapObj.worldData.forkable
   }
 
   // race-safe unique slug (the old findUnique-then-create raced on the final

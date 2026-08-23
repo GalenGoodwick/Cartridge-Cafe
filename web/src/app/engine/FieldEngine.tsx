@@ -1703,16 +1703,8 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // forking your OWN world is a duplicate — worth one deliberate second click
-  // (the instant path stays instant on everyone else's worlds)
-  const forkArmRef = useRef(0)
   const instantForkSpace = useCallback(async () => {
     if (!me) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
-    if (isOwner && Date.now() - forkArmRef.current > 4000) {
-      forkArmRef.current = Date.now()
-      showToast('this is already your world — fork a duplicate?', 'info', 'click FORK again within 4s to confirm')
-      return
-    }
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/fork`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
@@ -6039,9 +6031,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
               {/* FORKABILITY IS OPT-IN (Galen): a player's world shows NO fork
-                  button unless its maker enabled forking in WORLD TOOLS. House
-                  scenes (open ground) remain forkable by nature. */}
-              {(spaceId ? simulationRef.current?.worldData?.['forkable'] === true : true) && <button
+                  button unless its maker enabled forking in WORLD TOOLS — and
+                  NEVER to its own owner (it's already yours). House scenes
+                  (open ground) remain forkable by nature. */}
+              {(spaceId ? (!isOwner && simulationRef.current?.worldData?.['forkable'] === true) : true) && <button
                 onClick={() => { if (spaceSlug) instantForkSpace(); else handleBranch() }}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
                 title={me ? 'fork this world — instantly yours; your AI does the rest' : 'sign in to fork this world'}
