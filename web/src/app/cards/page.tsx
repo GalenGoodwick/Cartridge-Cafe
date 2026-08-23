@@ -80,10 +80,12 @@ export default function CardsMain() {
       <CatalogSpace>
 
       <div className="max-w-[1240px] mx-auto px-4 pt-8 pb-20">
-        {/* masthead */}
-        <div className="flex items-baseline gap-4 mb-5">
-          <h1 className="font-mono text-[15px] tracking-[0.4em] text-amber-200/90">THE CATALOG</h1>
-          <span className="font-mono text-[11px] tracking-[0.2em] text-white/30">EVERY WORLD IS A CARD</span>
+        {/* masthead — the cafe's mark leads; the catalog is a page OF the cafe */}
+        <div className="flex items-center gap-3 mb-5">
+          <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
+          <h1 className="font-extrabold text-[19px] tracking-tight text-amber-300" style={{ fontFamily: 'inherit' }}>cartridge.cafe</h1>
+          <span className="font-mono text-[12px] tracking-[0.35em] text-amber-200/70 pl-2 border-l border-white/15">THE CATALOG</span>
+          <span className="font-mono text-[11px] tracking-[0.2em] text-white/30 hidden sm:inline">EVERY WORLD IS A CARD</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[45vw] bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"

@@ -258,7 +258,7 @@
       "claim": null,
       "statusNote": "✓render-verified  ✓visual-reference",
       "evidence": {
-        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere",
+        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere · masthead wears the cartridge-cup + cartridge.cafe wordmark (cards-logo-eye.png)",
         "visual-reference": "screenshot matches DESIGN-card-main.md §1 anatomy: name+forks bar, art window, type line (UNTYPED truthful pre-backfill), desc box, maker+base footer"
       },
       "keyState": {
