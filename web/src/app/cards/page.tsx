@@ -14,12 +14,13 @@ import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 
-type GridResp = { cards: Card[]; base?: Card | null; signedOut?: boolean }
+type GridResp = { cards: Card[]; base?: Card | null; signedOut?: boolean; page?: number; pages?: number; total?: number; mobileFallback?: boolean }
 
 export default function CardsMain() {
   const [counts, setCounts] = useState<TabCounts | null>(null)
   const [active, setActive] = useState<string>('published')
   const [grid, setGrid] = useState<GridResp | null>(null)
+  const [pageN, setPageN] = useState(1)
   const [pngBySlug, setPngBySlug] = useState<Map<string, string>>(new Map())
   const [q, setQ] = useState('')
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
@@ -40,23 +41,37 @@ export default function CardsMain() {
 
   // the strip counts + the active tab from the URL (shareable catalog pages)
   useEffect(() => {
-    const want = new URL(window.location.href).searchParams.get('tab')
+    const u = new URL(window.location.href)
+    const want = u.searchParams.get('tab')
+    const p0 = parseInt(u.searchParams.get('page') || '1', 10)
+    if (p0 > 1) setPageN(p0)
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
       setActive(want || 'published')
     }).catch(() => setCounts({ published: 0, forkable: 0, mine: null, shared: null }))
   }, [])
 
-  // the active tab's cards
+  // the active tab's cards — PAGINATED server-side (pages 1, 2, 3…; search and
+  // the mobile cut apply across the WHOLE tab, then the page is served)
   useEffect(() => {
     if (!counts) return
     setGrid(null)
-    fetch(`/api/cards?tab=${encodeURIComponent(active)}`)
-      .then(r => r.json()).then(setGrid).catch(() => setGrid({ cards: [] }))
+    const t = setTimeout(() => {
+      const p = new URLSearchParams({ tab: active, page: String(pageN) })
+      if (q.trim()) p.set('q', q.trim())
+      if (isMobile) p.set('mobile', '1')
+      fetch(`/api/cards?${p}`)
+        .then(r => r.json()).then(setGrid).catch(() => setGrid({ cards: [] }))
+    }, q.trim() ? 250 : 0)   // debounce typing; instant otherwise
     const url = new URL(window.location.href)
     url.searchParams.set('tab', active)
+    if (pageN > 1) url.searchParams.set('page', String(pageN)); else url.searchParams.delete('page')
     window.history.replaceState(null, '', url.toString())
-  }, [counts, active])
+    return () => clearTimeout(t)
+  }, [counts, active, pageN, q, isMobile])
+
+  // a new tab or a new search starts back at page 1
+  useEffect(() => { setPageN(1) }, [active, q])
 
   // baked shader photos — ONE batch fetch, mapped by slug
   useEffect(() => {
@@ -73,27 +88,12 @@ export default function CardsMain() {
   const isFamily = !FIXED.includes(active)
   const familyName = isFamily ? (grid?.base?.name ?? active) : null
 
-  // search + the mobile capability filter, over whatever the tab dealt
+  // search + mobile are SERVER-side now (truthful across all pages)
   const shown = useMemo(() => {
     if (!grid) return null
-    let cards = grid.cards
-    let hidden = 0
-    if (isMobile) {
-      const readyCards = cards.filter(c => c.mobileReady || !c.playable || (grid.base && c.slug === grid.base?.slug))
-      if (readyCards.length > 0) {
-        hidden = cards.length - readyCards.length
-        cards = readyCards
-      } else hidden = -1   // nothing declares mobile yet → show all, honest banner
-    }
-    if (q.trim()) {
-      const needle = q.trim().toLowerCase()
-      const hit = (c: Card) =>
-        c.name.toLowerCase().includes(needle) || c.type.includes(needle) ||
-        c.tags.some(t => t.includes(needle)) || (c.maker.handle ?? '').includes(needle)
-      cards = cards.filter(c => (grid.base && c.slug === grid.base?.slug) || hit(c))
-    }
-    return { cards, base: grid.base ?? null, signedOut: grid.signedOut === true, hidden }
-  }, [grid, q, isMobile])
+    return { cards: grid.cards, base: grid.base ?? null, signedOut: grid.signedOut === true,
+      hidden: grid.mobileFallback ? -1 : 0, page: grid.page ?? 1, pages: grid.pages ?? 1, total: grid.total ?? grid.cards.length }
+  }, [grid])
 
   return (
     <main className="min-h-screen text-[#f0e6d2]">
@@ -140,11 +140,6 @@ export default function CardsMain() {
                   NO MOBILE-READY WORLDS ON THIS PAGE YET — SHOWING ALL (SOME MAY NEED A KEYBOARD)
                 </p>
               )}
-              {isMobile && (shown?.hidden ?? 0) > 0 && (
-                <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
-                  {shown!.hidden} DESKTOP-ONLY WORLD{shown!.hidden === 1 ? '' : 'S'} HIDDEN ON MOBILE
-                </p>
-              )}
 
               {shown === null ? (
                 <div className="py-24 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
@@ -172,6 +167,26 @@ export default function CardsMain() {
                     </p>
                   )}
                   <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />
+                  {shown.pages > 1 && (
+                    <div className="mt-5 flex items-center justify-center gap-1.5 font-mono text-[12px]" role="navigation" aria-label="pages">
+                      <button disabled={shown.page <= 1} onClick={() => setPageN(shown.page - 1)}
+                        className="px-2 py-1 rounded border border-white/15 text-white/50 hover:text-amber-200 disabled:opacity-30">‹</button>
+                      {Array.from({ length: shown.pages }, (_, i) => i + 1)
+                        .filter(n => n === 1 || n === shown.pages || Math.abs(n - shown.page) <= 2)
+                        .map((n, i, arr) => (
+                          <span key={n} className="flex items-center gap-1.5">
+                            {i > 0 && arr[i - 1] !== n - 1 && <span className="text-white/25">…</span>}
+                            <button onClick={() => setPageN(n)} aria-current={n === shown.page ? 'page' : undefined}
+                              className={`px-2.5 py-1 rounded border transition-colors ${n === shown.page
+                                ? 'border-amber-300/60 bg-amber-400/15 text-amber-200'
+                                : 'border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-300/40'}`}>{n}</button>
+                          </span>
+                        ))}
+                      <button disabled={shown.page >= shown.pages} onClick={() => setPageN(shown.page + 1)}
+                        className="px-2 py-1 rounded border border-white/15 text-white/50 hover:text-amber-200 disabled:opacity-30">›</button>
+                      <span className="pl-2 text-white/30">{shown.total} worlds</span>
+                    </div>
+                  )}
                 </>
               )}
             </div>

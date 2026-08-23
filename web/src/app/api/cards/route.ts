@@ -65,6 +65,40 @@ export interface FeedRow {
   forkable: boolean
 }
 
+/** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
+ *  so page counts and search stay truthful over the whole catalog — no silent
+ *  cap (Galen: pages 1, 2, 3…, not a 500 ceiling). */
+const PAGE_SIZE = 48
+
+function paginate(cards: Card[], page: number): { cards: Card[]; page: number; pages: number; total: number } {
+  const total = cards.length
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const p = Math.min(Math.max(1, page), pages)
+  return { cards: cards.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE), page: p, pages, total }
+}
+
+/** The ONE search predicate — server-side so a match on page 9 is findable. */
+function cardHits(c: Card, needle: string): boolean {
+  return c.name.toLowerCase().includes(needle) || c.type.includes(needle) ||
+    c.tags.some(t => t.includes(needle)) || (c.maker.handle ?? '').includes(needle)
+}
+
+/** Search + the mobile capability cut + pagination, in that order. mobile=1
+ *  filters to mobile-ready; if NOTHING declares readiness the full set returns
+ *  flagged mobileFallback (the catalog's honest banner). */
+function serve(cards: Card[], url: URL) {
+  const page = parseInt(url.searchParams.get('page') || '1', 10) || 1
+  const q = (url.searchParams.get('q') || '').trim().toLowerCase()
+  let out = q ? cards.filter(c => cardHits(c, q)) : cards
+  let mobileFallback = false
+  if (url.searchParams.get('mobile') === '1') {
+    const ready = out.filter(c => c.mobileReady || !c.playable)
+    if (ready.length > 0) out = ready
+    else mobileFallback = out.length > 0
+  }
+  return { ...paginate(out, page), mobileFallback }
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const tab = url.searchParams.get('tab')
@@ -73,17 +107,18 @@ export async function GET(req: Request) {
   // forking enabled — the start-here surface) · MY WORLDS (owned) · SHARED
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
-  if (tab === 'published') return NextResponse.json(feedPublished(rows))
-  if (tab === 'forkable') return NextResponse.json(feedForkable(rows))
+  if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
+  if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
   if (tab === 'mine' || tab === 'shared') {
     const own = await fetchMineRows(tab)
-    if (own === null) return NextResponse.json({ cards: [], signedOut: true })
-    return NextResponse.json(feedMine(rows, own))
+    if (own === null) return NextResponse.json({ cards: [], page: 1, pages: 1, total: 0, signedOut: true })
+    return NextResponse.json(serve(feedMine(rows, own).cards, url))
   }
   if (tab) {
     const out = feedTab(rows, tab)
     const known = tab === OPEN_GROUND || out.base !== null
-    return NextResponse.json(known ? out : { ...out, error: `no base "${tab}"` }, known ? undefined : { status: 404 })
+    if (!known) return NextResponse.json({ ...out, error: `no base "${tab}"` }, { status: 404 })
+    return NextResponse.json({ base: out.base, ...serve(out.cards, url) })
   }
   // ?tabs=1 (and the bare GET) → the fixed strip counts (mine/shared need a session)
   const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
@@ -184,8 +219,12 @@ async function fetchRows(): Promise<FeedRow[]> {
       snapshot: true,
     },
     orderBy: { updatedAt: 'desc' },
-    take: 500,
+    // a SAFETY NET, not a product cap (pagination serves the pages). If this
+    // ever fills, the jsonb-light query is the scale fix — say so, never drop
+    // silently.
+    take: 2000,
   })
+  if (spaces.length === 2000) console.warn('[cards] fetch net FULL (2000) — time for the jsonb-light query')
   return stripRows(spaces)
 }
 
