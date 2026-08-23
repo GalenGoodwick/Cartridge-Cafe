@@ -289,8 +289,8 @@
       "claim": null,
       "statusNote": "✓render-verified  ✓visual-reference",
       "evidence": {
-        "render-verified": "local-eye screenshot of http://localhost:3100/cards (scratchpad/cards-eye.png) — grid renders, 30 cards, tabs, deal-in, baked photos where present, placeholders elsewhere",
-        "visual-reference": "screenshot matches DESIGN-card-main.md §1 anatomy: name+forks bar, art window, type line (UNTYPED truthful pre-backfill), desc box, maker+base footer"
+        "render-verified": "tab-published.png + tab-mine.png — the TWO TABS live: PUBLISHED (bases featured row + all worlds) and MY/OUR (owned ∪ member incl. UNPUBLISHED drafts with badges + lineage footers)",
+        "visual-reference": "matches the two-tab ruling; family pages ride as contextual tabs"
       },
       "keyState": {
         "render-verified": "pass",

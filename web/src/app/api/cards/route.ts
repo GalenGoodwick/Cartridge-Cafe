@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { handleOf } from '@/lib/notify'
@@ -37,10 +39,11 @@ export interface Card {
   counts: { forks: number; versions: number }
   isBase: boolean
   mobileReady: boolean
+  playable: boolean                  // isPublic — false = a draft (MY/OUR only)
   updatedAt: number
 }
 
-/** One public world AFTER the server-side snapshot strip — the pure feed core
+/** One world AFTER the server-side snapshot strip — the pure feed core
  *  works over these rows only (tested hard in cards-feed.test.ts). */
 export interface FeedRow {
   id: string
@@ -64,14 +67,87 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const tab = url.searchParams.get('tab')
   const rows = await cached('cards', 'public', CARDS_TTL_MS, fetchRows)
+  // THE TWO TABS (Galen's ruling): PUBLISHED (bases featured on top) and
+  // MY/OUR WORLDS (owned ∪ member, drafts included). Family pages
+  // (?tab=<baseSlug>) and open-ground remain as click-through pages.
+  if (tab === 'published') return NextResponse.json(feedPublished(rows))
+  if (tab === 'mine') {
+    const mine = await fetchMineRows()
+    if (mine === null) return NextResponse.json({ bases: [], cards: [], signedOut: true })
+    return NextResponse.json(feedMine(rows, mine))
+  }
   if (tab) {
     const out = feedTab(rows, tab)
-    // open-ground legitimately has no base; any other tab without one is unknown
     const known = tab === OPEN_GROUND || out.base !== null
     return NextResponse.json(known ? out : { ...out, error: `no base "${tab}"` }, known ? undefined : { status: 404 })
   }
-  // ?tabs=1 (and the bare GET) → the tab strip
-  return NextResponse.json(feedTabs(rows))
+  // ?tabs=1 (and the bare GET) → the fixed strip + counts (mine needs a session)
+  const mine = await fetchMineRows()
+  return NextResponse.json({
+    published: rows.length,
+    bases: rows.filter(r => r.isBase).length,
+    mine: mine === null ? null : mine.length,
+  })
+}
+
+/** MY/OUR: the signed-in maker's worlds — OWNED plus MEMBER (a live
+ *  member:<handle> key on the world). Includes UNPUBLISHED (drafts); never
+ *  cached (per-user truth). Null = signed out. */
+async function fetchMineRows(): Promise<FeedRow[] | null> {
+  let email: string | null | undefined
+  try {
+    const session = await getServerSession(authOptions)
+    email = session?.user?.email
+  } catch { return null }   // no request scope (tests/SSG) = signed out
+  if (!email) return null
+  const me = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+  if (!me) return null
+  const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+  const spaces = await prisma.playerSpace.findMany({
+    where: { OR: [
+      { ownerId: me.id },
+      { tokens: { some: { revokedAt: null, name: `member:${handle}` } } },
+    ] },
+    select: {
+      id: true, slug: true, name: true, forkOfId: true, isPublic: true, updatedAt: true,
+      owner: { select: { name: true, email: true } },
+      _count: { select: { forks: true, versions: true } },
+      snapshot: true,
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 200,
+  })
+  return stripRows(spaces)
+}
+
+/** PUBLISHED: every playable card; the BASES ride separately as the featured
+ *  row (they are not repeated in the main grid). */
+export function feedPublished(rows: FeedRow[]): { bases: Card[]; cards: Card[] } {
+  const roots = rootRows(rows)
+  const slugOf = new Map(rows.map(r => [r.id, r.slug]))
+  const idToSlug = (r: FeedRow) => r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null
+  const toCard = (r: FeedRow) => cardFromRow(
+    { ...r, forkOf: idToSlug(r), base: roots.get(r.id) ? slugOf.get(roots.get(r.id)!) ?? null : null },
+    { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
+    true,
+  )
+  const bases = rows.filter(r => r.isBase).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard)
+  const cards = rows.filter(r => !r.isBase).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard)
+  return { bases, cards }
+}
+
+/** MY/OUR: mine (drafts included) in recency order; rooting resolves against
+ *  the public rows too (a draft fork of a public base still knows its base). */
+export function feedMine(publicRows: FeedRow[], mine: FeedRow[]): { bases: Card[]; cards: Card[] } {
+  const all = [...mine, ...publicRows.filter(p => !mine.some(m => m.id === p.id))]
+  const roots = rootRows(all)
+  const slugOf = new Map(all.map(r => [r.id, r.slug]))
+  const toCard = (r: FeedRow) => cardFromRow(
+    { ...r, forkOf: r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null, base: roots.get(r.id) ? slugOf.get(roots.get(r.id)!) ?? null : null },
+    { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
+    true,
+  )
+  return { bases: [], cards: mine.sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
 }
 
 // ── the one query (+ per-instance TTL collapse, browse-style) ──
@@ -84,6 +160,7 @@ async function fetchRows(): Promise<FeedRow[]> {
       slug: true,
       name: true,
       forkOfId: true,
+      isPublic: true,
       updatedAt: true,
       owner: { select: { name: true, email: true } },
       _count: { select: { forks: true, versions: true } },
@@ -92,8 +169,12 @@ async function fetchRows(): Promise<FeedRow[]> {
     orderBy: { updatedAt: 'desc' },
     take: 500,
   })
-  // strip each snapshot IMMEDIATELY — only the four card facts survive, so the
-  // cache never holds (and the wire never sees) whole world snapshots.
+  return stripRows(spaces)
+}
+
+// strip each snapshot IMMEDIATELY — only the card facts survive, so the
+// cache never holds (and the wire never sees) whole world snapshots.
+function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | null; email: string | null } | null; _count: { forks: number; versions: number }; updatedAt: Date; id: string; slug: string; name: string; forkOfId: string | null; isPublic: boolean }>): FeedRow[] {
   return spaces.map(({ snapshot, owner, _count, updatedAt, ...rest }) => {
     const sn = snapshot as { worldData?: Record<string, unknown>; fields?: IconField[]; visualTypes?: IconVisual[]; modules?: IconVisual[] } | null
     const wd = sn?.worldData || {}
@@ -120,6 +201,7 @@ async function fetchRows(): Promise<FeedRow[]> {
       isBase: wd.__base === true,
       iconWgsl,
       hue,
+      isPublic: (rest as { isPublic?: boolean }).isPublic !== false,
     }
   })
 }
@@ -196,6 +278,7 @@ function cardFromRow(
     base: row.base,
     forkOf: row.forkOf,
     counts: row.counts,
+    playable: (row as { isPublic?: boolean }).isPublic !== false,
     mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
     isBase: wd.__base === true,
     updatedAt: row.updatedAt,

@@ -168,13 +168,20 @@ beforeEach(() => {
 })
 
 describe('GET /api/cards', () => {
-  it('?tabs=1 → the tab strip + open-ground count', async () => {
-    const res = await get('?tabs=1')
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({
-      tabs: [{ slug: 'cinder-base', name: 'CINDER-BASE', count: 2 }],
-      openGround: 1,
-    })
+  it('?tabs=1 → the fixed strip counts (published / bases / mine)', async () => {
+    // the GET path runs the real strip — feed it PRISMA-shaped rows
+    findMany.mockResolvedValue(fixture().map(r => ({
+      id: r.id, slug: r.slug, name: r.name, forkOfId: r.forkOfId, isPublic: true,
+      updatedAt: new Date(r.updatedAt),
+      owner: { name: r.maker.name, email: r.maker.handle ? `${r.maker.handle}@example.com` : null },
+      _count: r.counts,
+      snapshot: { worldData: { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase ? true : undefined } },
+    })))
+    const res = await GET(new Request('http://cafe.test/api/cards?tabs=1'))
+    const d = await res.json()
+    expect(d.published).toBe(fixture().length)
+    expect(d.bases).toBe(fixture().filter((r: FeedRow) => r.isBase).length)
+    expect(d.mine).toBeNull()   // no session in tests = signed out
   })
 
   it('?tab=<base> → { base, cards } with the base pinned first', async () => {

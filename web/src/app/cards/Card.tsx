@@ -98,6 +98,12 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
             BASE
           </span>
         )}
+        {!card.playable && (
+          <span className="absolute top-1.5 right-1.5 font-mono text-[10px] tracking-[0.2em] px-1.5 py-0.5 rounded bg-black/70 border border-white/25 text-white/60"
+            title="only you can see this — publish it from the world">
+            UNPUBLISHED
+          </span>
+        )}
         {presence && presence.here > 0 && (
           <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1 font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-black/70 border border-white/15 text-amber-100/90"
             title={`${presence.here} inside right now`}>
