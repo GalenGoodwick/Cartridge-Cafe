@@ -109,3 +109,42 @@ built on the co-build substrate):
 - Do private worlds show as face-down cards on the owner's own grid? (proposed: yes)
 - Deck feature for retired groups — build or drop?
 - Card rarity/foil from fork-count or playtime — cosmetic, later?
+
+
+## 8 · CHROME PORT INVENTORY (Galen: "we can't forget important main buttons")
+
+The old main's chrome, from CafeShell code — every item needs a home on the
+card main BEFORE cutover (port, transform, or deliberately retire):
+
+| main chrome | fate on the card main |
+|---|---|
+| ▶ PRESS START (brew) | → **FORK** — the create door becomes fork-a-blank with the parameters dialog |
+| ⚡ CONNECT AI (account-level modal: paste-prompt + MCP tabs) | PORTS verbatim — masthead button; the one AI door, reachable from anywhere |
+| search + results dropdown | PORTS — the catalog search gains the dropdown (jump to a card/world by name from any tab) |
+| ⚙ MANAGE (worlds sidebar) | → largely absorbed by MY/OUR tab; rename/delete stay as card actions |
+| 🔔 the bell (notifications) | PORTS — masthead, unread badge |
+| SIGN IN / account | PORTS — masthead |
+| MY WORLDS | → the MY/OUR tab (already ruled) |
+| commons chat (MainCommonsChat/ChatWorld) | PORTS — the cafe talks on its main; placement TBD (drawer?) |
+| ⚔ the main reckoning (TournamentBar) | PORTS per the main-only voting ruling; placement TBD |
+| BREW YOUR ICON | PORTS into account/profile surface |
+| slogan/ticker | DONE — shared one-truth, live on both |
+| in-world dock (PLAY/INSTRUCTIONS/FORK/EDIT) | unchanged — world-side chrome |
+
+## 9 · MOBILE (Galen: "probably time we design for mobile too")
+
+Cards are a mobile-native format — the catalog must be first-class on a phone:
+
+- Grid: 1–2 columns under 640px (auto-fill already close); featured base spans
+  full width, not 2×2. Tabs already overflow-x scroll; masthead stacks (mark +
+  wordmark row, search full-width beneath); ticker truncates gracefully.
+- TOUCH replaces hover everywhere: no hover-tilt (tap = enter); live-shader
+  art stays (it isn't hover-gated); presence chips ≥44px touch targets where
+  tappable; long-press = the card's action sheet (fork / manage / share).
+- Live-art perf: cap concurrent GPU canvases lower on mobile (first ~8 live,
+  photos beyond); respect battery/reduced-motion.
+- The fork dialog (policy + name + grid dims) designed thumb-first: presets as
+  big cards, dims as a picker, one screen.
+- Worlds themselves on mobile (touch controls per base) = each base's concern:
+  every BASE ships mobile controls as part of its engine contract (the 2D base
+  needs a touch scheme for run/jump/fling before it's mobile-done).
