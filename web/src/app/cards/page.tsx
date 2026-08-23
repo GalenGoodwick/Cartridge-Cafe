@@ -24,6 +24,12 @@ export default function CardsMain() {
   const [q, setQ] = useState('')
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
   const ticker = useCatalogTicker()       // main's slogan line, shared (lib/slogan.ts)
+  // who's at the table — the masthead's SIGN IN / handle (chrome port: sign-in)
+  const [me, setMe] = useState<{ email?: string | null; name?: string | null } | null | 'anon'>(null)
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => r.json())
+      .then(s => setMe(s?.user ? s.user : 'anon')).catch(() => setMe('anon'))
+  }, [])
 
   // tabs + the active tab from the URL (shareable catalog pages)
   useEffect(() => {
@@ -90,8 +96,20 @@ export default function CardsMain() {
           <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
-            className="ml-auto w-64 max-w-[45vw] bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
+            className="ml-auto w-64 max-w-[38vw] bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
           />
+          {me === 'anon' && (
+            <a href={`/auth/signin?callbackUrl=${encodeURIComponent('/cards')}`}
+              className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-[#ff6a2b]/50 text-amber-200 hover:bg-[#ff6a2b]/15 transition-colors">
+              SIGN IN
+            </a>
+          )}
+          {me && me !== 'anon' && (
+            <span className="shrink-0 font-mono text-[11px] text-white/45 truncate max-w-[120px]"
+              title={me.email ?? undefined}>
+              @{(me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '')}
+            </span>
+          )}
         </div>
 
         {tabs === null ? (
