@@ -4,6 +4,7 @@ import type { SceneSnapshot, InteractionRule, FieldMemoryEntry } from '@/app/eng
 import { autoRegisterHook } from '@/app/engine/node-autoregister'   // node-runtime rung 3: every hook auto-becomes a node
 import { canPush, stampHold, canRelease, holdStatus } from '@/app/engine/node-gate'   // the HARD access pathway: a held node rejects a foreign push
 import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
+import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 
 // --- In-memory cache for space snapshots ---
@@ -630,6 +631,18 @@ export function applyCommandToSnapshotObject(
 
     case 'set_world_data': {
       if (cmd.data) {
+        // THE SOCIAL CONTRACT IS IMMUTABLE (world-policy): policy lands once —
+        // at fork/creation — and never changes after, not even for the owner.
+        const dataIn = { ...(cmd.data as Record<string, unknown>) }
+        if ('policy' in dataIn) {
+          const verdict = mayWritePolicy(snap.worldData as Record<string, unknown>, dataIn.policy)
+          if (verdict.ok) dataIn.policy = verdict.policy
+          else {
+            delete dataIn.policy
+            result.warnings = [...((result.warnings as string[] | undefined) ?? []), 'policy refused: ' + verdict.error]
+          }
+        }
+        cmd.data = dataIn
         snap.worldData = { ...snap.worldData, ...(cmd.data as Record<string, unknown>) }
         // documented contract: a null value DELETES the key (the live-sim path
         // honors this; the DB path was persisting literal nulls instead)

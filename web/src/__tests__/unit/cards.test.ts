@@ -215,6 +215,7 @@ describe('cardFromRow', () => {
       forkOf: 'cinderfell',
       counts: { forks: 3, versions: 7 },
       isBase: false,
+      mobileReady: false,
       updatedAt: 1_755_000_000_000,
     })
   })

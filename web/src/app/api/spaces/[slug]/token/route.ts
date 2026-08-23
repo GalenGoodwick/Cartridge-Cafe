@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { policyOf } from '@/lib/world-policy'
 import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -64,18 +65,41 @@ export async function POST(
   // this is how the resident builder answers creation briefs without the owner
   // pasting anything anywhere ("an AI lives here")
   const isHouse = isAdminToken(req.headers.get('authorization'))
-  const owned = isHouse
+  let owned = isHouse
     ? await (async () => {
         const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })
         return sp ? { userId: sp.ownerId, spaceId: sp.id } : null
       })()
     : await getOwnedSpace(slug)
+  // OPEN GROUND (world-policy): a world whose contract says build:'anyone' lets
+  // ANY signed-in player mint their own member key — the world is a public
+  // construction site. The key is named member:<handle> (attribution + kick
+  // target). 'invited' worlds mint through the link door (#5), never here.
+  let memberHandle: string | null = null
+  if (!owned) {
+    const session = await getServerSession(authOptions)
+    const email = session?.user?.email
+    if (email) {
+      const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })
+      if (sp) {
+        const rows = await prisma.$queryRaw<{ policy: unknown }[]>`
+          SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${sp.id}`
+        const policy = policyOf({ policy: rows[0]?.policy })
+        if (policy.build === 'anyone') {
+          memberHandle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
+          owned = { userId: sp.ownerId, spaceId: sp.id }
+        }
+      }
+    }
+  }
   if (!owned) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
   const body = await req.json()
-  const { name } = body
+  // a self-minted member key is ALWAYS named member:<handle> — the caller
+  // doesn't choose (the name is the roster + the kick target)
+  const name = memberHandle ? `member:${memberHandle}` : body.name
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })

@@ -1,3 +1,4 @@
+import { policyOf } from '@/lib/world-policy'
 import { notFound } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -57,6 +58,24 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
     : null
 
   if (!space.isPublic && userId !== space.ownerId) notFound()
+
+  // THE SOCIAL CONTRACT's play gate (world-policy): a playable world whose
+  // contract restricts play ('invited'/'builders') opens only to the owner and
+  // the members roster (member:<handle> keys). Cheap jsonb read — never the
+  // whole snapshot server-side.
+  if (space.isPublic && userId !== space.ownerId) {
+    const rows = await prisma.$queryRaw<{ policy: unknown }[]>`
+      SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${space.id}`
+    const policy = policyOf({ policy: rows[0]?.policy })
+    if (policy.play !== 'everyone') {
+      const email = session?.user?.email
+      const handle = email ? email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+      const member = handle ? await prisma.spaceToken.findFirst({
+        where: { spaceId: space.id, revokedAt: null, name: `member:${handle}` }, select: { id: true },
+      }) : null
+      if (!member) notFound()
+    }
+  }
 
   const isOwner = userId === space.ownerId
   // viewing a save point is always read-only — syncing it would overwrite the live world

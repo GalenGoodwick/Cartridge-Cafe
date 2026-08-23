@@ -1,3 +1,4 @@
+import { normalizePolicy } from '@/lib/world-policy'
 import { isAdminToken } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
@@ -166,6 +167,9 @@ export async function POST(req: NextRequest) {
         for (const k of ['__nodes', '__nodeSeq', '__nodeHist', '__nodeStrict']) {
           if (inWd[k] === undefined && curWd[k] !== undefined) inWd[k] = curWd[k]
         }
+        // the SOCIAL CONTRACT is server truth: once a world holds a valid
+        // policy, no tab sync may alter or drop it (immutability law)
+        if (normalizePolicy(curWd.policy)) inWd.policy = curWd.policy
       }
       await setSpaceSnapshot(body.spaceId, snapshot)
       return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId })
