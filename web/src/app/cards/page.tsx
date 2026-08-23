@@ -48,7 +48,7 @@ export default function CardsMain() {
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
       setActive(want || 'published')
-    }).catch(() => setCounts({ published: 0, forkable: 0, mine: null, shared: null }))
+    }).catch(() => setCounts({ published: 0, forkable: 0, alterable: 0, mine: null, shared: null }))
   }, [])
 
   // the active tab's cards — PAGINATED server-side (pages 1, 2, 3…; search and
@@ -84,7 +84,7 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
-  const FIXED = ['published', 'forkable', 'mine', 'shared']
+  const FIXED = ['published', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
   const isFamily = !FIXED.includes(active)
   const familyName = isFamily ? (grid?.base?.name ?? active) : null
 
@@ -151,6 +151,16 @@ export default function CardsMain() {
                 </div>
               ) : (
                 <>
+                  {active === 'alterable' && (
+                    <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.3em] text-emerald-200/60">
+                      OPEN GROUND — ANYONE MAY WALK IN AND EDIT THESE
+                    </p>
+                  )}
+                  {active === 'unalterable' && (
+                    <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
+                      FINISHED WORKS — PLAY THEM; ONLY THEIR MAKERS (OR CREW) EDIT
+                    </p>
+                  )}
                   {active === 'forkable' && (
                     <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.3em] text-amber-200/60">
                       START HERE — FORK ONE AND IT BECOMES YOURS · bases first

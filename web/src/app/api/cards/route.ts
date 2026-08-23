@@ -112,6 +112,10 @@ export async function GET(req: Request) {
   // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
+  // ALTERABLE (Galen): published worlds anyone may walk in and edit
+  // (build:'anyone' — the OPEN EDIT chip); UNALTERABLE = the rest (crew/static)
+  if (tab === 'alterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone')).cards, url))
+  if (tab === 'unalterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone')).cards, url))
   if (tab === 'mine' || tab === 'shared') {
     const own = await fetchMineRows(tab)
     if (own === null) return NextResponse.json({ cards: [], page: 1, pages: 1, total: 0, signedOut: true })
@@ -128,6 +132,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     published: rows.length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
+    alterable: rows.filter(r => r.buildMode === 'anyone').length,
     mine: mine === null ? null : mine.length,
     shared: shared === null ? null : shared.length,
   })

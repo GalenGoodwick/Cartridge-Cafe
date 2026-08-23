@@ -6668,7 +6668,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {mkIconOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
-            const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — are you the owner?)')
+            const tok = plugToken || (plugBusy ? '…minting…' : '(minting failed — this world\u2019s contract doesn\u2019t include you)')
             const d = mkIconDesc.trim()
             const prompt = iconAuthorPrompt(tok, d, origin)
             return (

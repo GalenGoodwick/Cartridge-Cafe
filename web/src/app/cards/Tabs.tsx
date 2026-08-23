@@ -5,7 +5,7 @@
 // MY WORLDS (owned) · SHARED WORLDS (member, not owner). A base's family
 // page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
 
-export interface TabCounts { published: number; forkable: number; mine: number | null; shared: number | null }
+export interface TabCounts { published: number; forkable: number; alterable?: number; mine: number | null; shared: number | null }
 
 export function CardTabs({ counts, active, familyName, onPick }: {
   counts: TabCounts
@@ -13,10 +13,14 @@ export function CardTabs({ counts, active, familyName, onPick }: {
   familyName?: string | null
   onPick: (slug: string) => void
 }) {
-  const fixed = ['published', 'forkable', 'mine', 'shared']
+  const fixed = ['published', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
   const tabs: Array<{ slug: string; label: string; count: number | null }> = [
     { slug: 'published', label: 'PUBLISHED', count: counts.published },
     { slug: 'forkable', label: 'FORKABLE', count: counts.forkable },
+    // ALTERABLE / UNALTERABLE (Galen): the OPEN EDIT chip as whole shelves —
+    // worlds anyone may walk in and edit, and worlds that are crew/static
+    { slug: 'alterable', label: 'ALTERABLE', count: counts.alterable ?? 0 },
+    { slug: 'unalterable', label: 'UNALTERABLE', count: counts.alterable === undefined ? 0 : counts.published - counts.alterable },
     ...(familyName && !fixed.includes(active)
       ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
     { slug: 'mine', label: 'MY WORLDS', count: counts.mine },

@@ -92,7 +92,10 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
         await saveGameSlot(slot, list)
       }
     }
-    redirect(`/space/${slug}`)   // clean URL; gates below now see a member
+    // every join path ENDS IN CO-REGISTRATION (Galen's law): the new member
+    // lands with the CONNECT AI terminal opening — their key mints there and
+    // the paste-prompt walks their AI through the guide. Same door as a fork.
+    redirect(`/space/${slug}?connect=1`)
   }
 
   if (!space.isPublic && userId !== space.ownerId) {
