@@ -1703,6 +1703,25 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ⚭ INVITE — one-time join link, minted and copied in one tap (moved out
+  // of WORLD TOOLS to the edit dock per Galen). First to open it joins the crew.
+  const inviteBusyRef = useRef(false)
+  const mintInviteLink = useCallback(async () => {
+    if (inviteBusyRef.current || !spaceSlug) return
+    inviteBusyRef.current = true
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/invite`, { method: 'POST' })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.joinUrl) {
+        const ok = await copyText(d.joinUrl)
+        showToast(ok ? 'one-time invite link copied' : d.joinUrl, ok ? 'success' : 'info',
+          'first to open it joins your crew — the link dies on use; mint one per person')
+      } else showToast(d?.error || 'invite mint failed', 'error')
+    } catch { showToast('invite mint failed — are you offline?', 'error') }
+    finally { inviteBusyRef.current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceSlug])
+
   const instantForkSpace = useCallback(async () => {
     if (!me) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
     try {
@@ -6043,10 +6062,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               </button>}
               {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
-                <button onClick={() => stepBranch(-1)} title="previous branch — browse the family"
+                <button onClick={() => stepBranch(-1)} title="previous in the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
                 <span className="px-1 py-1 text-[14px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
-                <button onClick={() => stepBranch(1)} title="next branch — browse the family"
+                <button onClick={() => stepBranch(1)} title="next in the family"
                   className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
               )}
@@ -6149,7 +6168,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
               <button
                 onClick={() => setUiDockOpen(v => !v)}
-                title={uiDockOpen ? 'hide world controls' : 'world controls — branch, versions, connect AI, vote'}
+                title={uiDockOpen ? 'hide world controls' : 'world controls — fork, versions, connect AI'}
                 className="px-2.5 py-1.5 rounded-lg text-[16px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
@@ -6182,6 +6201,18 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
               >
                 {chromeVisible ? '⚙ HIDE TOOLS' : '⚙ WORLD TOOLS'}
+              </button>
+            )}
+            {/* ⚭ INVITE — the crew door, one tap: mints a ONE-TIME join link
+                and copies it. Owner-only; lives in the dock, not buried in
+                WORLD TOOLS (Galen). Kick = revoke their member key in tools. */}
+            {!isHub && isOwner && spaceSlug && (
+              <button
+                onClick={() => void mintInviteLink()}
+                title="mint a one-time invite link — the first signed-in person to open it joins your crew as a builder"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ⚭ INVITE
               </button>
             )}
             {/* INSPECT — AI click telling: clicks become documentation (never gameplay);
@@ -6573,7 +6604,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} setWorldChatOpen={setWorldChatOpen} sendHumanShot={sendHumanShot} humanShot={humanShot} />
+            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} onFork={instantForkSpace} forkable={simulationRef.current?.worldData?.['forkable'] === true} setWorldChatOpen={setWorldChatOpen} sendHumanShot={sendHumanShot} humanShot={humanShot} />
           )}
           {/* EDIT COACH — shown once, the first time the ✎ EDIT dock is opened,
               so a new builder knows what each control does. ✕ / GOT IT dismiss. */}
@@ -6586,6 +6617,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 <div className="text-[14px] leading-relaxed text-white/70 space-y-1.5">
                   <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
                   <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
+                  {spaceSlug && <div><span className="text-white/90">⚭ INVITE</span> — mint a one-time link; the first to open it joins your crew.</div>}
                   {!spaceSlug && <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>}
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
                   <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to your AI; it edits live, and versions keep every save point.</div>

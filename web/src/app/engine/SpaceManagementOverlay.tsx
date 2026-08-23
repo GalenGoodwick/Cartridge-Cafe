@@ -55,22 +55,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
   const [newToken, setNewToken] = useState<string | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
 
-  // ONE-TIME invite links (task #5): mint → copy → hand to ONE person
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
-  const [inviteBusy, setInviteBusy] = useState(false)
-  const [inviteCopied, setInviteCopied] = useState(false)
-  const mintInvite = async () => {
-    if (inviteBusy) return
-    setInviteBusy(true); setInviteUrl(null); setInviteCopied(false)
-    try {
-      const r = await fetch(`/api/spaces/${spaceSlug}/invite`, { method: 'POST' })
-      const d = await r.json()
-      if (r.ok && d.joinUrl) setInviteUrl(d.joinUrl)
-      else setError(d.error || 'invite mint failed')
-    } catch { setError('invite mint failed') }
-    setInviteBusy(false)
-  }
-
   // Pay — the OWN step of the funnel (renders only when the rail is configured)
   const [pay, setPay] = useState<{ configured: boolean; products: Array<{ key: string; label: string }>; mine: Array<{ product: string; slug?: string; active: boolean }> } | null>(null)
   const [payBusy, setPayBusy] = useState(false)
@@ -255,8 +239,8 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
               {/* the commons deal, said right where the switch is thrown */}
               <div className="mt-1.5 text-[14px] leading-snug text-muted/70">
                 {space?.isPublic
-                  ? 'on the shelf — anyone can play & branch it; credit follows you through lineage'
-                  : 'yours alone — no one else can open, play, or branch it'}
+                  ? 'on the shelf — anyone can play it; forks (if you allow them) carry your credit through lineage'
+                  : 'yours alone — no one else can open or play it'}
               </div>
             </div>
 
@@ -282,36 +266,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                 </div>
               </div>
             )}
-
-            {/* INVITE — a one-time join link; the first signed-in visitor
-                becomes a MEMBER (their build key mints, the link dies). This
-                is "sharing a link is sharing ownership", made deliberate. */}
-            <div className="px-3 py-2 border-b border-border">
-              <div className="flex items-center justify-between">
-                <span className="text-muted">invite a builder</span>
-                <button onClick={() => void mintInvite()} disabled={inviteBusy}
-                  className="px-2 py-0.5 rounded border bg-accent/15 text-accent border-accent/30 hover:bg-accent/30 transition-colors disabled:opacity-50">
-                  {inviteBusy ? 'minting…' : '⚭ mint one-time link'}
-                </button>
-              </div>
-              {inviteUrl && (
-                <div className="mt-1.5 p-1.5 bg-success/10 border border-success/30 rounded">
-                  <div className="text-success mb-1">one-time link (first use consumes it):</div>
-                  <div className="flex items-center gap-1">
-                    <code className="text-foreground break-all flex-1 select-all">{inviteUrl}</code>
-                    <button
-                      onClick={() => copyToClipboard(inviteUrl, setInviteCopied)}
-                      className="px-1.5 py-0.5 bg-success/20 text-success border border-success/30 rounded hover:bg-success/30 transition-colors flex-shrink-0"
-                    >
-                      {inviteCopied ? 'ok' : 'copy'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="mt-1.5 text-[14px] leading-snug text-muted/70">
-                whoever opens it signed-in joins the crew: a member key mints for them, the world lands in their SHARED WORLDS, and the link is spent. mint one per person; revoke their member token below to kick.
-              </div>
-            </div>
 
             {/* Tokens */}
             <div className="px-3 py-2 border-b border-border">

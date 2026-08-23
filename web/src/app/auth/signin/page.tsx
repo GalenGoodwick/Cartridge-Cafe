@@ -97,7 +97,7 @@ function SignInInner() {
               by continuing you agree to the{' '}
               <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-brass hover:text-flame underline">terms</a> &amp;{' '}
               <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-brass hover:text-flame underline">privacy</a>.
-              <br />worlds you make public can be branched by others · private stays yours.
+              <br />worlds you make playable are open to everyone · forking is yours to allow · unpublished stays yours.
             </div>
             </>}
             {/* once signed in, the way onward — the doors above are gone. */}

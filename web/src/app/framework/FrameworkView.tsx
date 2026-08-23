@@ -249,7 +249,7 @@ const TABS: Tab[] = [
     essence: 'A cartridge is a serialized snapshot of an entire world — the thing you save, version, load, and hand to the eyes.',
     body: [
       'A cartridge bundles everything a world is: its fields, visual types, shader modules, worldData, and step hooks. Static worlds live as JSON; programmatic worlds are authored as *-cartridge.mjs scene files that POST bridge commands to build themselves. Either way the result is one portable artifact.',
-      'Cartridges version cleanly — every branch of a world is “CAFE ⑂ handle · vN” — so worlds can be forked, remixed, and rolled back like code, and any snapshot can be replayed through the render-probe.',
+      'Cartridges version cleanly — every fork is its own world with lineage back to its source, every save a numbered version — so worlds can be forked, remixed, and rolled back like code, and any snapshot can be replayed through the render-probe.',
     ],
     points: [
       ['snapshot', '{ name, fields, visualTypes, modules, worldData, stepHooks }'],
@@ -269,7 +269,7 @@ const TABS: Tab[] = [
     ],
     points: [
       ['uc_pt_', 'the personal player key — “this key is me”'],
-      ['uc_st_ / uc_sc_', 'per-world and per-branch build keys'],
+      ['uc_st_ / uc_sc_', 'per-world build keys (member keys included)'],
       ['keepalive', 'arm the watcher first, ping yourself last'],
     ],
     term: 'POST /api/engine/bridge  ·  Authorization: Bearer uc_…',

@@ -9,7 +9,7 @@ import type { TerminalEntry } from '../AgentTerminalPanel'
 import { BuilderBoxChat } from './BuilderBoxChat'
 import SummonPrompt from '../SummonPrompt'
 
-export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsoleClosedRef, buildConsoleRef, lastSceneRef, playScene, spaceId, spaceName, spaceSlug, spaceOwnerName, isOwner, isHub, riding, me, handleBranch, setWorldChatOpen, sendHumanShot, humanShot }: {
+export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsoleClosedRef, buildConsoleRef, lastSceneRef, playScene, spaceId, spaceName, spaceSlug, spaceOwnerName, isOwner, isHub, riding, me, handleBranch, onFork, forkable, setWorldChatOpen, sendHumanShot, humanShot }: {
   terminalLog: TerminalEntry[]
   setBuildConsoleOpen: Dispatch<SetStateAction<boolean>>
   buildConsoleClosedRef: MutableRefObject<boolean>
@@ -25,6 +25,8 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
   riding: string | null
   me: string | null
   handleBranch: () => void
+  onFork: () => void
+  forkable: boolean
   setWorldChatOpen: Dispatch<SetStateAction<boolean>>
   sendHumanShot?: () => void
   humanShot?: 'idle' | 'sending' | 'sent' | 'err'
@@ -72,21 +74,25 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
                 if (!cur || cur === 'CAFE' || cur === 'SUB-MAIN') return null
                 return <SummonPrompt scene={cur} name={cur} />
               })()}
-              {/* NOT your world (Galen): you never build on someone else's
-                  main — you HACK it (the ROM-hack tradition: their cartridge,
-                  your modded copy). One button, the existing create-branch
-                  flow: name it, brief it, your AI (or the house AI) builds
-                  YOUR branch, and the arena decides if it takes MAIN. */}
+              {/* NOT your world (fork paradigm): remixing someone's world
+                  FORKS it — instantly your own world, lineage back here. Only
+                  if its maker enabled forking; otherwise say so honestly. */}
               {spaceSlug && spaceId && !isOwner && !riding && (
                 <div className="px-3 py-2 border-t border-white/10">
-                  <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
-                    this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — hacking it builds <span className="text-emerald-200/80">your own branch</span>
-                  </div>
-                  <button
-                    onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
-                    className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
-                    ⑂ HACK THIS WORLD
-                  </button>
+                  {forkable ? (<>
+                    <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
+                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — forking takes <span className="text-emerald-200/80">your own copy</span>, with lineage back here
+                    </div>
+                    <button
+                      onClick={() => { setBuildConsoleOpen(false); onFork() }}
+                      className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
+                      ⑄ FORK THIS WORLD
+                    </button>
+                  </>) : (
+                    <div className="font-mono text-[13px] text-white/30 leading-relaxed">
+                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — its maker hasn&apos;t enabled forking
+                    </div>
+                  )}
                 </div>
               )}
               {/* HOUSE world — no space, so no summon/hack above: its BuilderBox
@@ -98,12 +104,12 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
               {!spaceId && !isHub && !riding && (
                 <div className="px-3 py-2 border-t border-white/10">
                   <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
-                    a house world — open ground. build it by branching <span className="text-emerald-200/80">your own copy</span>
+                    a house world — open ground. build it by forking <span className="text-emerald-200/80">your own copy</span>
                   </div>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
                     className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
-                    ⑂ BRANCH &amp; BUILD
+                    ⑄ FORK &amp; BUILD
                   </button>
                 </div>
               )}

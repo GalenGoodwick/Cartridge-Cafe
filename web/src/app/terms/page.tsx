@@ -41,7 +41,7 @@ export default function TermsPage() {
         <P>Public worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage, and forks stay forkable on the same terms. You can make a world private at any time to stop new forks, but forks already made remain their creators&rsquo;.</P>
 
         <H>4 · Private worlds</H>
-        <P>A <b>private</b> world is visible only to you. It can&rsquo;t be opened, remixed, or branched by anyone else, and its link won&rsquo;t load for anyone but you. Privacy is the off-switch for the commons.</P>
+        <P>A <b>private</b> world is visible only to you. It can&rsquo;t be opened, played, or forked by anyone else, and its link won&rsquo;t load for anyone but you. Privacy is the off-switch for the commons.</P>
 
         <H>5 · Rules of the cafe</H>
         <P>Don&rsquo;t upload or build content that is illegal, infringing, hateful, harassing, or that endangers people — including <b>strobing / flashing visuals</b>, which are rejected culture-wide. Don&rsquo;t attack the service, other members, or their worlds. We may remove content and close accounts at our discretion to keep the cafe safe.</P>
