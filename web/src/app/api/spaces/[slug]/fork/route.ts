@@ -61,17 +61,20 @@ export async function POST(
     if (!snapObj.worldData) snapObj.worldData = {}
     delete snapObj.worldData.policy
     if (policy) snapObj.worldData.policy = policy
+    // a fork is NEVER a base — __base is the house's declaration, not heritage
+    // (inheriting it gave every fork of a base its own catalog tab)
+    delete snapObj.worldData.__base
   }
 
   // race-safe unique slug (the old findUnique-then-create raced on the final
-  // insert). A fork of a PRIVATE world stays private — the default `true` used
-  // to publish a copy of a world its owner kept hidden.
+  // insert). A fork is born UNPUBLISHED (Galen's ruling): it reaches the shelf
+  // only when its maker publishes it — never by inheritance from the source.
   const fork = await createSpaceUniqueSlug(slugify(name), (newSlug) => ({
     name,
     slug: newSlug,
     ownerId: user.id,
     forkOfId: source.id,
-    isPublic: source.isPublic,
+    isPublic: false,
     description: `Remix of ${source.name}`,
     ...(source.snapshot ? { snapshot: source.snapshot as Prisma.InputJsonValue } : {}),
   }))

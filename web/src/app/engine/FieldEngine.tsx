@@ -1703,8 +1703,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // forking your OWN world is a duplicate — worth one deliberate second click
+  // (the instant path stays instant on everyone else's worlds)
+  const forkArmRef = useRef(0)
   const instantForkSpace = useCallback(async () => {
     if (!me) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname) ; return }
+    if (isOwner && Date.now() - forkArmRef.current > 4000) {
+      forkArmRef.current = Date.now()
+      showToast('this is already your world — fork a duplicate?', 'info', 'click FORK again within 4s to confirm')
+      return
+    }
     try {
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug || '')}/fork`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',

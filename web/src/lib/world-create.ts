@@ -117,6 +117,7 @@ export async function forkSnapshotToSpace(opts: {
   const snap = JSON.parse(JSON.stringify(opts.snapshot)) as { worldData?: Record<string, unknown> }
   snap.worldData = { ...(snap.worldData || {}), __branchedFrom: opts.baseName }
   delete snap.worldData.policy                     // never inherit the source's contract
+  delete snap.worldData.__base                     // a fork is never a base by heritage
   if (opts.policy) snap.worldData.policy = opts.policy
   const baseSpace = await prisma.playerSpace.findUnique({
     where: { slug: slugify(opts.baseName) }, select: { id: true },
