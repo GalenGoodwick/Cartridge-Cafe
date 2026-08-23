@@ -12,5 +12,10 @@ on the card main, and groups FORK them into their own worlds.
   (cafe-worlds-via-bridge law). NOTE: the visual ships with cf_lib INLINED —
   the fx pipeline composes visuals without modules.
 
-TODO next bases: 3D first-person (veilfire-doom engine) · arena-io (bloop) ·
-puzzle-adventure (tideglass). TODO: arena multiplayer wiring (mpManifest).
+- `blank2d-*` — BLANK 2D: the dimension substrate beneath the 2D bases. A
+  WORKING empty world: input (keys + touch — mobile-ready from birth, declares
+  card.mobile), easing camera, edge clamps, one breathing avatar dot. The
+  fork-tree root for 2D (blank-2d → platformer-2d-base → games).
+
+TODO next: BLANK 3D · 3D base (veilfire-doom engine) · arena-io (bloop) ·
+puzzle-adventure (tideglass) · arena multiplayer wiring (mpManifest).
