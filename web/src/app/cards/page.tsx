@@ -11,6 +11,7 @@ import { CardTabs, type TabInfo } from './Tabs'
 import { CardGrid } from './Grid'
 import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
+import { useCatalogTicker } from './ticker'
 
 type TabsResp = { tabs: TabInfo[]; openGround: number }
 type GridResp = { base: Card | null; cards: Card[] }
@@ -22,6 +23,7 @@ export default function CardsMain() {
   const [pngBySlug, setPngBySlug] = useState<Map<string, string>>(new Map())
   const [q, setQ] = useState('')
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
+  const ticker = useCatalogTicker()       // main's slogan line, shared (lib/slogan.ts)
 
   // tabs + the active tab from the URL (shareable catalog pages)
   useEffect(() => {
@@ -85,7 +87,7 @@ export default function CardsMain() {
           <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
           <h1 className="font-extrabold text-[19px] tracking-tight text-amber-300" style={{ fontFamily: 'inherit' }}>cartridge.cafe</h1>
           <span className="font-mono text-[12px] tracking-[0.35em] text-amber-200/70 pl-2 border-l border-white/15">THE CATALOG</span>
-          <span className="font-mono text-[11px] tracking-[0.2em] text-white/30 hidden sm:inline">EVERY WORLD IS A CARD</span>
+          <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[45vw] bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"

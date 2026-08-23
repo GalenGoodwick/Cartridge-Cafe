@@ -132,3 +132,8 @@ The mechanics already exist — policy just decides who gets which key:
      dies (build rung). Galen: "that might be a ban" — yes, plus the above
      making bans rare because damage is revertable.
 - **Main wears the cartridge.cafe logo** (landed on the catalog masthead).
+- **The catalog's tagline IS main's slogan-ticker** — one truth (lib/slogan.ts),
+  live events glow over it on both surfaces (landed).
+- **"OPEN GROUND" is also the anyone-can-edit name**: the tab and the
+  build-policy preset share the word deliberately — games anyone can edit ARE
+  open ground; open-ground-policy worlds badge it on their cards (build rung).

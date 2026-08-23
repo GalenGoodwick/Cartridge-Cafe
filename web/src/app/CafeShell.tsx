@@ -1,5 +1,6 @@
 'use client'
 
+import { SLOGAN } from '@/lib/slogan'
 import { usePresenceBeat } from '@/lib/usePresenceBeat'
 import { brewStandbyPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { copyText } from '@/lib/copyText'
@@ -132,7 +133,7 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
   // the SLOGAN doubles as a LIVE TICKER: normally the tagline, but a new world
   // (or a rework) glows in over it for a few seconds, then fades back. No toast,
   // no stack — one quiet line that proves the cafe is alive.
-  const SLOGAN = 'Instant natural language to game world framework.'
+  // SEAM (cards): the slogan is ONE truth shared with the catalog — lib/slogan.ts
 
   // checkout return — Stripe sends players back to /?paid=<product> or
   // /?paycancel=<product>; greet the result and clean the URL

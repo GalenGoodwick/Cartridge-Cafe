@@ -245,8 +245,9 @@
         }
       ],
       "files": [
+        "web/src/app/cards/Grid.tsx",
         "web/src/app/cards/page.tsx",
-        "web/src/app/cards/Grid.tsx"
+        "web/src/app/cards/ticker.ts"
       ],
       "exports": [],
       "dependsOn": [
@@ -264,7 +265,10 @@
       "keyState": {
         "render-verified": "pass",
         "visual-reference": "pass"
-      }
+      },
+      "seams": [
+        "SEAM-C: CafeShell.tsx + lib/slogan.ts — the shared slogan truth (one import line)"
+      ]
     },
     {
       "id": "cards-tabs",
