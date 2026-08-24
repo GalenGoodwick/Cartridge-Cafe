@@ -36,7 +36,7 @@ export class ArenaClient {
   splitN = 0
   prevSpace = false
 
-  private urlOverride?: string
+  urlOverride?: string
   connect(slug: string, room = 'main', onJoined?: (j: ArenaJoined) => void, urlOverride?: string): void {
     // a world may name its OWN arena (worldData.arenaUrl → dev/local/self-hosted
     // rooms); otherwise the platform's Railway service is the house arena.

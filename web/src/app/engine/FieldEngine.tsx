@@ -3816,7 +3816,16 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const wantRoom = sim.worldData['__joinRoom'] ?? roomFromUrlRef.current ?? undefined
       if (mpManifest && spaceSlug && (!mpManifest.lobby || wantRoom)) {
         // JOINED (or lobby-less world): the room is the authority
-        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main', undefined, typeof sim.worldData['arenaUrl'] === 'string' ? sim.worldData['arenaUrl'] as string : undefined) }
+        const wantUrl = typeof sim.worldData['arenaUrl'] === 'string' ? sim.worldData['arenaUrl'] as string : undefined
+        // LOAD-ORDER RACE (base-platformer, Aug 23): mpManifest can appear a
+        // frame before arenaUrl during world load — the first dial then goes to
+        // the house arena. If the world's own arena shows up before a seat has
+        // landed, hang up and redial the RIGHT room.
+        if (arenaRef.current && wantUrl && arenaRef.current.urlOverride !== wantUrl && arenaRef.current.seat < 0) {
+          arenaRef.current.close()
+          arenaRef.current = null
+        }
+        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main', undefined, wantUrl) }
         const a = arenaRef.current
         const wd = sim.worldData as Record<string, unknown>
         // discrete actions are LATCHED into counters so a tap survives lag —
