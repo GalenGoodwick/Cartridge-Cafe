@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts } from '@/lib/world-create'
-import { isProductConfigured, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
 import { ensureBuilderTables } from '@/lib/builder-tables'
 import { commonsBus } from '@/lib/commons-bus'
 import crypto from 'crypto'
@@ -32,7 +32,8 @@ export async function GET() {
     ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
     : null
   return NextResponse.json({
-    buyable: stripeConfigured() && isProductConfigured('worldgen'),
+    buyable: stripeConfigured(),   // ad-hoc priced — no per-product price id needed
+    priceUsd: GEN_PRICE_USD,
     credits: user ? await readGenCredits(user.id) : 0,
     signedIn: !!user,
   })
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
   const remaining = await spendGenCredit(user.id)
   if (remaining === null) {
     return NextResponse.json(
-      { error: 'no generation credits', needPayment: true, buyable: stripeConfigured() && isProductConfigured('worldgen') },
+      { error: 'no generation credits', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
       { status: 402 },
     )
   }

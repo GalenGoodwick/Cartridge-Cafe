@@ -26,17 +26,14 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // a plain optional tip — the price itself has custom_unit_amount enabled,
   // so the donor picks the amount on Stripe's own checkout page.
   donate: { env: 'STRIPE_PRICE_DONATE', mode: 'payment', label: 'donate to cartridge.cafe' },
-  // paid world generation: one purchase = GEN_CREDITS_PER_PURCHASE briefs the
-  // house AI builds. This is the phone's native creation route — a phone can't
-  // run a connected AI, but it can describe a world and pay the house to build it.
-  worldgen: { env: 'STRIPE_PRICE_WORLDGEN', mode: 'payment', label: 'generate a world — the house AI builds your brief' },
 }
-// PAID EXPERIENCES are NOT in this env-mapped table on purpose (Galen, Aug 24:
-// "I need a product pricing mechanism"). Each world sets its OWN price in
-// worldData.premium.usd; checkout prices it AD-HOC via Stripe price_data (read
-// server-side, never trusted from the client), so any amount works and the only
-// key needed is STRIPE_SECRET_KEY — no per-world price id to pre-create. See
-// createExperienceCheckout below.
+// PAID EXPERIENCES and WORLD GENERATION are NOT in this env-mapped table on
+// purpose (Galen, Aug 24: "I need a product pricing mechanism"). Their prices
+// are AD-HOC via Stripe price_data (server-side, never trusted from the client),
+// so the only key needed is STRIPE_SECRET_KEY — no per-product price id to
+// pre-create. Experiences read each world's own worldData.premium.usd;
+// generation is a flat GEN_PRICE_USD. See createExperienceCheckout /
+// createWorldgenCheckout below.
 
 export function stripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY
@@ -137,6 +134,36 @@ export async function createExperienceCheckout(
   return { url: j.url }
 }
 
+/** WORLD GENERATION checkout — flat $5 (GEN_PRICE_USD), one generation, AD-HOC
+ *  (no pre-created price id; only STRIPE_SECRET_KEY). The webhook credits the
+ *  gencredits ledger; the buyer lands back on /cards to spend it on a brief. */
+export async function createWorldgenCheckout(
+  userId: string, origin: string,
+): Promise<{ url: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const form = new URLSearchParams({
+    mode: 'payment',
+    'line_items[0][quantity]': '1',
+    'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][unit_amount]': String(GEN_PRICE_USD * 100),
+    'line_items[0][price_data][product_data][name]': 'generate a world',
+    'line_items[0][price_data][product_data][description]': 'the house AI builds your brief — one world generation',
+    success_url: `${origin}/cards?paid=worldgen`,
+    cancel_url: `${origin}/cards?paycancel=worldgen`,
+    'metadata[userId]': userId,
+    'metadata[product]': 'worldgen',
+  })
+  const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  })
+  const j = (await r.json()) as { url?: string; error?: { message?: string } }
+  if (!r.ok || !j.url) return { error: j.error?.message || 'stripe refused the session', status: 502 }
+  return { url: j.url }
+}
+
 /** Purchase grants a SEAT AT THE WORKBENCH (Galen, Aug 24: "purchase gives you
  *  access to co-program the world"): mint the buyer a member:<handle> build key
  *  for the world — the same key the co-build dock honors. Idempotent: one live
@@ -219,7 +246,9 @@ export async function revokeEntitlement(userId: string, product: string, slug?: 
 // Entitlements are booleans (own it or don't); worldgen is a COUNTER (a purchase
 // buys N briefs, each generation spends one). Separate slot, sessionId-deduped
 // grants because Stripe retries webhooks and a retry must not double-credit.
-export const GEN_CREDITS_PER_PURCHASE = 3
+// Galen (Aug 24): "generate a world costs $5" — one purchase = one generation.
+export const GEN_PRICE_USD = 5
+export const GEN_CREDITS_PER_PURCHASE = 1
 
 const genSlot = (userId: string) => 'gencredits:' + userId
 

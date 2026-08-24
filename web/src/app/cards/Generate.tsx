@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const STASH = 'cc-gen-brief'
 
 export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
-  const [gen, setGen] = useState<{ buyable: boolean; credits: number } | null>(null)
+  const [gen, setGen] = useState<{ buyable: boolean; credits: number; priceUsd: number } | null>(null)
   const [open, setOpen] = useState(false)
   const [brief, setBrief] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,8 +27,8 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
 
   const refresh = useCallback(() => {
     fetch('/api/generate').then(r => r.json())
-      .then((d: { buyable?: boolean; credits?: number }) => setGen({ buyable: !!d.buyable, credits: d.credits ?? 0 }))
-      .catch(() => setGen({ buyable: false, credits: 0 }))
+      .then((d: { buyable?: boolean; credits?: number; priceUsd?: number }) => setGen({ buyable: !!d.buyable, credits: d.credits ?? 0, priceUsd: d.priceUsd ?? 5 }))
+      .catch(() => setGen({ buyable: false, credits: 0, priceUsd: 5 }))
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
@@ -64,9 +64,8 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
       if (r.status === 402 && d.needPayment) {
         if (!d.buyable) { setNote('payments aren’t switched on yet — ask your AI to build it instead'); return }
         localStorage.setItem(STASH, brief)
-        const c = await fetch('/api/pay/checkout', {
+        const c = await fetch('/api/generate/buy', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ product: 'worldgen' }),
         }).then(x => x.json()).catch(() => ({}))
         if (c.url) { window.location.href = c.url; return }
         setNote(c.error || 'checkout failed — try again')
@@ -98,7 +97,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
               describe it — the house AI builds your brief while you watch.
               {gen.credits > 0
                 ? ` you have ${gen.credits} generation${gen.credits === 1 ? '' : 's'}.`
-                : ' your first purchase includes 3 generations.'}
+                : ` $${gen.priceUsd} per world.`}
             </p>
             <textarea
               value={brief} onChange={e => setBrief(e.target.value)} rows={4} autoFocus
@@ -110,7 +109,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
               <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded text-white/45 hover:text-white transition-colors">not now</button>
               <button onClick={submit} disabled={busy || brief.trim().length < 20}
                 className="px-4 py-1.5 rounded border border-amber-300/50 text-amber-200 hover:bg-amber-400/15 disabled:opacity-40 transition-colors">
-                {busy ? '…' : gen.credits > 0 ? 'GENERATE' : 'BUY & GENERATE'}
+                {busy ? '…' : gen.credits > 0 ? 'GENERATE' : `GENERATE · $${gen.priceUsd}`}
               </button>
             </div>
           </div>
