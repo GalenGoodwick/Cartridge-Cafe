@@ -776,6 +776,29 @@ Holding a node protects its **code**. `owns` protects the **state** it writes. W
 
 **When do you even need this?** Almost never — if you build with **superimposed fields** (above), each layer is its own buffer and clobber is impossible by construction. `owns` + strict is for the one case that genuinely shares one `gpuUniforms` array (a packed population). Reach for the guard only when you must share; otherwise, superimpose and stay free.
 
+#### The blank SLOTS — every world is born with its anatomy
+
+Every new world (and every base you fork) starts with six placeholder nodes: **`player` · `world` · `entities` · `rules` · `hud` · `net`**. Each is a real hook whose body is a charter comment saying what belongs there. **Build WITHIN the slots** — dock `player`, replace its body, undock — instead of inventing your own anatomy. Because the slots exist from frame one, the sandbox is always alive: every edit is a hot-swap, nothing ever needs a reload.
+
+#### Sub-nodes — id lineage
+
+A node id like **`world:atrium`** or **`entities:wolves`** is a SUB-NODE of its parent slot. A sub-node is a FULL node — its own code, its own history, its own hold — so two builders can each hold their own room or their own creature-kind without touching each other. Grow children instead of growing a blob: `add_step_hook {"hookId":"world:caves"}`. (`visual:<name>` / `module:<name>` are reserved — they're the shader history keys, not hook lineage.)
+
+#### THE CODE GATE — a broken push NEVER lands
+
+The persist chokepoint **compiles your hook exactly as the sandbox will** (`new Function('sim','dt',code)`) before accepting it. Empty code or a syntax error is **refused** — the response tells you, NOTHING landed, and the node stays at its last working version. A new node that never compiles never exists. `define_visual`/`define_module` refuse empty WGSL the same way.
+
+#### AUTO-HEAL — live errors revert a fresh push to last-good
+
+Every landed push appends a version to the node's history (`worldData.__nodeHist`). If your FRESH push (under ~30 min old) keeps erroring live — **3 runtime error reports** for a hook, **1 quarantine report** for a shader (WGSL compile failure is deterministic) — the engine **auto-reverts the node to its last good version** and marks the bad rev. You are TOLD: a `phase:"reverted"` entry lands in the same `hookErrors` list you read in world state. **Check `hookErrors` after pushing** — a heal you don't notice means you're editing code that isn't live. A node with no good ancestor stays put (never stripped); its error chain is your breadcrumb. Settled code never auto-moves.
+
+#### The dock — versions, history, revert, feed
+
+- `dock_node {id}` — hold a node + open its feed (your claim, visible in the ⬢ NODES panel humans see)
+- `undock_node {id, code, note}` — SUBMIT: your code lands (through the gate) as a new version, the hold releases. `undock_node {id}` = abandon.
+- `node_history {id}` — the version chain (rev · by · note · bad-flags). `node_revert {id, rev?}` — restore a good version; the restore lands FORWARD as a new rev (history is append-only).
+- `node_feed {id, text, kind?}` / `node_feed_read {id}` — the node's internals feed: narrate what you're doing; dock/undock/heal events land here too.
+
 ### Sharp edges (learned the hard way — read before your first world)
 
 1. **Visual naming is a contract.** `define_visual` with name `X` requires a function named exactly `visual_X`. Any mismatch fails the isolated compile and the visual is QUARANTINED — the field renders as a bare shape (a flat rect/circle) with no error surfaced to you. If a field suddenly looks like a plain rectangle, check the browser console for `QUARANTINED`, and re-check your `fn visual_…` name first.
@@ -783,6 +806,9 @@ Holding a node protects its **code**. `owns` protects the **state** it writes. W
 3. **Animate in ONE frame of reference.** If you build a moving texture in a rotating frame (e.g. wind-aligned axes) and the reference direction drifts, the whole texture visibly rotates. Advect position along the direction instead (`p - dir * t * speed`) inside a FIXED frame, and break axis-aligned lattice artifacts with one constant rotation, not a live one.
 4. **Verify saves landed.** Scene saves mirror to the database fire-and-forget — a save can return `ok: true` and still fail to persist past this lambda. After `action: 'save'`, `GET` the scene back (`?name=…`) and check the list (`?action=list`). If it's missing, save again.
 5. **Budget the whole screen.** A full-screen visual runs per pixel: 3 heightfield taps × octaves × noise calls adds up fast, and `maxBufferPixels` multiplies all of it. If the world turns choppy, halve octaves before anything else — lighting reads better than turbulence anyway.
+6. **READBACK LAW — a push isn't landed until you read it back.** A `200 ok` is not proof: a build-lock refusal arrives as a TOP-LEVEL `{error}` (HTTP 409) with no `results[]`, and the admin `?slug=` path only works on GET (a POST with it falls into legacy-global and persists NOWHERE). After any batch that matters, GET the world state and confirm your bytes are there.
+7. **ONE identity per world.** Holds and the grief gate key on a hash of your bearer token. If you mint a fresh key per session you become a stranger to your own held nodes. Keep and reuse ONE key per world you build.
+8. **Name your whiteboard writes `u[N] =` or `U[N] =` or `gpuUniforms[N] =`.** Ownership inference (`owns.uni`) reads those literal forms; computed indices are invisible to the lane system (and to the reverse renderer that lets a click name your node).
 
 ### Triggers & Chapters (stage/goal primitives)
 
@@ -953,6 +979,54 @@ Registered mods are automatically injected into all shader compilations.
 | `execute_command` | `name, args?` | Expand and execute macro |
 
 ---
+
+## CREWS — keys, contracts, and the grief gate
+
+Worlds are built by CREWS. What your key is decides what you may do:
+
+- **The owner's key** (minted at create/fork, or via CONNECT AI on your own world) — full authority.
+- **A MEMBER key** (`member:<handle>`) — you were invited (a one-time link) or self-minted on an open world. Members BUILD: add nodes, edit what they hold, superimpose layers. Members **never demolish**: `remove_step_hook` works only on a node you HOLD (dock it first — removal must be deliberate and attributed); `reset`, `delete_field`, `destroy_render_target` refuse member keys outright. Ask the owner, or hide instead of delete.
+- **The social contract** (`worldData.policy {build, play}`) is declared ONCE and then IMMUTABLE — not even the owner changes the deal on people already building. `build:"anyone"` = open ground (any signed-in visitor can self-mint a member key) · `"invited"` = crew only · `"owner"` (default). Set it at fork/creation or never.
+- **Bans are real:** a banned handle's keys die instantly and no invite can readmit them for 30 days. If your mint returns `403 banned`, that's what happened.
+- A node held by ANOTHER fresh builder refuses removal from everyone (15-min stale rule). The engine defends every builder's work — including yours.
+
+## MULTIPLAYER — the arena (shared state)
+
+Presence (seeing each other's cursors) is automatic. SHARED STATE — one world, one simulation, many players — is the ARENA:
+
+1. Declare `worldData.mpManifest = { type: "shared", capacity: N, lobby: true }`. With `lobby: true` solo visits play locally; a room is joined via the URL — **`/space/<slug>?room=<name>` is a play-together link** (same name = same room).
+2. In a room, the arena server runs your world's hooks authoritatively at 24Hz and every tab becomes a window. Your hooks receive each player's inputs as **`wd.players = [{ seat, role, key_w, key_a, …, mouse_x, mouse_y }]`** and `wd.playerCount`. The server branch of your `player` node is simply: `if (Array.isArray(wd.players)) { one body per seat }` — absent locally, so solo play is untouched. Write shared truth to the whiteboard (`gpuUniforms` / `gpuPopulation`); clients interpolate.
+3. Put your multiplayer declaration and what-syncs-vs-what's-cosmetic in the **`net` slot** — it exists in every world so going shared is a hot-swap, not a rebuild.
+4. `worldData.arenaUrl` points a world at its OWN arena (dev/self-hosted); unset = the house arena. One-shots (`__play_sound`) are consumed server-side so they can't loop.
+
+## THE GRID — size, rectangles, and the camera
+
+- The default coordinate space is 512×512. **Declare bigger:** `set_world_params { gridSize: N }` (64–4096, integer). Takes effect on WORLD LOAD — open tabs keep their grid until reload (the response warns you).
+- **Rectangles:** `set_world_params { gridW, gridH }` bounds the PLAYABLE RECT inside the space — physics walls stand there. A 2048×768 world is a panorama; 512×2048 a tower.
+- **A big grid is TERRITORY, not a shrunken map:** the resting view is a ~512-unit window; the rest is explored. The camera clamps inside the playable rect so the view never shows void the world could fill.
+- **Frame your own world:** a hook writes `wd.__camera = { x, y, zoom? }` or `{ follow: "<fieldId>" }` — smoothed, hook wins over the AI's `set_camera`.
+- **`viewbox()`** (WGSL builtin): `vec4f(camCenter.xy, viewHalfExtents.zw)` in world units at the REAL viewport aspect — paint view-locked or world-anchored content on any screen shape: `let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;`
+- A screen-shape field's canvas spans the GRID and is positioned by its transform — pin it at grid center (`x: gridSize/2, y: gridSize/2`) or it drifts under physics and your backdrop vanishes off-view.
+
+## WORLD UI — the UI SYSTEM (chrome-safe HUD)
+
+Write `worldData.ui` — a declarative tree the engine SOLVES and renders as real engine pixels (probes and recordings see it; legacy DOM `wd.hud` still works but can collide with site chrome — prefer this):
+
+```js
+wd.ui = { rev: 1, root: [
+  { id: "score", kind: "panel", anchor: { gx: 8, gy: 8 }, align: "tl", w: 150,
+    children: [
+      { kind: "text", text: "SCORE 4200", fontSize: 14 },
+      { kind: "meter", id: "hp", value: 0.66, label: "HP" },
+      { kind: "button", id: "go", text: "START", click: "start" },
+    ] },
+] }
+```
+
+- Kinds: `panel · col · row · text · meter · button · spacer · slot`. Anchors are design units on the 512 square (`gx/gy` + `align: tl|tc|tr|cl|c|cr|bl|bc|br`), or `{entity}` / `{below}`.
+- **CHROME-SAFE by construction:** the engine measures the cafe's own chrome (name plate, rail, pills) and clamps your panels into the safe area — your UI can never land under the site's buttons.
+- Button presses land in `wd.__uiClick` (consume with `sim.trigger`/`sim.edge`). The solved layout is READABLE at `wd.__uiRects` — and a human's UI-EDIT drags persist as `wd.__uiOverrides` you can bake back into your tree.
+- A `slot` node punches a hole in its panel's glass — seat a shader portrait THROUGH the UI via `__uiRects`.
 
 ## Visual Shader Interface <!-- core -->
 
