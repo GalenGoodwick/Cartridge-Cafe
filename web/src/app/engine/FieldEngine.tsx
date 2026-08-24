@@ -6127,20 +6127,20 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
               <div className="relative">
                 <button
                   onClick={() => setPubConfirm(v => !v)}
-                  title={spacePublic ? 'this world is PUBLIC — click to take it off the shelf' : 'this world is PRIVATE — click to publish it to the shelf'}
+                  title={spacePublic ? 'this world is PLAYABLE — click to take it off the shelf' : 'this world is UNPLAYABLE — click to put it on the shelf'}
                   className={'w-full px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ' +
                     (spacePublic
                       ? 'bg-amber-400/15 border-amber-300/40 text-amber-200 hover:bg-amber-400/25'
                       : 'bg-black/60 border-white/15 text-white/60 hover:text-white hover:bg-black/80')}
                 >
-                  {spacePublic ? '● PUBLIC' : '○ PRIVATE'}
+                  {spacePublic ? '● PLAYABLE' : '○ UNPLAYABLE'}
                 </button>
                 {pubConfirm && (
                   <div className="absolute right-full top-0 mr-2 z-50 w-64 rounded-xl bg-[#0d0906]/95 backdrop-blur border border-amber-300/25 p-3 shadow-2xl font-mono">
                     <div className="text-[14px] text-white/80 leading-snug mb-2">
                       {spacePublic
-                        ? 'take this world off the public shelf? it stays yours to edit, and its code stays readable in the library.'
-                        : 'publish this world to the public shelf? anyone can play it.'}
+                        ? 'make this world UNPLAYABLE? it comes off the shelf — it stays yours to edit, and its code stays readable in the library.'
+                        : 'make this world PLAYABLE? it goes on the shelf and anyone can play it.'}
                     </div>
                     <button disabled={pubBusy}
                       onClick={async () => {
@@ -6159,7 +6159,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                           ? 'bg-black/50 border border-white/20 text-white/80 hover:text-white'
                           : 'bg-amber-400/20 border border-amber-300/50 text-amber-200 hover:bg-amber-400/30')}
                     >
-                      {pubBusy ? '…' : spacePublic ? 'MAKE PRIVATE' : 'PUBLISH'}
+                      {pubBusy ? '…' : spacePublic ? 'MAKE UNPLAYABLE' : 'MAKE PLAYABLE'}
                     </button>
                     <button onClick={() => setPubConfirm(false)}
                       className="w-full mt-1.5 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[14px] transition-colors">

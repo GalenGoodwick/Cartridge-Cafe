@@ -220,7 +220,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
             {/* Visibility — the world's one front-door switch */}
             <div className="px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between">
-                <span className="text-muted">visibility</span>
+                <span className="text-muted">playable</span>
                 <button
                   onClick={() => {
                     const next = !space?.isPublic
@@ -233,7 +233,7 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                       : 'bg-warning/15 text-warning border-warning/30'
                   }`}
                 >
-                  {space?.isPublic ? 'public' : 'private'}
+                  {space?.isPublic ? 'PLAYABLE' : 'UNPLAYABLE'}
                 </button>
               </div>
               {/* the commons deal, said right where the switch is thrown */}

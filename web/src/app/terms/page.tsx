@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Terms & the Commons Deal',
-  description: 'How cartridge.cafe works: you own what you make, public worlds are remixable, private worlds are yours alone.',
+  description: 'How cartridge.cafe works: you own what you make, playable worlds are on the shelf (forkable only if you allow it), unplayable worlds are yours alone.',
 }
 
 const H = ({ children }: { children: React.ReactNode }) => (
@@ -25,8 +25,8 @@ export default function TermsPage() {
         <div className="rounded-xl border border-brass/40 bg-black/30 p-5 mt-6">
           <div className="text-[14px] tracking-[0.2em] text-flame mb-2">THE COMMONS DEAL — in plain words</div>
           <P><b className="text-glow">You own what you make.</b> Your worlds are yours.</P>
-          <P><b className="text-glow">Public worlds can be forked.</b> Make a world public and other members can <b>fork</b> it &mdash; take their own copy to build on. A fork becomes their own world, keeps its <b>lineage</b> back to you, and your original always stays yours &mdash; untouched.</P>
-          <P><b className="text-glow">Private worlds are yours alone.</b> No one else can see, open, or fork a private world. A shared link to a private world simply doesn&rsquo;t open for anyone but you.</P>
+          <P><b className="text-glow">Playable worlds are on the shelf.</b> Make a world playable and anyone can play it. If you also <b>allow forking</b> (a separate switch, off by default), other members can <b>fork</b> it &mdash; take their own copy to build on. A fork becomes their own world, keeps its <b>lineage</b> back to you, and your original always stays yours &mdash; untouched.</P>
+          <P><b className="text-glow">Unplayable worlds are yours alone.</b> No one else can see, open, or fork an unplayable world (crew members you have invited keep their access). A shared link simply doesn&rsquo;t open for anyone else.</P>
           <P className="mb-0"><b className="text-glow">Be decent.</b> No illegal, hateful, or seizure-inducing content. We can remove worlds and close accounts that break the rules.</P>
         </div>
 
@@ -36,9 +36,9 @@ export default function TermsPage() {
         <H>2 · What you make, and who owns it</H>
         <P>You keep ownership of the worlds and content you create. By using cartridge.cafe you grant us a worldwide, non-exclusive license to <b>host, store, display, and back up</b> your content so the service can run — nothing more. We don&rsquo;t claim ownership and we don&rsquo;t sell your worlds.</P>
 
-        <H>3 · Forking (public worlds)</H>
-        <P>When you set a world to <b>public</b>, every other member gets a license to <b>view and play</b> it, and to <b>fork</b> it — take an independent copy to build on. A fork becomes their own world; yours is untouched. Every fork carries <b>lineage</b> — a link back to what it came from — so credit follows the work.</P>
-        <P>Public worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage, and forks stay forkable on the same terms. You can make a world private at any time to stop new forks, but forks already made remain their creators&rsquo;.</P>
+        <H>3 · Forking (when the maker allows it)</H>
+        <P>When you make a world <b>playable</b>, every other member gets a license to <b>view and play</b> it. Forking — taking an independent copy to build on — happens only when you <b>enable forking</b> on that world. A fork becomes its maker&rsquo;s own world; yours is untouched. Every fork carries <b>lineage</b> — a link back to what it came from — so credit follows the work.</P>
+        <P>Forkable worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage. You can disable forking or make a world unplayable at any time to stop new forks, but forks already made remain their creators&rsquo;.</P>
 
         <H>4 · Private worlds</H>
         <P>A <b>private</b> world is visible only to you. It can&rsquo;t be opened, played, or forked by anyone else, and its link won&rsquo;t load for anyone but you. Privacy is the off-switch for the commons.</P>
