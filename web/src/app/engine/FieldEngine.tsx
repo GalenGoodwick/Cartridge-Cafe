@@ -31,6 +31,7 @@ import { DEFAULT_GRID_SIZE } from './types'
 import { GameAudio } from './audio'
 import { worldBus, recordTap, setWorldVoice, type WorldTone } from './cafe-audio'
 import { WorldToolsPanel } from './WorldToolsPanel'
+import { NodeDockPanel } from './NodeDockPanel'
 import { InstructionsPanel } from './InstructionsPanel'
 import { VersionsPanel } from './VersionsPanel'
 import { BranchesPanel } from './BranchesPanel'
@@ -177,6 +178,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   const [myName, setMyName] = useState('')   // display name (== chat `who`), so the world-chat door can exclude YOUR own posts
   const [aiPulse, setAiPulse] = useState(0)
   const [plugOpen, setPlugOpen] = useState(false)
+  const [nodesOpen, setNodesOpen] = useState(false)   // ⬢ NODES — the dock panel (co-build rung 4)
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
   const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
@@ -6220,6 +6222,19 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                 ⚭ INVITE
               </button>
             )}
+            {/* ⬢ NODES — the co-build dock panel: who builds what. Node roster
+                with hold states, per-node history timelines (owner revert),
+                and each node's internals feed. Spaces only — nodes are the
+                unit of collaborative building. */}
+            {!isHub && spaceSlug && (
+              <button
+                onClick={() => setNodesOpen(v => !v)}
+                title="the world's nodes — holds, history, feeds; the co-build roster"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ⬢ NODES
+              </button>
+            )}
             {/* INSPECT — AI click telling: clicks become documentation (never gameplay);
                 entries land in wd.__clicks for any connected AI to decode. */}
             {!isHub && (
@@ -6623,6 +6638,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                   <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
                   <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
                   {spaceSlug && <div><span className="text-white/90">⚭ INVITE</span> — mint a one-time link; the first to open it joins your crew.</div>}
+                  {spaceSlug && <div><span className="text-white/90">⬢ NODES</span> — who builds what: holds, history, and revert per node.</div>}
                   {!spaceSlug && <div><span className="text-white/90">≡ BRANCHES</span> — the challengers growing from this world.</div>}
                   <div><span className="text-white/90">⏱ VERSIONS</span> — this world&apos;s history; roll back anytime.</div>
                   <div><span className="text-emerald-300">⚡ CONNECT AI</span> — hand the world to your AI; it edits live, and versions keep every save point.</div>
@@ -6641,6 +6657,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* BRANCHES — the CELL: viewers gather, five unlock the vote, every branch has a table */}
           {versionsOpen && spaceSlug && (
             <VersionsPanel spaceSlug={spaceSlug} playScene={playScene} spaceId={spaceId} isOwner={isOwner} versionBusy={versionBusy} setVersionBusy={setVersionBusy} versionList={versionList} loadVersions={loadVersions} showToast={showToast} setVersionsOpen={setVersionsOpen} />
+          )}
+          {nodesOpen && spaceSlug && (
+            <NodeDockPanel spaceSlug={spaceSlug} isOwner={!!isOwner} onClose={() => setNodesOpen(false)}
+              showToast={(m, t, sub) => showToast(m, (t as 'info' | 'success' | 'error') ?? 'info', sub)} />
           )}
           {branchesOpen && (
             <BranchesPanel cellBase={cellBase} cellData={cellData} setCellData={setCellData} cellDraft={cellDraft} setCellDraft={setCellDraft} saveCellDoc={saveCellDoc} whoRef={whoRef} setBranchesOpen={setBranchesOpen} branchList={branchList} handleLoadScene={handleLoadScene} spaceSlug={spaceSlug} discOpen={discOpen} setDiscOpen={setDiscOpen} />
