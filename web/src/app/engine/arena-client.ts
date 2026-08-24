@@ -36,8 +36,10 @@ export class ArenaClient {
   splitN = 0
   prevSpace = false
 
-  connect(slug: string, room = 'main', onJoined?: (j: ArenaJoined) => void): void {
-    const base = (process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^http/, 'ws')
+  connect(slug: string, room = 'main', onJoined?: (j: ArenaJoined) => void, urlOverride?: string): void {
+    // a world may name its OWN arena (worldData.arenaUrl → dev/local/self-hosted
+    // rooms); otherwise the platform's Railway service is the house arena
+    const base = (urlOverride || process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^http/, 'ws')
     let ws: WebSocket
     try { ws = new WebSocket(base + '/join?world=' + encodeURIComponent(slug) + '&room=' + encodeURIComponent(room)) } catch { return }
     this.ws = ws

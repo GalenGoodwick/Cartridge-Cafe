@@ -3808,7 +3808,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const wantRoom = sim.worldData['__joinRoom']
       if (mpManifest && spaceSlug && (!mpManifest.lobby || wantRoom)) {
         // JOINED (or lobby-less world): the room is the authority
-        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main') }
+        if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main', undefined, typeof sim.worldData['arenaUrl'] === 'string' ? sim.worldData['arenaUrl'] as string : undefined) }
         const a = arenaRef.current
         const wd = sim.worldData as Record<string, unknown>
         // discrete actions are LATCHED into counters so a tap survives lag —
