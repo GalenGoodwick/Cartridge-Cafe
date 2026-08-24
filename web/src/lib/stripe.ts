@@ -30,6 +30,11 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // house AI builds. This is the phone's native creation route — a phone can't
   // run a connected AI, but it can describe a world and pay the house to build it.
   worldgen: { env: 'STRIPE_PRICE_WORLDGEN', mode: 'payment', label: 'generate a world — the house AI builds your brief' },
+  // PREMIUM GAMES (Galen, Aug 24 — Tideglass Act 1 is the first): $5 pay-once,
+  // slug-scoped like protect — buying grants {product:'premium5', slug} and the
+  // world's demo gate opens for good. Which worlds are premium lives in each
+  // world's worldData.premium, not here.
+  premium5: { env: 'STRIPE_PRICE_PREMIUM5', mode: 'payment', label: 'premium game — pay once, yours forever ($5)' },
 }
 
 export function stripeConfigured(): boolean {
@@ -63,13 +68,18 @@ export async function createCheckoutSession(
   if (!product || !price) return { error: `unknown or unconfigured product "${productKey}"`, status: 400 }
 
   // A page purchase returns to the composer, which polls until the webhook has
-  // flipped it live; other products land on the front door.
+  // flipped it live; a premium-game purchase returns INTO the world it bought
+  // (the gate polls the entitlement); other products land on the front door.
   const success = productKey === 'page'
     ? `${origin}/pages?paid=page`
-    : `${origin}/?paid=${productKey}`
+    : productKey.startsWith('premium') && slug
+      ? `${origin}/space/${encodeURIComponent(slug)}?paid=${productKey}`
+      : `${origin}/?paid=${productKey}`
   const cancel = productKey === 'page'
     ? `${origin}/pages?paycancel=page`
-    : `${origin}/?paycancel=${productKey}`
+    : productKey.startsWith('premium') && slug
+      ? `${origin}/space/${encodeURIComponent(slug)}?paycancel=${productKey}`
+      : `${origin}/?paycancel=${productKey}`
   const form = new URLSearchParams({
     mode: product.mode,
     'line_items[0][price]': price,

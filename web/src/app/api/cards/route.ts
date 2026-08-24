@@ -51,6 +51,7 @@ export interface FeedRow {
   members: number                    // live member:<handle> keys (distinct handles)
   kind: CardKind                     // toy · world · game (Galen's taxonomy)
   perf: number | null                // measured frame ms (publish stress test, else the live tabs' EMA)
+  premium: number | null             // $ price — worldData.premium.usd (PREMIUM GAMES)
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -102,6 +103,8 @@ export async function GET(req: Request) {
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
+  // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
+  if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
   // ALTERABLE (Galen): published worlds anyone may walk in and edit
   // (build:'anyone' — the OPEN EDIT chip); UNALTERABLE = the rest (crew/static)
@@ -122,6 +125,7 @@ export async function GET(req: Request) {
   const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
   return NextResponse.json({
     published: rows.length,
+    premium: rows.filter(r => r.premium !== null).length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
     alterable: rows.filter(r => r.buildMode === 'anyone').length,
     mine: mine === null ? null : mine.length,
@@ -262,9 +266,11 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
     const perfRec = wd.__perf as { frameMs?: number } | undefined
     const budgetRec = wd.__budget as { frameMs?: number } | undefined
     const perf = Number.isFinite(perfRec?.frameMs) ? perfRec!.frameMs! : (Number.isFinite(budgetRec?.frameMs) ? budgetRec!.frameMs! : null)
+    const premRec = wd.premium as { usd?: number } | undefined
     return {
       ...rest,
       perf,
+      premium: typeof premRec?.usd === 'number' && premRec.usd > 0 ? premRec.usd : null,
       updatedAt: updatedAt.getTime(),
       maker: { handle: isGuest ? null : handleOf(email), name: owner?.name ?? null },
       counts: { forks: _count.forks, versions: _count.versions },

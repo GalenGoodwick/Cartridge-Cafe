@@ -222,6 +222,7 @@ describe('cardFromRow', () => {
       isBase: false,
       kind: 'toy',
       perf: null,
+      premium: null,
       mobileReady: false,
       playable: true,
       edit: { mode: 'static', editors: 1 },

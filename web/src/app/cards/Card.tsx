@@ -161,10 +161,18 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
           style={{ color: typed ? `hsl(${hue} 65% 68%)` : 'rgba(255,255,255,0.3)' }}>
           {typed ? card.type.replace(/-/g, ' ') : 'untyped'}
         </span>
+        {/* ✦ PREMIUM (Galen, Aug 24): a paid game wears its price — gold, next
+            to the kind. Buying is in the world (the demo gate), not the card. */}
+        {card.premium !== null && (
+          <span className="ml-auto shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border border-yellow-300/60 text-yellow-200"
+            title={`premium game — $${card.premium} once, yours forever · free demo inside`}>
+            ✦ ${card.premium}
+          </span>
+        )}
         {/* THE KIND — toy · world · game (Galen's taxonomy): derived from the
             anatomy when not declared (rules built → game; multiplayer/big
             grid → world; else toy). */}
-        <span className={`ml-auto shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
+        <span className={`${card.premium !== null ? '' : 'ml-auto '}shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
           card.kind === 'game' ? 'border-violet-300/50 text-violet-200/90'
           : card.kind === 'world' ? 'border-sky-300/40 text-sky-200/80'
           : 'border-amber-300/40 text-amber-200/70'}`}

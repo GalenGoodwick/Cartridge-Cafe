@@ -5,7 +5,7 @@
 // MY WORLDS (owned) · SHARED WORLDS (member, not owner). A base's family
 // page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
 
-export interface TabCounts { published: number; forkable: number; alterable?: number; mine: number | null; shared: number | null }
+export interface TabCounts { published: number; premium?: number; forkable: number; alterable?: number; mine: number | null; shared: number | null }
 
 export function CardTabs({ counts, active, familyName, onPick }: {
   counts: TabCounts
@@ -13,9 +13,11 @@ export function CardTabs({ counts, active, familyName, onPick }: {
   familyName?: string | null
   onPick: (slug: string) => void
 }) {
-  const fixed = ['published', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
+  const fixed = ['published', 'premium', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
   const tabs: Array<{ slug: string; label: string; count: number | null }> = [
     { slug: 'published', label: 'PUBLISHED', count: counts.published },
+    // PREMIUM GAMES (Galen, Aug 24) — shown once the first premium world exists
+    ...(counts.premium ? [{ slug: 'premium', label: '✦ PREMIUM', count: counts.premium }] : []),
     { slug: 'forkable', label: 'FORKABLE', count: counts.forkable },
     // ALTERABLE / UNALTERABLE (Galen): the OPEN EDIT chip as whole shelves —
     // worlds anyone may walk in and edit, and worlds that are crew/static
