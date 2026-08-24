@@ -106,6 +106,17 @@ export async function POST(req: NextRequest) {
     ...(snapshot ? { snapshot } : {}),
   }))
 
+  // BORN WITH ITS SLOTS (Galen's law — every create path): seed the blank
+  // placeholder nodes so the sandbox is alive from frame one and the anatomy
+  // is named; the connecting AI builds WITHIN the slots.
+  {
+    const { applyCommandToSnapshot } = await import('../engine/space-store')
+    const { placeholderSeedCommands } = await import('@/app/engine/placeholder-nodes')
+    for (const seed of placeholderSeedCommands(Date.now())) {
+      await applyCommandToSnapshot(space.id, seed).catch(() => {})
+    }
+  }
+
   // connect-AI-first: the world is born with its first build key
   const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
   await prisma.spaceToken.create({
