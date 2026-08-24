@@ -11,10 +11,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
   const { slug } = await params
   const clean = slug.trim().toLowerCase()
   if (!clean || clean.length > 80) return new NextResponse('bad slug', { status: 400 })
-  const doc = (await loadGameSlot(`world_icon:${clean}`)) as { png?: string } | undefined
-  if (!doc?.png) return new NextResponse('no icon yet — the eye photographs worlds on a cadence', { status: 404 })
+  const doc = (await loadGameSlot(`world_icon:${clean}`)) as { png_b64?: string; failed?: boolean } | undefined
+  if (!doc?.png_b64) return new NextResponse('no icon yet — the eye photographs worlds on a cadence', { status: 404 })
   try {
-    const buf = Buffer.from(doc.png, 'base64')
+    const buf = Buffer.from(doc.png_b64, 'base64')
     return new NextResponse(buf, {
       headers: {
         'Content-Type': 'image/png',
