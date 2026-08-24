@@ -31,6 +31,9 @@ export const PLACEHOLDER_NODES: PlaceholderNode[] = [
 // this one writes into sim.worldData (position, facing, intent).
 // Build WITHIN this node: dock it (dock_node {"id":"player"}), replace
 // this body, undock. It hot-swaps live — no reload, ever.
+// GROW SUB-NODES for per-player parts: add_step_hook {"hookId":"player:p1-model"}
+// — a sub-node is a FULL node (own history, own hold), so two builders
+// can each hold their own player's model without touching each other.
 `,
   },
   {
@@ -39,6 +42,8 @@ export const PLACEHOLDER_NODES: PlaceholderNode[] = [
     code: `// ── WORLD — this node owns the STAGE: terrain, gravity, collisions,
 // weather, time-of-day. If it is true everywhere for everyone, it
 // belongs here. Entities and players READ the stage this node sets.
+// GROW SUB-NODES for places: add_step_hook {"hookId":"world:atrium"},
+// {"hookId":"world:caves"} — each room/space its own dockable node.
 `,
   },
   {
@@ -46,7 +51,8 @@ export const PLACEHOLDER_NODES: PlaceholderNode[] = [
     description: 'everything that lives in the world — spawns, rosters, behavior',
     code: `// ── ENTITIES — this node owns every non-player thing that moves or
 // lives: spawn tables, rosters, per-entity behavior ticks. Give each
-// KIND its own section (or grow child nodes) rather than one blob.
+// KIND its own SUB-NODE rather than one blob: add_step_hook
+// {"hookId":"entities:wolves"} — each independently held and healed.
 `,
   },
   {

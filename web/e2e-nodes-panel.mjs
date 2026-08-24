@@ -24,9 +24,17 @@ const world = await prisma.playerSpace.create({ data: {
   snapshot: {
     fields: [], interactionRules: [], interactionEffects: [], modules: [],
     visualTypes: [{ name: 'aurora', wgsl: 'fn v2() {}' }],
-    stepHooks: [{ id: 'physics', author: 'crew-ai', description: '', code: 'sim.p = 2' }],
+    stepHooks: [
+      { id: 'physics', author: 'crew-ai', description: '', code: 'sim.p = 2' },
+      { id: 'world', author: 'the-house', description: 'the stage', code: '// world slot' },
+      { id: 'world:atrium', author: 'crew-ai', description: 'the atrium room', code: '// atrium' },
+    ],
     worldData: {
-      __nodes: { physics: { id: 'physics', rev: 3, holder: 'f'.repeat(16), heldAt: now - 60_000 } },
+      __nodes: {
+        physics: { id: 'physics', rev: 3, holder: 'f'.repeat(16), heldAt: now - 60_000 },
+        world: { id: 'world', rev: 1 },
+        'world:atrium': { id: 'world:atrium', rev: 1 },
+      },
       __nodeHist: {
         physics: [
           { rev: 1, code: 'sim.p = 1', at: now - 3600_000, by: 'crew-ai-hash', note: 'first tide' },
@@ -65,6 +73,7 @@ await page.waitForTimeout(1200)
 const body = await page.textContent('body')
 console.log(`roster shows physics: ${body.includes('physics') ? '✓' : 'FAIL'}`)
 console.log(`roster shows visual:aurora: ${body.includes('visual:aurora') ? '✓' : 'FAIL'}`)
+console.log(`sub-node present: ${body.includes('world:atrium') ? '✓' : 'FAIL'}`)
 console.log(`hold chip HELD: ${body.includes('HELD') ? '✓' : 'FAIL'}`)
 await page.getByRole('button', { name: /physics/ }).first().click()
 await page.waitForTimeout(800)

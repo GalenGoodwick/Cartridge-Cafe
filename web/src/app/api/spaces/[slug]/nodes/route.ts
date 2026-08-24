@@ -56,6 +56,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       feed,
     }
   }))
+  // families stay adjacent: "world" then "world:atrium" (plain localeCompare
+  // already interleaves parents before their prefixed children); kinds grouped
   roster.sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind.localeCompare(b.kind)))
   return NextResponse.json({ nodes: roster, now: Date.now() })
 }

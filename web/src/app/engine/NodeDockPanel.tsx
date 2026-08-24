@@ -94,8 +94,15 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
         </div>
       ) : (
         <div className="divide-y divide-white/5">
-          {rows.map(n => (
-            <div key={n.id}>
+          {rows.map(n => {
+            // SUB-NODES (Galen): "world:atrium" nests under "world" when the
+            // parent slot exists — a sub-node is a FULL node (own history,
+            // hold, heal); the tree is just how the anatomy reads.
+            const sep = n.kind === 'hook' ? n.id.indexOf(':') : -1
+            const parent = sep > 0 ? n.id.slice(0, sep) : null
+            const isChild = !!(parent && rows.some(r => r.id === parent))
+            return (
+            <div key={n.id} className={isChild ? 'pl-5 border-l border-white/5 ml-3' : ''}>
               <button
                 onClick={() => { const next = openId === n.id ? null : n.id; setOpenId(next); if (next && !n.feed) load(next) }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-[13.5px] hover:bg-white/5 transition-colors">
@@ -143,7 +150,7 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
                 </div>
               )}
             </div>
-          ))}
+          )})}
         </div>
       )}
       <div className="px-3 py-2 border-t border-white/10 text-[12px] leading-relaxed text-white/30">
