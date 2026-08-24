@@ -125,45 +125,49 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         )}
       </div>
 
-      {/* the TYPE line — the anchor */}
-      <div className="px-3 pt-2 flex items-center gap-2 min-w-0">
-        <span className="font-mono text-[11px] tracking-[0.18em] uppercase truncate"
+      {/* the TYPE line — the anchor: just the type and what this IS */}
+      <div className="px-3.5 pt-2.5 flex items-center gap-2 min-w-0">
+        <span className="font-mono text-[11.5px] tracking-[0.18em] uppercase truncate"
           style={{ color: typed ? `hsl(${hue} 65% 68%)` : 'rgba(255,255,255,0.3)' }}>
           {typed ? card.type.replace(/-/g, ' ') : 'untyped'}
         </span>
-        {/* THE KIND — toy · world · game (Galen's taxonomy): what this IS.
-            Derived from the anatomy when not declared (rules built → game;
-            multiplayer/big grid → world; else toy). */}
-        <span className={`shrink-0 font-mono text-[9.5px] tracking-[0.12em] px-1 py-px rounded border ${
+        {/* THE KIND — toy · world · game (Galen's taxonomy): derived from the
+            anatomy when not declared (rules built → game; multiplayer/big
+            grid → world; else toy). */}
+        <span className={`ml-auto shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
           card.kind === 'game' ? 'border-violet-300/50 text-violet-200/90'
           : card.kind === 'world' ? 'border-sky-300/40 text-sky-200/80'
           : 'border-amber-300/40 text-amber-200/70'}`}
           title={card.kind === 'game' ? 'a GAME — it has rules, goals, win and lose' : card.kind === 'world' ? 'a WORLD — a place to inhabit, often together' : 'a TOY — pick it up and play, no goals'}>
           {card.kind.toUpperCase()}
         </span>
-        {/* the crew chip — only when editing is actually shared (STATIC said
-            nothing worth a chip; silence is the default now) */}
-        {card.edit.mode !== 'static' && (
-          <span className={`shrink-0 font-mono text-[9.5px] tracking-[0.12em] px-1 py-px rounded border ${
-            card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90' : 'border-sky-300/40 text-sky-200/80'}`}
-            title={card.edit.mode === 'open' ? 'anyone can build here' : 'a crew builds here'}>
-            {card.edit.mode === 'open' ? 'OPEN EDIT' : `${card.edit.editors} EDITORS`}
-          </span>
-        )}
-        {card.tags.length > 0 && (
-          <span className="font-mono text-[10px] text-white/35 truncate">
-            {card.tags.slice(0, featured ? 6 : 3).map(t => '·' + t).join(' ')}
-          </span>
-        )}
       </div>
 
-      {/* rules text */}
-      <p className={`px-3 pt-1 pb-2 text-white/50 leading-snug ${featured ? 'text-[13px] line-clamp-3' : 'text-[12px] line-clamp-2'}`}>
+      {/* categories breathe on their OWN row — crew chip + tags */}
+      {(card.edit.mode !== 'static' || card.tags.length > 0) && (
+        <div className="px-3.5 pt-1.5 flex items-center gap-1.5 min-w-0">
+          {card.edit.mode !== 'static' && (
+            <span className={`shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
+              card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90' : 'border-sky-300/40 text-sky-200/80'}`}
+              title={card.edit.mode === 'open' ? 'anyone can build here' : 'a crew builds here'}>
+              {card.edit.mode === 'open' ? 'OPEN EDIT' : `${card.edit.editors} EDITORS`}
+            </span>
+          )}
+          {card.tags.length > 0 && (
+            <span className="font-mono text-[10.5px] text-white/40 truncate">
+              {card.tags.slice(0, featured ? 8 : 4).map(t => '·' + t).join(' ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* rules text — three lines of room, four when featured */}
+      <p className={`px-3.5 pt-2 pb-2.5 text-white/55 leading-relaxed ${featured ? 'text-[13px] line-clamp-4' : 'text-[12px] line-clamp-3'}`}>
         {card.desc || '—'}
       </p>
 
       {/* footer: maker · base set */}
-      <div className="mt-auto px-3 pb-2.5 flex items-center gap-2 font-mono text-[10.5px] text-white/35">
+      <div className="mt-auto px-3.5 pb-3 flex items-center gap-2 font-mono text-[10.5px] text-white/35">
         <span className="truncate">{card.maker.handle ? '@' + card.maker.handle : card.maker.name || 'the house'}</span>
         {card.base && !card.isBase && (
           <span className="ml-auto shrink-0 text-amber-200/40 truncate">of {card.base}</span>
