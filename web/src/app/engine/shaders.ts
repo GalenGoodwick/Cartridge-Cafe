@@ -50,6 +50,19 @@ struct FrameUniforms {
   _pad3D: vec2f,
 };
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
+
+// THE VIEWBOX (task #20, full-bleed worlds): the camera window in WORLD units —
+// xy = center, zw = half-extents. A screen-canvas visual paints world-anchored
+// content at ANY viewport aspect with:
+//   let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;
+// (uv is the field's -1..1 canvas; -uv.y flips into y-down grid space.)
+fn viewbox() -> vec4f {
+  let vb_aspect = frame.resolution.x / max(frame.resolution.y, 1.0);
+  let vb_range = frame.gridSize / max(frame.zoom, 0.001);
+  var vb_half = vec2f(vb_range, vb_range) * 0.5;
+  if (vb_aspect > 1.0) { vb_half.x = vb_half.x * vb_aspect; } else { vb_half.y = vb_half.y / vb_aspect; }
+  return vec4f(frame.camera, vb_half);
+}
 `
 
 // ─── Per-effect uniform struct (Group 2) ───

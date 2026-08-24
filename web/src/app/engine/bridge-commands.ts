@@ -468,6 +468,15 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
                   if (so.width !== undefined) newField.w = so.width as number
                   if (so.height !== undefined) newField.h = so.height as number
                   if (so.radius !== undefined) newField.radius = so.radius as number
+                } else {
+                  // MIRROR THE PERSIST CHOKEPOINT's default (space-store
+                  // create_field): skinned + no size → 'screen'; explicit
+                  // radius → circle; w/h → rect. Without this, a live tab held
+                  // the field SHAPELESS and its 2s sync laundered the persisted
+                  // 'screen' out of the snapshot (the invisible-backdrop bug).
+                  const hasR = cmd.radius !== undefined
+                  const hasWH = cmd.w !== undefined || cmd.h !== undefined || cmd.width !== undefined || cmd.height !== undefined
+                  newField.shapeType = hasR ? 'circle' : hasWH ? 'rect' : (cmd.visualType !== undefined ? 'screen' : 'circle')
                 }
                 // Also accept top-level w/h/radius
                 if (cmd.radius !== undefined) newField.radius = cmd.radius as number

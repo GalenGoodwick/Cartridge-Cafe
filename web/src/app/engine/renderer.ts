@@ -1664,6 +1664,7 @@ fn uni(i: i32) -> f32 { return 0.0; }
 fn uni4(i: i32) -> vec4f { return vec4f(0.0); }
 fn pop(i: i32) -> vec4f { return vec4f(0.0); }
 fn popCount() -> i32 { return 0; }
+fn viewbox() -> vec4f { return vec4f(256.0, 256.0, 256.0, 256.0); }
 fn pix() -> vec2f { return vec2f(0.0); }
 fn prevHere() -> vec4f { return vec4f(0.0); }
 fn prevAt(o: vec2f) -> vec4f { return vec4f(0.0); }
