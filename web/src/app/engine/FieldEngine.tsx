@@ -6238,7 +6238,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* items-stretch → every control in the dock takes the SAME width (the
               widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
               one clean column instead of ragged-right buttons */}
-          <div data-cc-chrome ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport || playMode ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+          <div data-cc-chrome ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain pr-0.5 ${viewport || playMode ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
             {/* GAMEPLAY MODE — one tap strips ALL chrome so the world plays clean.
                 Game worlds only; hubs are navigation surfaces. */}
             {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (

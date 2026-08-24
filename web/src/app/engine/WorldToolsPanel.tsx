@@ -3,6 +3,7 @@
 // (DESIGN-fieldengine-carve.md, Phase 4). Pure move, byte-identical body.
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import { can, type WorldContext } from '@/lib/worldContext'
 import type { FieldSimulation } from './simulation'
@@ -152,6 +153,12 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                       </div>
                     )
                   })()}
+                  {/* THE CARD (Galen: "does a world have a config button?") —
+                      the owner sets what the catalog says: KIND (or auto — the
+                      anatomy decides), TYPE (from the vocabulary), tags, the
+                      blurb, and the STORY (vision). Writes land on worldData
+                      and persist with the world; the card feed serves them. */}
+                  {spaceId && canEditLaw && <CardConfig simulationRef={simulationRef} setToolsTick={setToolsTick} />}
                   {/* winner-takes-main RETIRED with the podium (branch→fork
                       transition): world votes no longer exist, so no challenger
                       can win — or take — anything. Your main is simply yours. */}
@@ -217,4 +224,72 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                 )}
               </div>
             )
+}
+
+
+/** THE CARD config — kind/type/tags/blurb/story, owner-editable. Values write
+ *  straight onto sim.worldData (the tab's 2s sync persists them); kind AUTO
+ *  removes the declaration so the anatomy decides (deriveKind). */
+function CardConfig({ simulationRef, setToolsTick }: {
+  simulationRef: MutableRefObject<FieldSimulation | null>
+  setToolsTick: Dispatch<SetStateAction<number>>
+}) {
+  const sim = simulationRef.current
+  const wd = sim?.worldData as Record<string, unknown> | undefined
+  const card = (wd?.card && typeof wd.card === 'object' ? wd.card : {}) as { type?: string; tags?: string[]; kind?: string }
+  const [types, setTypes] = useState<Array<{ id: string; label: string }>>([])
+  const [tagsDraft, setTagsDraft] = useState((card.tags ?? []).join(', '))
+  const [blurbDraft, setBlurbDraft] = useState(typeof wd?.blurb === 'string' ? wd.blurb : '')
+  const [storyDraft, setStoryDraft] = useState(typeof wd?.vision === 'string' ? wd.vision : '')
+  useEffect(() => {
+    fetch('/api/cards?types=1').then(r => r.json()).then(d => setTypes(d.types ?? [])).catch(() => {})
+  }, [])
+  const writeCard = (patch: Record<string, unknown>) => {
+    const s2 = simulationRef.current; if (!s2) return
+    const cur = (s2.worldData['card'] && typeof s2.worldData['card'] === 'object' ? s2.worldData['card'] : {}) as Record<string, unknown>
+    const next = { ...cur, ...patch }
+    for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]
+    s2.worldData['card'] = next
+    setToolsTick(n => n + 1)
+  }
+  const kindNow = card.kind === 'toy' || card.kind === 'world' || card.kind === 'game' ? card.kind : 'auto'
+  return (
+    <div className="space-y-2 pt-1">
+      <div className="text-[14px] tracking-[0.2em] text-white/40">THE CARD</div>
+      <div className="flex items-center gap-1.5 text-[13px]">
+        {(['auto', 'toy', 'world', 'game'] as const).map(k => (
+          <button key={k}
+            onClick={() => writeCard({ kind: k === 'auto' ? undefined : k })}
+            title={k === 'auto' ? 'the anatomy decides: rules built → game; multiplayer/big grid → world; else toy' : k}
+            className={`px-2 py-0.5 rounded-full border transition-colors ${kindNow === k
+              ? 'border-amber-300/60 bg-amber-400/15 text-amber-200'
+              : 'border-white/20 text-white/50 hover:text-white'}`}>
+            {k.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      <select value={card.type ?? ''}
+        onChange={e => writeCard({ type: e.target.value || undefined })}
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 outline-none focus:border-amber-300/50">
+        <option value="">type… (the vocabulary)</option>
+        {types.map(t => <option key={t.id} value={t.id}>{t.label ?? t.id}</option>)}
+      </select>
+      <input value={tagsDraft} onChange={e => setTagsDraft(e.target.value)}
+        onBlur={() => writeCard({ tags: tagsDraft.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) })}
+        placeholder="tags, comma, separated"
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+      <input value={blurbDraft} onChange={e => setBlurbDraft(e.target.value)}
+        onBlur={() => { const s2 = simulationRef.current; if (s2) { s2.worldData['blurb'] = blurbDraft.trim(); setToolsTick(n => n + 1) } }}
+        placeholder="the blurb — one line the card shows"
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+      <textarea value={storyDraft} onChange={e => setStoryDraft(e.target.value)}
+        onBlur={() => { const s2 = simulationRef.current; if (s2) { s2.worldData['vision'] = storyDraft.trim(); setToolsTick(n => n + 1) } }}
+        placeholder="the story (vision) — what this world IS; the desc falls back to its first line"
+        rows={3}
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[13px] leading-snug text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50 resize-y" />
+      <div className="text-[12px] text-white/30 leading-snug">
+        instructions have their own door — the ? INSTRUCTIONS panel. Everything here lands on the card the catalog deals.
+      </div>
+    </div>
+  )
 }

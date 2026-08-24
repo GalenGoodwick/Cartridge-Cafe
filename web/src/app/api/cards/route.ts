@@ -88,6 +88,12 @@ function serve(cards: Card[], url: URL) {
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
+  // ?types=1 → the card-type vocabulary (public read — World Tools' type picker)
+  if (url.searchParams.get('types') === '1') {
+    const { readTypeRegistry } = await import('../engine/cards-registry')
+    const reg = await readTypeRegistry()
+    return NextResponse.json({ types: reg.types })
+  }
   const tab = url.searchParams.get('tab')
   const rows = await cached('cards', 'public', CARDS_TTL_MS, fetchRows)
   // THE FOUR TABS (Galen's ruling): PUBLISHED · FORKABLE (bases + worlds with
