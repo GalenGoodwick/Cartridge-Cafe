@@ -36,6 +36,7 @@ const row = (id: string, slug: string, over: Partial<FeedRow> = {}): FeedRow => 
   forkable: false,
   buildMode: 'owner',
   members: 0,
+  kind: 'toy' as const,
   ...over,
 })
 

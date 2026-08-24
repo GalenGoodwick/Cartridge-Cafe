@@ -74,12 +74,12 @@ export async function handleProposeCardType(cmd: { label?: unknown; desc?: unkno
  *  Persisted via applyCommandToSnapshot so __bridge_rev bumps exactly like
  *  every other bridge write — open tabs hot-adopt the card. */
 export async function handleSetCard(spaceId: string, cmd: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const nested = (cmd.card && typeof cmd.card === 'object' ? cmd.card : undefined) as { type?: unknown; tags?: unknown } | undefined
-  const candidate = { type: nested?.type ?? cmd.cardType, tags: nested?.tags ?? cmd.tags }
+  const nested = (cmd.card && typeof cmd.card === 'object' ? cmd.card : undefined) as { type?: unknown; tags?: unknown; kind?: unknown } | undefined
+  const candidate = { type: nested?.type ?? cmd.cardType, tags: nested?.tags ?? cmd.tags, kind: nested?.kind ?? cmd.kind }
   const reg = await readTypeRegistry()
   const v = validateCard(candidate, reg.types)
   if (!v.ok) {
-    return { type: 'set_card', ok: false, error: v.error, usage: 'set_card {cardType:"<id from card_types>", tags?:["2d","multiplayer"]}' }
+    return { type: 'set_card', ok: false, error: v.error, usage: 'set_card {cardType:"<id from card_types>", tags?:["2d","multiplayer"], kind?:"toy"|"world"|"game"}' }
   }
   await applyCommandToSnapshot(spaceId, { type: 'set_world_data', data: { card: v.card } })
   return {

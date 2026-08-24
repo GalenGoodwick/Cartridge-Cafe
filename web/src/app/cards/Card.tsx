@@ -131,13 +131,25 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
           style={{ color: typed ? `hsl(${hue} 65% 68%)` : 'rgba(255,255,255,0.3)' }}>
           {typed ? card.type.replace(/-/g, ' ') : 'untyped'}
         </span>
+        {/* THE KIND — toy · world · game (Galen's taxonomy): what this IS.
+            Derived from the anatomy when not declared (rules built → game;
+            multiplayer/big grid → world; else toy). */}
         <span className={`shrink-0 font-mono text-[9.5px] tracking-[0.12em] px-1 py-px rounded border ${
-          card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90'
-          : card.edit.mode === 'crew' ? 'border-sky-300/40 text-sky-200/80'
-          : 'border-white/15 text-white/30'}`}
-          title={card.edit.mode === 'open' ? 'anyone can build here' : card.edit.mode === 'crew' ? 'a crew builds here' : 'only its maker builds here'}>
-          {card.edit.mode === 'open' ? 'OPEN EDIT' : card.edit.mode === 'crew' ? `${card.edit.editors} EDITORS` : 'STATIC'}
+          card.kind === 'game' ? 'border-violet-300/50 text-violet-200/90'
+          : card.kind === 'world' ? 'border-sky-300/40 text-sky-200/80'
+          : 'border-amber-300/40 text-amber-200/70'}`}
+          title={card.kind === 'game' ? 'a GAME — it has rules, goals, win and lose' : card.kind === 'world' ? 'a WORLD — a place to inhabit, often together' : 'a TOY — pick it up and play, no goals'}>
+          {card.kind.toUpperCase()}
         </span>
+        {/* the crew chip — only when editing is actually shared (STATIC said
+            nothing worth a chip; silence is the default now) */}
+        {card.edit.mode !== 'static' && (
+          <span className={`shrink-0 font-mono text-[9.5px] tracking-[0.12em] px-1 py-px rounded border ${
+            card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90' : 'border-sky-300/40 text-sky-200/80'}`}
+            title={card.edit.mode === 'open' ? 'anyone can build here' : 'a crew builds here'}>
+            {card.edit.mode === 'open' ? 'OPEN EDIT' : `${card.edit.editors} EDITORS`}
+          </span>
+        )}
         {card.tags.length > 0 && (
           <span className="font-mono text-[10px] text-white/35 truncate">
             {card.tags.slice(0, featured ? 6 : 3).map(t => '·' + t).join(' ')}

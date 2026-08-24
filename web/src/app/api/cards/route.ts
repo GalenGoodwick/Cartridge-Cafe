@@ -1,5 +1,5 @@
 import { getServerSession } from 'next-auth'
-import { cardFromRow, type Card } from '@/lib/cards'
+import { cardFromRow, deriveKind, type Card, type CardKind } from '@/lib/cards'
 export type { Card } from '@/lib/cards'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
@@ -49,6 +49,7 @@ export interface FeedRow {
   forkable: boolean
   buildMode: 'anyone' | 'invited' | 'owner'
   members: number                    // live member:<handle> keys (distinct handles)
+  kind: CardKind                     // toy · world · game (Galen's taxonomy)
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -225,8 +226,18 @@ async function fetchRows(): Promise<FeedRow[]> {
 // cache never holds (and the wire never sees) whole world snapshots.
 function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | null; email: string | null } | null; _count: { forks: number; versions: number }; tokens?: Array<{ name: string | null }>; updatedAt: Date; id: string; slug: string; name: string; forkOfId: string | null; isPublic: boolean }>): FeedRow[] {
   return spaces.map(({ snapshot, owner, _count, tokens, updatedAt, ...rest }) => {
-    const sn = snapshot as { worldData?: Record<string, unknown>; fields?: IconField[]; visualTypes?: IconVisual[]; modules?: IconVisual[] } | null
+    const sn = snapshot as { worldData?: Record<string, unknown>; fields?: IconField[]; visualTypes?: IconVisual[]; modules?: IconVisual[]; stepHooks?: Array<{ id?: string; code?: string }>; worldParams?: { gridSize?: number; gridW?: number; gridH?: number } } | null
     const wd = sn?.worldData || {}
+    // THE KIND (toy·world·game): the anatomy tells us — see lib/cards.deriveKind
+    const rulesHook = (sn?.stepHooks || []).find(h => h?.id === 'rules')
+    const rulesBuilt = !!rulesHook?.code && rulesHook.code.length > 40 && !/blank slot/.test(rulesHook.code)
+    const wpK = sn?.worldParams || {}
+    const kind = deriveKind({
+      declared: (wd.card as { kind?: unknown } | undefined)?.kind,
+      rulesBuilt,
+      multiplayer: !!wd.mpManifest,
+      gridBeyond: (wpK.gridSize ?? 512) > 512 || wpK.gridW !== undefined || wpK.gridH !== undefined,
+    })
     // the LIVE art window: compose the world's icon shader (browse's law) —
     // small WGSL strings; the grid compiles them client-side, PNG is the fallback
     let iconWgsl: string | null = null
@@ -252,6 +263,7 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       hue,
       isPublic: (rest as { isPublic?: boolean }).isPublic !== false,
       forkable: wd.forkable === true,
+      kind,
       buildMode: (() => { const p = wd.policy as { build?: string } | undefined
         return p?.build === 'anyone' ? 'anyone' : p?.build === 'invited' ? 'invited' : 'owner' })(),
       members: new Set((tokens ?? []).map(t => t.name)).size,

@@ -36,15 +36,21 @@ export function normalizeTags(raw: unknown): string[] {
  *  record or the refusal reason — the set_card verb and the publish gate share
  *  this one truth. */
 export function validateCard(
-  candidate: { type?: unknown; tags?: unknown },
+  candidate: { type?: unknown; tags?: unknown; kind?: unknown },
   registry: CardType[],
-): { ok: true; card: { type: string; tags: string[] } } | { ok: false; error: string } {
+): { ok: true; card: { type: string; tags: string[]; kind?: CardKind } } | { ok: false; error: string } {
   const typeId = typeof candidate.type === 'string' ? normalizeTypeId(candidate.type) : ''
   if (!typeId) return { ok: false, error: 'card.type is required — pick one from card_types (or propose_card_type if nothing fits)' }
   if (!registry.some(t => t.id === typeId)) {
     return { ok: false, error: `"${typeId}" is not in the type list — card_types shows the vocabulary; propose_card_type {label} to grow it` }
   }
-  return { ok: true, card: { type: typeId, tags: normalizeTags(candidate.tags) } }
+  // THE KIND (toy · world · game) is optional — undeclared derives from the
+  // anatomy (deriveKind). A declared kind must be one of the three.
+  const kind = candidate.kind
+  if (kind !== undefined && kind !== 'toy' && kind !== 'world' && kind !== 'game') {
+    return { ok: false, error: 'card.kind must be "toy", "world", or "game" (or omit it — the anatomy decides)' }
+  }
+  return { ok: true, card: { type: typeId, tags: normalizeTags(candidate.tags), ...(kind !== undefined ? { kind: kind as CardKind } : {}) } }
 }
 
 /** Append a proposed type to the registry (dedup by id). Returns the (possibly
@@ -97,6 +103,26 @@ export function orderGrid<T extends CardRow>(base: T | null, family: T[]): T[] {
   return base ? [base, ...rest] : rest
 }
 
+// ── THE KIND — toy · world · game (Galen's taxonomy, Aug 24) ─────────────────
+// A TOY is played with (open interaction, no goals). A GAME has RULES (goals,
+// win/lose). A WORLD is a PLACE — inhabited, usually together. Declared via
+// set_card {kind}, else DERIVED from the anatomy: real code in the `rules`
+// slot → game; multiplayer or a big grid (a place you travel) → world; else
+// toy. The anatomy is the taxonomy — worlds tell us what they are.
+export type CardKind = 'toy' | 'world' | 'game'
+
+export function deriveKind(input: {
+  declared?: unknown
+  rulesBuilt?: boolean          // the rules slot carries real (non-charter) code
+  multiplayer?: boolean         // mpManifest declared
+  gridBeyond?: boolean          // gridSize/gridW/gridH beyond the 512 square
+}): CardKind {
+  if (input.declared === 'toy' || input.declared === 'world' || input.declared === 'game') return input.declared
+  if (input.rulesBuilt) return 'game'
+  if (input.multiplayer || input.gridBeyond) return 'world'
+  return 'toy'
+}
+
 // ── the CARD — SPEC.cards.md's one shape the feed serves and the UI consumes ──
 // (interface below — the battle-grown version the UI consumes)
 
@@ -141,6 +167,7 @@ export interface Card {
   forkOf: string | null
   counts: { forks: number; versions: number }
   isBase: boolean
+  kind: CardKind                     // toy · world · game (declared or derived)
   mobileReady: boolean
   playable: boolean                  // isPublic — false = a draft (MY/OUR only)
   edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
@@ -179,6 +206,7 @@ export function cardFromRow(
         : { mode: 'static' as const, editors: 1 } })(),
     mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
     isBase: Boolean(wd.__base),   // truthiness — legacy worlds carry 1
+    kind: (row as { kind?: CardKind }).kind ?? 'toy',
     updatedAt: row.updatedAt,
   }
 }

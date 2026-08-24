@@ -220,6 +220,7 @@ describe('cardFromRow', () => {
       forkOf: 'cinderfell',
       counts: { forks: 3, versions: 7 },
       isBase: false,
+      kind: 'toy',
       mobileReady: false,
       playable: true,
       edit: { mode: 'static', editors: 1 },
