@@ -1,9 +1,11 @@
-// THE CUTOVER (Galen, Aug 24: "it is time to let go of the old cafe circle
-// icons main — switch the cards view to main"). `/` is the card main now;
-// the old bubble door lives on at /door (and one day becomes EXPLORATION
-// MODE — DESIGN-exploration-mode.md).
+// THE CUTOVER, ENV-GATED (Galen, Aug 24: "prod is not cards on main").
+// `/` serves the card main only where CARD_MAIN=1 (dev has it; prod does not
+// yet). Everywhere else `/` stays the classic bubble-shelf main and the card
+// catalog remains reachable at /cards. The prod cutover is therefore a one-var
+// flip in Vercel — no code change, instant rollback by unsetting it.
 import CardsMain from '@/app/cards/page'
+import CafeShell from '@/app/CafeShell'
 
 export default function Main() {
-  return <CardsMain />
+  return process.env.CARD_MAIN === '1' ? <CardsMain /> : <CafeShell />
 }
