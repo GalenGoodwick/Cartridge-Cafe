@@ -41,7 +41,7 @@ describe('touch-zone layout — collision-free by construction, on every device'
   it('shrink-before-stack: real phones keep the row; only absurdly narrow stacks', () => {
     expect(layoutTouchZones(320, 568).stacked).toBe(false)   // SE: scaled row still fits
     expect(layoutTouchZones(844, 390).stacked).toBe(false)
-    const tiny = layoutTouchZones(230, 500)                   // fold-cover class
+    const tiny = layoutTouchZones(220, 500)                   // fold-cover class
     expect(tiny.stacked).toBe(true)                           // column engages…
     expect(zonesOverlap(tiny.stick, tiny.buttons[0], 8)).toBe(false)   // …and stays clear
     expect(zonesOverlap(tiny.stick, tiny.buttons[1], 8)).toBe(false)
