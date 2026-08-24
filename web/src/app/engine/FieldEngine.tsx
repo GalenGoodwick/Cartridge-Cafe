@@ -2320,7 +2320,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // the whole world at max size in the viewport; letterbox is honest,
         // cropping is not (a wide monitor was losing 40% of every scene).
         // (Backed out a touch — FIT_ZOOM — so the chrome doesn't overflow the grid.)
-        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: FIT_ZOOM }
+        // TASK #20 PARITY: same resting zoom as fit() — a big grid opens on a
+        // ~512-unit WINDOW of itself (the camera travels), never whole-grid
+        // contain. Plain FIT_ZOOM here painted a 2048×768 TERRITORY as a
+        // 37.5%-tall band with void below (Galen's screenshot, Aug 23).
+        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE)) }
 
         // three sources, in order of specificity:
         //  · a 'space:slug' descriptor → a DB-backed player space's live
