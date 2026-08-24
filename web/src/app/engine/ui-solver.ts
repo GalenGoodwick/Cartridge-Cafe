@@ -98,6 +98,12 @@ export interface SolveInput {
   /** entity screen positions for anchor:{entity} — worldData.__entities convention: sx,sy in 0..512 grid */
   entities?: Array<{ id?: string | number; label?: string; sx: number; sy: number; r?: number }>
   overrides?: Record<string, UiOverride>
+  /** CHROME-SAFE INSETS (design units): bands of the square the SITE's own
+   *  chrome covers (name plate top, rail right, pills bottom). Top-level
+   *  panels CLAMP into the remaining safe rect — a world's UI can never land
+   *  under the cafe's chrome again (the blank-2d collision, task #19).
+   *  Omitted/zero = exactly the old behavior. */
+  insets?: { top?: number; right?: number; bottom?: number; left?: number }
 }
 
 export interface SolvedUi {
@@ -370,8 +376,19 @@ export function solveUi(input: SolveInput): SolvedUi {
     const h = ov.h ?? (panel.h != null && panel.h !== 'auto' ? units(panel.h, size.h) : size.h)
 
     const tl = anchorTL(panel, w, h, entities, out.rects)
-    const x = tl.x + (ov.dx ?? 0)
-    const y = tl.y + (ov.dy ?? 0)
+    let x = tl.x + (ov.dx ?? 0)
+    let y = tl.y + (ov.dy ?? 0)
+    // CHROME-SAFE: clamp the panel into the square minus the chrome bands.
+    // A panel taller/wider than the safe rect pins to its top-left (never
+    // pushed off the far side); entity-anchored panels clamp too — a name
+    // tag ducks under the plate rather than vanishing beneath it.
+    {
+      const ins = input.insets ?? {}
+      const sx0 = ins.left ?? 0, sy0 = ins.top ?? 0
+      const sx1 = GRID - (ins.right ?? 0), sy1 = GRID - (ins.bottom ?? 0)
+      x = Math.max(sx0, Math.min(x, Math.max(sx0, sx1 - w)))
+      y = Math.max(sy0, Math.min(y, Math.max(sy0, sy1 - h)))
+    }
 
     // glass box under the content
     let boxRef: SolvedBox | null = null

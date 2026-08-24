@@ -70,7 +70,7 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, 
   // page, not the old /maker/<id> list. Only linkable when we know the handle.
   const makerHref = ownerHandle ? `/u/${encodeURIComponent(ownerHandle)}` : null
   return (
-    <div className={`${inline ? '' : 'absolute left-3 top-3 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
+    <div data-cc-chrome className={`${inline ? '' : 'absolute left-3 top-3 z-40 '}pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/10`}>
       <div className="text-[16px] tracking-[0.2em] text-white/85">
         {/* the live badge — a soft red pulse before the name while a builder works */}
         {devLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle animate-pulse" aria-hidden />}

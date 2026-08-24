@@ -66,8 +66,13 @@ export const PLACEHOLDER_NODES: PlaceholderNode[] = [
   {
     id: 'hud',
     description: 'what the player sees about the game — score, prompts, state',
-    code: `// ── HUD — this node owns the display layer: write sim.worldData.hud
-// entries (score, prompts, timers). Show conclusions, not internals.
+    code: `// ── HUD — this node owns the display layer. Use THE UI SYSTEM:
+// write sim.worldData.ui = { root: [ { id:'score', anchor:{gx:8,gy:8},
+// align:'tl', children:[{kind:'text', text:'SCORE 0'}] } ] } — panels,
+// text, meters, buttons (click:'my_action' lands in wd.__uiClick).
+// The engine SOLVES the layout (worldData.__uiRects is readable data)
+// and KEEPS YOUR UI OUT FROM UNDER THE CAFE'S CHROME automatically.
+// Show conclusions, not internals. (Legacy wd.hud still works.)
 `,
   },
   {

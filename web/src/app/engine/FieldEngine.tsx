@@ -964,6 +964,47 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // worldData.ui via the ui-solver) + a geometry fingerprint so __uiRects only
   // republishes on real change
   const uiSolvedRef = useRef<SolvedUi | null>(null)
+  // CHROME-SAFE INSETS (task #19): every element tagged data-cc-chrome is
+  // measured against the resting world square; its overlap becomes a reserved
+  // band (design units) the ui-solver keeps world panels out of. Vertical-ish
+  // overlaps reserve left/right, horizontal-ish reserve top/bottom.
+  const chromeInsetsRef = useRef<{ top: number; right: number; bottom: number; left: number }>({ top: 0, right: 0, bottom: 0, left: 0 })
+  useEffect(() => {
+    const measure = () => {
+      const cnv = canvasRef.current
+      if (!cnv) return
+      const cr = cnv.getBoundingClientRect()
+      const side = Math.min(cr.width, cr.height)
+      if (side <= 0) return
+      const sq = { x: cr.left + (cr.width - side) / 2, y: cr.top + (cr.height - side) / 2, s: side }
+      const u = 512 / side   // px → design units
+      const ins = { top: 0, right: 0, bottom: 0, left: 0 }
+      document.querySelectorAll('[data-cc-chrome]').forEach(el => {
+        const r = (el as HTMLElement).getBoundingClientRect()
+        if (r.width <= 0 || r.height <= 0) return
+        const ox = Math.min(r.right, sq.x + sq.s) - Math.max(r.left, sq.x)
+        const oy = Math.min(r.bottom, sq.y + sq.s) - Math.max(r.top, sq.y)
+        if (ox <= 0 || oy <= 0) return
+        if (oy > ox) {   // tall overlap → side band
+          const fromLeft = (r.left + r.right) / 2 < sq.x + sq.s / 2
+          if (fromLeft) ins.left = Math.max(ins.left, (Math.min(r.right, sq.x + sq.s) - sq.x) * u)
+          else ins.right = Math.max(ins.right, (sq.x + sq.s - Math.max(r.left, sq.x)) * u)
+        } else {         // wide overlap → top/bottom band
+          const fromTop = (r.top + r.bottom) / 2 < sq.y + sq.s / 2
+          if (fromTop) ins.top = Math.max(ins.top, (Math.min(r.bottom, sq.y + sq.s) - sq.y) * u)
+          else ins.bottom = Math.max(ins.bottom, (sq.y + sq.s - Math.max(r.top, sq.y)) * u)
+        }
+      })
+      // never reserve more than a third per band — chrome bugs must not eat the world
+      ins.top = Math.min(ins.top, 170); ins.bottom = Math.min(ins.bottom, 170)
+      ins.left = Math.min(ins.left, 170); ins.right = Math.min(ins.right, 170)
+      chromeInsetsRef.current = ins
+    }
+    measure()
+    const t = setInterval(measure, 900)
+    window.addEventListener('resize', measure)
+    return () => { clearInterval(t); window.removeEventListener('resize', measure) }
+  }, [])
   const uiRectsFpRef = useRef(-1)
   const nameToIdRef = useRef<Map<string, string>>(new Map())
   const lastFieldCountRef = useRef<number>(0)
@@ -4644,6 +4685,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
             ui: uiT,
             entities: sim.worldData['__entities'] as Parameters<typeof solveUi>[0]['entities'],
             overrides: sim.worldData['__uiOverrides'] as Record<string, UiOverride> | undefined,
+            insets: chromeInsetsRef.current,   // chrome-safe: world UI never lands under the cafe's own plate/rail/pills
           })
           uiSolvedRef.current = solved
           renderer.setUiSolved(solved)
@@ -6031,7 +6073,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
 
           {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
           {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !viewport && !playMode && (
-            <button
+            <button data-cc-chrome
               onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
               className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
               title={chatLive.people > 0 ? `${chatLive.people} in the BuilderBox now — chat + build console; entries can summon AI builders` : 'BuilderBox — the world\'s chat + build console'}
@@ -6050,7 +6092,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           {/* items-stretch → every control in the dock takes the SAME width (the
               widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
               one clean column instead of ragged-right buttons */}
-          <div ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport || playMode ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+          <div data-cc-chrome ref={dockRef} className={`absolute right-3 z-40 flex flex-col items-stretch gap-1.5 ${viewport || playMode ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
             {/* GAMEPLAY MODE — one tap strips ALL chrome so the world plays clean.
                 Game worlds only; hubs are navigation surfaces. */}
             {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
