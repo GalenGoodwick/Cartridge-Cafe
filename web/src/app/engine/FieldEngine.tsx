@@ -2230,17 +2230,46 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // (top bars, tool rail, VOTE, instructions) breathes AROUND the grid
   // instead of overflowing onto in-world content at the edges.
   const FIT_ZOOM = 0.93
+  // MAX EXPANSION (Galen, Aug 23: "different resolutions all work"): the COVER
+  // FLOOR — at the current viewport aspect, zoom may never be so far out that
+  // the camera window exceeds the playable rect. Without it, any aspect whose
+  // window overshoots the world (portrait, split-screen, odd monitors) showed
+  // void bands instead of world. zoom is world-cells-per-short-axis, so:
+  //   visW = range·max(aspect,1) ≤ gridW  and  visH = range/min(aspect,1) ≤ gridH
+  // give the largest legal range; the floor is gridSize/that. Applied at every
+  // resting reset AND per-frame in clampCamera (so hook-driven zooms hold too).
+  const coverZoomFloor = () => {
+    const sim = simulationRef.current
+    const wp = (sim?.worldParams ?? {}) as { gridW?: number; gridH?: number }
+    // ONLY declared-rect worlds get the cover floor. Classic square worlds are
+    // DESIGNED contain-style (whole world visible, letterbox honest) — forcing
+    // cover would crop every legacy 512 world ~2× on a wide monitor.
+    if (!wp.gridW && !wp.gridH) return 0
+    const cnv = canvasRef.current
+    const aspect = cnv && cnv.clientWidth > 0 && cnv.clientHeight > 0 ? cnv.clientWidth / cnv.clientHeight : 1
+    const bW = wp.gridW ?? gridSize
+    const bH = wp.gridH ?? gridSize
+    const maxRange = Math.min(bW / Math.max(aspect, 1), bH * Math.min(aspect, 1))
+    return maxRange > 0 ? gridSize / maxRange : 0
+  }
+  const restingZoom = () =>
+    Math.max(FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE)), coverZoomFloor())
+  // keep the load-path reset (below) on the same math without threading closures
+  const restingZoomRef = useRef(restingZoom)
+  restingZoomRef.current = restingZoom
+
   useEffect(() => {
     if (!playScene && !spaceId) return
     const fit = () => {
       cameraRef.current.x = gridSize / 2
       cameraRef.current.y = gridSize / 2
       // A BIG GRID IS TERRITORY, NOT A SHRUNKEN MAP (Galen, task #20): the
-      // resting view is always a ~512-unit WINDOW. A 512 world fits exactly
-      // (zoom ratio 1 — unchanged); a 1024 world opens on a quarter of
-      // itself and the camera TRAVELS (world hooks drive it via
+      // resting view is always a ~512-unit WINDOW — floored by COVER so the
+      // window never overshoots the rect at this viewport's aspect. A 512
+      // world fits exactly (zoom ratio 1 — unchanged); a 1024 world opens on
+      // a quarter of itself and the camera TRAVELS (world hooks drive it via
       // worldData.__camera, AIs via set_camera).
-      cameraRef.current.zoom = FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE))
+      cameraRef.current.zoom = restingZoom()
     }
     fit()
     const t = setTimeout(fit, 300)   // after the canvas settles
@@ -2324,7 +2353,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // ~512-unit WINDOW of itself (the camera travels), never whole-grid
         // contain. Plain FIT_ZOOM here painted a 2048×768 TERRITORY as a
         // 37.5%-tall band with void below (Galen's screenshot, Aug 23).
-        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE)) }
+        // (restingZoomRef also carries the COVER floor — max expansion at any
+        // viewport aspect.)
+        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: restingZoomRef.current() }
 
         // three sources, in order of specificity:
         //  · a 'space:slug' descriptor → a DB-backed player space's live
@@ -4357,6 +4388,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         if (!playScene && !spaceId) return   // free pan on the editor bench
         const cnvC = canvasRef.current
         if (!cnvC) return
+        // COVER floor (max expansion): whatever set the zoom — hooks, resize,
+        // set_camera — the window never exceeds the playable rect.
+        camera.zoom = Math.max(camera.zoom, coverZoomFloor())
         const aspectC = cnvC.clientWidth > 0 && cnvC.clientHeight > 0 ? cnvC.clientWidth / cnvC.clientHeight : 1
         const rangeC = gridSize / Math.max(0.1, camera.zoom)
         const visW = aspectC > 1 ? rangeC * aspectC : rangeC
