@@ -165,6 +165,10 @@ export interface WorldParams {
   bounciness: number
   /** Gravitational constant for n-body attraction between fields (0 = off, positive = attract, negative = repel) */
   gravitationalConstant: number
+  /** THE GRID'S SIZE (task #20): the world's coordinate space is gridSize ×
+   *  gridSize (default 512). Declared at fork/creation (set_world_params);
+   *  takes effect on world load — the engine constructs at this size. */
+  gridSize?: number
 }
 
 /** Memory entry types for field agent history */

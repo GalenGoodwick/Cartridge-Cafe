@@ -15,9 +15,10 @@ import FollowButton from './FollowButton'
  *  vote that competed MAIN vs a world's public branches — is gone. Remixing a
  *  world FORKS it (an owned playerSpace with forkOf lineage), never enters a
  *  challenger for a vote. SpaceToolbar is gone — /space and /play render one chrome. */
-export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
+export default function SpaceStage({ spaceId, spaceSlug, gridSize, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
   spaceId: string
   spaceSlug: string
+  gridSize?: number
   engineOwner: boolean
   isOwner: boolean
   versionView?: number
@@ -155,6 +156,7 @@ export default function SpaceStage({ spaceId, spaceSlug, engineOwner, isOwner, v
       <FieldEngine
         spaceId={spaceId}
         spaceSlug={spaceSlug}
+        gridSize={gridSize}
         spaceName={name}
         spaceOwnerName={ownerName}
         spaceOwnerHandle={ownerHandle}

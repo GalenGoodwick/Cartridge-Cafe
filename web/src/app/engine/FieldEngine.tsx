@@ -46,6 +46,9 @@ import { TouchControls } from './TouchControls'
 interface FieldEngineProps {
   spaceId?: string
   spaceSlug?: string
+  /** the world's declared grid (worldParams.gridSize, server-read) — the
+   *  engine constructs at this size from frame 0; default 512 */
+  gridSize?: number
   /** the space's human name + owner — so the ONE FOCUS chip titles a space
    *  exactly like it titles a world (SpaceToolbar used to own this). */
   spaceName?: string
@@ -128,7 +131,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -1024,7 +1027,10 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, [onDockRect])
 
   // Camera
-  const gridSize = DEFAULT_GRID_SIZE
+  // THE GRID (task #20): per-world size, declared in worldParams.gridSize and
+  // server-read so the engine is born at the right dimensions (no resize dance)
+  const gridSize = gridSizeProp && Number.isFinite(gridSizeProp) && gridSizeProp >= 64 && gridSizeProp <= 4096
+    ? Math.round(gridSizeProp) : DEFAULT_GRID_SIZE
   const cameraRef = useRef<Camera>({ x: gridSize / 2, y: gridSize / 2, zoom: 1 })
   const [, forceUpdate] = useState(0)
 

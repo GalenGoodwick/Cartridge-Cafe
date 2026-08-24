@@ -764,6 +764,21 @@ export function applyCommandToSnapshotObject(
           snap.worldParams = { ...snap.worldParams, [k]: cmd[k] } as SceneSnapshot['worldParams']
         }
       }
+      // GRID DIMENSIONS (task #20): worlds beyond 512×512. Clamped [64, 4096];
+      // the engine constructs at this size on load, so a change on a LIVE
+      // world takes effect when the tab reloads — warn honestly.
+      {
+        const gRaw = (cmd.params as Record<string, unknown> | undefined)?.gridSize ?? cmd.gridSize
+        if (gRaw !== undefined) {
+          const g = Math.round(Number(gRaw))
+          if (!Number.isFinite(g) || g < 64 || g > 4096) {
+            result.error = `gridSize must be an integer 64..4096 (got ${String(gRaw)})`
+            return result
+          }
+          snap.worldParams = { ...snap.worldParams, gridSize: g } as SceneSnapshot['worldParams']
+          result.warning = `gridSize ${g} persisted — the engine constructs at this size on WORLD LOAD; open tabs keep their current grid until reload`
+        }
+      }
       break
     }
 

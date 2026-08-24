@@ -75,6 +75,13 @@ export async function POST(
     // forkability is OPT-IN per world, never inherited: a fork of a forkable
     // world is born unforkable until ITS maker flips the World Tools toggle
     delete snapObj.worldData.forkable
+    // GRID DIMENSIONS SET AT FORK (Galen's ruling, task #20): the forker may
+    // declare their world's coordinate space; otherwise the source's carries
+    const gReq = Math.round(Number(body.gridSize))
+    if (Number.isFinite(gReq) && gReq >= 64 && gReq <= 4096) {
+      const so = source.snapshot as { worldParams?: Record<string, unknown> }
+      so.worldParams = { ...(so.worldParams ?? {}), gridSize: gReq }
+    }
   }
 
   // race-safe unique slug (the old findUnique-then-create raced on the final
