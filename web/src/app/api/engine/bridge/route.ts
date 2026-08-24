@@ -331,6 +331,23 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   const broken = visuals.filter(v => v.name && !renderable.has(v.name)).map(v => v.name)
   if (broken.length) warnings.push(`visual(s) with no "fn visual_" body (won't render): ${broken.join(', ')}`)
 
+  // THE SQUISH LAW (Galen, Aug 23: resizing "squished the shader instead of
+  // adjusting the frame"): a SCREEN-shaped field's quad inherits the CANVAS
+  // aspect, so square-uv math ((uv+1)*256 idioms) draws circles as ellipses on
+  // any non-square window. World-unit fields are aspect-safe for free; screen
+  // fields must map through viewbox(). Warn per offending field so a headless
+  // builder hears it BEFORE a player resizes.
+  const wgslOf = new Map(visuals.map(v => [v.name, v.wgsl ?? '']))
+  for (const fr of fields) {
+    const f = fr as { name?: string; shapeType?: string; visualTypeName?: string; visualType?: unknown }
+    if (f.shapeType !== 'screen') continue
+    const vt = f.visualTypeName || (typeof f.visualType === 'string' ? f.visualType : null)
+    const w = vt ? wgslOf.get(vt) : null
+    if (w && /\buv\b/.test(w) && !/viewbox\s*\(/.test(w)) {
+      warnings.push(`SQUISH: screen-canvas field "${f.name}" uses visual "${vt}" whose wgsl reads uv WITHOUT viewbox() — square-uv math distorts at any non-square window. Map into world units: let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;`)
+    }
+  }
+
   // PHYSICS BOUNCE (Galen: "fields are all bouncing around"). Default worldParams
   // ship collisionForce:50 + solid bounds, so overlapping fields get shoved
   // apart — and a world-covering backdrop overlaps EVERYTHING, so its own scene
