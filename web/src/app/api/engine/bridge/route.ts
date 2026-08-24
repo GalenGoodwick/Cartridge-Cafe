@@ -869,6 +869,25 @@ export async function POST(req: NextRequest) {
         // BAKE ON PUBLISH: warm the OG share card so even the world's FIRST
         // share previews real pixels (hash-gated + never-throws inside).
         void warmSpaceOgCard(pubRow.slug, pubSnap, pubRow.name || pubRow.slug, pubRow.owner?.name || 'someone')
+        // STRESS TEST ON PUBLISH (Galen, Aug 24): the eye runs the world for
+        // real ticks and reports its measured frame cost — stored as
+        // worldData.__perf and served as the card's ☕ resource rating. Best
+        // effort: a dark eye never blocks a publish.
+        void (async () => {
+          try {
+            const { renderSnapshot } = await import('@/lib/render-service')
+            const t0 = Date.now()
+            const out = await renderSnapshot(pubSnap as never, { name: auth.slug, ticks: 90, size: 256, input: 'auto' })
+            if (out && out.ok !== false) {
+              const struct = (out.struct ?? out) as { frameCost?: number; frameMs?: number }
+              const measured = Number(struct.frameCost ?? struct.frameMs)
+              const frameMs = Number.isFinite(measured) && measured > 0
+                ? measured
+                : Math.round(((Date.now() - t0) / 90) * 10) / 10   // wall-clock per tick — the honest fallback
+              await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __perf: { frameMs, at: Date.now(), by: 'publish-stress' } } })
+            }
+          } catch { /* the rating is a bonus — publish stands */ }
+        })()
         results.push({ type: cmd.type, ok: true, published: true, url: `https://cartridge.cafe/space/${auth.slug}`,
           next: 'on the public shelf.' })
         continue

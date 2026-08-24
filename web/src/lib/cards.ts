@@ -168,6 +168,7 @@ export interface Card {
   counts: { forks: number; versions: number }
   isBase: boolean
   kind: CardKind                     // toy · world · game (declared or derived)
+  perf: { frameMs: number; cups: 1 | 2 | 3 } | null   // ☕ resource rating — MEASURED, never promised
   mobileReady: boolean
   playable: boolean                  // isPublic — false = a draft (MY/OUR only)
   edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
@@ -207,6 +208,10 @@ export function cardFromRow(
     mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
     isBase: Boolean(wd.__base),   // truthiness — legacy worlds carry 1
     kind: (row as { kind?: CardKind }).kind ?? 'toy',
+    perf: (() => { const ms = (row as { perf?: number | null }).perf
+      if (ms == null || !Number.isFinite(ms)) return null
+      const cups = ms <= 20 ? 1 as const : ms <= 40 ? 2 as const : 3 as const
+      return { frameMs: Math.round(ms * 10) / 10, cups } })(),
     updatedAt: row.updatedAt,
   }
 }

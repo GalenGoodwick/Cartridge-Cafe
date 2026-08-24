@@ -72,42 +72,12 @@ export default function SupportGate({ children }: { children: React.ReactNode })
       // the escape hatch was used before and the engine worked → trust the
       // machine over the probe from then on
       try { if (sessionStorage.getItem('cc-gate-override') === '1') { setVerdict('ok'); return } } catch { /* private mode */ }
-      // DESKTOP-ONLY: the cafe is a full-resolution WebGPU compute stack — the
-      // live hub sim plus every world's icon shader. That is a desktop-GPU
-      // workload; phones that entered it FROZE hard. Until a real mobile
-      // optimization pass exists (resolution downscale, shader culling, atlas
-      // limits), we wall off small/touch screens by size, gracefully. A curious
-      // visitor on a big touchscreen laptop can still STEP IN ANYWAY.
-      //
-      // UA BACKSTOP: an in-app webview (Android System WebView, `wv`) can report
-      // NO touch API and a ~980px layout width — slipping BOTH heuristics below,
-      // then reaching the renderer and dying on a null WebGPU adapter (an
-      // SM-S942B did exactly this). Matching an actual-phone UA closes that gap;
-      // a phone is never judged desktop-'ok'. Desktop UAs (incl. Firefox-Linux,
-      // Mac/Win Chrome) don't match, and iPad reports as Mac so the touch+width
-      // branch still catches it.
-      const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
-      const phoneUA = /iPhone|iPod|Windows Phone|IEMobile|BlackBerry|Opera Mini|Android.*Mobile|Mobile.*Android/i.test(ua)
-      const smallOrTouch =
-        phoneUA ||
-        window.innerWidth < 820 ||
-        (('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1100)
-      if (smallOrTouch) {
-        // THE FIT LAW (Galen, Aug 23): every world is a desktop OR mobile
-        // config. A phone on a world that DECLARES mobile falls through to the
-        // real WebGPU probe (modern iOS/Android have it) instead of the
-        // bigger-table wall. Any fetch failure = the wall, as before.
-        const worldSlug = window.location.pathname.match(/^\/space\/([a-z0-9-]+)/)?.[1]
-        let mobileWorld = false
-        if (worldSlug) {
-          try {
-            const r = await fetch(`/api/spaces/${encodeURIComponent(worldSlug)}`, { cache: 'no-store' })
-            const d = r.ok ? await r.json() : null
-            mobileWorld = d?.space?.deviceConfig === 'mobile'
-          } catch { /* stay walled */ }
-        }
-        if (!mobileWorld) { setVerdict('mobile'); return }
-      }
+      // THE WALL IS DOWN (Galen, Aug 24: "let's let mobile in"): no more
+      // bigger-table screen. Every device falls through to the REAL WebGPU
+      // adapter probe — a phone with WebGPU plays; one without gets the honest
+      // enable-WebGPU screen. Protection moved from the door to the CARD: the
+      // ☕ resource rating (measured on publish) tells a device what it's
+      // about to lift.
 
       const gpu = (navigator as unknown as { gpu?: { requestAdapter(opts?: unknown): Promise<unknown> } }).gpu
       if (!gpu) { setVerdict('nogpu'); setWhy('navigator.gpu missing — this browser build has no WebGPU API'); report('nogpu', 'navigator.gpu missing — browser has no WebGPU API'); return }

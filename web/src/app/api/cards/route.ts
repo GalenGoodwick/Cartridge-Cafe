@@ -50,6 +50,7 @@ export interface FeedRow {
   buildMode: 'anyone' | 'invited' | 'owner'
   members: number                    // live member:<handle> keys (distinct handles)
   kind: CardKind                     // toy · world · game (Galen's taxonomy)
+  perf: number | null                // measured frame ms (publish stress test, else the live tabs' EMA)
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -256,8 +257,14 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
     // never leak the raw email (browse's law, kept here)
     const email = owner?.email || ''
     const isGuest = /@guest\.cartridge\.cafe$/i.test(email) || !email
+    // ☕ RESOURCE RATING: the publish stress test (__perf) is the truth;
+    // the live tabs' running EMA (__budget) is the fallback measurement
+    const perfRec = wd.__perf as { frameMs?: number } | undefined
+    const budgetRec = wd.__budget as { frameMs?: number } | undefined
+    const perf = Number.isFinite(perfRec?.frameMs) ? perfRec!.frameMs! : (Number.isFinite(budgetRec?.frameMs) ? budgetRec!.frameMs! : null)
     return {
       ...rest,
+      perf,
       updatedAt: updatedAt.getTime(),
       maker: { handle: isGuest ? null : handleOf(email), name: owner?.name ?? null },
       counts: { forks: _count.forks, versions: _count.versions },
