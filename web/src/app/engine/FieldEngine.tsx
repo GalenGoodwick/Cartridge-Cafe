@@ -4344,6 +4344,26 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           if (typeof wdCam.zoom === 'number') camera.zoom += (Math.max(0.1, Math.min(10, wdCam.zoom)) - camera.zoom) * sCam
         }
       }
+      // CAMERA CLAMP (Galen: "centered to viewport scale"): the view never
+      // shows void while the world can fill it — the camera pins inside the
+      // PLAYABLE RECT (gridW × gridH, default the grid) minus half the visible
+      // window; an axis smaller than the window centers. The avatar drifts
+      // off-center near coasts instead of dragging the void on screen.
+      const clampCamera = () => {
+        if (!playScene && !spaceId) return   // free pan on the editor bench
+        const cnvC = canvasRef.current
+        if (!cnvC) return
+        const aspectC = cnvC.clientWidth > 0 && cnvC.clientHeight > 0 ? cnvC.clientWidth / cnvC.clientHeight : 1
+        const rangeC = gridSize / Math.max(0.1, camera.zoom)
+        const visW = aspectC > 1 ? rangeC * aspectC : rangeC
+        const visH = aspectC > 1 ? rangeC : rangeC / aspectC
+        const wpC = sim.worldParams as { gridW?: number; gridH?: number }
+        const bWC = wpC.gridW ?? gridSize
+        const bHC = wpC.gridH ?? gridSize
+        camera.x = bWC <= visW ? bWC / 2 : Math.max(visW / 2, Math.min(camera.x, bWC - visW / 2))
+        camera.y = bHC <= visH ? bHC / 2 : Math.max(visH / 2, Math.min(camera.y, bHC - visH / 2))
+      }
+
       // Camera follow mode — lerp toward target field position
       const follow = cameraFollowRef.current
       if (follow) {
@@ -4361,6 +4381,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           }
         }
       }
+
+      clampCamera()
 
       // Build effect list — mask texture clips to painted cells only
       const fieldEffects: FieldEffectData[] = []

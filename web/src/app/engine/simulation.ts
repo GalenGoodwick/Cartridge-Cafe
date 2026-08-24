@@ -854,16 +854,19 @@ export class FieldSimulation {
       // Enforcing the boundary on it just ping-pongs it 1px every frame (the
       // "vibration" that hit every full-screen backdrop). It's a backdrop, not a
       // physics body: skip containment on any axis where it doesn't fit inside.
-      const fitsX = (bounds.maxX - bounds.minX) < this.gridSize
-      const fitsY = (bounds.maxY - bounds.minY) < this.gridSize
+      // THE PLAYABLE RECT: walls stand at gridW × gridH (default = the grid)
+      const bW = (wp as { gridW?: number }).gridW ?? this.gridSize
+      const bH = (wp as { gridH?: number }).gridH ?? this.gridSize
+      const fitsX = (bounds.maxX - bounds.minX) < bW
+      const fitsY = (bounds.maxY - bounds.minY) < bH
 
       if (fitsX) {
         if (bounds.minX < 0) {
           field.transform.x -= bounds.minX
           if (field.transform.vx < 0) field.transform.vx = -field.transform.vx * wp.bounciness
         }
-        if (bounds.maxX >= this.gridSize) {
-          field.transform.x -= (bounds.maxX - (this.gridSize - 1))
+        if (bounds.maxX >= bW) {
+          field.transform.x -= (bounds.maxX - (bW - 1))
           if (field.transform.vx > 0) field.transform.vx = -field.transform.vx * wp.bounciness
         }
       }
@@ -872,8 +875,8 @@ export class FieldSimulation {
           field.transform.y -= bounds.minY
           if (field.transform.vy < 0) field.transform.vy = -field.transform.vy * wp.bounciness
         }
-        if (bounds.maxY >= this.gridSize) {
-          field.transform.y -= (bounds.maxY - (this.gridSize - 1))
+        if (bounds.maxY >= bH) {
+          field.transform.y -= (bounds.maxY - (bH - 1))
           if (field.transform.vy > 0) field.transform.vy = -field.transform.vy * wp.bounciness
         }
       }

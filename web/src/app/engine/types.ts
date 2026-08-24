@@ -169,6 +169,12 @@ export interface WorldParams {
    *  gridSize (default 512). Declared at fork/creation (set_world_params);
    *  takes effect on world load — the engine constructs at this size. */
   gridSize?: number
+  /** THE PLAYABLE RECT (Galen: "can we try rectangle?"): the world's bounds
+   *  within the coordinate space — gridW × gridH (each ≤ gridSize; default =
+   *  gridSize). Physics walls, camera clamp, and world edges honor the rect;
+   *  a 2048×768 world is a panorama, 512×2048 a tower. */
+  gridW?: number
+  gridH?: number
 }
 
 /** Memory entry types for field agent history */

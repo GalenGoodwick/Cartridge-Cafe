@@ -768,15 +768,17 @@ export function applyCommandToSnapshotObject(
       // the engine constructs at this size on load, so a change on a LIVE
       // world takes effect when the tab reloads — warn honestly.
       {
-        const gRaw = (cmd.params as Record<string, unknown> | undefined)?.gridSize ?? cmd.gridSize
-        if (gRaw !== undefined) {
-          const g = Math.round(Number(gRaw))
+        const pRaw = cmd.params as Record<string, unknown> | undefined
+        for (const dim of ['gridSize', 'gridW', 'gridH'] as const) {
+          const raw = pRaw?.[dim] ?? cmd[dim]
+          if (raw === undefined) continue
+          const g = Math.round(Number(raw))
           if (!Number.isFinite(g) || g < 64 || g > 4096) {
-            result.error = `gridSize must be an integer 64..4096 (got ${String(gRaw)})`
+            result.error = `${dim} must be an integer 64..4096 (got ${String(raw)})`
             return result
           }
-          snap.worldParams = { ...snap.worldParams, gridSize: g } as SceneSnapshot['worldParams']
-          result.warning = `gridSize ${g} persisted — the engine constructs at this size on WORLD LOAD; open tabs keep their current grid until reload`
+          snap.worldParams = { ...snap.worldParams, [dim]: g } as SceneSnapshot['worldParams']
+          if (dim === 'gridSize') result.warning = `gridSize ${g} persisted — the engine constructs at this size on WORLD LOAD; open tabs keep their current grid until reload`
         }
       }
       break
