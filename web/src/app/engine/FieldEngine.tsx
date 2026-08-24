@@ -1691,6 +1691,14 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   }, labelRaw),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [me, playScene, spaceSlug, saveSceneAs, mintBranchToken, openPlug])
+  // ?room=<name> — a SHAREABLE room link: /space/<slug>?room=crew1 drops you
+  // into that authoritative arena room (lobby worlds stay local without it).
+  // "sharing a link is sharing a room" — the play-together twin of invites.
+  const roomFromUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    try { roomFromUrlRef.current = new URL(window.location.href).searchParams.get('room') } catch { /* ssr */ }
+  }, [])
+
   // a fresh fork arrives with the AI TERMINAL already opening (?connect=1) —
   // the prompt line, not a form, is where creation happens (Galen's ruling)
   useEffect(() => {
@@ -3805,7 +3813,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       // ── NETWORKED MODE: mpManifest worlds run their hooks in the arena room,
       //    not here. Send this player's afferents; adopt the authoritative state.
       const mpManifest = sim.worldData['mpManifest'] as { lobby?: boolean } | undefined
-      const wantRoom = sim.worldData['__joinRoom']
+      const wantRoom = sim.worldData['__joinRoom'] ?? roomFromUrlRef.current ?? undefined
       if (mpManifest && spaceSlug && (!mpManifest.lobby || wantRoom)) {
         // JOINED (or lobby-less world): the room is the authority
         if (!arenaRef.current) { const a = new ArenaClient(); arenaRef.current = a; a.connect(spaceSlug, typeof wantRoom === 'string' && wantRoom ? wantRoom : 'main', undefined, typeof sim.worldData['arenaUrl'] === 'string' ? sim.worldData['arenaUrl'] as string : undefined) }

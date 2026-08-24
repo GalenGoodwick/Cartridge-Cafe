@@ -36,10 +36,14 @@ export class ArenaClient {
   splitN = 0
   prevSpace = false
 
+  private urlOverride?: string
   connect(slug: string, room = 'main', onJoined?: (j: ArenaJoined) => void, urlOverride?: string): void {
     // a world may name its OWN arena (worldData.arenaUrl → dev/local/self-hosted
-    // rooms); otherwise the platform's Railway service is the house arena
-    const base = (urlOverride || process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^http/, 'ws')
+    // rooms); otherwise the platform's Railway service is the house arena.
+    // The override PERSISTS on the instance — a reconnect after a room hiccup
+    // must rejoin the SAME arena, not fall back to the house one.
+    if (urlOverride) this.urlOverride = urlOverride
+    const base = (this.urlOverride || process.env.NEXT_PUBLIC_ARENA_URL || 'wss://arena-production-b574.up.railway.app').replace(/^http/, 'ws')
     let ws: WebSocket
     try { ws = new WebSocket(base + '/join?world=' + encodeURIComponent(slug) + '&room=' + encodeURIComponent(room)) } catch { return }
     this.ws = ws
