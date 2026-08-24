@@ -2235,7 +2235,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     const fit = () => {
       cameraRef.current.x = gridSize / 2
       cameraRef.current.y = gridSize / 2
-      cameraRef.current.zoom = FIT_ZOOM
+      // A BIG GRID IS TERRITORY, NOT A SHRUNKEN MAP (Galen, task #20): the
+      // resting view is always a ~512-unit WINDOW. A 512 world fits exactly
+      // (zoom ratio 1 — unchanged); a 1024 world opens on a quarter of
+      // itself and the camera TRAVELS (world hooks drive it via
+      // worldData.__camera, AIs via set_camera).
+      cameraRef.current.zoom = FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE))
     }
     fit()
     const t = setTimeout(fit, 300)   // after the canvas settles
@@ -4318,6 +4323,27 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       const camera = cameraRef.current
       const time = now / 1000 - startTimeRef.current
 
+      // WORLD-AUTHORED CAMERA (task #20): a hook writes worldData.__camera =
+      // {x, y, zoom?} or {follow: '<fieldId|name>'} — the world frames itself
+      // (how a big grid is explored). Smoothing built in; set_camera (AI) and
+      // this coexist, hooks win when both speak.
+      {
+        const wdCam = sim.worldData['__camera'] as { x?: number; y?: number; zoom?: number; follow?: string } | undefined
+        if (wdCam && typeof wdCam === 'object') {
+          let tx: number | null = null, ty: number | null = null
+          if (typeof wdCam.follow === 'string') {
+            const tf = sim.fields.get(wdCam.follow) ?? [...sim.fields.values()].find(f2 => f2.name === wdCam.follow)
+            if (tf) { tx = tf.transform.x; ty = tf.transform.y }
+          } else {
+            if (typeof wdCam.x === 'number') tx = wdCam.x
+            if (typeof wdCam.y === 'number') ty = wdCam.y
+          }
+          const sCam = 1 - Math.pow(0.85, dt * 60)
+          if (tx !== null) camera.x += (tx - camera.x) * sCam
+          if (ty !== null) camera.y += (ty - camera.y) * sCam
+          if (typeof wdCam.zoom === 'number') camera.zoom += (Math.max(0.1, Math.min(10, wdCam.zoom)) - camera.zoom) * sCam
+        }
+      }
       // Camera follow mode — lerp toward target field position
       const follow = cameraFollowRef.current
       if (follow) {
