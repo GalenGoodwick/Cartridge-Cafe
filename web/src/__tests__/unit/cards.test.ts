@@ -7,7 +7,7 @@ import {
   proposeType,
   rootBaseOf,
   orderGrid,
-  cardFromRow,
+  cardFromRow, handleOf,
 } from '@/lib/cards'
 
 /** Guards the PURE card core (SPEC.cards.md / DESIGN-card-main.md §1-3): the
@@ -192,78 +192,90 @@ describe('orderGrid', () => {
 })
 
 describe('cardFromRow', () => {
-  const lineage = { base: null, forkOf: null, iconPresent: false }
+  // the canonical signature (the route's battle-grown one): maker/lineage
+  // arrive PRE-resolved on the row; handleOf keeps its own law test below
   const row = {
     slug: 'ember-run',
     name: 'EMBER RUN',
     updatedAt: 1_755_000_000_000,
-    owner: { email: 'mara.jane+alt@example.com', name: 'Mara' },
-    _count: { forks: 3, versions: 7 },
+    maker: { handle: 'marajanealt', name: 'Mara' },
+    forkOf: 'cinderfell' as string | null,
+    base: 'cinderfell' as string | null,
+    counts: { forks: 3, versions: 7 },
   }
 
   it('assembles the full Card shape from row + worldData slice', () => {
     const wd = { card: { type: 'Action Dungeon', tags: ['2D', 'hard'] }, blurb: 'Run the ember.', __base: false }
-    expect(cardFromRow(row, wd, { base: 'cinderfell', forkOf: 'cinderfell', iconPresent: true })).toEqual({
+    expect(cardFromRow(row, wd, true)).toEqual({
       slug: 'ember-run',
       name: 'EMBER RUN',
       type: 'action-dungeon',
       tags: ['2d', 'hard'],
       desc: 'Run the ember.',
       icon: '/api/spaces/icons/ember-run',
-      maker: { handle: 'marajanealt', name: 'Mara' },   // local-part, sanitized
+      iconWgsl: null,
+      hue: null,
+      maker: { handle: 'marajanealt', name: 'Mara' },
       base: 'cinderfell',
       forkOf: 'cinderfell',
       counts: { forks: 3, versions: 7 },
       isBase: false,
       mobileReady: false,
+      playable: true,
+      edit: { mode: 'static', editors: 1 },
       updatedAt: 1_755_000_000_000,
     })
   })
 
+  it('handleOf: the one handle rule — email local-part, sanitized', () => {
+    expect(handleOf('mara.jane+alt@example.com')).toBe('marajanealt')
+    expect(handleOf('')).toBe(null)
+    expect(handleOf(undefined)).toBe(null)
+  })
+
   it('desc falls back: blurb → first non-empty vision line → empty', () => {
-    expect(cardFromRow(row, { blurb: '  A   spaced\nblurb ' }, lineage).desc).toBe('A spaced blurb')
-    expect(cardFromRow(row, { vision: '\n\n  The first real line.  \ndetail' }, lineage).desc).toBe('The first real line.')
-    expect(cardFromRow(row, { blurb: '', vision: 'RAW: fallback works' }, lineage).desc).toBe('RAW: fallback works')
-    expect(cardFromRow(row, {}, lineage).desc).toBe('')
-    expect(cardFromRow(row, null, lineage).desc).toBe('')
+    expect(cardFromRow(row, { blurb: '  A   spaced\nblurb ' }, false).desc).toBe('A spaced blurb')
+    expect(cardFromRow(row, { vision: '\n\n  The first real line.  \ndetail' }, false).desc).toBe('The first real line.')
+    expect(cardFromRow(row, { blurb: '', vision: 'RAW: fallback works' }, false).desc).toBe('RAW: fallback works')
+    expect(cardFromRow(row, {}, false).desc).toBe('')
+    expect(cardFromRow(row, {}, false).desc).toBe('')
   })
 
   it('caps desc at 180 chars', () => {
-    expect(cardFromRow(row, { blurb: 'x'.repeat(400) }, lineage).desc).toHaveLength(180)
+    expect(cardFromRow(row, { blurb: 'x'.repeat(400) }, false).desc).toHaveLength(180)
   })
 
   it('isBase reads __base truthiness', () => {
-    expect(cardFromRow(row, { __base: true }, lineage).isBase).toBe(true)
-    expect(cardFromRow(row, { __base: 1 }, lineage).isBase).toBe(true)
-    expect(cardFromRow(row, { __base: undefined }, lineage).isBase).toBe(false)
-    expect(cardFromRow(row, null, lineage).isBase).toBe(false)
+    expect(cardFromRow(row, { __base: true }, false).isBase).toBe(true)
+    expect(cardFromRow(row, { __base: 1 as unknown as boolean }, false).isBase).toBe(true)
+    expect(cardFromRow(row, { __base: undefined }, false).isBase).toBe(false)
+    expect(cardFromRow(row, {}, false).isBase).toBe(false)
   })
 
   it('icon: null when absent, the slug-addressed icons path when present', () => {
-    expect(cardFromRow(row, null, lineage).icon).toBeNull()
-    expect(cardFromRow(row, null, { ...lineage, iconPresent: true }).icon).toBe('/api/spaces/icons/ember-run')
+    expect(cardFromRow(row, {}, false).icon).toBeNull()
+    expect(cardFromRow(row, {}, true).icon).toBe('/api/spaces/icons/ember-run')
   })
 
   it('untyped legacy world → type "" and empty tags (the backfill fills these)', () => {
-    const c = cardFromRow(row, { blurb: 'old world' }, lineage)
+    const c = cardFromRow(row, { blurb: 'old world' }, false)
     expect(c.type).toBe('')
     expect(c.tags).toEqual([])
   })
 
-  it('maker degrades to nulls without an owner; name falls back to slug', () => {
-    const c = cardFromRow({ slug: 'lone', name: '', updatedAt: 5 }, null, lineage)
+  it('maker nulls pass through; name falls back to slug', () => {
+    const c = cardFromRow({ slug: 'lone', name: '', updatedAt: 5, maker: { handle: null, name: null }, forkOf: null, base: null, counts: { forks: 0, versions: 0 } }, {}, false)
     expect(c.maker).toEqual({ handle: null, name: null })
     expect(c.name).toBe('lone')
     expect(c.counts).toEqual({ forks: 0, versions: 0 })
   })
 
-  it('accepts Date or epoch-ms updatedAt', () => {
-    expect(cardFromRow({ ...row, updatedAt: new Date(123456) }, null, lineage).updatedAt).toBe(123456)
-    expect(cardFromRow({ ...row, updatedAt: 99 }, null, lineage).updatedAt).toBe(99)
+  it('passes epoch-ms updatedAt through', () => {
+    expect(cardFromRow({ ...row, updatedAt: 99 }, {}, false).updatedAt).toBe(99)
   })
 
   it('base/forkOf pass through untouched (rootBaseOf owns resolution)', () => {
-    const c = cardFromRow(row, { __base: true }, { base: 'ember-run', forkOf: null, iconPresent: false })
+    const c = cardFromRow({ ...row, base: 'ember-run', forkOf: null }, { __base: true }, false)
     expect(c.base).toBe('ember-run')
     expect(c.forkOf).toBeNull()
   })

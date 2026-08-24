@@ -1,4 +1,6 @@
 import { getServerSession } from 'next-auth'
+import { cardFromRow, type Card } from '@/lib/cards'
+export type { Card } from '@/lib/cards'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -24,25 +26,6 @@ export const OPEN_GROUND = 'open-ground'
 const CARDS_TTL_MS = 20_000
 
 /** A CARD as the feed serves it — the ONLY shape the UI may consume (SPEC). */
-export interface Card {
-  slug: string
-  name: string
-  type: string
-  tags: string[]
-  desc: string
-  icon: string | null
-  iconWgsl: string | null                 // the LIVE shader (cards-live-art); null = photo/placeholder
-  hue: number | null
-  maker: { handle: string | null; name: string | null }
-  base: string | null
-  forkOf: string | null
-  counts: { forks: number; versions: number }
-  isBase: boolean
-  mobileReady: boolean
-  playable: boolean                  // isPublic — false = a draft (MY/OUR only)
-  edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
-  updatedAt: number
-}
 
 /** One world AFTER the server-side snapshot strip — the pure feed core
  *  works over these rows only (tested hard in cards-feed.test.ts). */
@@ -322,39 +305,3 @@ export function feedTab(rows: FeedRow[], tab: string): { base: Card | null; card
   return { base: baseRow ? toCard(baseRow) : null, cards }
 }
 
-// TEMP until cards-data lands cardFromRow — this route then swaps to
-// `import { cardFromRow } from '@/lib/cards'` and deletes this fallback
-// (same signature: (row, wd, iconPresent) → Card).
-function cardFromRow(
-  row: { slug: string; name: string; updatedAt: number; forkOf: string | null; base: string | null; maker: Card['maker']; counts: Card['counts'] },
-  wd: { card?: FeedRow['card']; blurb?: string; vision?: string; __base?: boolean },
-  iconPresent: boolean,
-  live?: { iconWgsl: string | null; hue: number | null },
-): Card {
-  const type = typeof wd.card?.type === 'string' ? wd.card.type : ''
-  const tags = Array.isArray(wd.card?.tags) ? wd.card.tags.filter((t): t is string => typeof t === 'string') : []
-  const desc = (wd.blurb || '').trim() || (wd.vision || '').split('\n')[0].trim()
-  return {
-    slug: row.slug,
-    name: row.name,
-    type,
-    tags,
-    desc,
-    // referenced by slug ONLY — the icon store serves the PNG; never inline b64
-    icon: iconPresent ? `/api/spaces/icons/${encodeURIComponent(row.slug)}` : null,
-    iconWgsl: live?.iconWgsl ?? null,
-    hue: live?.hue ?? null,
-    maker: row.maker,
-    base: row.base,
-    forkOf: row.forkOf,
-    counts: row.counts,
-    playable: (row as { isPublic?: boolean }).isPublic !== false,
-    edit: (() => { const r = row as { buildMode?: string; members?: number }
-      return r.buildMode === 'anyone' ? { mode: 'open' as const, editors: 0 }
-        : r.buildMode === 'invited' ? { mode: 'crew' as const, editors: (r.members ?? 0) + 1 }
-        : { mode: 'static' as const, editors: 1 } })(),
-    mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
-    isBase: wd.__base === true,
-    updatedAt: row.updatedAt,
-  }
-}

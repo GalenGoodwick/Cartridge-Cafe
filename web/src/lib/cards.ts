@@ -98,29 +98,8 @@ export function orderGrid<T extends CardRow>(base: T | null, family: T[]): T[] {
 }
 
 // ── the CARD — SPEC.cards.md's one shape the feed serves and the UI consumes ──
+// (interface below — the battle-grown version the UI consumes)
 
-export interface Card {
-  slug: string; name: string
-  type: string; tags: string[]
-  desc: string                       // blurb, fallback first line of vision
-  icon: string | null                // /api/spaces/icons image for slug (PNG)
-  maker: { handle: string | null; name: string | null }
-  base: string | null                // rooting base slug (null = OPEN GROUND)
-  forkOf: string | null
-  counts: { forks: number; versions: number }
-  isBase: boolean
-  mobileReady: boolean               // the world declares it runs on touch/small screens
-  updatedAt: number
-}
-
-/** The playerSpace-ish row cardFromRow assembles from — the feed's select. */
-export interface SpaceRowLike {
-  slug: string
-  name?: string | null
-  updatedAt: Date | number
-  owner?: { email?: string | null; name?: string | null } | null
-  _count?: { forks?: number; versions?: number } | null
-}
 
 /** The worldData slice a card reads — never the whole snapshot. */
 export interface WorldDataSlice {
@@ -132,7 +111,7 @@ export interface WorldDataSlice {
 
 /** Description: the builder's blurb, fallback the first non-empty line of the
  *  vision — one line, whitespace collapsed, ≤180 chars (the blurb-mirror law). */
-function descOf(wd: WorldDataSlice | null | undefined): string {
+export function descOf(wd: WorldDataSlice | null | undefined): string {
   const blurb = typeof wd?.blurb === 'string' ? wd.blurb.replace(/\s+/g, ' ').trim() : ''
   if (blurb) return blurb.slice(0, 180)
   const vision = typeof wd?.vision === 'string' ? wd.vision : ''
@@ -142,35 +121,64 @@ function descOf(wd: WorldDataSlice | null | undefined): string {
 
 /** Maker handle: email local-part, sanitized — the platform's one handle rule
  *  (scene-auth.ts). Null when there is no usable email. */
-function handleOf(email: unknown): string | null {
+export function handleOf(email: unknown): string | null {
   if (typeof email !== 'string' || !email) return null
   return email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || null
 }
 
-/** Assemble the Card the feed serves — PURE: a playerSpace-ish row + the
- *  worldData slice + resolved lineage (base/forkOf slugs from rootBaseOf) +
- *  icon presence. No I/O; the feed resolves, this shapes. */
+
+export interface Card {
+  slug: string
+  name: string
+  type: string
+  tags: string[]
+  desc: string
+  icon: string | null
+  iconWgsl: string | null                 // the LIVE shader (cards-live-art); null = photo/placeholder
+  hue: number | null
+  maker: { handle: string | null; name: string | null }
+  base: string | null
+  forkOf: string | null
+  counts: { forks: number; versions: number }
+  isBase: boolean
+  mobileReady: boolean
+  playable: boolean                  // isPublic — false = a draft (MY/OUR only)
+  edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
+  updatedAt: number
+}
+
+/** The ONE row→Card projection (was TEMP in the cards route — this is its
+ *  canonical home; the route imports it). (row, wd, iconPresent, live?) → Card. */
 export function cardFromRow(
-  row: SpaceRowLike,
-  wd: WorldDataSlice | null | undefined,
-  lineage: { base: string | null; forkOf: string | null; iconPresent: boolean },
+  row: { slug: string; name: string; updatedAt: number; forkOf: string | null; base: string | null; maker: Card['maker']; counts: Card['counts'] },
+  wd: { card?: { type?: unknown; tags?: unknown; mobile?: unknown } | null; blurb?: string; vision?: string; __base?: boolean },
+  iconPresent: boolean,
+  live?: { iconWgsl: string | null; hue: number | null },
 ): Card {
-  const type = typeof wd?.card?.type === 'string' ? normalizeTypeId(wd.card.type) : ''
+  const type = typeof wd.card?.type === 'string' ? normalizeTypeId(wd.card.type) : ''
+  const tags = normalizeTags(wd.card?.tags)
+  const desc = descOf(wd as WorldDataSlice)
   return {
     slug: row.slug,
     name: row.name || row.slug,
-    type,                               // '' = untyped legacy (backfill's job)
-    tags: normalizeTags(wd?.card?.tags),
-    desc: descOf(wd),
-    icon: lineage.iconPresent ? `/api/spaces/icons/${encodeURIComponent(row.slug)}` : null,
-    maker: { handle: handleOf(row.owner?.email), name: row.owner?.name || null },
-    base: lineage.base,
-    forkOf: lineage.forkOf,
-    counts: { forks: row._count?.forks ?? 0, versions: row._count?.versions ?? 0 },
-    isBase: Boolean(wd?.__base),
-    // mobile capability is DECLARED (card.mobile via set_card) or carried as the
-    // 'mobile' tag — a phone catalog only deals cards that actually run there
-    mobileReady: wd?.card?.mobile === true || normalizeTags(wd?.card?.tags).includes('mobile'),
-    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.getTime() : row.updatedAt,
+    type,
+    tags,
+    desc,
+    // referenced by slug ONLY — the icon store serves the PNG; never inline b64
+    icon: iconPresent ? `/api/spaces/icons/${encodeURIComponent(row.slug)}` : null,
+    iconWgsl: live?.iconWgsl ?? null,
+    hue: live?.hue ?? null,
+    maker: row.maker,
+    base: row.base,
+    forkOf: row.forkOf,
+    counts: row.counts,
+    playable: (row as { isPublic?: boolean }).isPublic !== false,
+    edit: (() => { const r = row as { buildMode?: string; members?: number }
+      return r.buildMode === 'anyone' ? { mode: 'open' as const, editors: 0 }
+        : r.buildMode === 'invited' ? { mode: 'crew' as const, editors: (r.members ?? 0) + 1 }
+        : { mode: 'static' as const, editors: 1 } })(),
+    mobileReady: wd.card && (wd.card as { mobile?: unknown }).mobile === true || (Array.isArray(wd.card?.tags) && (wd.card.tags as string[]).includes('mobile')) || false,
+    isBase: Boolean(wd.__base),   // truthiness — legacy worlds carry 1
+    updatedAt: row.updatedAt,
   }
 }

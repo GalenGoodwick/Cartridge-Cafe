@@ -103,6 +103,12 @@ function ensureLoop() {
   requestAnimationFrame(frame)
 }
 
+// CONCURRENCY CAP (task #13): a 48-card page on a big monitor is 48 GPU
+// pipelines — cap simultaneous LIVE shaders; the rest take the PNG/placeholder
+// chain (onFail). Slots free when cards unmount (tab/page changes).
+const MAX_LIVE = 12
+let liveCount = 0
+
 export function LiveArt({ wgsl, hue, onFail }: { wgsl: string; hue: number | null; onFail: () => void }) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   const failRef = useRef(onFail)
@@ -110,6 +116,10 @@ export function LiveArt({ wgsl, hue, onFail }: { wgsl: string; hue: number | nul
 
   useEffect(() => {
     let dead = false
+    if (liveCount >= MAX_LIVE) { failRef.current(); return }
+    liveCount++
+    let released = false
+    const release = () => { if (!released) { released = true; liveCount-- } }
     let entry: Entry | null = null
     let io: IntersectionObserver | null = null
     ;(async () => {
@@ -139,10 +149,11 @@ export function LiveArt({ wgsl, hue, onFail }: { wgsl: string; hue: number | nul
         io.observe(cv)
         ensureLoop()
       } catch {
+        release()
         if (!dead) failRef.current()   // broken shader → the PNG/placeholder chain
       }
     })()
-    return () => { dead = true; io?.disconnect(); if (entry) REG.delete(entry) }
+    return () => { dead = true; release(); io?.disconnect(); if (entry) REG.delete(entry) }
   }, [wgsl, hue])
 
   return <canvas ref={ref} className="absolute inset-0 w-full h-full" aria-hidden />
