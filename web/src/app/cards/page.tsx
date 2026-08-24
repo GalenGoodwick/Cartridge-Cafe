@@ -14,6 +14,7 @@ import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 import ConnectPanel from '@/app/ConnectPanel'
+import { signOut } from 'next-auth/react'
 import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
 
@@ -35,6 +36,22 @@ export default function CardsMain() {
   const [chatOpen, setChatOpen] = useState(false)
   const [bell, setBell] = useState<{ items: Array<{ id: string; text: string; link: string | null; readAt: string | null }>; unread: number }>({ items: [], unread: 0 })
   const [bellOpen, setBellOpen] = useState(false)
+  const [acctOpen, setAcctOpen] = useState(false)
+  const [brewBusy, setBrewBusy] = useState(false)
+  // ☕ BREW — main's primary CTA, fork-paradigm style: the world is born
+  // (with its slots) and you land in it with the CONNECT AI terminal opening.
+  const brew = async () => {
+    if (brewBusy) return
+    setBrewBusy(true)
+    try {
+      const name = 'world ' + new Date().toISOString().slice(5, 16).replace('T', ' ')
+      const r = await fetch('/api/spaces', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: window.location.origin }, body: JSON.stringify({ name, draft: true }) })
+      const d = await r.json().catch(() => null)
+      if (r.status === 401) { window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent('/cards')}`; return }
+      if (r.ok && d?.space?.slug) { window.location.href = `/space/${d.space.slug}?connect=1`; return }
+    } finally { setBrewBusy(false) }
+  }
+  const myHandle = me && me !== 'anon' ? (me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
   useEffect(() => {
     if (!me || me === 'anon') return
     const pull = () => { if (document.visibilityState !== 'hidden') fetch('/api/notifications').then(r => r.json()).then(d => setBell({ items: d.items || [], unread: d.unread || 0 })).catch(() => {}) }
@@ -132,6 +149,11 @@ export default function CardsMain() {
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[38vw] max-sm:order-last max-sm:w-full max-sm:max-w-none bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
           />
+          <button onClick={() => void brew()} disabled={brewBusy}
+            className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-[#ff6a2b]/60 bg-[#ff6a2b]/10 text-amber-100 hover:bg-[#ff6a2b]/20 transition-colors disabled:opacity-50"
+            title="a new world is born — yours, with its slots; your AI does the rest">
+            {brewBusy ? '☕ BREWING…' : '☕ BREW'}
+          </button>
           <button onClick={() => setConnectOpen(true)}
             className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/15 transition-colors"
             title="connect your AI — it builds your worlds and chats the commons as you">
@@ -169,11 +191,25 @@ export default function CardsMain() {
             </a>
           )}
           {me && me !== 'anon' && (
-            <a href={`/u/${(me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '')}`}
-              title="your shelf — every world you own"
-              className="shrink-0 font-mono text-[11px] text-white/45 hover:text-amber-200 truncate max-w-[120px] transition-colors">
-              @{(me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '')}
-            </a>
+            <div className="relative shrink-0">
+              <button onClick={() => setAcctOpen(o => !o)}
+                className={`font-mono text-[11px] truncate max-w-[130px] transition-colors ${acctOpen ? 'text-amber-200' : 'text-white/45 hover:text-amber-200'}`}>
+                @{myHandle} ▾
+              </button>
+              {acctOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-1.5 z-[70] font-mono text-[13px]">
+                  {[
+                    { label: '◈ MY WORLDS', href: `/u/${myHandle}` },
+                    { label: '◇ FRAMEWORK', href: '/framework' },
+                    { label: '◆ BREW ICON · on main', href: '/' },
+                  ].map(it => (
+                    <a key={it.label} href={it.href} className="block px-2.5 py-2 rounded-lg text-white/75 hover:text-amber-200 hover:bg-black/40 transition-colors">{it.label}</a>
+                  ))}
+                  <button onClick={() => signOut({ callbackUrl: '/cards' })}
+                    className="block w-full text-left px-2.5 py-2 rounded-lg text-white/50 hover:text-white hover:bg-black/40 transition-colors">sign out</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
