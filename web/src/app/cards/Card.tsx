@@ -5,7 +5,7 @@
 // the TYPE line as the visual anchor / tags / two-line desc / maker+base.
 // Consumes EXACTLY the feed's Card shape (SPEC.cards.md) — no reaching around it.
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { Card } from '@/app/api/cards/route'
 import type { CardPresence } from './presence'
 import { LiveArt } from './LiveArt'
@@ -52,10 +52,22 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
   // the art chain: LIVE shader → baked PNG → hue placeholder. A compile fail
   // or missing WebGPU demotes silently; the card never breaks.
   const [liveOk, setLiveOk] = useState(true)
+  // LONG-PRESS (mobile, task #18): hold a card ~450ms → the action sheet
+  // (OPEN · FORK · SHARE). A completed long-press swallows the click.
+  const [sheet, setSheet] = useState(false)
+  const lpRef = useRef<{ t: ReturnType<typeof setTimeout> | null; fired: boolean }>({ t: null, fired: false })
+  const lpStart = () => {
+    lpRef.current.fired = false
+    lpRef.current.t = setTimeout(() => { lpRef.current.fired = true; setSheet(true) }, 450)
+  }
+  const lpEnd = () => { if (lpRef.current.t) clearTimeout(lpRef.current.t); lpRef.current.t = null }
   return (
+    <>
     <button
       data-floatcard
-      onClick={() => onOpen?.(card.slug)}
+      onClick={() => { if (lpRef.current.fired) { lpRef.current.fired = false; return } onOpen?.(card.slug) }}
+      onTouchStart={lpStart} onTouchEnd={lpEnd} onTouchMove={lpEnd} onTouchCancel={lpEnd}
+      onContextMenu={e => { e.preventDefault(); setSheet(true) }}
       className={`cardDeal cardBob group relative flex flex-col text-left rounded-xl overflow-hidden border bg-[#120c08]
         border-[#b97a2a]/25 hover:border-[#b97a2a]/60 transition-colors duration-200
         focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60
@@ -146,5 +158,35 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         )}
       </div>
     </button>
+    {sheet && (
+      <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+        onClick={e => { e.stopPropagation(); setSheet(false) }}>
+        <div className="w-full sm:w-80 sm:rounded-xl rounded-t-2xl border border-[#b97a2a]/40 bg-[#171009]/95 p-3 pb-6 sm:pb-3 font-mono"
+          onClick={e => e.stopPropagation()}>
+          <div className="text-[13px] tracking-[0.2em] text-amber-200/80 mb-2 truncate">{card.name}</div>
+          <div className="flex flex-col gap-1.5 text-[14px]">
+            <button onClick={() => { setSheet(false); onOpen?.(card.slug) }}
+              className="px-3 py-2.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/5 text-left">⛶ OPEN</button>
+            {(card.isBase || card.playable) && (
+              <button onClick={async () => {
+                setSheet(false)
+                const r = await fetch(`/api/spaces/${encodeURIComponent(card.slug)}/fork`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+                const d = await r.json().catch(() => null)
+                if (r.ok && d?.space?.slug) window.location.href = `/space/${d.space.slug}?connect=1`
+              }}
+                className="px-3 py-2.5 rounded-lg border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/10 text-left">⑄ FORK — instantly yours</button>
+            )}
+            <button onClick={async () => {
+              try { await navigator.clipboard.writeText(`${location.origin}/space/${card.slug}`) } catch { /* fine */ }
+              setSheet(false)
+            }}
+              className="px-3 py-2.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/5 text-left">↗ SHARE — copy the link</button>
+            <button onClick={() => setSheet(false)}
+              className="px-3 py-2 rounded-lg text-white/40 hover:text-white/70 text-center">cancel</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
