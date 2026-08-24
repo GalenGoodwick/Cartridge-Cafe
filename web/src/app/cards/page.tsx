@@ -217,6 +217,11 @@ export default function CardsMain() {
                 </div>
               ) : (
                 <>
+                  {active === 'premium' && (
+                    <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.28em] text-yellow-200/70">
+                      ✦ LIVE · EXPERIMENTAL — worth paying for · buy in to CO-PROGRAM the world · free demo inside
+                    </p>
+                  )}
                   {active === 'alterable' && (
                     <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.3em] text-emerald-200/60">
                       OPEN GROUND — ANYONE MAY WALK IN AND EDIT THESE

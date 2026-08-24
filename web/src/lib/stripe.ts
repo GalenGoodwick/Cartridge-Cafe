@@ -30,12 +30,13 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // house AI builds. This is the phone's native creation route — a phone can't
   // run a connected AI, but it can describe a world and pay the house to build it.
   worldgen: { env: 'STRIPE_PRICE_WORLDGEN', mode: 'payment', label: 'generate a world — the house AI builds your brief' },
-  // PREMIUM GAMES (Galen, Aug 24 — Tideglass Act 1 is the first): $5 pay-once,
-  // slug-scoped like protect — buying grants {product:'premium5', slug} and the
-  // world's demo gate opens for good. Which worlds are premium lives in each
-  // world's worldData.premium, not here.
-  premium5: { env: 'STRIPE_PRICE_PREMIUM5', mode: 'payment', label: 'premium game — pay once, yours forever ($5)' },
 }
+// PAID EXPERIENCES are NOT in this env-mapped table on purpose (Galen, Aug 24:
+// "I need a product pricing mechanism"). Each world sets its OWN price in
+// worldData.premium.usd; checkout prices it AD-HOC via Stripe price_data (read
+// server-side, never trusted from the client), so any amount works and the only
+// key needed is STRIPE_SECRET_KEY — no per-world price id to pre-create. See
+// createExperienceCheckout below.
 
 export function stripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY
@@ -68,18 +69,14 @@ export async function createCheckoutSession(
   if (!product || !price) return { error: `unknown or unconfigured product "${productKey}"`, status: 400 }
 
   // A page purchase returns to the composer, which polls until the webhook has
-  // flipped it live; a premium-game purchase returns INTO the world it bought
-  // (the gate polls the entitlement); other products land on the front door.
+  // flipped it live; other products land on the front door. (Paid EXPERIENCES
+  // don't come through here — they use createExperienceCheckout, ad-hoc priced.)
   const success = productKey === 'page'
     ? `${origin}/pages?paid=page`
-    : productKey.startsWith('premium') && slug
-      ? `${origin}/space/${encodeURIComponent(slug)}?paid=${productKey}`
-      : `${origin}/?paid=${productKey}`
+    : `${origin}/?paid=${productKey}`
   const cancel = productKey === 'page'
     ? `${origin}/pages?paycancel=page`
-    : productKey.startsWith('premium') && slug
-      ? `${origin}/space/${encodeURIComponent(slug)}?paycancel=${productKey}`
-      : `${origin}/?paycancel=${productKey}`
+    : `${origin}/?paycancel=${productKey}`
   const form = new URLSearchParams({
     mode: product.mode,
     'line_items[0][price]': price,
@@ -103,6 +100,68 @@ export async function createCheckoutSession(
   const j = (await r.json()) as { url?: string; error?: { message?: string } }
   if (!r.ok || !j.url) return { error: j.error?.message || 'stripe refused the session', status: 502 }
   return { url: j.url }
+}
+
+/** PAID EXPERIENCE checkout — owner-set price, AD-HOC (no pre-created Stripe
+ *  price id). `usd` is read SERVER-side from the world (never the client), so a
+ *  buyer can't underpay. The buy returns INTO the world it bought; the gate
+ *  there polls the entitlement + the freshly-minted co-program membership. */
+export async function createExperienceCheckout(
+  opts: { slug: string; worldName: string; usd: number; userId: string; origin: string },
+): Promise<{ url: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const cents = Math.round(opts.usd * 100)
+  if (!Number.isFinite(cents) || cents < 100) return { error: 'a paid experience is at least $1', status: 400 }
+  const back = `${opts.origin}/space/${encodeURIComponent(opts.slug)}`
+  const form = new URLSearchParams({
+    mode: 'payment',
+    'line_items[0][quantity]': '1',
+    'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][unit_amount]': String(cents),
+    'line_items[0][price_data][product_data][name]': (opts.worldName || 'a cartridge.cafe experience').slice(0, 120),
+    'line_items[0][price_data][product_data][description]': 'LIVE · EXPERIMENTAL — access to co-program this world',
+    success_url: `${back}?paid=experience`,
+    cancel_url: `${back}?paycancel=experience`,
+    'metadata[userId]': opts.userId,
+    'metadata[product]': 'experience',
+    'metadata[slug]': opts.slug,
+  })
+  const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  })
+  const j = (await r.json()) as { url?: string; error?: { message?: string } }
+  if (!r.ok || !j.url) return { error: j.error?.message || 'stripe refused the session', status: 502 }
+  return { url: j.url }
+}
+
+/** Purchase grants a SEAT AT THE WORKBENCH (Galen, Aug 24: "purchase gives you
+ *  access to co-program the world"): mint the buyer a member:<handle> build key
+ *  for the world — the same key the co-build dock honors. Idempotent: one live
+ *  member row per handle, so buying twice never duplicates. */
+export async function grantCoProgramMembership(userId: string, slug: string): Promise<void> {
+  const { prisma } = await import('@/lib/prisma')
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+  const email = user?.email
+  if (!email) return
+  const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
+  const space = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
+  if (!space) return
+  const existing = await prisma.spaceToken.findFirst({
+    where: { spaceId: space.id, revokedAt: null, name: `member:${handle}` }, select: { id: true },
+  })
+  if (existing) return
+  const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
+  await prisma.spaceToken.create({
+    data: {
+      name: `member:${handle}`,
+      tokenHash: crypto.createHash('sha256').update(raw).digest('hex'),
+      tokenPrefix: raw.slice(0, 12) + '...',
+      spaceId: space.id,
+    },
+  })
 }
 
 /** Verify a Stripe webhook signature (v1 scheme, timing-safe, 5-min tolerance). */

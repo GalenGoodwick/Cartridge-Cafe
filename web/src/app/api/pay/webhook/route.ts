@@ -29,6 +29,13 @@ export async function POST(req: NextRequest) {
       const { grantGenCredits } = await import('@/lib/stripe')
       await grantGenCredits(meta.userId, obj.id)
     }
+    // a PAID EXPERIENCE grants a seat at the workbench — mint the buyer a
+    // co-program membership in the world they bought (idempotent)
+    if (meta.product === 'experience' && meta.slug) {
+      const { grantCoProgramMembership } = await import('@/lib/stripe')
+      try { await grantCoProgramMembership(meta.userId, meta.slug) }
+      catch { return NextResponse.json({ error: 'membership mint failed, retry' }, { status: 500 }) }
+    }
     // A page purchase buys permanent hosting for one slug — take it live the
     // instant Stripe confirms, so the buyer's redirect lands on a live page.
     // finalizePagePublish verifies the reservation matches the PAID pageId
