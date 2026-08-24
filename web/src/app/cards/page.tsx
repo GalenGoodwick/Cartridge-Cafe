@@ -128,7 +128,7 @@ export default function CardsMain() {
         {/* masthead — the cafe's mark leads; the catalog is a page OF the cafe */}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
-          <h1 className="font-extrabold text-[19px] tracking-tight text-amber-300" style={{ fontFamily: 'inherit' }}>cartridge.cafe</h1>
+          <h1 className="cafe-sign text-[22px] leading-none">cartridge<span className="not-italic font-mono text-[15px] text-brass">.cafe</span></h1>
           <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
@@ -139,7 +139,7 @@ export default function CardsMain() {
             title="connect your AI — it builds your worlds and chats the commons as you">
             ⚿ CONNECT AI
           </button>
-          <a href="/" title="the reckoning — the tournament lives on the classic main"
+          <a href="/door" title="the reckoning + the old shelf — through the door (one day: exploration mode)"
             className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-2.5 py-1.5 rounded border border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
             ⚔
           </a>
@@ -181,7 +181,7 @@ export default function CardsMain() {
                   {[
                     { label: '◈ MY WORLDS', href: `/u/${myHandle}` },
                     { label: '◇ FRAMEWORK', href: '/framework' },
-                    { label: '◆ BREW ICON · on main', href: '/' },
+                    { label: '◆ BREW ICON · at the door', href: '/door' },
                   ].map(it => (
                     <a key={it.label} href={it.href} className="block px-2.5 py-2 rounded-lg text-white/75 hover:text-amber-200 hover:bg-black/40 transition-colors">{it.label}</a>
                   ))}
