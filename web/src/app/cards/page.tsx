@@ -129,7 +129,6 @@ export default function CardsMain() {
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
           <h1 className="font-extrabold text-[19px] tracking-tight text-amber-300" style={{ fontFamily: 'inherit' }}>cartridge.cafe</h1>
-          <span className="font-mono text-[12px] tracking-[0.35em] text-amber-200/70 pl-2 border-l border-white/15">THE CATALOG</span>
           <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
