@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
+import { placeholderSeedCommands } from '@/app/engine/placeholder-nodes'
 import { resetWorld, worldStores, setOriginal } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
@@ -738,11 +739,18 @@ export async function POST(req: NextRequest) {
           // shelf is for finished worlds — publish_world (gated on vision +
           // instructions + brief_done) is the explicit act that shelves one.
           const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId!, isPublic: false }))
+          // BORN WITH ITS SLOTS (Galen's law): every new world seeds the blank
+          // placeholder nodes — the sandbox is alive from frame one (no
+          // first-hook reload seam, ever) and the world's anatomy is already
+          // named: player/world/entities/rules/hud/net, each a dockable node.
+          for (const seed of placeholderSeedCommands(Date.now())) {
+            await applyCommandToSnapshot(space.id, seed).catch(() => {})
+          }
           const worldToken = await mintWorldToken(space.id, 'created via player key')
           // The platform speaks on its own bus: world births announce themselves.
           commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
           results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: true,
-            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". Skin every field with a visualType or it renders as nothing. The world is PRIVATE until you send {"type":"publish_world"} (requires vision + instructions + brief_done) — the shelf is for finished worlds.` })
+            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. The world is PRIVATE until you send {"type":"publish_world"} (requires vision + instructions + brief_done) — the shelf is for finished worlds.` })
           continue
         }
         if (cmd.type === 'use_world') {

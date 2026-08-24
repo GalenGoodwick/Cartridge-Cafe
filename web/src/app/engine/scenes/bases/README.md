@@ -17,5 +17,12 @@ on the card main, and groups FORK them into their own worlds.
   card.mobile), easing camera, edge clamps, one breathing avatar dot. The
   fork-tree root for 2D (blank-2d → platformer-2d-base → games).
 
+BORN WITH ITS SLOTS (Galen's law, Aug 2026): every base — and every world
+create_world mints — carries the blank placeholder nodes (engine
+placeholder-nodes.ts: player/world/entities/rules/hud/net). The sandbox is
+alive from frame one, so nothing ever needs a first-hook reload; builders
+dock a named slot and build WITHIN it. The platformer base is seeded
+(heal-base-slots.mjs); author new bases WITH their slots.
+
 TODO next: BLANK 3D · 3D base (veilfire-doom engine) · arena-io (bloop) ·
 puzzle-adventure (tideglass) · arena multiplayer wiring (mpManifest).

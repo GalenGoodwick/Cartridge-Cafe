@@ -102,7 +102,7 @@ describe('VISUALS get the same treatment (rung 2, second half)', () => {
     vis(snap, 'fn visual_aurora() {}')
     const r = vis(snap, '   ')
     expect(r.ok).toBe(false)
-    expect(snap.visualTypes[0].wgsl).toBe('fn visual_aurora() {}')
+    expect(snap.visualTypes?.[0].wgsl).toBe('fn visual_aurora() {}')
   })
 
   it('every landed define_visual versions under visual:<name>', () => {
@@ -119,7 +119,7 @@ describe('VISUALS get the same treatment (rung 2, second half)', () => {
     vis(snap, 'fn broken( {}', NOW)
     const out = noteShaderError(snap, 'visual', 'aurora', NOW + 500)
     expect(out.reverted).toBe(1)
-    expect(snap.visualTypes[0].wgsl).toBe('fn good() {}')
+    expect(snap.visualTypes?.[0].wgsl).toBe('fn good() {}')
     const hist = (snap.worldData as Record<string, unknown>).__nodeHist as Record<string, Array<{ rev: number; bad?: true }>>
     expect(hist['visual:aurora'].find(r => r.rev === 2)?.bad).toBe(true)
   })
@@ -136,5 +136,19 @@ describe('VISUALS get the same treatment (rung 2, second half)', () => {
     const snap = emptySnapshot()
     vis(snap, 'fn old() {}', NOW - NODE_ERR_PROBATION_MS - 1000)
     expect(noteShaderError(snap, 'visual', 'aurora', NOW)).toEqual({})
+  })
+})
+
+describe('BORN WITH ITS SLOTS — the placeholder seed', () => {
+  it('every placeholder passes the code gate and registers as a node', async () => {
+    const { placeholderSeedCommands, PLACEHOLDER_NODES } = await import('@/app/engine/placeholder-nodes')
+    const snap = emptySnapshot()
+    for (const seed of placeholderSeedCommands(NOW)) {
+      const r = applyCommandToSnapshotObject(snap, seed)
+      expect(r.error).toBeUndefined()
+    }
+    expect(snap.stepHooks.map(h => h.id)).toEqual(PLACEHOLDER_NODES.map(p => p.id))
+    const nodes = (snap.worldData as Record<string, unknown>).__nodes as Record<string, unknown>
+    for (const p of PLACEHOLDER_NODES) expect(nodes).toHaveProperty(p.id)
   })
 })
