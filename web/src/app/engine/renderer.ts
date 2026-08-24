@@ -3660,6 +3660,12 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phase, url: window.location?.href, hazards }),
         keepalive: true,   // survive a navigation/tab-close after the freeze
+      }).then(r => r.json()).then((d: { healed?: Array<{ name: string; rev: number }> }) => {
+        // the server healed the shader to last-good (rung 2) — close the loop
+        // for the human through the same fault surface that announced the break
+        if (d?.healed?.length) window.dispatchEvent(new CustomEvent('cc:fault', {
+          detail: { kind: 'quarantine', message: `auto-healed to last good version: ${d.healed.map(h => `${h.name} (rev ${h.rev})`).join(', ')} — reload to pick it up` },
+        }))
       }).catch(() => {})
     } catch { /* telemetry must never throw into the render path */ }
   }

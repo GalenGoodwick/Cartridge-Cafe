@@ -99,6 +99,62 @@ export function noteNodeError(
   return { counted: e.n, reverted: Number(r.revertedTo) }
 }
 
+/** SHADER VERSIONING (rung 2, visuals half): every landed define_visual /
+ *  define_module appends a rev under 'visual:<name>' / 'module:<name>' in the
+ *  same __nodeHist chain hooks use — one history, one budget, one heal law. */
+export function appendShaderRev(snap: SceneSnapshot, kind: 'visual' | 'module', name: string, wgsl: string, cmd: Record<string, unknown>): void {
+  const wd = snap.worldData as Record<string, unknown>
+  const hist = (wd.__nodeHist && typeof wd.__nodeHist === 'object' ? wd.__nodeHist : (wd.__nodeHist = {})) as NodeHist
+  const key = `${kind}:${name}`
+  const last = (hist[key] ?? [])[hist[key]?.length - 1]
+  appendNodeRev(hist, key, {
+    rev: (Number(last?.rev) || 0) + 1,
+    code: wgsl,
+    at: Number(cmd.__now ?? Date.now()),
+    by: String(cmd.__holder ?? '') || 'anon',
+  })
+  capWorldHistory(hist)
+}
+
+/** A QUARANTINED shader heals to last-good instead of being stripped (the
+ *  doggo-bounce fix). A WGSL compile failure is deterministic, so ONE report
+ *  triggers the heal — no threshold wait. The bad rev is marked; the restore
+ *  lands forward through define_visual/define_module (history is append-only).
+ *  No good ancestor → the shader stays put; quarantine benches it live but the
+ *  registry never loses it. */
+export function noteShaderError(
+  snap: SceneSnapshot,
+  kind: 'visual' | 'module',
+  name: string,
+  now: number,
+): { reverted?: number; noAncestor?: boolean } {
+  const wd = snap.worldData as Record<string, unknown>
+  const hist = (wd.__nodeHist && typeof wd.__nodeHist === 'object' ? wd.__nodeHist : null) as NodeHist | null
+  const key = `${kind}:${name}`
+  const chain = hist?.[key] ?? []
+  const cur = chain[chain.length - 1]
+  if (!cur) return {}
+  if (now - cur.at > NODE_ERR_PROBATION_MS) return {}   // settled shaders never auto-move
+  markRevBad(hist!, key, cur.rev)
+  const target = findRevertTarget(hist!, key, cur.rev)
+  if (!target) return { noAncestor: true }
+  const r = applyCommandToSnapshotObject(snap, {
+    type: kind === 'visual' ? 'define_visual' : 'define_module',
+    name, wgsl: target.code,
+    __holder: 'auto-heal', __now: now, __admin: true,
+  })
+  if (r.ok === false) return { noAncestor: true }
+  return { reverted: target.rev }
+}
+
+export async function recordShaderError(spaceId: string, kind: 'visual' | 'module', name: string): Promise<{ reverted?: number; noAncestor?: boolean }> {
+  const snap = await getSpaceSnapshot(spaceId, true)
+  if (!snap) return {}
+  const out = noteShaderError(snap, kind, name, Date.now())
+  if (out.reverted !== undefined || out.noAncestor) await setSpaceSnapshot(spaceId, snap)
+  return out
+}
+
 /** The async wrapper hook-errors calls: fresh read-modify-write on the space. */
 export async function recordNodeError(spaceId: string, hookId: string): Promise<{ counted?: number; reverted?: number; noAncestor?: boolean }> {
   const snap = await getSpaceSnapshot(spaceId, true)
@@ -564,12 +620,24 @@ export function applyCommandToSnapshotObject(
 
     case 'define_visual': {
       if (!snap.visualTypes) snap.visualTypes = []
+      // THE CODE GATE for shaders (rung 2): empty WGSL never lands — the
+      // visual stays at its last version. (True compile happens on the GPU;
+      // the quarantine report path heals a compile-broken push to last-good.)
+      {
+        const wgslStr = String(cmd.wgsl ?? '')
+        if (!wgslStr.trim()) {
+          result.ok = false
+          result.error = `empty WGSL never lands — visual "${cmd.name}" stays as it was`
+          return result
+        }
+      }
       const existing = snap.visualTypes.findIndex(v => v.name === cmd.name)
       if (existing >= 0) {
         snap.visualTypes[existing].wgsl = cmd.wgsl as string
       } else {
         snap.visualTypes.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
       }
+      appendShaderRev(snap, 'visual', String(cmd.name), String(cmd.wgsl), cmd)
       break
     }
 
@@ -580,12 +648,21 @@ export function applyCommandToSnapshotObject(
 
     case 'define_module': {
       if (!snap.modules) snap.modules = []
+      {
+        const wgslStr = String(cmd.wgsl ?? '')
+        if (!wgslStr.trim()) {
+          result.ok = false
+          result.error = `empty WGSL never lands — module "${cmd.name}" stays as it was`
+          return result
+        }
+      }
       const existing = snap.modules.findIndex(m => m.name === cmd.name)
       if (existing >= 0) {
         snap.modules[existing].wgsl = cmd.wgsl as string
       } else {
         snap.modules.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
       }
+      appendShaderRev(snap, 'module', String(cmd.name), String(cmd.wgsl), cmd)
       break
     }
 

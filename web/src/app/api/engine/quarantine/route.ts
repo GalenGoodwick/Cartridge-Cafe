@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFileSync, writeFileSync } from 'fs'
 import { loadGameSlot, saveGameSlot } from '../store'
+import { prisma } from '@/lib/prisma'
+import { recordShaderError } from '../space-store'
 import { join } from 'path'
 import { commonsBus } from '@/lib/commons-bus'
 
@@ -144,7 +146,41 @@ export async function POST(req: NextRequest) {
         data: { phase: report.phase, url: report.url } })
     }
   }
-  return NextResponse.json({ ok: true, logged: hazards.length })
+  // RUNG 2 (visuals half): a quarantined shader on a SPACE world HEALS to its
+  // last good version instead of being stripped — the doggo-bounce fix. WGSL
+  // compile failure is deterministic, so one report is enough. The heal lands
+  // in the snapshot; the live tab is told (healed list) and the AI channel
+  // (hookErrors in world state) gets a 'reverted' line.
+  const healed: Array<{ name: string; rev: number }> = []
+  if (['preflight', 'compile-error'].includes(report.phase) && report.url) {
+    const m = report.url.match(/\/space\/([^/?#]+)/)
+    const slug = m ? decodeURIComponent(m[1]) : null
+    if (slug) {
+      try {
+        const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true } })
+        if (sp) {
+          for (const h of hazards) {
+            if (!h.name) continue
+            const out = await recordShaderError(sp.id, 'visual', String(h.name))
+            if (out.reverted !== undefined) healed.push({ name: String(h.name), rev: out.reverted })
+          }
+          if (healed.length) {
+            // the same buffer the bridge folds into world state as hookErrors —
+            // ONE channel where a building AI reads every fault AND every heal
+            const errKey = 'hook-err:space:' + slug.toLowerCase()
+            const buf = ((await loadGameSlot(errKey)) as unknown[] | undefined) ?? []
+            for (const hh of healed) {
+              buf.push({ hookId: `visual:${hh.name}`, phase: 'reverted',
+                error: `auto-healed: quarantined shader "${hh.name}" reverted to its last good version (rev ${hh.rev}) — the bad rev is marked in node_history`,
+                at: Date.now(), count: 1 })
+            }
+            await saveGameSlot(errKey, buf.slice(-20))
+          }
+        }
+      } catch { /* telemetry never throws */ }
+    }
+  }
+  return NextResponse.json({ ok: true, logged: hazards.length, healed })
 }
 
 /** GET /api/engine/quarantine — read the log back (for an AI or a dashboard). */

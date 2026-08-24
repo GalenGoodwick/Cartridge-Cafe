@@ -4034,6 +4034,11 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug: spaceSlug || undefined, scene: spaceSlug ? undefined : cellBase(), error: hookErr }),
+        }).then(r => r.json()).then((d: { reverted?: number }) => {
+          // the heal spoke — tell the BUILDER, not just the AI (rung 2)
+          if (d?.reverted !== undefined) showToast(
+            `node "${hookErr.hookId}" auto-healed — its fresh push kept erroring, so it reverted to its last good version (rev ${d.reverted})`,
+            'info', 'the bad version is marked in its history; reload to run the healed code')
         }).catch(() => {})
       }
 

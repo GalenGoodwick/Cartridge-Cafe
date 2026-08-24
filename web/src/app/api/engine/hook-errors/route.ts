@@ -86,6 +86,14 @@ export async function POST(req: NextRequest) {
     try {
       const sp = await prisma.playerSpace.findUnique({ where: { slug: body.slug }, select: { id: true } })
       if (sp) heal = await recordNodeError(sp.id, entry.hookId)
+      if (heal.reverted !== undefined) {
+        // tell the AI in the SAME channel it reads faults from (world state's
+        // hookErrors) — a heal it never learns about is a mystery diff
+        buf.push({ hookId: entry.hookId, phase: 'reverted',
+          error: `auto-healed: node "${entry.hookId}" kept erroring on its fresh push and was reverted to its last good version (rev ${heal.reverted}) — the bad rev is marked in node_history`,
+          at: Date.now(), count: 1 })
+        await saveGameSlot(key, buf.slice(-MAX_ENTRIES))
+      }
     } catch { /* telemetry never throws */ }
   }
   return NextResponse.json({ ok: true, kept: buf.length, ...heal })

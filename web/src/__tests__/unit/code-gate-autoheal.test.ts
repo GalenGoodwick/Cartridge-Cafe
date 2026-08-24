@@ -1,7 +1,7 @@
 // co-build rung 2 (Galen's law): a broken push NEVER lands, and a fresh push
 // that errors live heals back to the last good version on its own.
 import { describe, it, expect } from 'vitest'
-import { applyCommandToSnapshotObject, emptySnapshot, noteNodeError, NODE_ERR_PROBATION_MS } from '@/app/api/engine/space-store'
+import { applyCommandToSnapshotObject, emptySnapshot, noteNodeError, noteShaderError, NODE_ERR_PROBATION_MS } from '@/app/api/engine/space-store'
 import type { SceneSnapshot } from '@/app/engine/types'
 
 const NOW = 1_700_000_000_000
@@ -90,5 +90,51 @@ describe('AUTO-HEAL — live errors revert a fresh push to the last good rev', (
     const out = noteNodeError(snap, 'engine', NOW + 4000)
     expect(out).toEqual({ counted: 1 })                  // fresh rev, fresh count
     expect(snap.stepHooks[0].code).toBe('sim.v3 = "fixed"')
+  })
+})
+
+describe('VISUALS get the same treatment (rung 2, second half)', () => {
+  const vis = (snap: SceneSnapshot, wgsl: string, at = NOW) =>
+    applyCommandToSnapshotObject(snap, { type: 'define_visual', name: 'aurora', wgsl, __holder: 'builder-a', __now: at })
+
+  it('empty WGSL never lands — the visual stays', () => {
+    const snap = emptySnapshot()
+    vis(snap, 'fn visual_aurora() {}')
+    const r = vis(snap, '   ')
+    expect(r.ok).toBe(false)
+    expect(snap.visualTypes[0].wgsl).toBe('fn visual_aurora() {}')
+  })
+
+  it('every landed define_visual versions under visual:<name>', () => {
+    const snap = emptySnapshot()
+    vis(snap, 'fn v1() {}', NOW - 1000)
+    vis(snap, 'fn v2() {}', NOW)
+    const hist = (snap.worldData as Record<string, unknown>).__nodeHist as Record<string, Array<{ rev: number; code: string }>>
+    expect(hist['visual:aurora'].map(r => r.rev)).toEqual([1, 2])
+  })
+
+  it('one quarantine report heals a fresh shader to last-good (deterministic compile fail)', () => {
+    const snap = emptySnapshot()
+    vis(snap, 'fn good() {}', NOW - 1000)
+    vis(snap, 'fn broken( {}', NOW)
+    const out = noteShaderError(snap, 'visual', 'aurora', NOW + 500)
+    expect(out.reverted).toBe(1)
+    expect(snap.visualTypes[0].wgsl).toBe('fn good() {}')
+    const hist = (snap.worldData as Record<string, unknown>).__nodeHist as Record<string, Array<{ rev: number; bad?: true }>>
+    expect(hist['visual:aurora'].find(r => r.rev === 2)?.bad).toBe(true)
+  })
+
+  it('a shader with no good ancestor stays (benched live, never stripped)', () => {
+    const snap = emptySnapshot()
+    vis(snap, 'fn only_broken( {}', NOW)
+    const out = noteShaderError(snap, 'visual', 'aurora', NOW + 500)
+    expect(out.noAncestor).toBe(true)
+    expect(snap.visualTypes).toHaveLength(1)
+  })
+
+  it('a settled shader never auto-moves', () => {
+    const snap = emptySnapshot()
+    vis(snap, 'fn old() {}', NOW - NODE_ERR_PROBATION_MS - 1000)
+    expect(noteShaderError(snap, 'visual', 'aurora', NOW)).toEqual({})
   })
 })
