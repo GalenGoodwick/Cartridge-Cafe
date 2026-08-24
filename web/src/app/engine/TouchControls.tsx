@@ -2,8 +2,9 @@
 // (DESIGN-fieldengine-carve.md, Phase 2). Pure move, byte-identical body.
 'use client'
 
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 import type { FieldSimulation } from './simulation'
+import { layoutTouchZones } from './touch-layout'
 
 /** Virtual touch controls — a left thumb-stick (arrows + WASD) and two action
  *  buttons (A = space, B = enter) writing the same worldData.key_* the keyboard
@@ -14,6 +15,17 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
     typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0))
   const originRef = useRef<{ x: number; y: number } | null>(null)
   const nubRef = useRef<HTMLDivElement>(null)
+  // LAYOUT IS COMPUTED, not hand-placed (touch-layout.ts — collision-free by
+  // construction, proven across the device matrix in its unit suite). The
+  // Aug 23 phone test caught the old magic-px stick/buttons overlap.
+  const [zones, setZones] = useState(() =>
+    typeof window !== 'undefined' ? layoutTouchZones(window.innerWidth, window.innerHeight) : null)
+  useEffect(() => {
+    const onR = () => setZones(layoutTouchZones(window.innerWidth, window.innerHeight))
+    window.addEventListener('resize', onR)
+    window.addEventListener('orientationchange', onR)
+    return () => { window.removeEventListener('resize', onR); window.removeEventListener('orientationchange', onR) }
+  }, [])
 
   // set a flag + bump its _n pulse counter on the rising edge — the keyboard
   // contract exactly, so input.pressed / hit() edges never miss a short tap
@@ -58,13 +70,15 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
     if (wd) flag(wd, key, down)
   }, [simRef, flag])
 
-  if (!isTouch) return null
+  if (!isTouch || !zones) return null
+  const Z = zones
+  const btnKeys: Array<[string, string]> = [['key_space', 'A'], ['key_enter', 'B']]
   return (
-    <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
+    <div className="absolute inset-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
       <div
         data-cc-chrome
-        className="absolute left-8 w-28 h-28 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
-        style={{ touchAction: 'none', bottom: 'max(2rem, env(safe-area-inset-bottom))' }}
+        className="absolute rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
+        style={{ touchAction: 'none', left: Z.stick.x, top: Z.stick.y, width: Z.stick.w, height: Z.stick.h }}
         onPointerDown={stickDown}
         onPointerMove={stickMove}
         onPointerUp={stickUp}
@@ -72,25 +86,21 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
       >
         <div
           ref={nubRef}
-          className="absolute left-1/2 top-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-white/20 border border-white/30 transition-transform duration-75"
+          className="absolute rounded-full bg-white/20 border border-white/30 transition-transform duration-75"
+          style={{ left: (Z.stick.w - Z.knob) / 2, top: (Z.stick.h - Z.knob) / 2, width: Z.knob, height: Z.knob }}
         />
       </div>
-      <div data-cc-chrome className="absolute right-8 flex gap-4 pointer-events-auto" style={{ bottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
+      {Z.buttons.map((b, i) => (
         <button
-          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
-          style={{ touchAction: 'none' }}
-          onPointerDown={btn('key_space', true)}
-          onPointerUp={btn('key_space', false)}
-          onPointerCancel={btn('key_space', false)}
-        >A</button>
-        <button
-          className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
-          style={{ touchAction: 'none' }}
-          onPointerDown={btn('key_enter', true)}
-          onPointerUp={btn('key_enter', false)}
-          onPointerCancel={btn('key_enter', false)}
-        >B</button>
-      </div>
+          key={btnKeys[i][1]}
+          data-cc-chrome
+          className="absolute rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25 pointer-events-auto"
+          style={{ touchAction: 'none', left: b.x, top: b.y, width: b.w, height: b.h }}
+          onPointerDown={btn(btnKeys[i][0], true)}
+          onPointerUp={btn(btnKeys[i][0], false)}
+          onPointerCancel={btn(btnKeys[i][0], false)}
+        >{btnKeys[i][1]}</button>
+      ))}
     </div>
   )
 }
