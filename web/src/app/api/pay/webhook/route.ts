@@ -23,6 +23,12 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
+    // worldgen buys a COUNTER, not a boolean — credit the generation ledger
+    // (idempotent per sessionId; Stripe retries must not double-credit)
+    if (meta.product === 'worldgen') {
+      const { grantGenCredits } = await import('@/lib/stripe')
+      await grantGenCredits(meta.userId, obj.id)
+    }
     // A page purchase buys permanent hosting for one slug — take it live the
     // instant Stripe confirms, so the buyer's redirect lands on a live page.
     // finalizePagePublish verifies the reservation matches the PAID pageId

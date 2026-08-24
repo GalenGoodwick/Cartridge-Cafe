@@ -14,6 +14,7 @@ import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 import ConnectPanel from '@/app/ConnectPanel'
+import { GenerateDoor } from './Generate'
 import { signOut } from 'next-auth/react'
 import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
@@ -139,6 +140,7 @@ export default function CardsMain() {
             title="connect your AI — it builds your worlds and chats the commons as you">
             ⚿ CONNECT AI
           </button>
+          <GenerateDoor signedIn={!!me && me !== 'anon'} />
           <a href="/door" title="the reckoning + the old shelf — through the door (one day: exploration mode)"
             className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-2.5 py-1.5 rounded border border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
             ⚔

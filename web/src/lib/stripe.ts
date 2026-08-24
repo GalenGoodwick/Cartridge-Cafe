@@ -26,6 +26,10 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // a plain optional tip — the price itself has custom_unit_amount enabled,
   // so the donor picks the amount on Stripe's own checkout page.
   donate: { env: 'STRIPE_PRICE_DONATE', mode: 'payment', label: 'donate to cartridge.cafe' },
+  // paid world generation: one purchase = GEN_CREDITS_PER_PURCHASE briefs the
+  // house AI builds. This is the phone's native creation route — a phone can't
+  // run a connected AI, but it can describe a world and pay the house to build it.
+  worldgen: { env: 'STRIPE_PRICE_WORLDGEN', mode: 'payment', label: 'generate a world — the house AI builds your brief' },
 }
 
 export function stripeConfigured(): boolean {
@@ -140,4 +144,44 @@ export async function revokeEntitlement(userId: string, product: string, slug?: 
   await saveGameSlot(entSlot(userId), {
     ents: ents.map((e) => (e.product === product && e.slug === slug ? { ...e, active: false } : e)),
   })
+}
+
+// ---- generation credits — the worldgen counter ------------------------------
+// Entitlements are booleans (own it or don't); worldgen is a COUNTER (a purchase
+// buys N briefs, each generation spends one). Separate slot, sessionId-deduped
+// grants because Stripe retries webhooks and a retry must not double-credit.
+export const GEN_CREDITS_PER_PURCHASE = 3
+
+const genSlot = (userId: string) => 'gencredits:' + userId
+
+export async function readGenCredits(userId: string): Promise<number> {
+  const doc = (await loadGameSlot(genSlot(userId))) as { n?: number } | undefined
+  return typeof doc?.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+}
+
+/** Webhook-side: +N credits, idempotent per checkout sessionId. */
+export async function grantGenCredits(userId: string, sessionId: string | undefined): Promise<number> {
+  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
+  const grants = Array.isArray(doc.grants) ? doc.grants : []
+  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+  if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
+  const next = n + GEN_CREDITS_PER_PURCHASE
+  await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })
+  return next
+}
+
+/** Generate-side: put ONE credit back (world creation failed after the spend). */
+export async function refundGenCredit(userId: string): Promise<void> {
+  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
+  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+  await saveGameSlot(genSlot(userId), { ...doc, n: n + 1 })
+}
+
+/** Generate-side: spend one credit. Returns the remaining count, or null if broke. */
+export async function spendGenCredit(userId: string): Promise<number | null> {
+  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
+  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+  if (n < 1) return null
+  await saveGameSlot(genSlot(userId), { ...doc, n: n - 1 })
+  return n - 1
 }
