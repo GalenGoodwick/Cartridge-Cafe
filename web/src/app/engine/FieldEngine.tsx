@@ -4840,6 +4840,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       }
 
       if (!skipRender) {
+        // the backdrop clips to the PLAYABLE RECT (task #20) — fed per frame so
+        // a live gridW/gridH edit takes effect without a reload
+        const wpR = sim.worldParams as { gridW?: number; gridH?: number }
+        renderer.setWorldRect(wpR.gridW, wpR.gridH)
         renderer.render(camera, camera.zoom, time, fieldEffects, superFields, activeInteractions, mode3D ? { pos: mode3D.pos, pitch: mode3D.pitch, yaw: mode3D.yaw, fov: mode3D.fov } : undefined, stepHookData)
       }
 

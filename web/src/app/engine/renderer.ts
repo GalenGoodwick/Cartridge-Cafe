@@ -91,6 +91,10 @@ export class FieldRenderer {
   private context: GPUCanvasContext | null = null
   private canvasFormat: GPUTextureFormat = 'bgra8unorm'
   private gridSize: number
+  // the PLAYABLE RECT (task #20): worldParams.gridW/gridH. The base backdrop
+  // clips to it so a rectangular world doesn't sit on a square grey slab.
+  private worldW = 0   // 0 = undeclared → falls back to gridSize at pack time
+  private worldH = 0
   private hasFloat32Filterable: boolean = false
 
   // Base pipeline
@@ -396,6 +400,13 @@ export class FieldRenderer {
 
   setRenderScale(scale: number): void {
     this.renderScale = Math.max(0.25, Math.min(2.0, scale))
+  }
+
+  /** Declare the playable rect (worldParams.gridW/gridH). Cheap — called per
+   *  frame by the engine so a live world-size edit takes effect immediately. */
+  setWorldRect(w?: number, h?: number): void {
+    this.worldW = Number.isFinite(w) && (w as number) > 0 ? (w as number) : 0
+    this.worldH = Number.isFinite(h) && (h as number) > 0 ? (h as number) : 0
   }
 
   /** Compute-buffer pixel budget. Full-canvas raymarched worlds die by retina
@@ -1308,7 +1319,8 @@ export class FieldRenderer {
     d[8] = mode3D?.pos[0] ?? 0; d[9] = mode3D?.pos[1] ?? 0; d[10] = mode3D?.pos[2] ?? 0
     d[11] = mode3D?.fov ?? 1.047 // default 60°
     d[12] = mode3D?.pitch ?? 0; d[13] = mode3D?.yaw ?? 0
-    d[14] = 0; d[15] = 0 // padding
+    // worldRect: the playable rect the backdrop clips to (task #20)
+    d[14] = this.worldW || this.gridSize; d[15] = this.worldH || this.gridSize
     this.device!.queue.writeBuffer(this.frameUniformBuf!, 0, d)
   }
 

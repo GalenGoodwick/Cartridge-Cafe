@@ -47,7 +47,7 @@ struct FrameUniforms {
   cam3Dpos: vec3f,    // 3D camera position
   cam3Dfov: f32,      // field of view (radians)
   cam3Ddir: vec2f,    // pitch, yaw
-  _pad3D: vec2f,
+  worldRect: vec2f,   // playable rect (gridW, gridH) — gridSize² when undeclared
 };
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 
@@ -721,8 +721,12 @@ ${COORD_MATH}
   let selection = textureLoad(selectionTex, texCoord, 0).r;
   let effectPixel = textureLoad(effectTex, texCoord, 0);
 
-  // Out-of-bounds background
-  if (texUV.x < 0.0 || texUV.x > 1.0 || texUV.y < 0.0 || texUV.y > 1.0) {
+  // Out-of-bounds background — the backdrop honors the WORLD RECT (task #20):
+  // a 2048×768 world gets its slab over exactly 2048×768; beyond the rect
+  // (even inside the square grid) is the same void as beyond the grid. Without
+  // this clip a rectangular world sat on a square grey backing (Galen, Aug 23).
+  if (texUV.x < 0.0 || texUV.x > 1.0 || texUV.y < 0.0 || texUV.y > 1.0
+      || gridCoord.x > frame.worldRect.x || gridCoord.y > frame.worldRect.y) {
     return vec4f(0.035, 0.045, 0.065, 1.0);
   }
 
