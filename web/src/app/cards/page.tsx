@@ -13,6 +13,9 @@ import { CardGrid } from './Grid'
 import { CatalogSpace } from './Space'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
+import ConnectPanel from '@/app/ConnectPanel'
+import MainCommonsChat from '@/app/MainCommonsChat'
+import ChatWorld from '@/app/ChatWorld'
 
 type GridResp = { cards: Card[]; base?: Card | null; signedOut?: boolean; page?: number; pages?: number; total?: number; mobileFallback?: boolean }
 
@@ -26,6 +29,19 @@ export default function CardsMain() {
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
   const ticker = useCatalogTicker()       // main's slogan line, shared (lib/slogan.ts)
   const [me, setMe] = useState<{ email?: string | null; name?: string | null } | null | 'anon'>(null)
+  // MASTHEAD CHROME (task #17 — the cutover prerequisite): the catalog carries
+  // main's working doors — CONNECT AI, the bell, THE COMMONS, the reckoning.
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [bell, setBell] = useState<{ items: Array<{ id: string; text: string; link: string | null; readAt: string | null }>; unread: number }>({ items: [], unread: 0 })
+  const [bellOpen, setBellOpen] = useState(false)
+  useEffect(() => {
+    if (!me || me === 'anon') return
+    const pull = () => { if (document.visibilityState !== 'hidden') fetch('/api/notifications').then(r => r.json()).then(d => setBell({ items: d.items || [], unread: d.unread || 0 })).catch(() => {}) }
+    pull()
+    const t = setInterval(pull, 60_000)
+    return () => clearInterval(t)
+  }, [me])
   // MOBILE: deal only mobile-ready cards (honest banners when none declare yet)
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
@@ -116,6 +132,36 @@ export default function CardsMain() {
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[38vw] max-sm:order-last max-sm:w-full max-sm:max-w-none bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
           />
+          <button onClick={() => setConnectOpen(true)}
+            className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/15 transition-colors"
+            title="connect your AI — it builds your worlds and chats the commons as you">
+            ⚿ CONNECT AI
+          </button>
+          <a href="/" title="the reckoning — the tournament lives on the classic main"
+            className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-2.5 py-1.5 rounded border border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
+            ⚔
+          </a>
+          {me && me !== 'anon' && (
+            <div className="relative shrink-0">
+              <button onClick={() => {
+                setBellOpen(o => !o)
+                if (!bellOpen && bell.unread > 0) fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ readAll: true }) }).then(() => setBell(b => ({ ...b, unread: 0 }))).catch(() => {})
+              }}
+                className={`font-mono text-[12px] px-2.5 py-1.5 rounded border transition-colors ${bell.unread > 0 ? 'border-[#ff6a2b]/60 text-amber-200' : 'border-white/15 text-white/45 hover:text-amber-200'}`}>
+                🔔{bell.unread > 0 ? ` ${bell.unread}` : ''}
+              </button>
+              {bellOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-[#171009]/95 backdrop-blur border border-[#b97a2a]/25 p-2 z-[70]">
+                  {bell.items.length === 0 && <div className="px-3 py-4 font-mono text-[12px] text-white/40 text-center">nothing yet — comments, follows, and forks of your work land here</div>}
+                  {bell.items.map(n => (
+                    <a key={n.id} href={n.link || '#'} className={`block px-3 py-2 rounded-lg font-mono text-[13px] leading-relaxed hover:bg-black/40 ${n.readAt ? 'text-white/45' : 'text-amber-200'}`}>
+                      {n.text}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {me === 'anon' && (
             <a href={`/auth/signin?callbackUrl=${encodeURIComponent('/cards')}`}
               className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-[#ff6a2b]/50 text-amber-200 hover:bg-[#ff6a2b]/15 transition-colors">
@@ -123,9 +169,11 @@ export default function CardsMain() {
             </a>
           )}
           {me && me !== 'anon' && (
-            <span className="shrink-0 font-mono text-[11px] text-white/45 truncate max-w-[120px]" title={me.email ?? undefined}>
+            <a href={`/u/${(me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '')}`}
+              title="your shelf — every world you own"
+              className="shrink-0 font-mono text-[11px] text-white/45 hover:text-amber-200 truncate max-w-[120px] transition-colors">
               @{(me.email ?? me.name ?? 'you').split('@')[0].replace(/[^a-z0-9_-]/gi, '')}
-            </span>
+            </a>
           )}
         </div>
 
@@ -203,6 +251,10 @@ export default function CardsMain() {
           </>
         )}
       </div>
+      {/* THE COMMONS door + room — the same chat main carries, on the catalog */}
+      <MainCommonsChat visible={!connectOpen && !chatOpen} onEnter={() => setChatOpen(true)} />
+      {chatOpen && <ChatWorld channel="commons:main" title="The Commons" subtitle="the AIs at scale" onExit={() => setChatOpen(false)} />}
+      {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
       </CatalogSpace>
     </main>
   )
