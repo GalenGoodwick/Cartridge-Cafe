@@ -15,16 +15,23 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
   const originRef = useRef<{ x: number; y: number } | null>(null)
   const nubRef = useRef<HTMLDivElement>(null)
 
+  // set a flag + bump its _n pulse counter on the rising edge — the keyboard
+  // contract exactly, so input.pressed / hit() edges never miss a short tap
+  const flag = useCallback((wd: Record<string, unknown>, key: string, on: boolean) => {
+    if (on && wd[key] !== true) wd[key + '_n'] = ((wd[key + '_n'] as number) || 0) + 1
+    wd[key] = on
+  }, [])
+
   const setKeys = useCallback((dx: number, dy: number) => {
     const wd = simRef.current?.worldData
     if (!wd) return
     const TH = 14
     const L = dx < -TH, R = dx > TH, U = dy < -TH, D = dy > TH
-    wd.key_left = L; wd.key_a = L
-    wd.key_right = R; wd.key_d = R
-    wd.key_up = U; wd.key_w = U
-    wd.key_down = D; wd.key_s = D
-  }, [simRef])
+    flag(wd, 'key_left', L); flag(wd, 'key_a', L)
+    flag(wd, 'key_right', R); flag(wd, 'key_d', R)
+    flag(wd, 'key_up', U); flag(wd, 'key_w', U)
+    flag(wd, 'key_down', D); flag(wd, 'key_s', D)
+  }, [simRef, flag])
 
   const stickDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -48,15 +55,16 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
   const btn = useCallback((key: string, down: boolean) => (e: React.PointerEvent) => {
     e.preventDefault()
     const wd = simRef.current?.worldData
-    if (wd) wd[key] = down
-  }, [simRef])
+    if (wd) flag(wd, key, down)
+  }, [simRef, flag])
 
   if (!isTouch) return null
   return (
     <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
       <div
-        className="absolute bottom-8 left-8 w-28 h-28 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
-        style={{ touchAction: 'none' }}
+        data-cc-chrome
+        className="absolute left-8 w-28 h-28 rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"
+        style={{ touchAction: 'none', bottom: 'max(2rem, env(safe-area-inset-bottom))' }}
         onPointerDown={stickDown}
         onPointerMove={stickMove}
         onPointerUp={stickUp}
@@ -67,7 +75,7 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
           className="absolute left-1/2 top-1/2 -ml-6 -mt-6 w-12 h-12 rounded-full bg-white/20 border border-white/30 transition-transform duration-75"
         />
       </div>
-      <div className="absolute bottom-10 right-8 flex gap-4 pointer-events-auto">
+      <div data-cc-chrome className="absolute right-8 flex gap-4 pointer-events-auto" style={{ bottom: 'max(2.5rem, env(safe-area-inset-bottom))' }}>
         <button
           className="w-16 h-16 rounded-full border border-white/25 bg-white/10 text-white/70 text-sm font-mono active:bg-white/25"
           style={{ touchAction: 'none' }}

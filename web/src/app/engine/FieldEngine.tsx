@@ -4821,6 +4821,22 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           if (fp !== uiRectsFpRef.current) {
             uiRectsFpRef.current = fp
             sim.worldData['__uiRects'] = { rev: solved.rev, rects: solved.rects, hits: solved.hits.map(h => ({ id: h.id, action: h.action, x: h.x, y: h.y, w: h.w, h: h.h })) }
+            // __uiSafe (fit law: "ui buttons cover the world"): the design-square
+            // bands UI occupies — chrome insets (incl. touch-control zones, they
+            // are data-cc-chrome) widened by every solved panel HUGGING an edge.
+            // Worlds read it to keep critical content in the uncovered middle.
+            {
+              const ins = { ...chromeInsetsRef.current }
+              const HUG = 40   // a panel within this of an edge claims that band
+              for (const id in solved.rects) {
+                const r = solved.rects[id]
+                if (r.y < HUG) ins.top = Math.max(ins.top, r.y + r.h)
+                if (512 - (r.y + r.h) < HUG) ins.bottom = Math.max(ins.bottom, 512 - r.y)
+                if (r.x < HUG) ins.left = Math.max(ins.left, r.x + r.w)
+                if (512 - (r.x + r.w) < HUG) ins.right = Math.max(ins.right, 512 - r.x)
+              }
+              sim.worldData['__uiSafe'] = ins
+            }
             if (uiEditOnRef.current) setUiEditPanels(solved.panels)
           }
           // UI EDIT overlay geometry: track the resting square so panel
@@ -4838,6 +4854,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           renderer.setUiSolved(null)
           uiRectsFpRef.current = -1
           delete sim.worldData['__uiRects']
+          delete sim.worldData['__uiSafe']
         }
       } catch { /* the UI layer must never take down the frame */ }
 
