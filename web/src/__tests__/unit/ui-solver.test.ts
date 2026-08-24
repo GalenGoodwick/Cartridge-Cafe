@@ -315,3 +315,52 @@ describe('below-chaining — stacked panels can never collide', () => {
     expect(b.rects['under'].x).toBe(b.rects['top'].x)
   })
 })
+
+describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 23)', () => {
+  const vpWide = { w: 910, h: 512 }   // a 16:9 screen in design units
+
+  it('vx:0 reaches the TRUE left edge of a wide viewport (outside the square)', () => {
+    const s = solveUi({
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      viewport: vpWide,
+    })
+    expect(s.rects['p'].x).toBeCloseTo(256 - 910 / 2, 5)
+    expect(s.rects['p'].y).toBeCloseTo(256 - 512 / 2, 5)
+  })
+
+  it('vx:1 align br pins the panel inside the bottom-right viewport corner', () => {
+    const s = solveUi({
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 1 }, align: 'br', w: 100, h: 40 }] },
+      viewport: vpWide,
+    })
+    expect(s.rects['p'].x + s.rects['p'].w).toBeCloseTo(256 + 910 / 2, 5)
+    expect(s.rects['p'].y + s.rects['p'].h).toBeCloseTo(256 + 512 / 2, 5)
+  })
+
+  it('viewport-anchored panels clamp to the VIEWPORT minus insets, not the square', () => {
+    const s = solveUi({
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      viewport: vpWide,
+      insets: { left: 10, top: 6 },
+    })
+    expect(s.rects['p'].x).toBeCloseTo(256 - 910 / 2 + 10, 5)
+    expect(s.rects['p'].y).toBeCloseTo(256 - 512 / 2 + 6, 5)
+  })
+
+  it('square-anchored panels keep the OLD clamp exactly (never leave the square)', () => {
+    const s = solveUi({
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      viewport: vpWide,
+    })
+    expect(s.rects['p'].x).toBeGreaterThanOrEqual(0)
+    expect(s.rects['p'].y).toBeGreaterThanOrEqual(0)
+  })
+
+  it('no viewport given: vx/vy degrade to square edges (never NaN, never off-square)', () => {
+    const s = solveUi({
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 0 }, align: 'tr', w: 80, h: 30 }] },
+    })
+    expect(s.rects['p'].x + s.rects['p'].w).toBeCloseTo(512, 5)
+    expect(s.rects['p'].y).toBeCloseTo(0, 5)
+  })
+})

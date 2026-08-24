@@ -52,7 +52,16 @@ export async function GET(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ space })
+  // deviceConfig (fit law): surfaced so the support gate can admit phones to
+  // worlds that DECLARE mobile — one cheap JSON path, no snapshot download
+  let deviceConfig: string | null = null
+  try {
+    const rows = await prisma.$queryRaw<Array<{ d: string | null }>>`
+      SELECT snapshot->'worldParams'->>'deviceConfig' AS d FROM "PlayerSpace" WHERE id = ${space.id}`
+    deviceConfig = rows[0]?.d === 'mobile' ? 'mobile' : rows[0]?.d === 'desktop' ? 'desktop' : null
+  } catch { /* absent = desktop default */ }
+
+  return NextResponse.json({ space: { ...space, deviceConfig } })
 }
 
 /** PATCH /api/spaces/:slug — Update space metadata (owner only) */

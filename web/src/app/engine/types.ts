@@ -175,6 +175,12 @@ export interface WorldParams {
    *  a 2048×768 world is a panorama, 512×2048 a tower. */
   gridW?: number
   gridH?: number
+  /** THE DEVICE CONFIG (Galen's fit law, Aug 23: "games are desktop or mobile
+   *  config"): every world targets ONE of the two; tablets get the nearest.
+   *  'desktop' (default) — landscape-family aspects, pointer input; small/touch
+   *  screens see the bigger-table notice. 'mobile' — portrait-family; phones
+   *  with WebGPU pass the support gate for THIS world. */
+  deviceConfig?: 'desktop' | 'mobile'
 }
 
 /** Memory entry types for field agent history */

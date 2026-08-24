@@ -48,8 +48,11 @@ export interface UiNode {
   id?: string
   kind: 'panel' | 'col' | 'row' | 'text' | 'meter' | 'button' | 'spacer' | 'slot'
   hidden?: boolean
-  // top-level panel placement
-  anchor?: { x?: number; y?: number; gx?: number; gy?: number; entity?: string; below?: string; gap?: number; dx?: number; dy?: number }
+  // top-level panel placement. vx/vy (0..1) anchor to the FULL VIEWPORT's
+  // edges — the responsive band layer (Galen's fit law, Aug 23): UI reaches
+  // the true screen corners at ANY aspect, while gx/gy/x/y stay in the
+  // centered design square. 0 = left/top edge, 1 = right/bottom, 0.5 = center.
+  anchor?: { x?: number; y?: number; gx?: number; gy?: number; vx?: number; vy?: number; entity?: string; below?: string; gap?: number; dx?: number; dy?: number }
   /** which POINT of the panel the anchor pins: tl tc tr cl c cr bl bc br (default c) */
   align?: 'tl' | 'tc' | 'tr' | 'cl' | 'c' | 'cr' | 'bl' | 'bc' | 'br'
   glass?: boolean | GlassStyle
@@ -104,6 +107,10 @@ export interface SolveInput {
    *  under the cafe's chrome again (the blank-2d collision, task #19).
    *  Omitted/zero = exactly the old behavior. */
   insets?: { top?: number; right?: number; bottom?: number; left?: number }
+  /** the FULL viewport in DESIGN UNITS (screen px ÷ (side/512)), centered on
+   *  the square. Enables anchor vx/vy — viewport-edge panels. Omitted = the
+   *  square itself (vx/vy degrade gracefully to square edges). */
+  viewport?: { w: number; h: number }
 }
 
 export interface SolvedUi {
@@ -323,9 +330,21 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
 }
 
 /** resolve a top-level panel's anchor to its top-left, given its size */
-function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities'], rects?: SolvedUi['rects']): { x: number; y: number } {
+function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities'], rects?: SolvedUi['rects'], viewport?: SolveInput['viewport']): { x: number; y: number } {
   const a = node.anchor ?? {}
   let px = GRID / 2, py = GRID / 2
+  if (a.vx != null || a.vy != null) {
+    // VIEWPORT anchor: fractions of the full screen, centered on the square —
+    // the responsive band layer. Falls back to the square when no viewport given.
+    const vw = viewport?.w ?? GRID, vh = viewport?.h ?? GRID
+    px = GRID / 2 - vw / 2 + (a.vx ?? 0.5) * vw
+    py = GRID / 2 - vh / 2 + (a.vy ?? 0.5) * vh
+    px += a.dx ?? 0; py += a.dy ?? 0
+    const alV = node.align ?? 'c'
+    const axV = alV[1] === 'l' || alV === 'cl' ? 0 : alV[1] === 'r' || alV === 'cr' ? 1 : 0.5
+    const ayV = alV[0] === 't' ? 0 : alV[0] === 'b' ? 1 : 0.5
+    return { x: px - w * axV, y: py - h * ayV }
+  }
   if (a.below != null && rects && rects[a.below]) {
     // CHAINED PANEL: sit under an EARLIER panel's SOLVED rect (left edges
     // aligned) — two stacked panels can never collide however tall the first
@@ -375,17 +394,24 @@ export function solveUi(input: SolveInput): SolvedUi {
     const size = layout(body, 0, 0, w, scratch)
     const h = ov.h ?? (panel.h != null && panel.h !== 'auto' ? units(panel.h, size.h) : size.h)
 
-    const tl = anchorTL(panel, w, h, entities, out.rects)
+    const tl = anchorTL(panel, w, h, entities, out.rects, input.viewport)
     let x = tl.x + (ov.dx ?? 0)
     let y = tl.y + (ov.dy ?? 0)
-    // CHROME-SAFE: clamp the panel into the square minus the chrome bands.
-    // A panel taller/wider than the safe rect pins to its top-left (never
-    // pushed off the far side); entity-anchored panels clamp too — a name
-    // tag ducks under the plate rather than vanishing beneath it.
+    // CHROME-SAFE: clamp the panel into the safe rect minus the chrome bands.
+    // Square-anchored panels clamp into the SQUARE (old behavior exactly);
+    // viewport-anchored panels (vx/vy) clamp into the FULL VIEWPORT — that's
+    // their whole point: reaching the true screen edges at any aspect. Insets
+    // apply at whichever rect's edges. A panel taller/wider than the safe rect
+    // pins to its top-left (never pushed off the far side).
     {
       const ins = input.insets ?? {}
-      const sx0 = ins.left ?? 0, sy0 = ins.top ?? 0
-      const sx1 = GRID - (ins.right ?? 0), sy1 = GRID - (ins.bottom ?? 0)
+      const vAnchored = panel.anchor?.vx != null || panel.anchor?.vy != null
+      const vw = vAnchored ? (input.viewport?.w ?? GRID) : GRID
+      const vh = vAnchored ? (input.viewport?.h ?? GRID) : GRID
+      const rx0 = vAnchored ? GRID / 2 - vw / 2 : 0
+      const ry0 = vAnchored ? GRID / 2 - vh / 2 : 0
+      const sx0 = rx0 + (ins.left ?? 0), sy0 = ry0 + (ins.top ?? 0)
+      const sx1 = rx0 + vw - (ins.right ?? 0), sy1 = ry0 + vh - (ins.bottom ?? 0)
       x = Math.max(sx0, Math.min(x, Math.max(sx0, sx1 - w)))
       y = Math.max(sy0, Math.min(y, Math.max(sy0, sy1 - h)))
     }

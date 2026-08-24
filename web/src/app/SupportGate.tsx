@@ -92,7 +92,22 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         phoneUA ||
         window.innerWidth < 820 ||
         (('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1100)
-      if (smallOrTouch) { setVerdict('mobile'); return }
+      if (smallOrTouch) {
+        // THE FIT LAW (Galen, Aug 23): every world is a desktop OR mobile
+        // config. A phone on a world that DECLARES mobile falls through to the
+        // real WebGPU probe (modern iOS/Android have it) instead of the
+        // bigger-table wall. Any fetch failure = the wall, as before.
+        const worldSlug = window.location.pathname.match(/^\/space\/([a-z0-9-]+)/)?.[1]
+        let mobileWorld = false
+        if (worldSlug) {
+          try {
+            const r = await fetch(`/api/spaces/${encodeURIComponent(worldSlug)}`, { cache: 'no-store' })
+            const d = r.ok ? await r.json() : null
+            mobileWorld = d?.space?.deviceConfig === 'mobile'
+          } catch { /* stay walled */ }
+        }
+        if (!mobileWorld) { setVerdict('mobile'); return }
+      }
 
       const gpu = (navigator as unknown as { gpu?: { requestAdapter(opts?: unknown): Promise<unknown> } }).gpu
       if (!gpu) { setVerdict('nogpu'); setWhy('navigator.gpu missing — this browser build has no WebGPU API'); report('nogpu', 'navigator.gpu missing — browser has no WebGPU API'); return }

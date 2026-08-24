@@ -4798,11 +4798,18 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         const onHubUi = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
         const uiT = onHubUi ? undefined : sim.worldData['ui'] as UiTree | undefined
         if (uiT && Array.isArray(uiT.root) && uiT.root.length) {
+          // the FULL viewport in design units — powers anchor vx/vy (viewport-
+          // edge panels, the responsive band layer; Galen's fit law Aug 23)
+          const cnvUi = canvasRef.current
+          const sideUi = cnvUi ? Math.min(cnvUi.clientWidth, cnvUi.clientHeight) : 0
           const solved = solveUi({
             ui: uiT,
             entities: sim.worldData['__entities'] as Parameters<typeof solveUi>[0]['entities'],
             overrides: sim.worldData['__uiOverrides'] as Record<string, UiOverride> | undefined,
             insets: chromeInsetsRef.current,   // chrome-safe: world UI never lands under the cafe's own plate/rail/pills
+            viewport: cnvUi && sideUi > 0
+              ? { w: cnvUi.clientWidth / (sideUi / 512), h: cnvUi.clientHeight / (sideUi / 512) }
+              : undefined,
           })
           uiSolvedRef.current = solved
           renderer.setUiSolved(solved)
