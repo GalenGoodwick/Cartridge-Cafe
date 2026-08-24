@@ -93,9 +93,11 @@ export async function POST(
         if (policy.build === 'anyone') {
           memberHandle = handle
           owned = { userId: sp.ownerId, spaceId: sp.id }
-        } else if (policy.build === 'invited') {
-          // an existing MEMBER (joined via a one-time invite link) re-mints
-          // their own build key; the roster row is the authority
+        } else {
+          // an existing MEMBER re-mints their build key on ANY contract —
+          // the invite itself is the authority ("sharing a link is sharing
+          // ownership"): the owner minted that link, the roster row proves
+          // it, so a default-contract world can't strand its own crew.
           const member = await prisma.spaceToken.findFirst({
             where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
           if (member) { memberHandle = handle; owned = { userId: sp.ownerId, spaceId: sp.id } }

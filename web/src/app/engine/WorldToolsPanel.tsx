@@ -107,6 +107,51 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     })}
                   </div>
                   )}
+                  {/* THE SOCIAL CONTRACT (world-policy): declared ONCE, then
+                      immutable — changing the deal on people mid-world isn't
+                      fair (Galen). Undeclared worlds run the default (owner
+                      builds, everyone plays); invited crew always keep their
+                      keys regardless. The dropdowns write worldData.policy;
+                      the server's mayWritePolicy admits only the FIRST set. */}
+                  {spaceId && (() => {
+                    const pol = wd?.['policy'] as { build?: string; play?: string } | undefined
+                    const declared = !!(pol && typeof pol === 'object' && pol.build)
+                    if (declared) return (
+                      <div className="flex items-center justify-between text-[16px]">
+                        <span>social contract</span>
+                        <span className="px-2 py-0.5 rounded-full border border-white/15 text-[13px] tracking-[0.1em] text-white/50"
+                          title="declared once at the start — immutable, so the deal never changes on the people already building here">
+                          build: {pol.build} · play: {pol.play ?? 'everyone'} · sealed
+                        </span>
+                      </div>
+                    )
+                    if (!canEditLaw) return null
+                    return (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[16px]">
+                          <span>social contract</span>
+                          <span className="text-[13px] text-white/35">undeclared · default</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[13px]">
+                          {(['owner', 'invited', 'anyone'] as const).map(b => (
+                            <button key={b}
+                              onClick={() => {
+                                const sim = simulationRef.current; if (!sim) return
+                                if (!window.confirm(`declare the contract: BUILD = ${b}, PLAY = everyone?\n\nThis is PERMANENT — the deal never changes on people once they're building here.`)) return
+                                sim.worldData['policy'] = { build: b, play: 'everyone' }
+                                setToolsTick(n => n + 1)
+                              }}
+                              className="px-2 py-0.5 rounded-full border border-white/20 text-white/55 hover:border-emerald-300/50 hover:text-emerald-200 transition-colors">
+                              build: {b}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-[13px] text-white/30 leading-snug">
+                          who may build here — declared ONCE, then sealed. owner = just you (+ anyone you invite); invited = your crew; anyone = open ground.
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {/* winner-takes-main RETIRED with the podium (branch→fork
                       transition): world votes no longer exist, so no challenger
                       can win — or take — anything. Your main is simply yours. */}
