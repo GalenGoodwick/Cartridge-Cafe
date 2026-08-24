@@ -15,7 +15,10 @@
 export function inferOwns(src: string): number[][] {
   if (!src) return []
   const idx = new Set<number>()
-  const re = /(?:\bu|gpuUniforms)\s*\[\s*(\d+)\s*\]\s*=(?!=)/g
+  // hooks name the whiteboard u, U, or gpuUniforms — match all three
+  // (U[21]=… is the cinderfell/base convention; lowercase-only missed it,
+  // leaving owns.uni EMPTY on every base — found by the reverse renderer)
+  const re = /(?:\b[uU]|gpuUniforms)\s*\[\s*(\d+)\s*\]\s*=(?!=)/g
   let m: RegExpExecArray | null
   while ((m = re.exec(src))) { const n = +m[1]; if (n >= 0 && n < 256) idx.add(n) }
   const sorted = [...idx].sort((a, b) => a - b)

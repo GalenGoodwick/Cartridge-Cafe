@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { solveUi, GRID, type UiTree } from '@/app/engine/ui-solver'
 
 const panelAt = (id: string, gx: number, gy: number, align: 'tl' | 'br' | 'tr' = 'tl'): UiTree => ({
-  root: [{ id, anchor: { gx, gy }, align, w: 120, children: [{ kind: 'text', text: 'SCORE 12' }] }],
+  root: [{ id, kind: 'panel' as const, anchor: { gx, gy }, align, w: 120, children: [{ kind: 'text', text: 'SCORE 12' }] }],
 })
 
 describe('chrome-safe insets', () => {
@@ -37,7 +37,7 @@ describe('chrome-safe insets', () => {
   })
 
   it('an oversized panel pins to the safe top-left, never pushed off-square', () => {
-    const ui: UiTree = { root: [{ id: 'big', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 600, children: [{ kind: 'text', text: 'x' }] }] }
+    const ui: UiTree = { root: [{ id: 'big', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 600, children: [{ kind: 'text', text: 'x' }] }] }
     const s = solveUi({ ui, insets: { top: 50, left: 20 } })
     expect(s.rects.big.x).toBe(20)
     expect(s.rects.big.y).toBe(50)

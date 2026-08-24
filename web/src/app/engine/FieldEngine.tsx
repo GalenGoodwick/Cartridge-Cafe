@@ -237,7 +237,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
   // the TRUE painted pixel under the cursor live — shown in the console header.
   const [inspectHover, setInspectHover] = useState<{ hex: string; x: number; y: number } | null>(null)
   const inspectPixRef = useRef<{ data: ImageData; w: number; h: number } | null>(null)
-  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; ui?: { id: string; text: string; panel: string | null; hook: string | null } | null; source?: string | null }[]>([])
+  const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; ui?: { id: string; text: string; panel: string | null; hook: string | null } | null; source?: string | null; drives?: { visual: string; rev: number | null; by: string | null; reads: number[]; writers: { hook: string; slots: string }[] } | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
@@ -3043,6 +3043,31 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
       const vName = (hfI as { visualTypeName?: string } | null)?.visualTypeName ?? null
       let source: string | null = null
       try { if (vName) source = rendererRef.current?.getVisualWgsl(vName) ?? null } catch { /* never break inspect */ }
+      // THE REVERSE RENDERER (Galen): pixel → visual NODE → the hook nodes that
+      // DRIVE it. The visual's WGSL names the uni slots it READS (uni(N)
+      // literals); the registry knows which hooks WRITE them (owns.uni,
+      // inferred at push). Intersect = the full pixel-to-source chain.
+      let drivesI: { visual: string; rev: number | null; by: string | null; reads: number[]; writers: { hook: string; slots: string }[] } | null = null
+      try {
+        if (vName && source) {
+          const readsI = new Set<number>()
+          const reU = /\buni4?\s*\(\s*(\d+)/g
+          let mU: RegExpExecArray | null
+          while ((mU = reU.exec(source))) { const nU = +mU[1]; if (nU >= 0 && nU < 256) readsI.add(nU) }
+          const wdI = sim?.worldData as Record<string, unknown> | undefined
+          const histI = (wdI?.['__nodeHist'] as Record<string, Array<{ rev: number; by: string }>> | undefined)?.['visual:' + vName]
+          const lastRevI = histI?.[histI.length - 1]
+          const nodesRI = wdI?.['__nodes'] as Record<string, { owns?: { uni?: number[][] } }> | undefined
+          const writersI: { hook: string; slots: string }[] = []
+          if (nodesRI) for (const idW in nodesRI) {
+            const rangesI = nodesRI[idW]?.owns?.uni
+            if (!Array.isArray(rangesI)) continue
+            const hitI = rangesI.filter(rg => Array.isArray(rg) && [...readsI].some(nn => nn >= rg[0] && nn <= rg[1]))
+            if (hitI.length) writersI.push({ hook: idW, slots: hitI.map(rg => rg[0] === rg[1] ? 'u' + rg[0] : `u${rg[0]}-${rg[1]}`).join(',') })
+          }
+          if (readsI.size || lastRevI) drivesI = { visual: 'visual:' + vName, rev: lastRevI?.rev ?? null, by: lastRevI?.by ? String(lastRevI.by).slice(0, 8) : null, reads: [...readsI].sort((a2, b2) => a2 - b2), writers: writersI }
+        }
+      } catch { /* the reverse chain is a bonus, never break inspect */ }
       // UNIVERSAL PIXEL→NODE (Galen): the engine tracked which hook wrote every
       // gpuPopulation entry this tick (__popProv, built in the hook loop).
       // Project the entries (uv quads → grid = (v+1)·256) and name the nearest
@@ -3133,7 +3158,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
           }
         }
       } catch { /* hud naming is a bonus */ }
-      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, hud: hudI, ui: uiI, source }
+      const entry = { at: Date.now(), x: Math.round(gI.x), y: Math.round(gI.y), field: hfI?.name ?? null, visual: vName ?? ((hfI?.visualType as string | undefined) ?? null), color: colI, entity: entI, node: nodeI, hud: hudI, ui: uiI, source, drives: drivesI }
       setInspectLog(l => [...l.slice(-7), entry])
       if (sim) {
         const ring = Array.isArray(sim.worldData['__clicks']) ? (sim.worldData['__clicks'] as unknown[]) : []
@@ -5946,6 +5971,7 @@ export default function FieldEngine({ spaceId, spaceSlug, spaceName, spaceOwnerN
                     {en.ui ? <span className="text-amber-300"> › UI "{en.ui.text}" ({en.ui.id}{en.ui.panel && en.ui.panel !== en.ui.id ? ' ∈ ' + en.ui.panel : ''}) · {en.ui.hook ?? 'ui'}</span> : null}
                     {en.hud ? <span className="text-cyan-300"> › HUD "{en.hud.text}" ({en.hud.id})</span> : null}
                     {en.node ? <span className="text-fuchsia-300"> › {en.node.map(n => `${n.hook} #${n.idx}·k${n.kind}@${n.d}px`).join(' · ')}</span> : null}
+                    {en.drives ? <span className="text-emerald-300"> › {en.drives.visual}{en.drives.rev != null ? ` v${en.drives.rev}` : ''}{en.drives.writers.length ? ' ← ' + en.drives.writers.map(w => `⚙ ${w.hook} (${w.slots})`).join(' · ') : ''}</span> : null}
                     {en.source ? <span className="text-emerald-300"> · src ✓</span> : null}
                   </button>
                   {/* PIXEL → SOURCE: the newest click shows the exact visual that
