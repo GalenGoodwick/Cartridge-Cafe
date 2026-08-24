@@ -1,7 +1,7 @@
 'use client'
 
 import { usePresenceBeat } from '@/lib/usePresenceBeat'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
 import ShareWorld from './ShareWorld'
@@ -140,6 +140,75 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, engineOwner, 
     return () => window.removeEventListener('cafe:playmode', on)
   }, [])
 
+  // ── THE EXIT GATE (Galen, Aug 20): ESC or back — the engine's ◂ AND the
+  //    browser's own back button — asks before leaving ANY world. The hub has
+  //    paused-and-asked since forever (CafeShell's confirmLeave); this brings
+  //    the same dialog to standalone /space pages. cafe:pause freezes the
+  //    world under the dialog, so a mid-game ESC costs nothing.
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const confirmLeaveRef = useRef(confirmLeave); confirmLeaveRef.current = confirmLeave
+  const pauseWorld = (on: boolean) => window.dispatchEvent(new CustomEvent('cafe:pause', { detail: on }))
+  const openLeave = useCallback(() => { setConfirmLeave(true); pauseWorld(true) }, [])
+  const stayHere = useCallback(() => { setConfirmLeave(false); pauseWorld(false) }, [])
+  const leaveWorld = useCallback(() => {
+    pauseWorld(false)
+    // same up-never-back rule as the engine's ◂: a branch goes to its base
+    // world's room, a world without lineage goes to the cafe (history.back()
+    // would walk ?version=N entries — the direct-join trap)
+    const base = (name || '').split(' ⑂ ')[0].trim()
+    window.location.href = base && base !== (name || '').trim() ? `/hub/${encodeURIComponent(base)}` : '/'
+  }, [name])
+
+  // ESC → the gate. Bubble phase on purpose: the engine's capture-phase handler
+  // closes its own open panels first and stops propagation, so ESC only reaches
+  // here when no panel is up. An open reckoning closes first (one layer at a
+  // time — exactly the hub's ◂ law).
+  useEffect(() => {
+    if (versionView) return                       // version views are read-only visits
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return   // ESC in a field just blurs it
+      if (confirmLeaveRef.current) stayHere()
+      else openLeave()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [versionView, openLeave, stayHere])
+
+  // the engine's ◂ asks us first (cancelable cafe:back); preventDefault = we own it
+  useEffect(() => {
+    if (versionView) return
+    const onBack = (e: Event) => {
+      e.preventDefault()
+      if (confirmLeaveRef.current) stayHere(); else openLeave()
+    }
+    window.addEventListener('cafe:back', onBack)
+    return () => window.removeEventListener('cafe:back', onBack)
+  }, [versionView, openLeave, stayHere])
+
+  // BROWSER BACK → the gate. Mark the entry we arrived on as the gate floor and
+  // stand on a pushed twin; popping INTO the floor opens the dialog and re-arms.
+  // Version-stepping pushes its own ?version=N entries ABOVE the twin, so backing
+  // through those never trips the gate (their popstate state isn't the floor's).
+  // States are MERGED over history.state so Next's router keys survive.
+  useEffect(() => {
+    if (versionView) return
+    try {
+      const s = window.history.state || {}
+      window.history.replaceState({ ...s, cafeWorldGate: 1 }, '')
+      window.history.pushState({ ...s, cafeWorldTop: 1 }, '')
+    } catch { /* sandboxed iframe etc. — gate just won't arm */ }
+    const onPop = (e: PopStateEvent) => {
+      if (!(e.state && (e.state as { cafeWorldGate?: number }).cafeWorldGate)) return
+      // we landed on the floor — re-arm the twin and ask
+      try { window.history.pushState({ ...(e.state || {}), cafeWorldGate: undefined, cafeWorldTop: 1 }, '') } catch { /* ignore */ }
+      openLeave()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [versionView, openLeave])
+
   return (
     <>
       {/* nothing to share on a world that isn't real yet — hide SHARE while it's
@@ -185,6 +254,20 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, engineOwner, 
       )}
 
       {msg && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] rounded bg-[#171009]/90 text-[#ffdba8] font-mono text-[14px] tracking-wider px-3 py-1.5 border border-[#b97a2a]/30">{msg}</div>}
+
+      {/* the exit gate's ask — same sign the hub shows, one dialog per site */}
+      {confirmLeave && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-[2px]" onClick={stayHere}>
+          <div className="border border-[#b97a2a]/40 rounded-xl px-8 py-6 text-center bg-black/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]" onClick={e => e.stopPropagation()}>
+            <div className="cafe-sign text-2xl mb-1">leave this world?</div>
+            <div className="font-mono text-[14px] tracking-[0.2em] text-white/50 uppercase mb-5">the world is paused · your save keeps</div>
+            <div className="flex gap-3 justify-center">
+              <button onClick={stayHere} className="rounded-lg bg-amber-500/90 hover:bg-amber-400 px-5 py-2 font-mono text-[16px] tracking-[0.15em] text-black transition-colors">STAY</button>
+              <button onClick={leaveWorld} className="rounded-lg border border-white/25 hover:bg-white/10 px-5 py-2 font-mono text-[16px] tracking-[0.15em] text-white/80 transition-colors">EXIT WORLD</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* delete confirm — reached by the dock's ✕ delete (cafe:delete-world) */}
       {confirmDel && (
