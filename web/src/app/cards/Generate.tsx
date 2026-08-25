@@ -32,6 +32,15 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
+  // /story's CTA lands here with ?gen=1 — open the sheet ready to type
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    if (u.searchParams.get('gen') !== '1') return
+    setOpen(true)
+    u.searchParams.delete('gen')
+    window.history.replaceState(null, '', u.toString())
+  }, [])
+
   // the checkout return: re-open the sheet with the stashed brief, wait for the
   // webhook's credits (Stripe redirects before the webhook fires — poll, don't fail)
   useEffect(() => {

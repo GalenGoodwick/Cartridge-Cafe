@@ -240,11 +240,20 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
               }}
                 className="px-3 py-2.5 rounded-lg border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/10 text-left">⑄ FORK — instantly yours</button>
             )}
+            {/* FULL SHARE SUITE (Galen): navigator.share opens the NATIVE sheet —
+                AirDrop (one tap to a nearby Mac), Messages, mail, everything.
+                No Web Share (desktop browsers) → clipboard fallback. */}
             <button onClick={async () => {
-              try { await navigator.clipboard.writeText(`${location.origin}/space/${card.slug}`) } catch { /* fine */ }
+              const url = `${location.origin}/space/${card.slug}`
               setSheet(false)
+              try {
+                if (navigator.share) await navigator.share({ title: card.name, text: `${card.name} — play it on cartridge.cafe`, url })
+                else await navigator.clipboard.writeText(url)
+              } catch { /* user closed the sheet — fine */ }
             }}
-              className="px-3 py-2.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/5 text-left">↗ SHARE — copy the link</button>
+              className="px-3 py-2.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/5 text-left">↗ SHARE — AirDrop · message · copy</button>
+            <button onClick={() => { setSheet(false); window.location.href = '/story' }}
+              className="px-3 py-2.5 rounded-lg border border-amber-300/40 text-amber-200 hover:bg-amber-400/10 text-left">ⓘ MORE INFO — what this place is</button>
             <button onClick={() => setSheet(false)}
               className="px-3 py-2 rounded-lg text-white/40 hover:text-white/70 text-center">cancel</button>
           </div>

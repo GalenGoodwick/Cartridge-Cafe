@@ -68,6 +68,7 @@ export default function SupportGate({ children }: { children: React.ReactNode })
         // WORLDS keep the gate (a desktop-only game asks for the bigger table
         // at ITS door, per-world). Galen's mobile ruling, Aug 22.
         if (path.startsWith('/cards') || path === '/') { setVerdict('ok'); return }   // `/` IS the catalog post-cutover
+        if (path.startsWith('/story')) { setVerdict('ok'); return }   // the pitch — pure content, every phone welcome
       } catch { /* ssr */ }
       // the escape hatch was used before and the engine worked → trust the
       // machine over the probe from then on
