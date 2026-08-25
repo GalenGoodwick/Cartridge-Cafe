@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
   try { event = JSON.parse(payload) } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }) }
   const obj = (event.data?.object ?? {}) as {
     id?: string
+    amount_total?: number
     metadata?: { userId?: string; product?: string; slug?: string; pageId?: string }
   }
   const meta = obj.metadata ?? {}
@@ -35,6 +36,33 @@ export async function POST(req: NextRequest) {
       const { grantCoProgramMembership } = await import('@/lib/stripe')
       try { await grantCoProgramMembership(meta.userId, meta.slug) }
       catch { return NextResponse.json({ error: 'membership mint failed, retry' }, { status: 500 }) }
+    }
+    // THE LEDGER (DESIGN-creator-ledger.md): every completed charge is BOOKED,
+    // idempotently, the moment it happens — perfect bookkeeping starts at the
+    // first dollar. Experiences split to the world's owner (authors join the
+    // split when the engagement meter lands — rung 2); everything else is house
+    // revenue. Booking failure = non-2xx so Stripe retries (idempotent refs
+    // make the retry safe).
+    if (obj.id && typeof obj.amount_total === 'number' && obj.amount_total > 0) {
+      try {
+        if (meta.product === 'experience' && meta.slug) {
+          const { prisma } = await import('@/lib/prisma')
+          const { bookAttributedCharge } = await import('@/lib/ledger')
+          const space = await prisma.playerSpace.findUnique({ where: { slug: meta.slug }, select: { ownerId: true } })
+          if (space) {
+            await bookAttributedCharge({
+              eventId: obj.id, slug: meta.slug, cents: obj.amount_total,
+              ownerUserId: space.ownerId, authors: [],   // rung 2 wires engagement weights
+              note: 'paid experience',
+            })
+          }
+        } else {
+          const { bookHouseCharge } = await import('@/lib/ledger')
+          await bookHouseCharge(obj.id, obj.amount_total, meta.product || 'unattributed')
+        }
+      } catch {
+        return NextResponse.json({ error: 'ledger booking failed, retry' }, { status: 500 })
+      }
     }
     // A page purchase buys permanent hosting for one slug — take it live the
     // instant Stripe confirms, so the buyer's redirect lands on a live page.

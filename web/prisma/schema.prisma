@@ -309,3 +309,27 @@ model BuildJob {
   @@index([spaceId])
   @@index([leaseExpires])
 }
+
+// THE CREATOR LEDGER (DESIGN-creator-ledger.md) — an immutable double-entry
+// journal in integer CENTS. Append-only: rows are never updated or deleted;
+// corrections are reversing entries. Each row moves cents from `debit` to
+// `credit` (accounts are strings: "external:stripe", "house",
+// "world:<slug>:pool", "creator:<userId>", "paid:<userId>"), so the books
+// balance by construction. `ref` is the idempotency key (Stripe event id + leg)
+// — a webhook retry inserts nothing. Self-created on prod via ensureLedgerTable
+// (the BuildJob pattern; never `db push` on prod).
+model LedgerEntry {
+  id        String   @id @default(cuid())
+  ref       String   @unique // idempotency: one external event leg = one row, ever
+  kind      String // charge | split | payout | reversal
+  debit     String // account the cents LEAVE
+  credit    String // account the cents ENTER
+  cents     Int // ALWAYS positive, ALWAYS integer cents
+  policy    String? // split policy version this row was computed under (v1:30-40-30)
+  meta      Json? // {slug, stripeEventId, note…} — context, never math inputs
+  createdAt DateTime @default(now())
+
+  @@index([debit])
+  @@index([credit])
+  @@index([kind])
+}
