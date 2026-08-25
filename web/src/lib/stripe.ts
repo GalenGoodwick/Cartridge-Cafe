@@ -235,6 +235,52 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
   await saveGameSlot(entSlot(userId), { ents: [...rest, { ...ent, at: Date.now(), active: true }].slice(-50) })
 }
 
+// ---- EDITING MEMBERSHIP — the monthly seat to edit live games (Galen, Aug 24:
+// "they have to pay a monthly subscription to edit games live", platform-wide,
+// $10/mo). A recurring `editor` entitlement, active while subscribed; the pay
+// webhook revokes it the moment Stripe reports the subscription deleted. Lapse
+// costs live-edit ONLY — past node additions + their lineage stay forever.
+export const EDITOR_PRICE_USD = 10
+
+/** Does this account hold an ACTIVE editing membership? The live-edit gate. */
+export async function hasEditingMembership(userId: string): Promise<boolean> {
+  return (await readEntitlements(userId)).some((e) => e.active && e.product === 'editor')
+}
+
+/** Start the $10/mo editing-membership subscription — AD-HOC recurring price
+ *  (no pre-created Stripe price; only STRIPE_SECRET_KEY). Platform-wide: one
+ *  seat edits any live game you're a member of. */
+export async function createEditorCheckout(
+  userId: string, origin: string,
+): Promise<{ url: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const form = new URLSearchParams({
+    mode: 'subscription',
+    'line_items[0][quantity]': '1',
+    'line_items[0][price_data][currency]': 'usd',
+    'line_items[0][price_data][unit_amount]': String(EDITOR_PRICE_USD * 100),
+    'line_items[0][price_data][recurring][interval]': 'month',
+    'line_items[0][price_data][product_data][name]': 'editing membership',
+    success_url: `${origin}/cards?paid=editor`,
+    cancel_url: `${origin}/cards?paycancel=editor`,
+    'metadata[userId]': userId,
+    'metadata[product]': 'editor',
+    // renewals + cancellation carry the metadata on the subscription too, so the
+    // webhook maps a future subscription.deleted back to this account/product
+    'subscription_data[metadata][userId]': userId,
+    'subscription_data[metadata][product]': 'editor',
+  })
+  const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  })
+  const j = (await r.json()) as { url?: string; error?: { message?: string } }
+  if (!r.ok || !j.url) return { error: j.error?.message || 'stripe refused the session', status: 502 }
+  return { url: j.url }
+}
+
 export async function revokeEntitlement(userId: string, product: string, slug?: string): Promise<void> {
   const ents = await readEntitlements(userId)
   await saveGameSlot(entSlot(userId), {

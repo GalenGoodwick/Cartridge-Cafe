@@ -103,6 +103,9 @@ export async function GET(req: Request) {
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
+  // LIVE EDITING (Galen, Aug 24 — the first tab): games open to edit live right
+  // now (buildMode 'anyone'). An active editing membership lets you dock in.
+  if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone')).cards, url))
   // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
@@ -125,6 +128,7 @@ export async function GET(req: Request) {
   const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
   return NextResponse.json({
     published: rows.length,
+    live: rows.filter(r => r.buildMode === 'anyone').length,
     premium: rows.filter(r => r.premium !== null).length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
     alterable: rows.filter(r => r.buildMode === 'anyone').length,

@@ -15,6 +15,7 @@ import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 import ConnectPanel from '@/app/ConnectPanel'
 import { GenerateDoor } from './Generate'
+import { MembershipBanner } from './MembershipBanner'
 import { signOut } from 'next-auth/react'
 import MainCommonsChat from '@/app/MainCommonsChat'
 import ChatWorld from '@/app/ChatWorld'
@@ -23,7 +24,7 @@ type GridResp = { cards: Card[]; base?: Card | null; signedOut?: boolean; page?:
 
 export default function CardsMain() {
   const [counts, setCounts] = useState<TabCounts | null>(null)
-  const [active, setActive] = useState<string>('published')
+  const [active, setActive] = useState<string>('live')
   const [grid, setGrid] = useState<GridResp | null>(null)
   const [pageN, setPageN] = useState(1)
   const [pngBySlug, setPngBySlug] = useState<Map<string, string>>(new Map())
@@ -67,8 +68,8 @@ export default function CardsMain() {
     if (p0 > 1) setPageN(p0)
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
-      setActive(want || 'published')
-    }).catch(() => setCounts({ published: 0, forkable: 0, alterable: 0, mine: null, shared: null }))
+      setActive(want || 'live')
+    }).catch(() => setCounts({ published: 0, live: 0, forkable: 0, alterable: 0, mine: null, shared: null }))
   }, [])
 
   // the active tab's cards — PAGINATED server-side (pages 1, 2, 3…; search and
@@ -104,7 +105,7 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
-  const FIXED = ['published', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
+  const FIXED = ['live', 'published', 'forkable', 'alterable', 'unalterable', 'mine', 'shared']
   const isFamily = !FIXED.includes(active)
   const familyName = isFamily ? (grid?.base?.name ?? active) : null
 
@@ -217,6 +218,7 @@ export default function CardsMain() {
                 </div>
               ) : (
                 <>
+                  {active === 'live' && <MembershipBanner />}
                   {active === 'premium' && (
                     <p className="px-1 pb-3 font-mono text-[11px] tracking-[0.28em] text-yellow-200/70">
                       ✦ LIVE · EXPERIMENTAL — worth paying for · buy in to CO-PROGRAM the world · free demo inside
