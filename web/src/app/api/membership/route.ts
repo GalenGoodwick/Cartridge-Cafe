@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { EDITOR_PRICE_USD, EDITOR_PRO_PRICE_USD, FREE_WORLD_CAP, createEditorCheckout, membershipTier, stripeConfigured } from '@/lib/stripe'
+import { EDITOR_PRICE_USD, EDITOR_PRO_PRICE_USD, FREE_WORLD_CAP, createEditorCheckout, dockstarsUsed, membershipTier, stripeConfigured } from '@/lib/stripe'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,12 +20,13 @@ export async function GET() {
     ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
     : null
   const tier = user ? await membershipTier(user.id) : null
-  const owned = user ? await prisma.playerSpace.count({ where: { ownerId: user.id } }) : 0
+  // dockstars: how many worlds you're actively building (owned + joined) vs your
+  // tiered allowance. Play/test is free and never counts.
+  const used = user ? await dockstarsUsed(user.id) : 0
   return NextResponse.json({
     tier,                               // 'pro' | 'basic' | null
     member: tier !== null,
-    quota: quotaOf(tier),
-    worldsOwned: owned,
+    dockstars: { used, allowance: quotaOf(tier) },
     basicUsd: EDITOR_PRICE_USD,
     proUsd: EDITOR_PRO_PRICE_USD,
     buyable: stripeConfigured(),

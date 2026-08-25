@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Mem = {
-  tier: 'pro' | 'basic' | null; member: boolean; quota: number; worldsOwned: number
+  tier: 'pro' | 'basic' | null; member: boolean; dockstars: { used: number; allowance: number }
   basicUsd: number; proUsd: number; buyable: boolean; signedIn: boolean
 }
 
@@ -21,7 +21,7 @@ export function MembershipBanner() {
 
   const refresh = useCallback(() => {
     fetch('/api/membership').then(r => r.json())
-      .then(setM).catch(() => setM({ tier: null, member: false, quota: 3, worldsOwned: 0, basicUsd: 10, proUsd: 100, buyable: false, signedIn: false }))
+      .then(setM).catch(() => setM({ tier: null, member: false, dockstars: { used: 0, allowance: 3 }, basicUsd: 10, proUsd: 100, buyable: false, signedIn: false }))
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
@@ -63,7 +63,7 @@ export function MembershipBanner() {
       <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse shrink-0" />
       {m.tier ? (
         <p className="font-mono text-[11.5px] tracking-[0.04em] text-cyan-100/85 min-w-0">
-          ✓ {m.tier === 'pro' ? 'PREMIUM' : 'EDITING'} MEMBER — dock into any live game and build it · {m.worldsOwned}/{m.quota} worlds used · your lineage is kept forever.
+          ✓ {m.tier === 'pro' ? 'PREMIUM' : 'EDITING'} MEMBER — spend a dockstar to join a game's edit flow (play is free) · ★ {m.dockstars.used}/{m.dockstars.allowance} dockstars in use · your lineage is kept forever.
           {m.tier === 'basic' && (
             <button onClick={() => subscribe('pro')} disabled={busy || !m.buyable}
               className="ml-3 font-mono text-[11px] tracking-[0.1em] text-amber-200/90 hover:text-amber-100 underline underline-offset-2 disabled:opacity-40">
@@ -74,7 +74,7 @@ export function MembershipBanner() {
       ) : (
         <>
           <p className="font-mono text-[11.5px] leading-relaxed text-cyan-100/70 min-w-0">
-            these games are being built <span className="text-cyan-200">live</span> — an editing membership lets you dock in and co-program them. cancel anytime · your contributions stay forever.
+            play any game <span className="text-cyan-200">free</span> — an editing membership gives you <span className="text-cyan-200">★ dockstars</span> to join a game's edit flow and co-program it. cancel anytime · your lineage stays forever.
           </p>
           {note && <span className="font-mono text-[11px] text-cyan-200/80">{note}</span>}
           <div className="ml-auto flex items-center gap-2 shrink-0">

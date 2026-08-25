@@ -80,8 +80,9 @@ export async function POST(
     const session = await getServerSession(authOptions)
     const email = session?.user?.email
     if (email) {
+      const joiner = await prisma.user.findUnique({ where: { email }, select: { id: true } })
       const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })
-      if (sp) {
+      if (sp && joiner) {
         const rows = await prisma.$queryRaw<{ policy: unknown }[]>`
           SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${sp.id}`
         const policy = policyOf({ policy: rows[0]?.policy })
@@ -89,6 +90,18 @@ export async function POST(
         const { isBanned } = await import('@/lib/world-bans')
         if (await isBanned(sp.id, handle)) {
           return NextResponse.json({ error: 'you are banned from this world' }, { status: 403 })
+        }
+        // DOCKSTAR gate (Galen): joining an open world's EDIT flow spends a
+        // dockstar — but only if you're not ALREADY a builder here (re-entry is
+        // free) and don't own it. Play/test never reaches this path.
+        const alreadyBuilder = await prisma.spaceToken.findFirst({
+          where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true },
+        })
+        if (!alreadyBuilder && sp.ownerId !== joiner.id) {
+          const { canDock } = await import('@/lib/stripe')
+          if (!(await canDock(joiner.id))) {
+            return NextResponse.json({ error: 'no dockstars left — undock a world or upgrade your membership to join more edit flows (play stays free)' }, { status: 402 })
+          }
         }
         if (policy.build === 'anyone') {
           memberHandle = handle

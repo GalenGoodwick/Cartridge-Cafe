@@ -256,10 +256,36 @@ export async function membershipTier(userId: string): Promise<MemberTier> {
   return null
 }
 
-/** How many worlds this account may own: free 3 · basic 10 · premium 100. */
+/** DOCKSTAR allowance — free 3 · basic 10 · premium 100. A dockstar is spent to
+ *  DOCK into a world's build/edit flow (Galen, Aug 24: "10 dockstars for docked
+ *  worlds; you can always test + play free; spend a dockstar to join the edit
+ *  flow"). Every world you actively build — owned OR joined — occupies one.
+ *  worldQuota is the same number under its create-path name. */
 export async function worldQuota(userId: string): Promise<number> {
   const tier = await membershipTier(userId)
   return tier === 'pro' ? 100 : tier === 'basic' ? 10 : FREE_WORLD_CAP
+}
+
+/** Dockstars in use: every world this account BUILDS — owned + joined (holds a
+ *  member key but isn't the owner). Playing/testing a world costs nothing. */
+export async function dockstarsUsed(userId: string): Promise<number> {
+  const { prisma } = await import('@/lib/prisma')
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+  const handle = (u?.email || '').split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+  const [owned, joined] = await Promise.all([
+    prisma.playerSpace.count({ where: { ownerId: userId } }),
+    handle
+      ? prisma.spaceToken.count({ where: { revokedAt: null, name: `member:${handle}`, space: { ownerId: { not: userId } } } })
+      : Promise.resolve(0),
+  ])
+  return owned + joined
+}
+
+/** May this account dock into ANOTHER world's edit flow right now (a free star
+ *  left)? Owner/existing-builder re-entry is free and never calls this. */
+export async function canDock(userId: string): Promise<boolean> {
+  const [used, allow] = await Promise.all([dockstarsUsed(userId), worldQuota(userId)])
+  return used < allow
 }
 
 /** Does this account hold ANY active editing membership? The live-edit gate. */

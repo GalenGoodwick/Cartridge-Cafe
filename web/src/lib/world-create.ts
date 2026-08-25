@@ -13,20 +13,18 @@ export const WORLD_CAP = 100
 
 export type CreateGate = { ok: true } | { ok: false; status: number; error: string }
 
-/** May this account create ANOTHER world right now? Enforces the MEMBERSHIP
- *  quota (worldQuota: free 3 / basic 10 / premium 100). Create-only — never gate
- *  reads on this. Every creator is a signed-in account. */
+/** May this account create ANOTHER world right now? Creating a world DOCKS you
+ *  into it, so it spends a DOCKSTAR — gated by the same budget as joining others'
+ *  edit flows (free 3 / basic 10 / premium 100 worlds built, owned + joined).
+ *  Create-only — never gate reads (play/test is always free). */
 export async function canCreateWorld(userId: string): Promise<CreateGate> {
-  const { worldQuota } = await import('./stripe')
-  const [owned, quota] = await Promise.all([
-    prisma.playerSpace.count({ where: { ownerId: userId } }),
-    worldQuota(userId),
-  ])
-  if (owned >= quota) {
+  const { dockstarsUsed, worldQuota } = await import('./stripe')
+  const [used, quota] = await Promise.all([dockstarsUsed(userId), worldQuota(userId)])
+  if (used >= quota) {
     const upsell = quota < 100
-      ? ` — upgrade your membership for more (${quota === 3 ? 'basic 10, premium 100' : 'premium 100'}), or delete one first`
-      : ' — delete one first'
-    return { ok: false, status: 400, error: `world limit reached (${quota} on your plan)${upsell}` }
+      ? ` — undock a world, or upgrade for more (${quota === 3 ? 'basic 10, premium 100' : 'premium 100'})`
+      : ' — undock a world first'
+    return { ok: false, status: 400, error: `no dockstars left (${used}/${quota} worlds built on your plan)${upsell}` }
   }
   return { ok: true }
 }
