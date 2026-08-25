@@ -7,6 +7,7 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import ShareWorld from './ShareWorld'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
+import DockButton from './DockButton'
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
  *  the space-only PLUMBING that lives invisibly here: the delete / remix / flag
@@ -218,6 +219,9 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, engineOwner, 
       {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
           worlds and for owners/buyers (server truth: /api/premium) */}
       {!versionView && <PremiumGate slug={spaceSlug} name={name} />}
+      {/* DOCK: join a node-founded world's live edit flow (membership + a
+          dockstar). Renders nothing for owners / non-node worlds / play-only. */}
+      {!versionView && !playMode && !isOwner && <DockButton slug={spaceSlug} name={name} />}
       {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
           bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
       {!playMode && <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}

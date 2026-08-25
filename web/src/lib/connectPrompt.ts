@@ -80,6 +80,12 @@ ${authBlock(origin, token)}
 8. ${useTheWorktree()}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
 
+/** The quality request — Galen (Aug 24): "always requests use of Fable for
+ *  quality." Every hand-off prompt asks for Claude Fable 5, the highest-quality
+ *  model, and asks a different model to say so up front. */
+export const useFableForQuality = () =>
+  `USE CLAUDE FABLE 5 for this — the highest-quality model (Galen requests it for build quality). If you are a different model, say so up front before you begin.`
+
 /** FLOW IN — hand ONE specific, already-live world to a (fresh) AI so it picks
  *  up FROM THE LIVE STATE and keeps building (Galen, Aug 24: the "FLOW IN AI"
  *  button under CANCEL BUILD). The human transfers their key by pasting this;
@@ -99,7 +105,29 @@ THE WORLD: "${name}" — slug \`${slug}\` (live at ${origin}/space/${slug}). It 
 5. ${buildInNodes(origin)}
 6. ${enterTheEye(origin)}
 7. When it matches the brief and the eye shows real pixels, set worldData.vision + instructions + brief_done, then {"type":"publish_world"} if it isn't public yet.
+${useFableForQuality()}
 Only these endpoints. This key IS me — keep it secret; I can revoke it anytime.`
+
+/** DOCK FLOW-IN — a docked CO-BUILDER (not the owner) hands their bound world to
+ *  their AI (Galen, Aug 24: after a player spends a dockstar to bind, "offers
+ *  flow into prompt button… always requests use of Fable"). Same live-state
+ *  pickup as flowInPrompt, but framed for CO-BUILDING: build in your OWN nodes,
+ *  never clobber, don't publish someone else's world. The token is the player's
+ *  member key for THIS world. */
+export const dockFlowPrompt = (token: string, slug: string, name: string, origin = cafeOrigin()) =>
+  `Co-build a live world I've docked into on cartridge.cafe — I hold an editing seat here and I'm bringing you in to build ALONGSIDE others, from the world's LIVE STATE.
+${authBlock(origin, token)}
+
+THE WORLD: "${name}" — slug \`${slug}\` (live at ${origin}/space/${slug}). Other builders are here too. This is co-building, not a solo world: your changes land next to theirs, live.
+
+1. ${guideStep(origin)}
+2. TAKE YOUR SEAT: POST ${origin}/api/engine/bridge {"type":"use_world","slug":"${slug}"} → your uc_st_ key for this world. Build with THAT key.
+3. READ THE LIVE STATE FIRST — GET the world state and LOOK: what fields, visuals, hooks, worldData already exist? Read worldData.creation_brief for the vision. You are continuing a shared thing.
+4. ${buildInNodes(origin)} This is doubly the law here: put YOUR work in your OWN nodes so you never overwrite another builder's — the node system protects what you add and what they added.
+5. ${enterTheEye(origin)}
+6. Do NOT publish or wipe — this world isn't yours alone; the owner ships it. Build your piece, verify it with the eye, and leave the rest intact.
+${useFableForQuality()}
+This key is my editing seat here — keep it secret.`
 
 /** VOLUNTEER BUILDER — the lend-your-AI loop. */
 export const volunteerPrompt = (token: string, origin = cafeOrigin()) =>

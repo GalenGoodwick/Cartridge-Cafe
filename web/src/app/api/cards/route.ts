@@ -52,6 +52,8 @@ export interface FeedRow {
   kind: CardKind                     // toy · world · game (Galen's taxonomy)
   perf: number | null                // measured frame ms (publish stress test, else the live tabs' EMA)
   premium: number | null             // $ price — worldData.premium.usd (PREMIUM GAMES)
+  hasNodes: boolean                  // proper node foundations (__nodes registry) → dockable / live-editable
+  hasContent: boolean                // has ≥1 field — a BLANK world (0 fields) is not a live-editable game (Galen: "blanks are not live editing")
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -103,9 +105,10 @@ export async function GET(req: Request) {
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
-  // LIVE EDITING (Galen, Aug 24 — the first tab): games open to edit live right
-  // now (buildMode 'anyone'). An active editing membership lets you dock in.
-  if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone')).cards, url))
+  // LIVE EDITING (Galen, Aug 24): ANY game with proper node foundations is
+  // dockable — a player docks in (membership + a dockstar) to co-build it. Open
+  // (buildMode 'anyone') worlds qualify too.
+  if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => (r.hasNodes || r.buildMode === 'anyone') && r.hasContent)).cards, url))
   // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
@@ -128,7 +131,7 @@ export async function GET(req: Request) {
   const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
   return NextResponse.json({
     published: rows.length,
-    live: rows.filter(r => r.buildMode === 'anyone').length,
+    live: rows.filter(r => (r.hasNodes || r.buildMode === 'anyone') && r.hasContent).length,
     premium: rows.filter(r => r.premium !== null).length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
     alterable: rows.filter(r => r.buildMode === 'anyone').length,
@@ -271,9 +274,18 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
     const budgetRec = wd.__budget as { frameMs?: number } | undefined
     const perf = Number.isFinite(perfRec?.frameMs) ? perfRec!.frameMs! : (Number.isFinite(budgetRec?.frameMs) ? budgetRec!.frameMs! : null)
     const premRec = wd.premium as { usd?: number } | undefined
+    // PROPER NODE FOUNDATIONS: a populated __nodes registry means the world was
+    // built in the node architecture — it's dockable / co-buildable live.
+    const nodeReg = wd.__nodes as Record<string, unknown> | undefined
+    const hasNodes = !!nodeReg && typeof nodeReg === 'object' && Object.keys(nodeReg).length > 0
+    // a BLANK world (default hook scaffold but ZERO fields) is not a live game —
+    // the node registry alone doesn't make it editable content (Galen, Aug 24)
+    const hasContent = (sn?.fields?.length ?? 0) > 0
     return {
       ...rest,
       perf,
+      hasNodes,
+      hasContent,
       premium: typeof premRec?.usd === 'number' && premRec.usd > 0 ? premRec.usd : null,
       updatedAt: updatedAt.getTime(),
       maker: { handle: isGuest ? null : handleOf(email), name: owner?.name ?? null },
