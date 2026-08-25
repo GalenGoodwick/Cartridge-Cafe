@@ -8,15 +8,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+type Mem = {
+  tier: 'pro' | 'basic' | null; member: boolean; quota: number; worldsOwned: number
+  basicUsd: number; proUsd: number; buyable: boolean; signedIn: boolean
+}
+
 export function MembershipBanner() {
-  const [m, setM] = useState<{ member: boolean; priceUsd: number; buyable: boolean; signedIn: boolean } | null>(null)
+  const [m, setM] = useState<Mem | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const paidReturn = useRef(false)
 
   const refresh = useCallback(() => {
     fetch('/api/membership').then(r => r.json())
-      .then(setM).catch(() => setM({ member: false, priceUsd: 10, buyable: false, signedIn: false }))
+      .then(setM).catch(() => setM({ tier: null, member: false, quota: 3, worldsOwned: 0, basicUsd: 10, proUsd: 100, buyable: false, signedIn: false }))
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
@@ -35,11 +40,13 @@ export function MembershipBanner() {
     return () => clearInterval(t)
   }, [m, refresh])
 
-  const subscribe = useCallback(async () => {
+  const subscribe = useCallback(async (tier: 'basic' | 'pro') => {
     if (busy) return
     setBusy(true); setNote(null)
     try {
-      const r = await fetch('/api/membership', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      const r = await fetch('/api/membership', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier }),
+      })
       const d = await r.json().catch(() => ({}))
       if (r.status === 401) { window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent('/cards?tab=live')}`; return }
       if (d.url) { window.location.href = d.url; return }
@@ -49,25 +56,40 @@ export function MembershipBanner() {
 
   if (!m) return null
 
+  const btn = 'shrink-0 font-mono text-[12px] tracking-[0.12em] px-3.5 py-1.5 rounded border transition-colors disabled:opacity-40'
+
   return (
     <div className="mb-3 rounded-lg border border-cyan-300/25 bg-cyan-400/[0.04] px-3.5 py-2.5 flex items-center gap-3 flex-wrap">
       <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse shrink-0" />
-      {m.member ? (
-        <p className="font-mono text-[11.5px] tracking-[0.06em] text-cyan-100/85">
-          ✓ EDITING MEMBER — dock into any live game and build it. your lineage is kept forever.
+      {m.tier ? (
+        <p className="font-mono text-[11.5px] tracking-[0.04em] text-cyan-100/85 min-w-0">
+          ✓ {m.tier === 'pro' ? 'PREMIUM' : 'EDITING'} MEMBER — dock into any live game and build it · {m.worldsOwned}/{m.quota} worlds used · your lineage is kept forever.
+          {m.tier === 'basic' && (
+            <button onClick={() => subscribe('pro')} disabled={busy || !m.buyable}
+              className="ml-3 font-mono text-[11px] tracking-[0.1em] text-amber-200/90 hover:text-amber-100 underline underline-offset-2 disabled:opacity-40">
+              upgrade to premium · 100 worlds · ${m.proUsd}/mo
+            </button>
+          )}
         </p>
       ) : (
         <>
           <p className="font-mono text-[11.5px] leading-relaxed text-cyan-100/70 min-w-0">
-            these games are being built <span className="text-cyan-200">live</span> — an editing membership lets you dock in and co-program them. ${m.priceUsd}/mo · cancel anytime · your contributions stay forever.
+            these games are being built <span className="text-cyan-200">live</span> — an editing membership lets you dock in and co-program them. cancel anytime · your contributions stay forever.
           </p>
           {note && <span className="font-mono text-[11px] text-cyan-200/80">{note}</span>}
-          <button onClick={subscribe} disabled={busy || !m.buyable}
-            className="ml-auto shrink-0 font-mono text-[12px] tracking-[0.12em] px-3.5 py-1.5 rounded border border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15 disabled:opacity-40 transition-colors"
-            title="pay monthly to edit live games">
-            {busy ? '…' : m.signedIn ? `EDIT LIVE · $${m.priceUsd}/mo` : `SIGN IN & JOIN · $${m.priceUsd}/mo`}
-          </button>
-          {!m.buyable && <span className="font-mono text-[10px] text-white/30">subscriptions open soon</span>}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <button onClick={() => subscribe('basic')} disabled={busy || !m.buyable}
+              className={`${btn} border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15`}
+              title="edit live games + 10 worlds">
+              {busy ? '…' : `${m.signedIn ? 'EDIT LIVE' : 'JOIN'} · $${m.basicUsd}/mo · 10 worlds`}
+            </button>
+            <button onClick={() => subscribe('pro')} disabled={busy || !m.buyable}
+              className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15`}
+              title="edit live games + 100 worlds">
+              {busy ? '…' : `PREMIUM · $${m.proUsd}/mo · 100 worlds`}
+            </button>
+          </div>
+          {!m.buyable && <span className="font-mono text-[10px] text-white/30 w-full text-right">subscriptions open soon</span>}
         </>
       )}
     </div>

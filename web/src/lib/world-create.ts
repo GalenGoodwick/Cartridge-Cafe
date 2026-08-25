@@ -7,18 +7,26 @@ import { prisma } from './prisma'
 import { Prisma } from '@prisma/client'
 import crypto from 'crypto'
 
-/** Runaway backstop, not a product limit (Galen raised 20→100, Jul 23 2026). */
+/** Absolute backstop (the premium cap). Per-account quota is now TIERED by
+ *  membership (Galen, Aug 24): free 3 · basic $10/mo 10 · premium $100/mo 100. */
 export const WORLD_CAP = 100
 
 export type CreateGate = { ok: true } | { ok: false; status: number; error: string }
 
-/** May this account create ANOTHER world right now? Enforces the world cap.
- *  Create-only — never gate reads on this. (The guest 3-build quota died with
- *  the guest door: every creator is a signed-in account now.) */
+/** May this account create ANOTHER world right now? Enforces the MEMBERSHIP
+ *  quota (worldQuota: free 3 / basic 10 / premium 100). Create-only — never gate
+ *  reads on this. Every creator is a signed-in account. */
 export async function canCreateWorld(userId: string): Promise<CreateGate> {
-  const owned = await prisma.playerSpace.count({ where: { ownerId: userId } })
-  if (owned >= WORLD_CAP) {
-    return { ok: false, status: 400, error: `world limit reached (${WORLD_CAP} per account) — delete one first` }
+  const { worldQuota } = await import('./stripe')
+  const [owned, quota] = await Promise.all([
+    prisma.playerSpace.count({ where: { ownerId: userId } }),
+    worldQuota(userId),
+  ])
+  if (owned >= quota) {
+    const upsell = quota < 100
+      ? ` — upgrade your membership for more (${quota === 3 ? 'basic 10, premium 100' : 'premium 100'}), or delete one first`
+      : ' — delete one first'
+    return { ok: false, status: 400, error: `world limit reached (${quota} on your plan)${upsell}` }
   }
   return { ok: true }
 }

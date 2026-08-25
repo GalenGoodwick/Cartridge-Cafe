@@ -235,41 +235,64 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
   await saveGameSlot(entSlot(userId), { ents: [...rest, { ...ent, at: Date.now(), active: true }].slice(-50) })
 }
 
-// ---- EDITING MEMBERSHIP — the monthly seat to edit live games (Galen, Aug 24:
-// "they have to pay a monthly subscription to edit games live", platform-wide,
-// $10/mo). A recurring `editor` entitlement, active while subscribed; the pay
-// webhook revokes it the moment Stripe reports the subscription deleted. Lapse
-// costs live-edit ONLY — past node additions + their lineage stay forever.
-export const EDITOR_PRICE_USD = 10
+// ---- EDITING MEMBERSHIP — the monthly seat to edit live games, TIERED by world
+// quota (Galen, Aug 24: "monthly subscription to edit games live"; "10 worlds
+// for basic membership, past that is premium $100/mo up to 100 worlds"). Two
+// recurring tiers, both grant live-edit; they differ by how many worlds you may
+// own. The pay webhook revokes the moment Stripe reports the subscription
+// deleted. Lapse costs live-edit + the higher quota ONLY — your worlds and your
+// node lineage stay forever (you just can't create past the free floor again).
+export const EDITOR_PRICE_USD = 10        // BASIC — 10 worlds
+export const EDITOR_PRO_PRICE_USD = 100   // PREMIUM — 100 worlds
+export const FREE_WORLD_CAP = 3           // no membership — a try-it allowance
 
-/** Does this account hold an ACTIVE editing membership? The live-edit gate. */
-export async function hasEditingMembership(userId: string): Promise<boolean> {
-  return (await readEntitlements(userId)).some((e) => e.active && e.product === 'editor')
+export type MemberTier = 'pro' | 'basic' | null
+
+/** The account's membership tier (pro wins if both are somehow active). */
+export async function membershipTier(userId: string): Promise<MemberTier> {
+  const ents = await readEntitlements(userId)
+  if (ents.some((e) => e.active && e.product === 'editor_pro')) return 'pro'
+  if (ents.some((e) => e.active && e.product === 'editor')) return 'basic'
+  return null
 }
 
-/** Start the $10/mo editing-membership subscription — AD-HOC recurring price
- *  (no pre-created Stripe price; only STRIPE_SECRET_KEY). Platform-wide: one
- *  seat edits any live game you're a member of. */
+/** How many worlds this account may own: free 3 · basic 10 · premium 100. */
+export async function worldQuota(userId: string): Promise<number> {
+  const tier = await membershipTier(userId)
+  return tier === 'pro' ? 100 : tier === 'basic' ? 10 : FREE_WORLD_CAP
+}
+
+/** Does this account hold ANY active editing membership? The live-edit gate. */
+export async function hasEditingMembership(userId: string): Promise<boolean> {
+  return (await membershipTier(userId)) !== null
+}
+
+/** Start a monthly editing-membership subscription for a tier — AD-HOC recurring
+ *  price (no pre-created Stripe price; only STRIPE_SECRET_KEY). basic = $10/10
+ *  worlds · pro = $100/100 worlds. */
 export async function createEditorCheckout(
-  userId: string, origin: string,
+  userId: string, origin: string, tier: 'basic' | 'pro' = 'basic',
 ): Promise<{ url: string } | { error: string; status: number }> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const isPro = tier === 'pro'
+  const product = isPro ? 'editor_pro' : 'editor'
+  const usd = isPro ? EDITOR_PRO_PRICE_USD : EDITOR_PRICE_USD
   const form = new URLSearchParams({
     mode: 'subscription',
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'usd',
-    'line_items[0][price_data][unit_amount]': String(EDITOR_PRICE_USD * 100),
+    'line_items[0][price_data][unit_amount]': String(usd * 100),
     'line_items[0][price_data][recurring][interval]': 'month',
-    'line_items[0][price_data][product_data][name]': 'editing membership',
+    'line_items[0][price_data][product_data][name]': isPro ? 'premium editing membership (100 worlds)' : 'editing membership (10 worlds)',
     success_url: `${origin}/cards?paid=editor`,
     cancel_url: `${origin}/cards?paycancel=editor`,
     'metadata[userId]': userId,
-    'metadata[product]': 'editor',
+    'metadata[product]': product,
     // renewals + cancellation carry the metadata on the subscription too, so the
     // webhook maps a future subscription.deleted back to this account/product
     'subscription_data[metadata][userId]': userId,
-    'subscription_data[metadata][product]': 'editor',
+    'subscription_data[metadata][product]': product,
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
