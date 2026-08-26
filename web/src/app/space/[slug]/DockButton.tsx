@@ -1,13 +1,13 @@
 'use client'
 
-// DOCK BUTTON (Galen, Aug 24) — in a LIVE-EDITABLE world (proper node
-// foundations), a player can dock into the edit flow. The chain:
+// DOCK BUTTON (Galen, Aug 26 — simplified: no dockstars, one $10/mo tier) — in
+// a LIVE-EDITABLE world (proper node foundations), a player can dock into the
+// edit flow. The chain:
 //   click → not signed in?      → sign in
-//         → no membership?      → offer membership ($10 / $100)
-//         → out of dockstars?   → offer upgrade
-//         → else                → spend a dockstar, BIND to the world, then
-//                                 offer the FLOW-IN prompt (which requests
-//                                 Fable for quality) to bring your AI.
+//         → no membership?      → offer the $10/mo editing membership
+//         → else                → BIND to the world, then offer the FLOW-IN
+//                                 prompt (which requests Fable for quality)
+//                                 to bring your AI.
 // Play/test never touches this — only joining the edit flow does. Owners never
 // see it (they already build their own world).
 
@@ -15,8 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Status = {
   dockable: boolean; docked: boolean; isOwner: boolean; member: boolean; signedIn: boolean
-  dockstars: { used: number; allowance: number }
-  prices: { basicUsd: number; proUsd: number }
+  prices: { usd: number }
 }
 
 export default function DockButton({ slug, name }: { slug: string; name: string }) {
@@ -26,7 +25,7 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
   const [note, setNote] = useState<string | null>(null)
   const [flow, setFlow] = useState<string | null>(null)   // the flow-in prompt once bound
   const [copied, setCopied] = useState(false)
-  const [needs, setNeeds] = useState<'membership' | 'dockstar' | null>(null)
+  const [needs, setNeeds] = useState<'membership' | null>(null)
   const pollRef = useRef(false)
 
   const refresh = useCallback(() => {
@@ -48,10 +47,10 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
     return () => clearInterval(t)
   }, [refresh])
 
-  const subscribe = useCallback(async (tier: 'basic' | 'pro') => {
+  const subscribe = useCallback(async () => {
     setBusy(true)
     try {
-      const r = await fetch('/api/membership', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tier }) })
+      const r = await fetch('/api/membership', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const d = await r.json().catch(() => ({}))
       if (r.status === 401) { window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(`/space/${slug}`)}`; return }
       if (d.url) { window.location.href = d.url; return }
@@ -67,7 +66,6 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
       const d = await r.json().catch(() => ({}))
       if (r.status === 401) { window.location.href = `/auth/signin?callbackUrl=${encodeURIComponent(`/space/${slug}`)}`; return }
       if (r.status === 402 && d.needMembership) { setNeeds('membership'); return }
-      if (r.status === 402 && d.needDockstar) { setNeeds('dockstar'); setNote(`no dockstars left (${d.dockstars?.used}/${d.dockstars?.allowance})`); return }
       if (!r.ok) { setNote(d.error || 'could not dock'); return }
       // bound — offer the flow-in prompt
       setFlow(d.flowPrompt || null)
@@ -113,27 +111,11 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
             ) : needs === 'membership' ? (
               <>
                 <p className="text-[12px] leading-relaxed text-cyan-100/70 mb-3">
-                  playing is free — <span className="text-cyan-200">building is a membership</span>. it gives you dockstars to bind into any live game and co-program it. cancel anytime; your work stays credited forever.
+                  playing is free — <span className="text-cyan-200">building is a membership</span>. one simple seat: ${st.prices.usd}/mo to build on any open building world. cancel anytime; your work stays credited forever.
                 </p>
-                <div className="flex gap-2">
-                  <button onClick={() => subscribe('basic')} disabled={busy}
-                    className="flex-1 px-3 py-2.5 rounded-lg border border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15 text-[12.5px] tracking-[0.1em] disabled:opacity-40">
-                    JOIN · ${st.prices.basicUsd}/mo · 10
-                  </button>
-                  <button onClick={() => subscribe('pro')} disabled={busy}
-                    className="flex-1 px-3 py-2.5 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15 text-[12.5px] tracking-[0.1em] disabled:opacity-40">
-                    PREMIUM · ${st.prices.proUsd}/mo · 100
-                  </button>
-                </div>
-              </>
-            ) : needs === 'dockstar' ? (
-              <>
-                <p className="text-[12px] leading-relaxed text-cyan-100/70 mb-3">
-                  {note || 'no dockstars left'} — every world you build occupies one. undock a world, or upgrade to premium for 100.
-                </p>
-                <button onClick={() => subscribe('pro')} disabled={busy}
-                  className="w-full px-4 py-2.5 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15 text-[13px] tracking-[0.12em]">
-                  UPGRADE TO PREMIUM · ${st.prices.proUsd}/mo · 100 worlds
+                <button onClick={subscribe} disabled={busy}
+                  className="w-full px-3 py-2.5 rounded-lg border border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15 text-[12.5px] tracking-[0.1em] disabled:opacity-40">
+                  JOIN · ${st.prices.usd}/mo
                 </button>
               </>
             ) : (
@@ -141,13 +123,13 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
                 <p className="text-[12px] leading-relaxed text-cyan-100/70 mb-1">
                   this game has real node foundations — you can dock in and co-build it live.
                   {st.member
-                    ? <> spending <span className="text-cyan-200">one dockstar</span> ({st.dockstars.used}/{st.dockstars.allowance} used) binds you to it.</>
+                    ? <> your membership binds you to it.</>
                     : <> building is a membership; playing stays free.</>}
                 </p>
                 {note && <p className="text-[11px] text-amber-200/80 my-2">{note}</p>}
                 <button onClick={dock} disabled={busy}
                   className="w-full mt-3 px-4 py-2.5 rounded-lg border border-cyan-300/60 text-cyan-100 hover:bg-cyan-400/15 text-[13px] tracking-[0.14em] disabled:opacity-40">
-                  {busy ? '…' : st.member ? '⚓ SPEND A DOCKSTAR · BIND ME IN' : '⚓ DOCK IN'}
+                  {busy ? '…' : st.member ? '⚓ BIND ME IN' : '⚓ DOCK IN'}
                 </button>
                 <button onClick={() => setOpen(false)} className="w-full mt-2 py-2 text-white/40 hover:text-white/70 text-[12px] text-center">not now</button>
               </>

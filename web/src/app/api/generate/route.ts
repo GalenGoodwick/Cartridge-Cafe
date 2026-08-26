@@ -31,10 +31,12 @@ export async function GET() {
   const user = session?.user?.email
     ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
     : null
+  const { isAdminUserId } = await import('@/lib/adminAuth')
   return NextResponse.json({
     buyable: stripeConfigured(),   // ad-hoc priced — no per-product price id needed
     priceUsd: GEN_PRICE_USD,
     credits: user ? await readGenCredits(user.id) : 0,
+    free: user ? await isAdminUserId(user.id) : false,   // the keeper demos without credits
     signedIn: !!user,
   })
 }
@@ -59,12 +61,21 @@ export async function POST(req: NextRequest) {
   const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
-  const remaining = await spendGenCredit(user.id)
-  if (remaining === null) {
-    return NextResponse.json(
-      { error: 'no generation credits', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
-      { status: 402 },
-    )
+  // ADMIN generates FREE (Galen, Aug 26: "as admin it should be free so I can
+  // demo") — the keeper skips the credit spend entirely (and the catch below
+  // never refunds a credit that was never spent).
+  const { isAdminUserId } = await import('@/lib/adminAuth')
+  const isKeeper = await isAdminUserId(user.id)
+  let remaining = 0
+  if (!isKeeper) {
+    const spent = await spendGenCredit(user.id)
+    if (spent === null) {
+      return NextResponse.json(
+        { error: 'no generation credits', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
+        { status: 402 },
+      )
+    }
+    remaining = spent
   }
 
   try {
@@ -128,9 +139,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, slug: space.slug, name, jobId: job.id, credits: remaining }, { status: 201 })
   } catch (e) {
-    // world creation failed AFTER the credit spent — refund it
-    const { refundGenCredit } = await import('@/lib/stripe')
-    void refundGenCredit(user.id).catch(() => {})
+    // world creation failed AFTER the credit spent — refund it (admins never spent one)
+    if (!isKeeper) {
+      const { refundGenCredit } = await import('@/lib/stripe')
+      void refundGenCredit(user.id).catch(() => {})
+    }
     const msg = e instanceof Error ? e.message : 'generation failed'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

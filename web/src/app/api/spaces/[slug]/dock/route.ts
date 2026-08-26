@@ -2,21 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { hasEditingMembership, canDock, dockstarsUsed, worldQuota, EDITOR_PRICE_USD, EDITOR_PRO_PRICE_USD } from '@/lib/stripe'
+import { hasEditingMembership, EDITOR_PRICE_USD } from '@/lib/stripe'
 import { dockFlowPrompt } from '@/lib/connectPrompt'
 import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-/** DOCK INTO A LIVE-EDITABLE WORLD (Galen, Aug 24). A player inside a game with
- *  proper node foundations clicks DOCK:
+/** DOCK INTO A LIVE-EDITABLE WORLD (Galen, Aug 26 — simplified: no dockstars).
+ *  A player inside a game with proper node foundations clicks DOCK:
  *    · not signed in            → 401 (the button sends them to sign in)
- *    · no editing membership    → 402 needMembership (the button offers it)
- *    · out of dockstars         → 402 needDockstar (the button offers upgrade)
- *    · otherwise                → SPEND a dockstar, BIND the player to the world
- *      (mint their member: key = co-program access), and hand back the FLOW-IN
- *      prompt (which requests Fable for quality).
+ *    · no editing membership    → 402 needMembership (the button offers the $10/mo)
+ *    · otherwise                → BIND the player to the world (mint their
+ *      member: key = co-program access), and hand back the FLOW-IN prompt
+ *      (which requests Fable for quality).
  *  Playing/testing never calls this — only joining the edit flow does. */
 
 async function loadDockable(slug: string) {
@@ -52,13 +51,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const h = handleOf(user.email!)
     docked = !!(await prisma.spaceToken.findFirst({ where: { spaceId: info.space.id, revokedAt: null, name: `member:${h}` }, select: { id: true } }))
   }
-  const [member, stars] = user ? await Promise.all([hasEditingMembership(user.id), dockstarsUsed(user.id)]) : [false, 0]
-  const allowance = user ? await worldQuota(user.id) : 3
+  const member = user ? await hasEditingMembership(user.id) : false
   return NextResponse.json({
     dockable: info.dockable && !isOwner,   // owners already edit freely
     docked, isOwner, member, signedIn: !!user,
-    dockstars: { used: stars, allowance },
-    prices: { basicUsd: EDITOR_PRICE_USD, proUsd: EDITOR_PRO_PRICE_USD },
+    prices: { usd: EDITOR_PRICE_USD },
   })
 }
 
@@ -80,23 +77,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const bindName = `member:${h}`
 
   // ALREADY DOCKED → re-issue a fresh seat key + the flow-in prompt (idempotent;
-  // a member re-minting retires their older key — never a second dockstar spent)
+  // a member re-minting retires their older key)
   const existing = await prisma.spaceToken.findFirst({ where: { spaceId: info.space.id, revokedAt: null, name: bindName }, select: { id: true } })
   if (!existing) {
-    // JOINING → membership + a free dockstar are required
+    // JOINING → the $10/mo editing membership is the only gate (no dockstars)
     if (!(await hasEditingMembership(user.id))) {
-      return NextResponse.json({ error: 'an editing membership binds you to a world', needMembership: true, prices: { basicUsd: EDITOR_PRICE_USD, proUsd: EDITOR_PRO_PRICE_USD } }, { status: 402 })
-    }
-    if (!(await canDock(user.id))) {
-      const [used, allowance] = await Promise.all([dockstarsUsed(user.id), worldQuota(user.id)])
-      return NextResponse.json({ error: 'no dockstars left — undock a world or upgrade to bind more', needDockstar: true, dockstars: { used, allowance } }, { status: 402 })
+      return NextResponse.json({ error: 'an editing membership binds you to a world', needMembership: true, prices: { usd: EDITOR_PRICE_USD } }, { status: 402 })
     }
   } else {
     // retire the old seat so the fresh one is the only live key (no extra spend)
     await prisma.spaceToken.updateMany({ where: { spaceId: info.space.id, revokedAt: null, name: bindName }, data: { revokedAt: new Date() } })
   }
 
-  // BIND: mint the member seat key (this occupancy IS the spent dockstar)
+  // BIND: mint the member seat key
   const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
   await prisma.spaceToken.create({
     data: { name: bindName, tokenHash: crypto.createHash('sha256').update(raw).digest('hex'), tokenPrefix: raw.slice(0, 12) + '...', spaceId: info.space.id },

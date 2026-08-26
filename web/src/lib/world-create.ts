@@ -7,25 +7,15 @@ import { prisma } from './prisma'
 import { Prisma } from '@prisma/client'
 import crypto from 'crypto'
 
-/** Absolute backstop (the premium cap). Per-account quota is now TIERED by
- *  membership (Galen, Aug 24): free 3 · basic $10/mo 10 · premium $100/mo 100. */
-export const WORLD_CAP = 100
-
 export type CreateGate = { ok: true } | { ok: false; status: number; error: string }
 
-/** May this account create ANOTHER world right now? Creating a world DOCKS you
- *  into it, so it spends a DOCKSTAR — gated by the same budget as joining others'
- *  edit flows (free 3 / basic 10 / premium 100 worlds built, owned + joined).
- *  Create-only — never gate reads (play/test is always free). */
-export async function canCreateWorld(userId: string): Promise<CreateGate> {
-  const { dockstarsUsed, worldQuota } = await import('./stripe')
-  const [used, quota] = await Promise.all([dockstarsUsed(userId), worldQuota(userId)])
-  if (used >= quota) {
-    const upsell = quota < 100
-      ? ` — undock a world, or upgrade for more (${quota === 3 ? 'basic 10, premium 100' : 'premium 100'})`
-      : ' — undock a world first'
-    return { ok: false, status: 400, error: `no dockstars left (${used}/${quota} worlds built on your plan)${upsell}` }
-  }
+/** May this account create ANOTHER world right now? YES — the dockstar quota
+ *  system was REMOVED (Galen, Aug 26: "remove dockstar code and limit. just
+ *  easy $10 to build on open building worlds"). Creating your own worlds is
+ *  ungated; the $10 membership gates joining OTHERS' open build flows (the
+ *  dock). The signature stays so the seven create paths that call this keep
+ *  one choke-point if a gate ever returns (e.g. an anti-abuse cap). */
+export async function canCreateWorld(_userId: string): Promise<CreateGate> {
   return { ok: true }
 }
 

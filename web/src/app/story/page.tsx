@@ -92,8 +92,7 @@ export default function Story() {
             {[
               ['play anything', 'free, forever'],
               ['generate a world — the house AI builds your brief', '$5'],
-              ['editing membership — dock into live games · 10 dockstars', '$10/mo'],
-              ['premium membership — 100 dockstars', '$100/mo'],
+              ['editing membership — build on open building worlds', '$10/mo'],
             ].map(([what, price]) => (
               <div key={what} className="flex items-baseline justify-between gap-4 px-4 py-3 rounded-lg border border-white/10 bg-black/30">
                 <span className="text-white/70">{what}</span>

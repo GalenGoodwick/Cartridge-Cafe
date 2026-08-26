@@ -235,86 +235,41 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
   await saveGameSlot(entSlot(userId), { ents: [...rest, { ...ent, at: Date.now(), active: true }].slice(-50) })
 }
 
-// ---- EDITING MEMBERSHIP — the monthly seat to edit live games, TIERED by world
-// quota (Galen, Aug 24: "monthly subscription to edit games live"; "10 worlds
-// for basic membership, past that is premium $100/mo up to 100 worlds"). Two
-// recurring tiers, both grant live-edit; they differ by how many worlds you may
-// own. The pay webhook revokes the moment Stripe reports the subscription
-// deleted. Lapse costs live-edit + the higher quota ONLY — your worlds and your
-// node lineage stay forever (you just can't create past the free floor again).
-export const EDITOR_PRICE_USD = 10        // BASIC — 10 worlds
-export const EDITOR_PRO_PRICE_USD = 100   // PREMIUM — 100 worlds
-export const FREE_WORLD_CAP = 3           // no membership — a try-it allowance
+// ---- EDITING MEMBERSHIP — ONE simple tier (Galen, Aug 26: "remove dockstar
+// code and limit. just easy $10 to build on open building worlds. remove
+// premium"). Playing/testing is always free; the $10/mo membership is the seat
+// to BUILD on open building worlds. No dockstars, no quotas, no premium tier.
+// The pay webhook revokes the moment Stripe reports the subscription deleted.
+// Lapse costs the build seat ONLY — your worlds and node lineage stay forever.
+export const EDITOR_PRICE_USD = 10        // the ONE membership
 
-export type MemberTier = 'pro' | 'basic' | null
-
-/** The account's membership tier (pro wins if both are somehow active).
- *  ADMINS are premium by virtue of being admin (Galen, Aug 25) — no payment,
- *  no DB row to get wiped; the keeper of the cafe always has the full tier. */
-export async function membershipTier(userId: string): Promise<MemberTier> {
-  const { isAdminUserId } = await import('@/lib/adminAuth')
-  if (await isAdminUserId(userId)) return 'pro'
-  const ents = await readEntitlements(userId)
-  if (ents.some((e) => e.active && e.product === 'editor_pro')) return 'pro'
-  if (ents.some((e) => e.active && e.product === 'editor')) return 'basic'
-  return null
-}
-
-/** DOCKSTAR allowance — free 3 · basic 10 · premium 100. A dockstar is spent to
- *  DOCK into a world's build/edit flow (Galen, Aug 24: "10 dockstars for docked
- *  worlds; you can always test + play free; spend a dockstar to join the edit
- *  flow"). Every world you actively build — owned OR joined — occupies one.
- *  worldQuota is the same number under its create-path name. */
-export async function worldQuota(userId: string): Promise<number> {
-  const tier = await membershipTier(userId)
-  return tier === 'pro' ? 100 : tier === 'basic' ? 10 : FREE_WORLD_CAP
-}
-
-/** Dockstars in use: every world this account BUILDS — owned + joined (holds a
- *  member key but isn't the owner). Playing/testing a world costs nothing. */
-export async function dockstarsUsed(userId: string): Promise<number> {
-  const { prisma } = await import('@/lib/prisma')
-  const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
-  const handle = (u?.email || '').split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-  const [owned, joined] = await Promise.all([
-    prisma.playerSpace.count({ where: { ownerId: userId } }),
-    handle
-      ? prisma.spaceToken.count({ where: { revokedAt: null, name: `member:${handle}`, space: { ownerId: { not: userId } } } })
-      : Promise.resolve(0),
-  ])
-  return owned + joined
-}
-
-/** May this account dock into ANOTHER world's edit flow right now (a free star
- *  left)? Owner/existing-builder re-entry is free and never calls this. */
-export async function canDock(userId: string): Promise<boolean> {
-  const [used, allow] = await Promise.all([dockstarsUsed(userId), worldQuota(userId)])
-  return used < allow
-}
-
-/** Does this account hold ANY active editing membership? The live-edit gate. */
+/** Does this account hold the editing membership? The build gate.
+ *  ADMINS are members by virtue of being admin (Galen: free demos; no payment,
+ *  no DB row to get wiped — the keeper of the cafe always has the seat; the
+ *  chair authored this rule on branchfork, Aug 25). Legacy editor_pro
+ *  subscribers stay members — never strand a payer. */
 export async function hasEditingMembership(userId: string): Promise<boolean> {
-  return (await membershipTier(userId)) !== null
+  const { isAdminUserId } = await import('@/lib/adminAuth')
+  if (await isAdminUserId(userId)) return true
+  const ents = await readEntitlements(userId)
+  return ents.some((e) => e.active && (e.product === 'editor' || e.product === 'editor_pro'))
 }
 
-/** Start a monthly editing-membership subscription for a tier — AD-HOC recurring
- *  price (no pre-created Stripe price; only STRIPE_SECRET_KEY). basic = $10/10
- *  worlds · pro = $100/100 worlds. */
+/** Start the monthly editing-membership subscription — AD-HOC recurring price
+ *  (no pre-created Stripe price; only STRIPE_SECRET_KEY). One tier, $10/mo. */
 export async function createEditorCheckout(
-  userId: string, origin: string, tier: 'basic' | 'pro' = 'basic',
+  userId: string, origin: string,
 ): Promise<{ url: string } | { error: string; status: number }> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
-  const isPro = tier === 'pro'
-  const product = isPro ? 'editor_pro' : 'editor'
-  const usd = isPro ? EDITOR_PRO_PRICE_USD : EDITOR_PRICE_USD
+  const product = 'editor'
   const form = new URLSearchParams({
     mode: 'subscription',
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'usd',
-    'line_items[0][price_data][unit_amount]': String(usd * 100),
+    'line_items[0][price_data][unit_amount]': String(EDITOR_PRICE_USD * 100),
     'line_items[0][price_data][recurring][interval]': 'month',
-    'line_items[0][price_data][product_data][name]': isPro ? 'premium editing membership (100 worlds)' : 'editing membership (10 worlds)',
+    'line_items[0][price_data][product_data][name]': 'editing membership — build on open building worlds',
     success_url: `${origin}/cards?paid=editor`,
     cancel_url: `${origin}/cards?paycancel=editor`,
     'metadata[userId]': userId,

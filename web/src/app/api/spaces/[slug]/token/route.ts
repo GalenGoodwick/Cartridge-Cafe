@@ -91,16 +91,17 @@ export async function POST(
         if (await isBanned(sp.id, handle)) {
           return NextResponse.json({ error: 'you are banned from this world' }, { status: 403 })
         }
-        // DOCKSTAR gate (Galen): joining an open world's EDIT flow spends a
-        // dockstar — but only if you're not ALREADY a builder here (re-entry is
-        // free) and don't own it. Play/test never reaches this path.
+        // MEMBERSHIP gate (Galen, Aug 26 — dockstars removed): joining an open
+        // world's EDIT flow takes the $10/mo editing membership — but only if
+        // you're not ALREADY a builder here (re-entry is free) and don't own it.
+        // Play/test never reaches this path. Admins are members automatically.
         const alreadyBuilder = await prisma.spaceToken.findFirst({
           where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true },
         })
         if (!alreadyBuilder && sp.ownerId !== joiner.id) {
-          const { canDock } = await import('@/lib/stripe')
-          if (!(await canDock(joiner.id))) {
-            return NextResponse.json({ error: 'no dockstars left — undock a world or upgrade your membership to join more edit flows (play stays free)' }, { status: 402 })
+          const { hasEditingMembership } = await import('@/lib/stripe')
+          if (!(await hasEditingMembership(joiner.id))) {
+            return NextResponse.json({ error: 'an editing membership ($10/mo) is the seat to join open build flows — play stays free' }, { status: 402 })
           }
         }
         if (policy.build === 'anyone') {
