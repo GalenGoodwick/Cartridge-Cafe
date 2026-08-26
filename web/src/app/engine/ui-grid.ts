@@ -50,6 +50,82 @@ export interface UiRegion {
 
 export interface UiGridDoc { regions: UiRegion[] }
 
+// ─── MOVERS & PERCHERS (Galen, Aug 26: "define what is a mover and what is a
+// percher") — the kind system of the grid:
+//   PERCHER — roosts: occupies a fixed roost inside a space and does not
+//     negotiate (cafe buttons, the grid lattice, game HUD elements).
+//   MOVER — negotiable space: can relocate, reflow, donate area (the cafe
+//     grid, the FieldEngine container, black-space cells, side bars, overlap
+//     bands). Movers HOST perchers; the FieldEngine mover hosts its own
+//     perchers (game UI) on the game-only layer — never mixed with cafe.
+export type UiKind = 'mover' | 'percher'
+
+export interface Rect { x: number; y: number; w: number; h: number }
+
+/** CELL OUT THE BLACK SPACE (Galen): the window minus every occupied rect,
+ *  partitioned into addressable rectangular cells — dead pixels become
+ *  negotiable MOVER territory. Guillotine by occupied y-edges, free x-runs
+ *  per band, then vertical merge of identical runs. */
+export function cellOutFreeSpace(win: { w: number; h: number }, occupied: Rect[], minW = 40, minH = 40): Rect[] {
+  const ys = new Set<number>([0, win.h])
+  for (const r of occupied) { ys.add(Math.max(0, r.y)); ys.add(Math.min(win.h, r.y + r.h)) }
+  const bands = [...ys].sort((a, b) => a - b)
+  type Run = { x0: number; x1: number }
+  const rows: Array<{ y0: number; y1: number; runs: Run[] }> = []
+  for (let i = 0; i < bands.length - 1; i++) {
+    const y0 = bands[i], y1 = bands[i + 1]
+    if (y1 - y0 < 2) continue
+    const blockers = occupied.filter(r => r.y < y1 && r.y + r.h > y0)
+      .map(r => ({ x0: Math.max(0, r.x), x1: Math.min(win.w, r.x + r.w) }))
+      .sort((a, b) => a.x0 - b.x0)
+    const runs: Run[] = []
+    let x = 0
+    for (const b of blockers) { if (b.x0 > x) runs.push({ x0: x, x1: b.x0 }); x = Math.max(x, b.x1) }
+    if (x < win.w) runs.push({ x0: x, x1: win.w })
+    rows.push({ y0, y1, runs })
+  }
+  // vertical merge: adjacent rows with an IDENTICAL run fuse into one cell
+  const cells: Rect[] = []
+  const open = new Map<string, { x0: number; x1: number; y0: number; y1: number }>()
+  for (const row of rows) {
+    const seen = new Set<string>()
+    for (const run of row.runs) {
+      const k = run.x0 + ':' + run.x1
+      seen.add(k)
+      const o = open.get(k)
+      if (o && o.y1 === row.y0) o.y1 = row.y1
+      else { if (o) cells.push({ x: o.x0, y: o.y0, w: o.x1 - o.x0, h: o.y1 - o.y0 }); open.set(k, { ...run, y0: row.y0, y1: row.y1 }) }
+    }
+    for (const [k, o] of open) if (!seen.has(k)) { cells.push({ x: o.x0, y: o.y0, w: o.x1 - o.x0, h: o.y1 - o.y0 }); open.delete(k) }
+  }
+  for (const o of open.values()) cells.push({ x: o.x0, y: o.y0, w: o.x1 - o.x0, h: o.y1 - o.y0 })
+  return cells.filter(c => c.w >= minW && c.h >= minH)
+}
+
+/** THE SENSE of a cell — what belongs in this shape of space at this position. */
+export type CellSense = 'topbar' | 'bottombar' | 'left-rail' | 'right-rail' | 'corner-badge' | 'stage-extension'
+
+export function classifySense(c: Rect, win: { w: number; h: number }): CellSense {
+  const wide = c.w > win.w * 0.5, short = c.h < win.h * 0.16, tall = c.h > win.h * 0.5
+  const atTop = c.y < win.h * 0.1, atBottom = c.y + c.h > win.h * 0.9
+  const atLeft = c.x < win.w * 0.05, atRight = c.x + c.w > win.w * 0.95
+  if (wide && short && atTop) return 'topbar'
+  if (wide && short && atBottom) return 'bottombar'
+  if (tall && atLeft) return 'left-rail'
+  if (tall && atRight) return 'right-rail'
+  if (c.w < 180 && c.h < 180) return 'corner-badge'
+  return 'stage-extension'   // big open space — the game MOVER may grow here
+}
+
+/** Which PERCHERS can move into which cells (fit with breathing room). */
+export function fitPerchers(cells: Rect[], perchers: Array<{ label: string; w: number; h: number }>, pad = 8) {
+  return cells.map(c => ({
+    cell: c,
+    sense: undefined as CellSense | undefined,   // caller stamps
+    fits: perchers.filter(p => p.w + pad * 2 <= c.w && p.h + pad * 2 <= c.h).map(p => p.label),
+  }))
+}
+
 /** The current 3-axis + window state a solve runs against. */
 export interface UiGridState {
   mode: 'view' | 'play' | 'design'

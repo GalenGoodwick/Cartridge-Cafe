@@ -68,3 +68,52 @@ describe('ui-grid overlap gate', () => {
     expect(uiGridOverlaps(doc, s)).toEqual([])   // tools∥topbar parented · console slips over · cafe over game
   })
 })
+
+// ─── MOVERS & PERCHERS: cell-out + sense + fits (Galen's ontology) ───
+import { cellOutFreeSpace, classifySense, fitPerchers } from '@/app/engine/ui-grid'
+
+describe('cell out the black space', () => {
+  const win = { w: 1200, h: 900 }
+  // reality tonight: the phone column mid-screen + a floating button
+  const occupied = [
+    { x: 393, y: 0, w: 414, h: 900 },      // the world column (game mover)
+    { x: 676, y: 838, w: 109, h: 40 },     // SHARE percher (inside column — no cut in margins)
+  ]
+  const cells = cellOutFreeSpace(win, occupied)
+
+  it('dead margins become addressable cells (left + right bands)', () => {
+    const left = cells.find(c => c.x === 0 && c.w === 393)
+    const right = cells.find(c => c.x === 807)
+    expect(left).toBeDefined(); expect(right).toBeDefined()
+    expect(left!.h).toBe(900)               // full-height rail territory
+  })
+
+  it('cells never overlap occupied space', () => {
+    for (const c of cells) for (const o of occupied) {
+      const ox = Math.min(c.x + c.w, o.x + o.w) - Math.max(c.x, o.x)
+      const oy = Math.min(c.y + c.h, o.y + o.h) - Math.max(c.y, o.y)
+      expect(ox <= 0 || oy <= 0).toBe(true)
+    }
+  })
+
+  it('senses read the geometry: tall side bands are rails', () => {
+    expect(classifySense({ x: 0, y: 0, w: 393, h: 900 }, win)).toBe('left-rail')
+    expect(classifySense({ x: 807, y: 0, w: 393, h: 900 }, win)).toBe('right-rail')
+    expect(classifySense({ x: 0, y: 0, w: 1200, h: 60 }, win)).toBe('topbar')
+    expect(classifySense({ x: 0, y: 850, w: 1200, h: 50 }, win)).toBe('bottombar')
+    expect(classifySense({ x: 1100, y: 830, w: 90, h: 60 }, win)).toBe('corner-badge')
+  })
+
+  it('perchers get matched to cells they fit', () => {
+    const perchers = [
+      { label: 'SHARE', w: 109, h: 40 },
+      { label: 'BUILDERBOX', w: 282, h: 40 },
+      { label: 'GIANT', w: 2000, h: 40 },
+    ]
+    const fits = fitPerchers(cells, perchers)
+    const leftRail = fits.find(f => f.cell.x === 0 && f.cell.w === 393)!
+    expect(leftRail.fits).toContain('SHARE')
+    expect(leftRail.fits).toContain('BUILDERBOX')
+    expect(leftRail.fits).not.toContain('GIANT')
+  })
+})

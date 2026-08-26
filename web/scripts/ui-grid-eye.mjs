@@ -30,7 +30,7 @@ const WEB = join(HERE, '..')
 const tmp = mkdtempSync(join(tmpdir(), 'uigrid-'))
 execFileSync(join(WEB, 'node_modules', '.bin', 'esbuild'),
   [join(WEB, 'src/app/engine/ui-grid.ts'), '--format=esm', `--outfile=${join(tmp, 'ui-grid.mjs')}`], { stdio: 'pipe' })
-const { solveUiGrid, uiGridOverlaps } = await import(pathToFileURL(join(tmp, 'ui-grid.mjs')).href)
+const { solveUiGrid, uiGridOverlaps, cellOutFreeSpace, classifySense, fitPerchers } = await import(pathToFileURL(join(tmp, 'ui-grid.mjs')).href)
 
 // ── args ──
 const target = process.argv[2]
@@ -80,7 +80,7 @@ const reality = await page.evaluate(() => {
   }
   // dedupe identical boxes
   const m = new Map()
-  for (const e of els) { const k = `${e.x},${e.y},${e.w},${e.h}`; if (!m.has(k) || e.label.length > m.get(k).label.length) m.set(k, e) }
+  for (const e of els) { const k = `${e.canvas}:${e.x},${e.y},${e.w},${e.h}`; if (!m.has(k) || e.label.length > m.get(k).label.length) m.set(k, e) }
   return { els: [...m.values()], win: { w: innerWidth, h: innerHeight } }
 })
 
@@ -95,15 +95,26 @@ const cafeRegions = solved.filter(r => r.layer === 'cafe')
 const inside = (e, r) => e.x >= r.rect.x - 4 && e.y >= r.rect.y - 4 &&
   e.x + e.w <= r.rect.x + r.rect.w + 4 && e.y + e.h <= r.rect.y + r.rect.h + 4
 const canvas = reality.els.filter(e => e.canvas).sort((a, b) => b.w * b.h - a.w * a.h)[0] || null
-const chromeEls = reality.els.filter(e => !e.canvas)
+// PERCHERS = labeled chrome that roosts. Bare unlabeled containers (the frame's
+// margin bands, wrapper columns) are DECOR — mover SPACE, not occupation
+// (Galen: "top and bottom black space is mover; side bars are mover spaces").
+const chromeEls = reality.els.filter(e => !e.canvas && !/^(div|span|section|main)$/.test(e.label))
 const domOrphans = chromeEls.filter(e => !cafeRegions.some(r => inside(e, r)))
   .map(e => ({ label: e.label, at: `${e.x},${e.y} ${e.w}×${e.h}` }))
 const emptyRegions = cafeRegions.filter(r => !r.slip && !chromeEls.some(e => inside(e, r))).map(r => r.id)
 const gameArea = gameRegions.reduce((n, r) => n + r.rect.w * r.rect.h, 0)
 const gameFillPct = canvas && gameArea ? Math.round(100 * (canvas.w * canvas.h) / gameArea) : 0
 
+// ── THE SENSE MAP (Galen: movers & perchers) — cell out the black space,
+// stamp each cell's SENSE, and match orphan PERCHERS to cells they fit.
+// The game canvas stays a game-only mover: excluded from cafe territory.
+const occupied = [...(canvas ? [canvas] : []), ...chromeEls]
+const freeCells = cellOutFreeSpace(reality.win, occupied)
+const senseMap = fitPerchers(freeCells, chromeEls.map(e => ({ label: e.label, w: e.w, h: e.h })))
+for (const sm of senseMap) sm.sense = classifySense(sm.cell, reality.win)
+
 // ── ONE image: live pixels + declaration (blue/amber) + reality (pink) + red overlap zones ──
-await page.evaluate(({ solved, chromeEls, canvasEl }) => {
+await page.evaluate(({ solved, chromeEls, canvasEl, senseMap }) => {
   const cv = document.createElement('canvas')
   cv.width = innerWidth; cv.height = innerHeight
   cv.style.cssText = 'position:fixed;inset:0;z-index:999999;pointer-events:none'
@@ -119,9 +130,23 @@ await page.evaluate(({ solved, chromeEls, canvasEl }) => {
   for (const r of solved) box(r.rect.x, r.rect.y, r.rect.w, r.rect.h,
     r.layer === 'game' ? '#50c8ff' : '#ffbe3c', `⟨${r.id}⟩ z${r.z} ${r.rect.w}×${r.rect.h}`, true)
   for (const e of chromeEls) box(e.x, e.y, e.w, e.h, '#ff5ac8', `${e.label} z${e.z}`)
-  if (canvasEl) box(canvasEl.x, canvasEl.y, canvasEl.w, canvasEl.h, '#7dffb0', `LIVE CANVAS ${canvasEl.w}×${canvasEl.h}`)
+  if (canvasEl) box(canvasEl.x, canvasEl.y, canvasEl.w, canvasEl.h, '#7dffb0', `GAME MOVER (game-only) ${canvasEl.w}×${canvasEl.h}`)
+  // THE SENSE CELLS — the black space, celled out: green territory with its
+  // sense + which perchers can move in
+  for (const sm of senseMap) {
+    const c = sm.cell
+    g.fillStyle = 'rgba(60,220,120,0.08)'
+    g.fillRect(c.x, c.y, c.w, c.h)
+    g.strokeStyle = 'rgba(90,240,150,0.8)'; g.lineWidth = 1; g.setLineDash([3, 4])
+    g.strokeRect(c.x + 1, c.y + 1, c.w - 2, c.h - 2); g.setLineDash([])
+    g.fillStyle = '#7dffb0'; g.font = 'bold 12px Menlo,monospace'
+    g.fillText(`◇ ${sm.sense} ${c.w}×${c.h}`, c.x + 8, c.y + 18)
+    g.font = '10.5px Menlo,monospace'; g.fillStyle = 'rgba(150,255,190,0.85)'
+    const fits = sm.fits.length ? 'fits: ' + sm.fits.slice(0, 5).join(' · ') : 'fits: (nothing yet)'
+    g.fillText(fits.slice(0, Math.floor(c.w / 6.4)), c.x + 8, c.y + 33)
+  }
   document.body.appendChild(cv)
-}, { solved, chromeEls, canvasEl: canvas })
+}, { solved, chromeEls, canvasEl: canvas, senseMap })
 
 await page.screenshot({ path: out })
 await browser.close()
@@ -132,6 +157,7 @@ const verdict = {
   pixels_equals_game_size: gameFillPct >= 97 ? `YES (${gameFillPct}%)` : `NO — ${gameFillPct}% of declared game region`,
   dom_orphans: domOrphans,          // the migration TODO, auto-derived
   empty_regions: emptyRegions,      // declared homes awaiting tenants
+  sense_map: senseMap.map(sm => ({ sense: sm.sense, cell: `${sm.cell.x},${sm.cell.y} ${sm.cell.w}×${sm.cell.h}`, fits: sm.fits })),
   png: out,
 }
 console.log(JSON.stringify(verdict, null, 1))
