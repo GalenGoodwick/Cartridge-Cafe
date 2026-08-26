@@ -40,7 +40,6 @@ export interface WorldIdentity {
 
 export interface Lineage {
   original: string
-  mainHolder: string
 }
 
 export interface WorldContext {

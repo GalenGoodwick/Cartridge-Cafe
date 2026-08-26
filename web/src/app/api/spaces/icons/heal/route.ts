@@ -4,7 +4,6 @@ import { isAdmin } from '@/lib/adminAuth'
 import { bakeAllUnhealthy } from '@/lib/icon-bake-queue'
 import { bakeSiteOgCard } from '@/lib/og-card'
 import { loadScene, listScenes, hydrateAllScenes } from '../../../engine/store'
-import { getLineage } from '../../../engine/lineage'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300   // a full sweep photographs many worlds through the eye
@@ -52,12 +51,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     await hydrateAllScenes()
     for (const name of listScenes()) {
       if (name === 'CAFE' || name === 'SUB-MAIN' || name.includes(' ⑂ ') || name.includes('␂')) continue
-      let liveName = name
-      try {
-        const lin = await getLineage(name)
-        if (lin?.mainHolder && lin.original && lin.mainHolder !== lin.original
-            && !lin.mainHolder.startsWith('space:') && loadScene(lin.mainHolder)) liveName = lin.mainHolder
-      } catch { /* base is a fine fallback */ }
+      const liveName = name   // main always serves the original (swap-main throne retired)
       let scene: Snap = null
       try { scene = (loadScene(liveName) as unknown as Snap) } catch { continue }
       if (!scene) continue

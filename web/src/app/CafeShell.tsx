@@ -944,18 +944,9 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
         window.location.href = '/u/' + name.slice(6)
         return
       }
-      // king-of-the-hill: the door says "ORCHID", but entering it loads whoever
-      // currently holds MAIN — the branch that won its arena — not the frozen
-      // original. A branch or hub launches as itself; the ★ ORIGINAL bookmark
-      // (in the world chrome) always returns to the immortal original.
-      let target = name
-      if (!name.includes(' ⑂ ') && name !== 'CAFE' && name !== 'SUB-MAIN') {
-        try {
-          const lin = (await fetch(`/api/engine/save?action=load&slot=${encodeURIComponent('lineage:' + name.toUpperCase())}`).then(r => r.json()))?.data
-          if (lin?.mainHolder && lin.original && lin.mainHolder !== lin.original) target = lin.mainHolder
-        } catch { /* offline → the original is a fine fallback */ }
-      }
-      go(target)
+      // main always serves the original — the swap-main throne (a branch swapping
+      // in as what main serves) was retired with the tournament.
+      go(name)
     }
     // returning from auth with brewing intent
     if (new URLSearchParams(window.location.search).get('brew')) {

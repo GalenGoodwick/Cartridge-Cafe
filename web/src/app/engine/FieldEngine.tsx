@@ -7054,25 +7054,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                     and FocusChip still renders a compact "developer live" pulse in play
                     mode (playMode prop) so the maker-at-work signal survives gameplay */}
                 <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} liveSlug={spaceId ? spaceSlug : undefined} viewerIsOwner={isOwner} playMode={playMode} inline />
-                {branchy && playScene && !playMode && (
-                  <button
-                    title="players joining this world see the version you're looking at"
-                    onClick={async () => {
-                      const base = playScene.split(' ⑂ ')[0].trim()
-                      const r = await fetch('/api/engine/lineage/set-main', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ base, holder: playScene }),
-                      })
-                      const d = await r.json().catch(() => ({}))
-                      window.dispatchEvent(new CustomEvent('cafe:caption', { detail: {
-                        text: r.ok ? `♛ main now serves ${playScene.split(' ⑂ ')[1] || playScene}` : (d.error || 'could not set main'),
-                        kind: r.ok ? 'hint' : 'error',
-                      } }))
-                    }}
-                    className="pointer-events-auto px-2.5 rounded-lg font-mono text-[14px] tracking-[0.15em] text-amber-200/80 hover:text-amber-100 bg-black/55 backdrop-blur border border-amber-300/25 hover:border-amber-300/60 transition-colors">
-                    ♛ SET MAIN
-                  </button>
-                )}
+                {/* ♛ SET MAIN removed — the swap-main throne was retired with the
+                    tournament; main always serves the original now. */}
               </div>
             )
           })()}
