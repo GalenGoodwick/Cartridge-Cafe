@@ -20,7 +20,11 @@ type Snap = {
  *  (bounded concurrency), and returns a summary. Admin/cron only. GET mirrors it
  *  so it can be wired to a scheduled fetch. */
 async function run(req: NextRequest): Promise<NextResponse> {
-  if (!(await isAdmin(req.headers.get('authorization')))) {
+  // Vercel cron authenticates with Authorization: Bearer <CRON_SECRET> — the
+  // nightly heal sweep (icons finally switched ON, Galen Aug 26) rides that.
+  const auth = req.headers.get('authorization')
+  const cronOk = !!process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
+  if (!cronOk && !(await isAdmin(auth))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   // PUBLIC worlds only by default: baking the hundreds of private/test/branch
