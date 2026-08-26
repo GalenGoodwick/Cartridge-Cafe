@@ -6727,18 +6727,34 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[14px] tracking-[0.25em] text-white/50">
-                  {building ? (agentConnected ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : (loadHeavy ? 'COMPILING THIS WORLD…' : 'LOADING WORLD…')}
+                  {/* HONEST label (Galen, Aug 26: '"AI is building" but no AI is
+                      building') — only EDITS ACTUALLY LANDING (aiEditing) earn
+                      "building"; a merely-connected key does not. */}
+                  {building ? (aiEditing ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : (loadHeavy ? 'COMPILING THIS WORLD…' : 'LOADING WORLD…')}
                 </div>
                 {loading && loadHeavy && (
                   <div className="font-mono text-[12px] tracking-[0.15em] text-white/30">heavy shaders — a few seconds</div>
                 )}
-                {/* no builder yet: reassure (the world is SAFE, never lost) + a way
-                    out — build it yourself with the player key / CONNECT AI. */}
-                {building && !agentConnected && terminalLog.length === 0 && (
+                {/* THE WAY IN (Galen, Aug 26: "build the flow that once they
+                    generate the world they can connect their AI") — while the
+                    build waits, the owner ALWAYS gets the connect flow, no matter
+                    what the connection heuristic thinks. A paying player must
+                    never face a bare spinner. */}
+                {building && !aiEditing && (
                   <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[14px] leading-relaxed text-amber-100/80 text-center">
                     In the queue — <b>your world is saved</b>, and it&rsquo;ll build when a builder is free. This can take a few minutes; you can close this tab.
                     {(isOwner || !spaceId) && (
-                      <> Or build it now: <button onClick={() => setPlugOpen(true)} className="underline text-amber-200 hover:text-amber-100">⚡ CONNECT AI</button>.</>
+                      <div className="mt-2.5">
+                        <button
+                          onClick={() => {
+                            const bp = (brief as { prompt?: string } | undefined)?.prompt
+                            if (bp) setPlugBrief(prev => prev || bp)   // the paid brief rides into the AI prompt
+                            setPlugOpen(true)
+                          }}
+                          className="px-4 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15 text-[14px] tracking-[0.15em] transition-colors">
+                          ⚡ CONNECT YOUR AI — build it now
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
