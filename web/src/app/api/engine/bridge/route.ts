@@ -700,6 +700,13 @@ export async function POST(req: NextRequest) {
           const ua = (req.headers.get('user-agent') || 'unknown').slice(0, 200)
           await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __built_ua: ua, __built_at: Date.now() } })
         }
+        // AI HEARTBEAT (Galen, Aug 26: "no indication on if you are connected") —
+        // stamp the last AI-command time so the world page can say, truthfully,
+        // "an AI is working here". Unspoofed (server-side, key-authed), throttled
+        // to one write per 10s so chatty builders don't double every batch.
+        if (Number(wd.__ai_last_cmd ?? 0) < Date.now() - 10_000) {
+          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __ai_last_cmd: Date.now() } })
+        }
       } catch { /* provenance is best-effort */ }
     }
 

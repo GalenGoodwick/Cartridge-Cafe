@@ -6754,9 +6754,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
                 <div className="font-mono text-[14px] tracking-[0.25em] text-white/50">
                   {/* HONEST label (Galen, Aug 26: '"AI is building" but no AI is
-                      building') — only EDITS ACTUALLY LANDING (aiEditing) earn
-                      "building"; a merely-connected key does not. */}
-                  {building ? (aiEditing ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : (loadHeavy ? 'COMPILING THIS WORLD…' : 'LOADING WORLD…')}
+                      building') — only EDITS ACTUALLY LANDING (aiEditing) or the
+                      server-stamped AI HEARTBEAT (__ai_last_cmd, key-authed,
+                      unspoofable) earn "building"; a merely-minted key does not. */}
+                  {(() => {
+                    const hb = Number(sim?.worldData?.__ai_last_cmd ?? 0)
+                    const aiLive = aiEditing || (hb > 0 && Date.now() - hb < 25000)
+                    return building ? (aiLive ? 'YOUR AI IS BUILDING…' : 'WAITING FOR A BUILDER…') : (loadHeavy ? 'COMPILING THIS WORLD…' : 'LOADING WORLD…')
+                  })()}
                 </div>
                 {loading && loadHeavy && (
                   <div className="font-mono text-[12px] tracking-[0.15em] text-white/30">heavy shaders — a few seconds</div>
@@ -6911,8 +6916,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-[16px] tracking-[0.25em] text-white/50">⚡ CONNECT YOUR AI</div>
                     <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
-                      <span className={`inline-block w-2 h-2 rounded-full ${agentConnected ? 'bg-emerald-400' : 'bg-white/25'}`} />
-                      {agentConnected ? 'LIVE' : 'WAITING'}
+                      {/* honest dot: the server-stamped AI heartbeat (key-authed
+                          commands in the last 25s) or a live SSE agent — never
+                          just a minted key */}
+                      {(() => {
+                        const hb = Number(simulationRef.current?.worldData?.__ai_last_cmd ?? 0)
+                        const live = agentConnected || (hb > 0 && Date.now() - hb < 25000)
+                        return (<>
+                          <span className={`inline-block w-2 h-2 rounded-full ${live ? 'bg-emerald-400' : 'bg-white/25'}`} />
+                          {live ? 'AI LIVE — commands landing' : 'WAITING — nothing connected yet'}
+                        </>)
+                      })()}
                     </div>
                   </div>
                   <p className="text-white/60 mb-2 text-[16px]">
