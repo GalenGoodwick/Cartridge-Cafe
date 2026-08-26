@@ -222,7 +222,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const [branchesOpen, setBranchesOpen] = useState(false)
   // game worlds collapse their meta-UI (branch/branches/connect/vote/restart)
   // behind a single dock; back/tools/sound/instructions + the game HUD stay out.
-  const [uiDockOpen, setUiDockOpen] = useState(false)   // the world greets CLEAN; ✎ EDIT opens the controls (connect AI, tools, branch, vote)
+  // THE MODE OWNER (world-mode.ts, rung 1): ONE cell decides chrome. 'play' is
+  // its first tenant — playMode below is DERIVED, so every read site is
+  // unchanged while the six-boolean soup drains into this cell rung by rung.
+  // 'design' is reserved for the EDIT rail (rung 3). Do not add a new
+  // chrome-visibility boolean; add a mode.
+  const [worldMode, setWorldMode] = useState<WorldMode>('view')
+  // ✎ EDIT IS the design toggle (rung 2b, Galen: "just one edit button —
+  // opens up design ui"). The fold derives from the mode; there is no
+  // separate open/closed boolean to drift.
+  const uiDockOpen = worldMode === 'design'
+  const toggleUiDock = () => setWorldMode(m => (m === 'design' ? 'view' : 'design'))
   // owner's shelf switch: current visibility + the confirm popup (Galen: one
   // click to publish/private, confirm either way, ABOVE the edit button)
   const [spacePublic, setSpacePublic] = useState<boolean | null>(null)
@@ -277,17 +287,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const inspectPixRef = useRef<{ data: ImageData; w: number; h: number } | null>(null)
   const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; ui?: { id: string; text: string; panel: string | null; hook: string | null } | null; source?: string | null; drives?: { visual: string; rev: number | null; by: string | null; reads: number[]; writers: { hook: string; slots: string }[] } | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
-  // THE MODE OWNER (world-mode.ts, rung 1): ONE cell decides chrome. 'play' is
-  // its first tenant — playMode below is DERIVED, so every read site is
-  // unchanged while the six-boolean soup drains into this cell rung by rung.
-  // 'design' is reserved for the EDIT rail (rung 3). Do not add a new
-  // chrome-visibility boolean; add a mode.
-  const [worldMode, setWorldMode] = useState<WorldMode>('view')
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
   const playMode = worldMode === 'play'
   const enterPlayMode = () => {
-    setUiDockOpen(false); setChromeVisible(false); setWorldChatOpen(false)
+    setChromeVisible(false); setWorldChatOpen(false)
     setInstrOpen(false); setBuildConsoleOpen(false)
     setWorldMode('play')
     window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: true }))
@@ -6301,15 +6305,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               >
                 ⑄ FORK THIS WORLD
               </button>}
-              {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
-              <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
-                <button onClick={() => stepBranch(-1)} title="previous in the family"
-                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
-                <span className="px-1 py-1 text-[14px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
-                <button onClick={() => stepBranch(1)} title="next in the family"
-                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
-              </div>
-              )}
+              
               {/* (the ⚖ "call a resolution/issue" button was removed — it wasn't
                   wired up yet. The world's ONE real vote is the ⚔ RECKONING that
                   TournamentBar seats just below this dock.) */}
@@ -6357,6 +6353,24 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             {/* THE SHELF SWITCH — owner-only, ABOVE the edit fold (Galen: out of
                 world tools, one click to publish/private, confirm either way).
                 Shows the world's CURRENT visibility; the popup names the act. */}
+                        {/* game worlds fold their meta-UI behind one dock; back/tools/sound/
+                instructions + the game's own HUD stay out. CAFE / hubs / SUB-MAIN
+                are navigation surfaces — they show everything as before. */}
+            {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+              <button
+                onClick={toggleUiDock}
+                title={uiDockOpen ? 'hide world controls' : 'world controls — fork, versions, connect AI'}
+                className="px-2.5 py-1.5 rounded-lg text-[16px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
+              </button>
+            )}
+            {/* (★ ORIGINAL bookmark removed with swap-main — main IS the original.) */}
+            {/* (duplicate rail button removed — door-Opus's bottom-left ⌁ pill
+                is the ONE BuilderBox surface, per the negotiated split) */}
+            {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
+            {/* meta-controls live in the fold (rung 2b): the view row is
+                PLAY · INSTRUCTIONS · FORK · EDIT — nothing else. */}
             {!isHub && spaceId && isOwner && !versionView && spacePublic !== null && (
               <div className="relative">
                 <button
@@ -6403,22 +6417,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 )}
               </div>
             )}
-            {/* game worlds fold their meta-UI behind one dock; back/tools/sound/
-                instructions + the game's own HUD stay out. CAFE / hubs / SUB-MAIN
-                are navigation surfaces — they show everything as before. */}
-            {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-              <button
-                onClick={() => setUiDockOpen(v => !v)}
-                title={uiDockOpen ? 'hide world controls' : 'world controls — fork, versions, connect AI'}
-                className="px-2.5 py-1.5 rounded-lg text-[16px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-              >
-                {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
-              </button>
-            )}
-            {/* (★ ORIGINAL bookmark removed with swap-main — main IS the original.) */}
-            {/* (duplicate rail button removed — door-Opus's bottom-left ⌁ pill
-                is the ONE BuilderBox surface, per the negotiated split) */}
-            {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
+            {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
+              <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
+                <button onClick={() => stepBranch(-1)} title="previous in the family"
+                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
+                <span className="px-1 py-1 text-[14px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
+                <button onClick={() => stepBranch(1)} title="next in the family"
+                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
+              </div>
+              )}
             {/* WORLD TOOLS — folded into the EDIT dropdown so it's not a stray
                 corner button. Opens the same panel (name/visibility/keys/mgmt). */}
             {!isHub && can(ctx, 'toolsPanel') && (
