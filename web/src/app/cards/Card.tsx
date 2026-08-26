@@ -128,6 +128,12 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         </span>
       </div>
 
+      {/* the MAKER — right under the name (Galen, Aug 26: "move creator name
+          under world name"), not buried in the footer */}
+      <div className="px-3 -mt-1 pb-1.5 font-mono text-[10.5px] text-white/40 truncate">
+        {card.maker.handle ? '@' + card.maker.handle : card.maker.name || 'the house'}
+      </div>
+
       {/* the art window — the world's shader photo */}
       <div className={`relative mx-3 rounded-md overflow-hidden border border-white/10 bg-black ${featured ? 'aspect-[16/10]' : 'aspect-[16/10]'}`}>
         {card.iconWgsl && liveOk
@@ -214,13 +220,14 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         {card.desc || '—'}
       </p>
 
-      {/* footer: maker · base set */}
-      <div className="mt-auto px-3.5 pb-3 flex items-center gap-2 font-mono text-[10.5px] text-white/35">
-        <span className="truncate">{card.maker.handle ? '@' + card.maker.handle : card.maker.name || 'the house'}</span>
-        {card.base && !card.isBase && (
+      {/* footer: base set only (the maker moved up under the name) */}
+      {card.base && !card.isBase ? (
+        <div className="mt-auto px-3.5 pb-3 flex items-center font-mono text-[10.5px]">
           <span className="ml-auto shrink-0 text-amber-200/40 truncate">of {card.base}</span>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="mt-auto pb-3" />
+      )}
     </button>
     {sheet && (
       <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
