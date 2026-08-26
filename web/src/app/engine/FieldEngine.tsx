@@ -192,6 +192,13 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const plugMintOnceRef = useRef(false)
   useEffect(() => {
     if (!plugOpen) { plugMintOnceRef.current = false; return }
+    // THE USER'S OWN WORDS ride in (Galen, Aug 26: "connect ai should include
+    // the prompt the user wrote"): whichever door opened the plug, an unfinished
+    // world's creation_brief prefills the briefing's BUILD THIS line. Their
+    // brief, their AI — editable before copying.
+    const wd = simulationRef.current?.worldData as { creation_brief?: { prompt?: string }; brief_done?: unknown } | undefined
+    const bp = wd?.creation_brief?.prompt
+    if (bp && !wd?.brief_done) setPlugBrief(prev => prev || bp)
     if (plugToken || plugMintOnceRef.current || !spaceSlug) return
     plugMintOnceRef.current = true
     let stop = false
