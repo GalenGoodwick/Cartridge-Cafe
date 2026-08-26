@@ -39,6 +39,28 @@ or absolute grid units; the solver resolves them per-window.
 - CULLING: a region outside the window, or whose `when` clause fails the
   3-axis state (mode × role × worldState), simply does not exist that frame.
 
+**VIEWPORT INSTANTIATION (Galen): mobile UI is a CALCULATED INSTANCE.** A
+region's `when` clause takes viewport predicates alongside the 3-axis state:
+```jsonc
+"when": { "mode": ["view"], "viewport": { "maxW": 520 } }     // phone-only region
+"when": { "viewport": { "minW": 521 } }                        // desktop-only twin
+```
+The SAME declaration set, resolved per-window, IS the mobile UI — pixels turn
+on based on viewport. No mobile fork, no second layout system; the phone frame
+is just a narrower window and the solver does the rest.
+
+**SLIP-IN REGIONS (Galen): console/nav as drawers.** A region may declare
+`slip`: it lives off one edge at rest and slides in over both layers on its
+trigger — the third compositing behavior after cafe and game:
+```jsonc
+{ "id": "console.builderbox", "layer": "cafe", "slip": { "edge": "bottom", "trigger": "console" },
+  "anchor": { "vx": [0,1], "vy": [0.45,1] }, "z": 80 }
+{ "id": "nav.site", "layer": "cafe", "slip": { "edge": "left", "trigger": "nav" } }
+```
+Console (BuilderBox/build log) and site nav stop being permanent chrome — they
+cost zero viewport at rest and arrive as a calculated overlay when summoned.
+On phones, everything that doesn't fit the bar becomes a slip-in.
+
 **ELEMENTS** inside cafe regions use the EXISTING ui vocabulary (panels, text,
 meters, buttons — the ui-solver + UiBox/glyph passes; clicks land in
 `__uiClick`). No new widget system: the game-UI renderer IS the site renderer.
