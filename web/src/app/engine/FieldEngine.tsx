@@ -6761,7 +6761,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                     never face a bare spinner. */}
                 {building && !aiEditing && (
                   <div className="pointer-events-auto max-w-[560px] w-[86vw] rounded-lg border border-amber-400/25 bg-amber-400/5 px-4 py-3 font-mono text-[14px] leading-relaxed text-amber-100/80 text-center">
-                    In the queue — <b>your world is saved</b>, and it&rsquo;ll build when a builder is free. This can take a few minutes; you can close this tab.
+                    {/* the TRUE product (Galen, Aug 26: "there is no house AI —
+                        the person ALWAYS connects their AI"): no phantom-builder
+                        promise; the world waits for YOUR AI. */}
+                    <b>Your world is saved</b> and waiting for its builder — <b>you</b>. Connect your AI below and it builds your brief live, before your eyes.
                     {(isOwner || !spaceId) && (
                       <div className="mt-2.5">
                         <button
