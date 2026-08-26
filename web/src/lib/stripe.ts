@@ -248,8 +248,12 @@ export const FREE_WORLD_CAP = 3           // no membership — a try-it allowanc
 
 export type MemberTier = 'pro' | 'basic' | null
 
-/** The account's membership tier (pro wins if both are somehow active). */
+/** The account's membership tier (pro wins if both are somehow active).
+ *  ADMINS are premium by virtue of being admin (Galen, Aug 25) — no payment,
+ *  no DB row to get wiped; the keeper of the cafe always has the full tier. */
 export async function membershipTier(userId: string): Promise<MemberTier> {
+  const { isAdminUserId } = await import('@/lib/adminAuth')
+  if (await isAdminUserId(userId)) return 'pro'
   const ents = await readEntitlements(userId)
   if (ents.some((e) => e.active && e.product === 'editor_pro')) return 'pro'
   if (ents.some((e) => e.active && e.product === 'editor')) return 'basic'

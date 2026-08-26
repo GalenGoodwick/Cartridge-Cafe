@@ -25,6 +25,23 @@ export function isAdminToken(authHeader?: string | null, opts: { allowLegacyAnth
   return false
 }
 
+/** Is THIS user id an admin? (session-free — for server code that has a userId
+ *  but no request, e.g. membership tier.) Checks ADMIN_USER_IDS directly, then
+ *  ADMIN_EMAILS via a lookup. Deliberately does NOT grant dev-everyone (unlike
+ *  isAdmin) — so membership stays honest to test in dev with a non-admin account. */
+export async function isAdminUserId(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false
+  const ids = (process.env.ADMIN_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+  if (ids.includes(userId)) return true
+  const emails = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  if (!emails.length) return false
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+    return !!(u?.email && emails.includes(u.email.toLowerCase()))
+  } catch { return false }
+}
+
 export async function isAdmin(authHeader?: string | null): Promise<boolean> {
   if (process.env.NODE_ENV !== 'production') return true
   if (isAdminToken(authHeader)) return true
