@@ -243,8 +243,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           .sort((a, b) => a.name < b.name ? -1 : 1)
         const rects: Array<{ w: number; h: number; px: Uint32Array }> = []
         for (const sh of sheets) {
-          const blob = await fetch(`data:image/png;base64,${sh.png_b64}`).then(x => x.blob())
-          const bmp = await createImageBitmap(blob)
+          // decode base64 DIRECTLY (the site's CSP refuses fetch('data:…'))
+          const bin = atob(sh.png_b64)
+          const bytes = new Uint8Array(bin.length)
+          for (let bi = 0; bi < bin.length; bi++) bytes[bi] = bin.charCodeAt(bi)
+          const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
           const cv = document.createElement('canvas')
           cv.width = bmp.width; cv.height = bmp.height
           const cx = cv.getContext('2d', { willReadFrequently: true })
