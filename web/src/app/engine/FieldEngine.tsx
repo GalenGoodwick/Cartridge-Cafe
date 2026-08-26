@@ -25,6 +25,7 @@ import VersionScrubber from './VersionScrubber'
 import PromptPanel from './PromptPanel'
 import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
+import SpritesPanel from './SpritesPanel'
 import type { TerminalEntry } from './AgentTerminalPanel'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
@@ -276,6 +277,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
+  const [spritesOpen, setSpritesOpen] = useState(false)   // ◲ SPRITES — upload/view/rip (owner)
   const [mkIconDesc, setMkIconDesc] = useState('')
   const [mkIconCopied, setMkIconCopied] = useState(false)
   const [mkIconSet, setMkIconSet] = useState(false)
@@ -6697,6 +6699,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 ◆ MAKE ICON
               </button>
             )}
+            {spaceId && isOwner && !riding && (
+              <button
+                onClick={() => setSpritesOpen(true)}
+                title="upload pixel art — rip sprite sheets into slots any visual can sample"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ◲ SPRITES
+              </button>
+            )}
             {/* juror mode: riding a branch. ONE vote lives in the ⚔ reckoning
                 (TournamentBar) — here we show the authoritative standing (read
                 from the real tournament doc) + a way to discuss. No second cast. */}
@@ -7048,6 +7059,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               </div>
             )
           })()}
+
+          {spritesOpen && spaceSlug && (
+            <SpritesPanel slug={spaceSlug} onClose={() => setSpritesOpen(false)} />
+          )}
 
           {mkIconOpen && (() => {
             const origin = typeof window !== 'undefined' ? window.location.origin : ''
