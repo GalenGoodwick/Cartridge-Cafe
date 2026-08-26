@@ -3,26 +3,22 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts } from '@/lib/world-create'
+import { canCreateWorld, birthWorld, sweepAbandonedDrafts } from '@/lib/world-create'
 import { GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
-import { ensureBuilderTables } from '@/lib/builder-tables'
-import { commonsBus } from '@/lib/commons-bus'
-import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-/** PAID WORLD GENERATION — the phone's native creation route.
+/** PAID WORLD GENERATION (Galen, Aug 26: there is NO house AI — the person
+ *  ALWAYS connects their own AI).
  *
- *  A connected AI (Claude Code etc.) is the desktop way in; a phone can't run
- *  one. Here the player DESCRIBES a world, a paid credit is spent, and the
- *  HOUSE AI builds the brief: the world is born with creation_brief +
- *  __house_requested (the consent gate revalidate() enforces) and a BuildJob
- *  is enqueued directly — payment IS the explicit consent, same as the
- *  owner-authorized branch button (see lib/builds.ts).
+ *  The player DESCRIBES a world, a paid credit is spent, and the world is BORN
+ *  (private, with its slots + first build key) carrying creation_brief. The
+ *  world page then hands the owner the CONNECT-YOUR-AI flow with their brief
+ *  prefilled — their AI builds it live. No BuildJob queue, no phantom builder.
  *
  *  GET  — credits + whether the product is buyable (renders the GENERATE door)
- *  POST {brief, name?} — spend a credit, create the world, queue the build.
+ *  POST {brief, name?} — spend a credit (admins free), birth the world.
  *       402 when broke (client sends them through /api/pay/checkout).
  */
 
@@ -84,60 +80,26 @@ export async function POST(req: NextRequest) {
     const name = String(body?.name ?? '').trim().slice(0, 60) || brief.slice(0, 40).replace(/\s+\S*$/, '')
     const baseSlug = slugify(name) || 'generated-world'
 
-    // born public so the buyer can watch the house AI build it live; the brief
-    // + house consent ride in the snapshot exactly where reconcile/revalidate look
-    const space = await createSpaceUniqueSlug(baseSlug, (slug) => ({
-      name,
-      slug,
-      description: brief.slice(0, 140),
+    // THE ONE BIRTH PIPELINE (Galen's law: pipelines universal, no hand-rolls —
+    // this route's hand-rolled copy had drifted to born-PUBLIC "so the buyer
+    // can watch the house AI", a house AI that does not exist). Born PRIVATE
+    // like every world: the OWNER sees it fine, connects their AI, and it goes
+    // public through the normal publish gate (vision + instructions +
+    // brief_done) when the build is real. Strangers never meet a bare curtain.
+    const { space } = await birthWorld({
       ownerId: user.id,
-      isPublic: true,
-      snapshot: {
-        fields: [],
-        worldData: {
-          creation_brief: { prompt: brief, by: user.id, at: Date.now() },
-          __house_requested: true,
-        },
-      },
-    }))
-
-    // BORN WITH ITS SLOTS (every create path)
-    {
-      const { applyCommandToSnapshot } = await import('../engine/space-store')
-      const { placeholderSeedCommands } = await import('@/app/engine/placeholder-nodes')
-      for (const seed of placeholderSeedCommands(Date.now())) {
-        await applyCommandToSnapshot(space.id, seed).catch(() => {})
-      }
-    }
-
-    // the world's first build key — the house builder's door in
-    const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
-    await prisma.spaceToken.create({
-      data: {
-        name: 'first build key',
-        tokenHash: crypto.createHash('sha256').update(rawToken).digest('hex'),
-        tokenPrefix: rawToken.slice(0, 12) + '...',
-        spaceId: space.id,
+      name,
+      baseSlug,
+      description: brief.slice(0, 140),
+      worldData: {
+        creation_brief: { prompt: brief, by: user.id, at: Date.now() },
       },
     })
 
-    // payment = consent: enqueue the BuildJob directly (reconcile never
-    // auto-enrolls; this is the same explicit path as the branch button)
-    await ensureBuilderTables()
-    const job = await prisma.buildJob.create({
-      data: {
-        spaceId: space.id,
-        spaceSlug: space.slug,
-        brief,
-        history: [{ at: new Date().toISOString(), by: 'owner', event: 'enqueued (paid generation)' }],
-      },
-      select: { id: true },
-    })
-
-    // ring the bus — a paid brief is work looking for a builder
-    void commonsBus({ kind: 'system', who: 'cafe', text: `✧ paid generation: "${name}" (/space/${space.slug}) — a brief awaits a builder` })
-
-    return NextResponse.json({ ok: true, slug: space.slug, name, jobId: job.id, credits: remaining }, { status: 201 })
+    // NO BuildJob, NO "awaits a builder" bus ring (Galen, Aug 26: "there is no
+    // house AI — the person ALWAYS connects their AI"). The world is born with
+    // the brief; the curtain hands the owner the CONNECT flow. Done.
+    return NextResponse.json({ ok: true, slug: space.slug, name, credits: remaining }, { status: 201 })
   } catch (e) {
     // world creation failed AFTER the credit spent — refund it (admins never spent one)
     if (!isKeeper) {

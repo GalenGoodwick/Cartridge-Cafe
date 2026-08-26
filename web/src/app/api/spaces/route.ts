@@ -3,8 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, createSpaceUniqueSlug, sweepAbandonedDrafts, findOwnWorldByName } from '@/lib/world-create'
-import crypto from 'crypto'
+import { canCreateWorld, birthWorld, sweepAbandonedDrafts, findOwnWorldByName } from '@/lib/world-create'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,42 +89,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid slug' }, { status: 400 })
   }
 
-  // the creation brief rides in the world itself: the FIRST thing a connecting
-  // AI reads is what the player asked for — it builds that, not its own idea
-  const snapshot = brief?.trim()
-    ? { fields: [], worldData: { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } }
-    : undefined
-
-  // race-safe: the DB unique constraint arbitrates the slug, not a prior read
-  const space = await createSpaceUniqueSlug(baseSlug, (slug) => ({
-    name: name.trim(),
-    slug,
-    description: description?.trim() || null,
+  // THE ONE BIRTH PIPELINE (Galen's law: pipelines universal, no hand-rolls).
+  // The creation brief rides in the world itself: the FIRST thing a connecting
+  // AI reads is what the player asked for — it builds that, not its own idea.
+  const { space, token: rawToken } = await birthWorld({
     ownerId: user.id,
-    isPublic: !draft,
-    ...(snapshot ? { snapshot } : {}),
-  }))
-
-  // BORN WITH ITS SLOTS (Galen's law — every create path): seed the blank
-  // placeholder nodes so the sandbox is alive from frame one and the anatomy
-  // is named; the connecting AI builds WITHIN the slots.
-  {
-    const { applyCommandToSnapshot } = await import('../engine/space-store')
-    const { placeholderSeedCommands } = await import('@/app/engine/placeholder-nodes')
-    for (const seed of placeholderSeedCommands(Date.now())) {
-      await applyCommandToSnapshot(space.id, seed).catch(() => {})
-    }
-  }
-
-  // connect-AI-first: the world is born with its first build key
-  const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`
-  await prisma.spaceToken.create({
-    data: {
-      name: 'first build key',
-      tokenHash: crypto.createHash('sha256').update(rawToken).digest('hex'),
-      tokenPrefix: rawToken.slice(0, 12) + '...',
-      spaceId: space.id,
-    },
+    name: name.trim(),
+    baseSlug,
+    description: description?.trim() || null,
+    isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
+    worldData: brief?.trim()
+      ? { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } }
+      : undefined,
   })
 
   // shape the response (the create returns the full row now — don't leak

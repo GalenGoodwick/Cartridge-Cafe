@@ -62,6 +62,58 @@ export async function sweepAbandonedDrafts(userId: string): Promise<number> {
  *  slugified. `data(slug)` returns the create payload for a candidate slug.
  *  Returns the created row (whatever slug it landed on).
  */
+/** THE ONE BIRTH PIPELINE (Galen's law, Aug 26: "pipelines must be universal
+ *  across functionalities — too many times I have seen multiple hand-rolled
+ *  routes"). EVERY world birth goes through here: unique slug, BORN WITH ITS
+ *  SLOTS, and the first build key. Callers state their intent (isPublic,
+ *  extra worldData); they never re-implement birth. The generate route's
+ *  hand-rolled copy had drifted to born-PUBLIC "so the buyer can watch the
+ *  house AI" — a house AI that does not exist; the platform law is born
+ *  PRIVATE unless the caller explicitly says otherwise. */
+export async function birthWorld(opts: {
+  ownerId: string
+  name: string
+  baseSlug: string
+  description?: string | null
+  isPublic?: boolean                      // default FALSE — worlds are born private
+  worldData?: Record<string, unknown>     // e.g. creation_brief — the first thing a connecting AI reads
+  snapshot?: Prisma.InputJsonValue        // full snapshot override (brew-with-cartridge); wins over worldData
+}): Promise<{ space: { id: string; slug: string; name: string; description: string | null; isPublic: boolean; createdAt: Date }; token: string }> {
+  const snapshot = opts.snapshot
+    ?? (opts.worldData && Object.keys(opts.worldData).length
+      ? ({ fields: [], worldData: opts.worldData } as Prisma.InputJsonValue)
+      : undefined)
+  const space = await createSpaceUniqueSlug(opts.baseSlug, (slug) => ({
+    name: opts.name,
+    slug,
+    description: opts.description ?? null,
+    ownerId: opts.ownerId,
+    isPublic: opts.isPublic === true,
+    ...(snapshot !== undefined ? { snapshot } : {}),
+  }))
+  // BORN WITH ITS SLOTS: seed the blank placeholder nodes so the sandbox is
+  // alive from frame one and the anatomy is named; a connecting AI builds
+  // WITHIN the slots.
+  {
+    const { applyCommandToSnapshot } = await import('@/app/api/engine/space-store')
+    const { placeholderSeedCommands } = await import('@/app/engine/placeholder-nodes')
+    for (const seed of placeholderSeedCommands(Date.now())) {
+      await applyCommandToSnapshot(space.id, seed).catch(() => {})
+    }
+  }
+  // connect-AI-first: the world is born with its first build key
+  const token = `uc_st_${crypto.randomBytes(16).toString('hex')}`
+  await prisma.spaceToken.create({
+    data: {
+      name: 'first build key',
+      tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+      tokenPrefix: token.slice(0, 12) + '...',
+      spaceId: space.id,
+    },
+  })
+  return { space, token }
+}
+
 export async function createSpaceUniqueSlug(
   baseSlug: string,
   data: (slug: string) => Prisma.PlayerSpaceUncheckedCreateInput,
