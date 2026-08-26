@@ -142,10 +142,6 @@ export default function CardsMain() {
             ⚿ CONNECT AI
           </button>
           <GenerateDoor signedIn={!!me && me !== 'anon'} />
-          <a href="/door" title="the reckoning + the old shelf — through the door (one day: exploration mode)"
-            className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-2.5 py-1.5 rounded border border-white/15 text-white/50 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
-            ⚔
-          </a>
           {me && me !== 'anon' && (
             <div className="relative shrink-0">
               <button onClick={() => {
@@ -184,7 +180,6 @@ export default function CardsMain() {
                   {[
                     { label: '◈ MY WORLDS', href: `/u/${myHandle}` },
                     { label: '◇ FRAMEWORK', href: '/framework' },
-                    { label: '◆ BREW ICON · at the door', href: '/door' },
                   ].map(it => (
                     <a key={it.label} href={it.href} className="block px-2.5 py-2 rounded-lg text-white/75 hover:text-amber-200 hover:bg-black/40 transition-colors">{it.label}</a>
                   ))}
