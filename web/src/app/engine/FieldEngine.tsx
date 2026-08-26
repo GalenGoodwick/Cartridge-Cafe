@@ -41,6 +41,7 @@ import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, h
 import { applyBridgeCommand } from './bridge-commands'
 import * as sceneIO from './scene-io'
 import { TouchControls } from './TouchControls'
+import type { WorldMode } from './world-mode'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
 
 interface FieldEngineProps {
@@ -276,17 +277,23 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const inspectPixRef = useRef<{ data: ImageData; w: number; h: number } | null>(null)
   const [inspectLog, setInspectLog] = useState<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; node?: { hook: string; idx: number; kind: number; d: number }[] | null; hud?: { id: string; text: string } | null; ui?: { id: string; text: string; panel: string | null; hook: string | null } | null; source?: string | null; drives?: { visual: string; rev: number | null; by: string | null; reads: number[]; writers: { hook: string; slots: string }[] } | null }[]>([])
   const [editCoach, setEditCoach] = useState(false)     // one-time coach naming each EDIT-dock control
+  // THE MODE OWNER (world-mode.ts, rung 1): ONE cell decides chrome. 'play' is
+  // its first tenant — playMode below is DERIVED, so every read site is
+  // unchanged while the six-boolean soup drains into this cell rung by rung.
+  // 'design' is reserved for the EDIT rail (rung 3). Do not add a new
+  // chrome-visibility boolean; add a mode.
+  const [worldMode, setWorldMode] = useState<WorldMode>('view')
   // GAMEPLAY MODE (Galen): total-UI-close — strip ALL chrome so the world plays
   // full-screen, uncovered. Only a back arrow + a reopen button remain.
-  const [playMode, setPlayMode] = useState(false)
+  const playMode = worldMode === 'play'
   const enterPlayMode = () => {
     setUiDockOpen(false); setChromeVisible(false); setWorldChatOpen(false)
     setInstrOpen(false); setBuildConsoleOpen(false)
-    setPlayMode(true)
+    setWorldMode('play')
     window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: true }))
   }
   const exitPlayMode = () => {
-    setPlayMode(false)
+    setWorldMode('view')
     window.dispatchEvent(new CustomEvent('cafe:playmode', { detail: false }))
   }
 
