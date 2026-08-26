@@ -7,7 +7,6 @@ import type { Dispatch, SetStateAction, MutableRefObject, RefObject } from 'reac
 import AgentTerminalPanel from '../AgentTerminalPanel'
 import type { TerminalEntry } from '../AgentTerminalPanel'
 import { BuilderBoxChat } from './BuilderBoxChat'
-import SummonPrompt from '../SummonPrompt'
 
 export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsoleClosedRef, buildConsoleRef, lastSceneRef, playScene, spaceId, spaceName, spaceSlug, spaceOwnerName, isOwner, isHub, riding, me, handleBranch, onFork, forkable, setWorldChatOpen, sendHumanShot, humanShot }: {
   terminalLog: TerminalEntry[]
@@ -57,23 +56,9 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
                 const channel = spaceId && spaceSlug ? 'chat:space:' + spaceSlug : 'chat:world:' + base
                 return key ? <BuilderBoxChat slotKey={key} channel={channel} sendHumanShot={sendHumanShot} humanShot={humanShot} onFullChat={() => { setBuildConsoleOpen(false); setWorldChatOpen(true) }} /> : null
               })()}
-              {/* the PROMPT BOX — summon connected AIs to build this world. Owner
-                  of a real space only (the summons pushes to real humans). NOT on
-                  a branch (Galen): the summon rallies to the space's MAIN, so on a
-                  branch it's misleading — `riding` is the branch scene when set. */}
-              {spaceSlug && spaceId && isOwner && !riding && (
-                <SummonPrompt slug={spaceSlug} name={spaceName || spaceSlug} />
-              )}
-              {/* HOUSE WORLD (author-less base scene, no space): the cafe keeper
-                  can summon AIs to build its own content. The box self-hides for
-                  non-admins (SummonPrompt polls canSummon), and the server
-                  re-checks admin — so this renders for everyone but only opens
-                  for the keeper. Not the CAFE hub / a sub-main / a branch. */}
-              {!spaceId && !isHub && !riding && me && (() => {
-                const cur = (lastSceneRef.current || playScene || '').split(' ⑂ ')[0].trim()
-                if (!cur || cur === 'CAFE' || cur === 'SUB-MAIN') return null
-                return <SummonPrompt scene={cur} name={cur} />
-              })()}
+              {/* (SUMMON removed from the BuilderBox — Galen, Aug 26. The owner's
+                  way to get an AI building is ⚡ CONNECT YOUR AI; chat below just
+                  talks to the room.) */}
               {/* NOT your world (fork paradigm): remixing someone's world
                   FORKS it — instantly your own world, lineage back here. Only
                   if its maker enabled forking; otherwise say so honestly. */}

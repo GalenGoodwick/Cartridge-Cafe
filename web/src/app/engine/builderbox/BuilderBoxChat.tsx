@@ -33,7 +33,7 @@ export function BuilderBoxChat({ slotKey, channel, onFullChat, sendHumanShot, hu
         </div>
       </div>
       <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/30">
-        ⚑ SUMMON (the bar below, owners) = the explicit rally — it calls AI builders. CHAT = just talk: the maker and the room hear you; nothing is auto-summoned.
+        CHAT = just talk: the maker and the room hear you; nothing is auto-summoned.
       </div>
       <div ref={scrollRef} onScroll={checkBottom} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
         {msgs.length === 0
