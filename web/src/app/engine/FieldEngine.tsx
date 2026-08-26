@@ -2038,7 +2038,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // during a BUILD every command bumps the rev — hold (the build-end catch-up,
         // or the first poll after, adopts the finished world in one shot). Don't
         // touch renderedRevRef: it still reflects what's on screen.
-        if (buildJobActiveRef.current) return
+        // BUT the hold is NOT absolute (Galen, Aug 26: an orphan "pending" job
+        // held a tab's adopts FOREVER — blank world, no error, hard-refresh the
+        // only cure). If no edits have landed in 30s the "build" is idle: adopt
+        // anyway. A live build re-raises the hold on its next landed edit.
+        if (buildJobActiveRef.current && Date.now() - aiLastEditRef.current < 30000) return
         // reload ONCE per real change, and only after edits settle. The reload
         // advances renderedRevRef to `rev`, so this same rev never fires twice.
         if (rev > renderedRevRef.current && Date.now() - aiLastEditRef.current > 4000) {

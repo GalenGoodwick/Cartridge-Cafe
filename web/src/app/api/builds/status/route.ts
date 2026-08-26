@@ -13,13 +13,23 @@ export async function GET(req: NextRequest) {
   if (!spaceId) return NextResponse.json({ error: 'spaceId required' }, { status: 400 })
   try {
     await ensureBuilderTables()
-    const job = await prisma.buildJob.findFirst({
+    let job = await prisma.buildJob.findFirst({
       // needs_review counts as active: the AI often keeps polishing after the
       // render check flips the job, and the build window must not vanish then.
       where: { spaceId, status: { in: ['pending', 'leased', 'building', 'needs_review'] } },
-      select: { status: true, heartbeatAt: true, attempts: true },
+      select: { id: true, status: true, heartbeatAt: true, attempts: true, updatedAt: true },
       orderBy: { updatedAt: 'desc' },
     })
+    // ORPHAN SELF-HEAL (Galen, Aug 26: a never-claimed job WEDGED his tab — the
+    // client holds snapshot adopts while a job is active, and a pending job with
+    // no builder is "active" forever). There is NO house AI: a pending job that
+    // nobody touched for 10 min is an orphan — cancel it ON THE READ, lazily,
+    // so every wedged world heals the next time anyone looks at it.
+    if (job && job.status === 'pending' && !job.heartbeatAt &&
+        Date.now() - new Date(job.updatedAt).getTime() > 10 * 60_000) {
+      await prisma.buildJob.update({ where: { id: job.id }, data: { status: 'cancelled' } }).catch(() => {})
+      job = null
+    }
     return NextResponse.json({
       active: !!job,
       status: job?.status ?? null,
