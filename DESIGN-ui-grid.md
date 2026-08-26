@@ -96,7 +96,8 @@ meters, buttons — the ui-solver + UiBox/glyph passes; clicks land in
 
 | node | owns | state |
 |---|---|---|
-| uigrid-types | engine/ui-grid.ts (types, solver, overlap gate) | claimed: opus |
+| uigrid-types | engine/ui-grid.ts (types, solver, overlap gate) | LANDED a876c4a |
+| uigrid-eye | scripts/ui-grid-eye.mjs — ONE holistic node: reality (DOM+canvas) vs declaration (solved regions) on one image; emits overlap gate + pixels=game-size % + dom_orphans (the auto-derived migration TODO) + empty_regions | LANDED |
 | uigrid-snapshot | snapshot/describe carry uiGrid | claimed: opus |
 | uigrid-compositor | renderer clip + cafe-region render | open |
 | uigrid-topbar | rung-3 region | open |
