@@ -185,6 +185,25 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
   const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
+  // SELF-HEALING MINT (Galen, Aug 26: opened the plug → "⚠ NO KEY MINTED" dead
+  // end): several paths setPlugOpen without minting — whenever the plug is open
+  // on a space with no key, mint ONCE per open. The server still refuses
+  // non-owners (the panel's warning then tells the truth).
+  const plugMintOnceRef = useRef(false)
+  useEffect(() => {
+    if (!plugOpen) { plugMintOnceRef.current = false; return }
+    if (plugToken || plugMintOnceRef.current || !spaceSlug) return
+    plugMintOnceRef.current = true
+    let stop = false
+    setPlugBusy(true)
+    fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
+    })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!stop && r.ok && d?.token) setPlugToken(d.token) })
+      .catch(() => {})
+      .finally(() => { if (!stop) setPlugBusy(false) })
+    return () => { stop = true }
+  }, [plugOpen, plugToken, spaceSlug])
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
@@ -6749,7 +6768,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                           onClick={() => {
                             const bp = (brief as { prompt?: string } | undefined)?.prompt
                             if (bp) setPlugBrief(prev => prev || bp)   // the paid brief rides into the AI prompt
-                            setPlugOpen(true)
+                            // openConnectAi (NOT bare setPlugOpen): it auths, MINTS
+                            // the world key, then opens — a bare open showed the
+                            // panel with "NO KEY MINTED" (Galen hit exactly this).
+                            void openConnectAi()
                           }}
                           className="px-4 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15 text-[14px] tracking-[0.15em] transition-colors">
                           ⚡ CONNECT YOUR AI — build it now
