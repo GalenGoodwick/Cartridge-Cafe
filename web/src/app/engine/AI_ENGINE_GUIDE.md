@@ -1162,9 +1162,11 @@ const a = sim.rand() * 6.28318
 
 ### The Budget — read your own cost (THE PERF LAW)
 
-Every ~2s the host writes `worldData.__budget = { fields, effects, frameMs, at }` —
+Every ~2s the host writes `worldData.__budget = { fields, effects, frameMs, at, hooks }` —
 the live frame-time EMA and GPU surface of the world, visible to an AI through the
-bridge GET. **Check it after you build.** frameMs creeping past ~25 with fields/effects
+bridge GET. `hooks` is NODE-LEVEL attribution: the top step-hooks by measured
+ms/tick (`{"vf-arena-dragon": 3.2, ...}`) — when the world is slow, it names the
+node that made it slow, so fix THAT node instead of guessing. **Check it after you build.** frameMs creeping past ~25 with fields/effects
 climbing means you are hand-building toward the freeze wall: fields are real GPU cost
 (each effect is a dispatch), populations belong in `gpuPopulation`, not in a field per
 entity. Sustained >40ms with >6 fields logs a budget warning to the console.

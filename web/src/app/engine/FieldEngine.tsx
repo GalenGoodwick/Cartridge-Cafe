@@ -3889,7 +3889,18 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         let effectCount = 0
         for (const f of sim.fields.values()) effectCount += f.effects.length
         const frameMs = Math.round(frameMsEmaRef.current * 10) / 10
-        sim.worldData['__budget'] = { fields: sim.fields.size, effects: effectCount, frameMs, at: Date.now() }
+        // NODE-LEVEL cost attribution (the perf law): the top hooks by EMA ms, so a
+        // builder (human or AI, via the bridge GET) sees WHICH node made it slow.
+        // Space worlds run hooks in the Worker (lastPerHook); main-thread sims in hookPerf.
+        const perHookSrc: Iterable<[string, number]> =
+          sandboxRef.current && Object.keys(sandboxRef.current.lastPerHook).length
+            ? Object.entries(sandboxRef.current.lastPerHook)
+            : sim.hookPerf.perHook
+        const topHooks: Record<string, number> = {}
+        for (const [id, ms] of [...perHookSrc].sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+          if (ms >= 0.05) topHooks[id] = Math.round(ms * 100) / 100
+        }
+        sim.worldData['__budget'] = { fields: sim.fields.size, effects: effectCount, frameMs, at: Date.now(), hooks: topHooks }
         // one sustained warning per session — fields are real GPU cost; a
         // population belongs in gpuPopulation, not in a field per entity
         if (!budgetWarnedRef.current && frameMs > 40 && (sim.fields.size > 6 || effectCount > 8)) {

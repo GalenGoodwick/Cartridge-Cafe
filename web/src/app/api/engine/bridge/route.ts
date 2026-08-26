@@ -371,11 +371,12 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   // THE PERF LAW (Galen, Aug 26: "how do we stop AIs from making games laggy?").
   // __budget was advisory-only; surface it HERE so a headless builder hears the
   // measured cost of what it built — before a player pays it.
-  const budget = wd.__budget as { frameMs?: number; fields?: number; effects?: number; at?: number } | undefined
+  const budget = wd.__budget as { frameMs?: number; fields?: number; effects?: number; at?: number; hooks?: Record<string, number> } | undefined
   const budgetMs = Number(budget?.frameMs ?? 0)
   if (budgetMs > 25) {
     const fresh = Number(budget?.at ?? 0) > Date.now() - 10 * 60_000
-    warnings.push(`PERF: this world MEASURES ${Math.round(budgetMs)}ms/frame${fresh ? '' : ' (stale — from a past live session)'} — the budget is ~25ms; past it the render-scale governor trades sharpness for survival, and a FRESH measurement >40ms refuses brief_done. Cheapen: fewer march steps, region-gate the scene SDF (early-return rooms the ray isn't in), populations in gpuPopulation.`)
+    const hk = Object.entries(budget?.hooks ?? {}).sort((a, b) => b[1] - a[1])[0]
+    warnings.push(`PERF: this world MEASURES ${Math.round(budgetMs)}ms/frame${fresh ? '' : ' (stale — from a past live session)'}${hk ? ` — heaviest node: ${hk[0]} at ${hk[1]}ms/tick` : ''} — the budget is ~25ms; past it the render-scale governor trades sharpness for survival, and a FRESH measurement >40ms refuses brief_done. Cheapen: fewer march steps, region-gate the scene SDF (early-return rooms the ray isn't in), populations in gpuPopulation.`)
   }
   if (fields.length > 6) {
     warnings.push(`PERF: ${fields.length} fields — every field is a real GPU pass. A POPULATION (flock/bullets/crowd/particles) belongs in gpuPopulation (up to 4095 entities, ONE buffer), never a field per entity.`)

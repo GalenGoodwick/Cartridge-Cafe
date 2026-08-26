@@ -32,6 +32,7 @@ self.window = { dispatchEvent(e) { __events.push({ type: e.type, detail: e.detai
 // Each compiles independently and runs in its own try/catch so one bad hook
 // doesn't kill the others — the real games AI builds need this.
 let __hooks = [];
+let __hookMs = {};   // per-hook EMA ms — NODE-LEVEL cost attribution (the perf law)
 // seeded PRNG (mulberry32) — armed when worldData.__seed is a number, so a
 // world that opts in gets the same sim.rand() sequence every run (replays)
 let __randSeed = null, __randState = 0;
@@ -80,6 +81,7 @@ self.onmessage = function (ev) {
     // accept {hooks:[{id,code}]} or a single {code} (legacy)
     const specs = Array.isArray(msg.hooks) ? msg.hooks : [{ id: 'hook', code: msg.code }];
     __hooks = [];
+    __hookMs = {};   // fresh hook set → fresh attribution
     const errs = [];
     for (const h of specs) {
       try { __hooks.push({ id: h.id, fn: new Function('sim', 'dt', h.code) }); }
@@ -206,6 +208,7 @@ self.onmessage = function (ev) {
     let __uiRef = __sim.worldData.ui, __uiProv = msg.worldData.__uiProv || null;
     for (const h of __hooks) {
       if (__strict && __benched[h.id]) continue;   // benched node: hook does not run (zero cost)
+      const __ht0 = __now();   // node-level cost attribution: time the WHOLE per-hook body (fn + guard scan)
       const __ownsRaw = __guard && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
       // EMPTY owns = "unknown / unclaimed range" — never guarded (a claim_node'd or
       // zero-write node has owns:[]; guarding it would flag every legit write).
@@ -261,6 +264,8 @@ self.onmessage = function (ev) {
           (__benchEvents = __benchEvents || []).push({ node: h.id, strikes: __s.strikes, slots: __slots, writes: __s.slots });
         }
       }
+      const __hd = __now() - __ht0;
+      __hookMs[h.id] = __hookMs[h.id] == null ? __hd : __hookMs[h.id] * 0.9 + __hd * 0.1;   // EMA per node
     }
     if (__uiProv) __sim.worldData.__uiProv = __uiProv;
     if (__missing.size) {
@@ -291,7 +296,7 @@ self.onmessage = function (ev) {
       }
       if (any) fieldPatches.push(patch);
     }
-    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, ownershipViolations: (__viol && __viol.size) ? [...__viol.values()] : undefined, benched: __benchEvents || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms });
+    self.postMessage({ type: 'result', error: __runErr || undefined, errLoc: __runErrLoc || undefined, ownershipViolations: (__viol && __viol.size) ? [...__viol.values()] : undefined, benched: __benchEvents || undefined, worldData: sim.worldData, fieldPatches, events: __events, ms: __ms, perHook: __hookMs });
   }
 };
 `
@@ -306,6 +311,7 @@ interface SandboxReply {
   ownershipViolations?: { node: string; index: number; count: number; reverted?: boolean }[]   // rung-2 client guard: out-of-range uniform writes (advisory sampled, or reverted under strict)
   benched?: { node: string; strikes: number; slots: number[]; writes: Record<string, number> }[]   // rung E: nodes benched this tick (strict strike-out) — surface + bridge
   ms?: number
+  perHook?: Record<string, number>   // per-hook EMA ms — node-level cost attribution (the perf law)
 }
 
 type HookSpec = { id: string; code: string; author?: string }
@@ -331,6 +337,9 @@ export class WorldSandbox {
    *  stays empty and the perf HUD read "hooks 0.0ms" — this is the real number for
    *  those worlds. The host already receives it (SandboxReply.ms); we just keep it. */
   lastHookMs = 0
+  /** Per-hook EMA ms from the Worker — node-level cost attribution ("node X: +8ms").
+   *  Published into worldData.__budget.hooks by the host's budget writer. */
+  lastPerHook: Record<string, number> = {}
   private reportedError = false
   private lastSurfaced = ''
   private quarantined = false
@@ -485,6 +494,7 @@ export class WorldSandbox {
         this.inFlight = false
         this.pending = m as SandboxReply
         if (typeof m.ms === 'number') this.lastHookMs = this.lastHookMs * 0.7 + m.ms * 0.3   // smoothed hook cost for the perf HUD
+        if (m.perHook) this.lastPerHook = m.perHook   // node-level attribution (worker keeps the EMA)
         // apply the instant it arrives — the very next rendered frame sees fresh
         // uniforms instead of waiting for the next RAF's tick() to notice
         const sim = this.lastSim
