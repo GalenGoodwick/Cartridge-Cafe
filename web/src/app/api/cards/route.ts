@@ -105,17 +105,19 @@ export async function GET(req: Request) {
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
   if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
-  // LIVE EDITING (Galen, Aug 24): ANY game with proper node foundations is
-  // dockable — a player docks in (membership + a dockstar) to co-build it. Open
-  // (buildMode 'anyone') worlds qualify too.
-  if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => (r.hasNodes || r.buildMode === 'anyone') && r.hasContent)).cards, url))
+  // LIVE EDITING (Galen, Aug 26 fix): the ONE signal is the owner OPENING the
+  // world (build:'anyone'). hasNodes stopped meaning anything the day every
+  // world was born with its slots — it made this tab catch everything, and
+  // setting build→owner "didn't move the world out of live editing".
+  if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone' && r.hasContent)).cards, url))
   // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
-  // ALTERABLE (Galen): published worlds anyone may walk in and edit
-  // (build:'anyone' — the OPEN EDIT chip); UNALTERABLE = the rest (crew/static)
-  if (tab === 'alterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone')).cards, url))
-  if (tab === 'unalterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone')).cards, url))
+  // ALTERABLE/UNALTERABLE RETIRED (Galen, Aug 26): alterable ≡ live editing
+  // (both were build:'anyone'), and nobody browses for "can't edit". Old links
+  // alias to the surviving truths instead of 404ing.
+  if (tab === 'alterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone' && r.hasContent)).cards, url))
+  if (tab === 'unalterable') return NextResponse.json(serve(feedPublished(rows).cards, url))
   if (tab === 'mine' || tab === 'shared') {
     const own = await fetchMineRows(tab)
     if (own === null) return NextResponse.json({ cards: [], page: 1, pages: 1, total: 0, signedOut: true })
@@ -131,10 +133,9 @@ export async function GET(req: Request) {
   const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
   return NextResponse.json({
     published: rows.length,
-    live: rows.filter(r => (r.hasNodes || r.buildMode === 'anyone') && r.hasContent).length,
+    live: rows.filter(r => r.buildMode === 'anyone' && r.hasContent).length,
     premium: rows.filter(r => r.premium !== null).length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
-    alterable: rows.filter(r => r.buildMode === 'anyone').length,
     mine: mine === null ? null : mine.length,
     shared: shared === null ? null : shared.length,
   })
