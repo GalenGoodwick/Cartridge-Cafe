@@ -1080,6 +1080,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // measured against the resting world square; its overlap becomes a reserved
   // band (design units) the ui-solver keeps world panels out of. Vertical-ish
   // overlaps reserve left/right, horizontal-ish reserve top/bottom.
+  // the world's body (spec v1): rect source for step 2's solver re-anchor
+  const worldContainerRef = useRef<HTMLDivElement>(null)
   const chromeInsetsRef = useRef<{ top: number; right: number; bottom: number; left: number }>({ top: 0, right: 0, bottom: 0, left: 0 })
   useEffect(() => {
     const measure = () => {
@@ -6049,8 +6051,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       style={(viewport ?? frame) ? { top: (viewport ?? frame)!.top, right: (viewport ?? frame)!.right, bottom: (viewport ?? frame)!.bottom, left: (viewport ?? frame)!.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
       {/* Canvas + fields panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Canvas area */}
-        <div className="flex-1 relative overflow-hidden min-h-0">
+        {/* THE WORLD CONTAINER (spec v1, step 1) — this element IS the world.
+            Everything the world owns (canvas, solved wd.ui, touch controls)
+            lives inside and, from step 2, positions against ITS rect — never
+            the window. Chrome children still inside migrate OUT to slots at
+            step 3; until then this is the designated seam, not yet the law. */}
+        <div ref={worldContainerRef} data-world-container className="flex-1 relative overflow-hidden min-h-0">
           {/* In fullscreen (L in a mouse-look world) the engine's sizing parent
               fills the viewport; keep the canvas stretched to it so the world
               CSS-fills the screen. Always mounted — fullscreen happens while the

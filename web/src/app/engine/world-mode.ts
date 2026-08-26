@@ -30,3 +30,12 @@
 export type WorldMode = 'view' | 'play' | 'design'
 
 export const WORLD_MODES: readonly WorldMode[] = ['view', 'play', 'design'] as const
+
+// THE WORLD CONTAINER (spec v1 — https://claude.ai/code/artifact/090967ac-be95-4399-8385-6df6957878eb):
+// one DOM element IS the world (FieldEngine's data-world-container). Three
+// siblings, one owner each: CartridgeChrome renders into slots AROUND it,
+// WorldContainer owns canvas + solved wd.ui + touch controls INSIDE it,
+// DesignRail mounts beside it in 'design'. Migration: 1 wrap (done) ·
+// 2 re-anchor solver to container+painted rects · 3 chrome to slots ·
+// 4 frame=container sizing + rail · 5 vote deletion. Positioning by window
+// coordinates is forbidden from step 2 onward (ui-seam-law).
