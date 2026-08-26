@@ -368,6 +368,18 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
       warnings.push(`${loose} unpinned fields with physics ACTIVE (collisionForce=${wp.collisionForce ?? 0}) — overlapping fields will be shoved apart and bounce. Pin static scenery with property {"static":true}, or set_world_params {"collisionForce":0}.`)
     }
   }
+  // THE PERF LAW (Galen, Aug 26: "how do we stop AIs from making games laggy?").
+  // __budget was advisory-only; surface it HERE so a headless builder hears the
+  // measured cost of what it built — before a player pays it.
+  const budget = wd.__budget as { frameMs?: number; fields?: number; effects?: number; at?: number } | undefined
+  const budgetMs = Number(budget?.frameMs ?? 0)
+  if (budgetMs > 25) {
+    const fresh = Number(budget?.at ?? 0) > Date.now() - 10 * 60_000
+    warnings.push(`PERF: this world MEASURES ${Math.round(budgetMs)}ms/frame${fresh ? '' : ' (stale — from a past live session)'} — the budget is ~25ms; past it the render-scale governor trades sharpness for survival, and a FRESH measurement >40ms refuses brief_done. Cheapen: fewer march steps, region-gate the scene SDF (early-return rooms the ray isn't in), populations in gpuPopulation.`)
+  }
+  if (fields.length > 6) {
+    warnings.push(`PERF: ${fields.length} fields — every field is a real GPU pass. A POPULATION (flock/bullets/crowd/particles) belongs in gpuPopulation (up to 4095 entities, ONE buffer), never a field per entity.`)
+  }
   return {
     ...extra,
     fieldCount: fields.length,
@@ -1575,6 +1587,21 @@ export async function POST(req: NextRequest) {
           if (unskinned.length > 0) {
             cmd.__renderWarning = `${unskinned.length} field(s) have no visible skin (${unskinned.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}) — fine if intentional (logic-only), else set_visual them`
           }
+          // THE PERF GATE (Galen, Aug 26): "renders" is not "done" — "renders
+          // under budget" is. Refuse ONLY on fresh live evidence (a real tab
+          // measured it in the last 10 min); stale or absent measurements warn,
+          // never block (a headless build has no tab to measure with).
+          const budget = (snap?.worldData as Record<string, unknown> | undefined)?.__budget as { frameMs?: number; at?: number } | undefined
+          const frameMs = Number(budget?.frameMs ?? 0)
+          const budgetFresh = Number(budget?.at ?? 0) > Date.now() - 10 * 60_000
+          if (frameMs > 40 && budgetFresh) {
+            results.push({ type: cmd.type, error:
+              `PERF GATE FAILED — brief_done refused: the world MEASURES ${Math.round(frameMs)}ms/frame live (budget ~25ms, wall 40ms). A world this heavy freezes weak machines. Cheapen it — fewer march steps, region-gate the scene SDF (early-return rooms the ray isn't in), populations in gpuPopulation not fields — then re-measure (a live tab rewrites worldData.__budget every ~2s) and retry.` })
+            continue   // brief_done NOT set; the build isn't done until it runs under budget
+          }
+          if (frameMs > 25) {
+            cmd.__perfWarning = `PERF: last measured ${Math.round(frameMs)}ms/frame${budgetFresh ? '' : ' (stale — from a past live session)'} — over the ~25ms budget; cheapen before shipping (>40ms fresh refuses brief_done)`
+          }
         } catch { /* the check must never block a legitimate finish */ }
       }
       // the world's DONE moment is its pristine state: remember it so reset can
@@ -1622,6 +1649,7 @@ export async function POST(req: NextRequest) {
         Object.assign(result, spaceResult)
       }
       if (cmd.__renderWarning) { result.renderWarning = cmd.__renderWarning; delete cmd.__renderWarning }
+      if (cmd.__perfWarning) { result.perfWarning = cmd.__perfWarning; delete cmd.__perfWarning }
       if (cmd.__regionWarning) { result.regionWarning = cmd.__regionWarning; delete cmd.__regionWarning }
       if (cmd.__growMeta) { result.grown = cmd.__growMeta; delete cmd.__growMeta }
       results.push(result)

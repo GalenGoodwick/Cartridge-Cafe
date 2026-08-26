@@ -1160,7 +1160,7 @@ wd.__seed = 42
 const a = sim.rand() * 6.28318
 ```
 
-### The Budget — read your own cost
+### The Budget — read your own cost (THE PERF LAW)
 
 Every ~2s the host writes `worldData.__budget = { fields, effects, frameMs, at }` —
 the live frame-time EMA and GPU surface of the world, visible to an AI through the
@@ -1168,6 +1168,21 @@ bridge GET. **Check it after you build.** frameMs creeping past ~25 with fields/
 climbing means you are hand-building toward the freeze wall: fields are real GPU cost
 (each effect is a dispatch), populations belong in `gpuPopulation`, not in a field per
 entity. Sustained >40ms with >6 fields logs a budget warning to the console.
+
+**This is load-bearing, not advisory.** "It renders" is not "done" — "it renders
+under budget" is:
+- `?action=describe` WARNINGS name your measured cost when frameMs > 25, and flag
+  field counts > 6 (the field-per-entity smell).
+- `brief_done` is **REFUSED** when a FRESH live measurement (a real tab in the last
+  10 min) shows frameMs > 40 — the response tells you the number. Stale or absent
+  measurements warn instead (headless builds have no tab to measure with), and
+  25–40ms returns a `perfWarning` on the accepted command.
+
+The standing cheapening moves, in order of power: **region-gate your scene SDF**
+(early-return rooms the ray isn't in — otherwise every new room slows every old
+room), cut raymarch steps per enclosed room, keep populations in `gpuPopulation`
+(4095 entities, one buffer), and fold layers before adding fields. Measure again
+after each — `__budget` rewrites every ~2s while a tab is open.
 
 ### Cell Shaders — the previous frame is the world's memory
 

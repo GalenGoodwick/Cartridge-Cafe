@@ -390,12 +390,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('cafe:viewing', { detail: riding }))
   }, [riding])
-  // the lineage throne: who currently holds MAIN for this world, and the immortal
-  // original. When the tournament snags main from the founder, we reassure them —
-  // their original is never gone; the ★ bookmark always returns them to it.
-  const [worldLineage, setWorldLineage] = useState<{ original: string; mainHolder: string } | null>(null)
-  // winnerTakesMain RETIRED with the podium (branch→fork transition): world
-  // votes no longer exist, so nothing can take main.
+  // (the lineage throne — worldLineage / snag-toast / ★ ORIGINAL bookmark — was
+  // REMOVED with the swap-main mechanism: main always serves the original now.)
   const [verMax, setVerMax] = useState(1)   // highest existing version of the ridden branch — bounds the ▸ scroller
   const [verList, setVerList] = useState<number[]>([])   // the versions that ACTUALLY exist (deletions leave holes)
   // learn which versions this branch actually has, so the scroller can never
@@ -2105,36 +2101,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => { window.removeEventListener('cafe:portals', onPortals); clearInterval(decay) }
   }, [playScene])
 
-  // Follow the throne for the world we're in: who holds MAIN, and the immortal
-  // original. Polled so a promotion mid-session surfaces the reassurance + bookmark.
-  useEffect(() => {
-    const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
-    if (!base || isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN') { setWorldLineage(null); return }
-    let stop = false
-    const load = () => fetch(`/api/engine/save?action=load&slot=${encodeURIComponent('lineage:' + base.toUpperCase())}`)
-      .then(r => r.json())
-      .then(d => { if (!stop && d?.data?.original) setWorldLineage({ original: d.data.original, mainHolder: d.data.mainHolder || d.data.original }) })
-      .catch(() => {})
-    load()
-    const t = setInterval(load, 20000)
-    return () => { stop = true; clearInterval(t) }
-  }, [playScene, spaceSlug, riding, isHub])
-
-  // Reassure the FOUNDER when their world's main gets snagged. The founder is the
-  // owner of the immortal original (its handle). If that's you and a challenger now
-  // holds main, we say so ONCE — the work isn't gone; ★ ORIGINAL always returns you.
-  useEffect(() => {
-    if (!worldLineage || !me) return
-    const { original, mainHolder } = worldLineage
-    if (!original || mainHolder === original) return   // still the founder's throne
-    const om = original.match(/ ⑂ ([^·]+?)(?: ·|$)/)   // handle of a branch-original (house worlds have none)
-    const founderHandle = om ? om[1].trim() : null
-    const myHandle = me.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
-    if (!founderHandle || founderHandle !== myHandle) return
-    const key = `snag-toast:${original}:${mainHolder}`
-    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1') } catch { /* private mode → toast each visit */ }
-    showToast('A challenger won MAIN — but your original is immortal.', 'info', 'Nothing is lost. Tap ★ ORIGINAL to return to it anytime.')
-  }, [worldLineage, me, showToast])
+  // (throne-following poll + founder snag-toast removed with swap-main — nothing
+  // can hold MAIN but the original anymore.)
 
   // Play mode: the shell can freeze the world (back-button confirm dialog)
   useEffect(() => {
@@ -6394,22 +6362,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 {uiDockOpen ? '✕ EDIT' : '✎ EDIT'}
               </button>
             )}
-            {/* the founder's bookmark: main got snagged by a challenger, but the
-                immortal original is one tap away — stays out of the dock so it can
-                never feel buried. Shown whenever the throne isn't the original. */}
-            {!isHub && worldLineage && worldLineage.mainHolder !== worldLineage.original && (
-              <button
-                title="Return to the original — it's immortal and always here, even when a challenger holds main"
-                onClick={() => {
-                  const orig = worldLineage.original
-                  if (orig.startsWith('space:')) window.location.href = '/space/' + orig.slice(6)
-                  else handleLoadScene(orig)
-                }}
-                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-500/15 backdrop-blur border border-amber-400/40 text-amber-200/90 hover:bg-amber-500/25 transition-colors"
-              >
-                ★ ORIGINAL
-              </button>
-            )}
+            {/* (★ ORIGINAL bookmark removed with swap-main — main IS the original.) */}
             {/* (duplicate rail button removed — door-Opus's bottom-left ⌁ pill
                 is the ONE BuilderBox surface, per the negotiated split) */}
             {(isHub || playScene === 'CAFE' || playScene === 'SUB-MAIN' || uiDockOpen) && (<>
