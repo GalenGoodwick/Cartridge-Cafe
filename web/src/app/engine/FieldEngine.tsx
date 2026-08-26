@@ -70,10 +70,6 @@ interface FieldEngineProps {
    *  world reflows into a framed box — the vote UI slides panels into the margins
    *  and the constellation resizes to what's left, instead of being overlaid. */
   viewport?: { top: number; right: number; bottom: number; left: number } | null
-  /** PHONE FRAME (fit:mobile on a wide screen): inset the root exactly like
-   *  `viewport` — but this is a FIRST-CLASS page wearing its chrome inside the
-   *  frame, not a chromeless embed. Never affects chromeHidden. */
-  frame?: { top: number; right: number; bottom: number; left: number } | null
   /** Reports the bottom (y px) of the top-right UI dock whenever it resizes, so
    *  the shell can seat the in-world VOTE button directly under it — beneath the
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
@@ -136,7 +132,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -5987,7 +5983,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
   return (
     <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}
-      style={(viewport ?? frame) ? { top: (viewport ?? frame)!.top, right: (viewport ?? frame)!.right, bottom: (viewport ?? frame)!.bottom, left: (viewport ?? frame)!.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
+      style={viewport ? { top: viewport.top, right: viewport.right, bottom: viewport.bottom, left: viewport.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
       {/* Canvas + fields panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Canvas area */}

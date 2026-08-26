@@ -17,11 +17,10 @@ import DockButton from './DockButton'
  *  vote that competed MAIN vs a world's public branches — is gone. Remixing a
  *  world FORKS it (an owned playerSpace with forkOf lineage), never enters a
  *  challenger for a vote. SpaceToolbar is gone — /space and /play render one chrome. */
-export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
+export default function SpaceStage({ spaceId, spaceSlug, gridSize, engineOwner, isOwner, versionView, name, ownerName, ownerId, ownerHandle }: {
   spaceId: string
   spaceSlug: string
   gridSize?: number
-  fit?: 'mobile'
   engineOwner: boolean
   isOwner: boolean
   versionView?: number
@@ -212,42 +211,8 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
     return () => window.removeEventListener('popstate', onPop)
   }, [versionView, openLeave])
 
-  // THE PHONE FRAME (Galen, Aug 26: "mobile on desktop needs to be in a mobile
-  // bound window"). A world declaring worldData.fit=mobile is built for a
-  // portrait phone; on a wide desktop viewport it would sprawl landscape and its
-  // UI collide with the site's own toolbar. So we LETTERBOX the engine into a
-  // centered portrait column (the FieldEngine `viewport` inset prop already
-  // shrinks its root) and let the dark margins hold the site chrome. On an
-  // actual phone (already-narrow / portrait) the frame is a no-op — full screen.
-  const [phoneInset, setPhoneInset] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
-  useEffect(() => {
-    if (fit !== 'mobile' || versionView != null) { setPhoneInset(null); return }
-    const measure = () => {
-      const W = window.innerWidth, H = window.innerHeight
-      // portrait phone target: 9:19.5. Only frame when the screen is WIDER than a
-      // phone would be — i.e. there's real margin to reclaim. Narrow screens run full-bleed.
-      const frameW = Math.min(W, Math.round(H * 9 / 19.5), 480)
-      if (W - frameW < 80) { setPhoneInset(null); return }   // already ~phone-width — no frame
-      const side = Math.round((W - frameW) / 2)
-      setPhoneInset({ top: 0, bottom: 0, left: side, right: side })
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [fit, versionView])
-
   return (
     <>
-      {/* the phone-frame margins: dark bands + a hairline bezel so the letterboxed
-          mobile world reads as a device window, not a broken half-screen */}
-      {phoneInset && (
-        <div aria-hidden className="fixed inset-0 z-[5] pointer-events-none">
-          <div className="absolute inset-y-0 left-0 bg-[#07060a]" style={{ width: phoneInset.left }} />
-          <div className="absolute inset-y-0 right-0 bg-[#07060a]" style={{ width: phoneInset.right }} />
-          <div className="absolute inset-y-0 border-x border-[#b97a2a]/25"
-            style={{ left: phoneInset.left, right: phoneInset.right }} />
-        </div>
-      )}
       {/* nothing to share on a world that isn't real yet — hide SHARE while it's
           still blank-and-building */}
       {!building && !playMode && <ShareWorld slug={spaceSlug} name={name} />}
@@ -278,7 +243,6 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         onDockRect={setDockBottom}
         onBuilding={setBuilding}
         viewport={null}
-        frame={phoneInset}
       />
 
       {/* BRANCH ARENA REMOVED (branch→fork transition): a world no longer hosts a

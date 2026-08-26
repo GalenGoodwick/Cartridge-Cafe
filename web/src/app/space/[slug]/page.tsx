@@ -128,16 +128,11 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
   }
 
   // THE GRID (task #20): one cheap jsonb read — the engine must be BORN at
-  // the world's declared size, so the server hands it down as a prop. Same read
-  // grabs worldData.fit — a 'mobile' world renders in a portrait phone frame on
-  // desktop (SpaceStage), so the client must know its declared fit up front.
-  const gridRows = await prisma.$queryRaw<{ g: string | null; fit: string | null }[]>`
-    SELECT snapshot->'worldParams'->>'gridSize' AS g,
-           snapshot->'worldData'->>'fit' AS fit
-    FROM "PlayerSpace" WHERE id = ${space.id}`
+  // the world's declared size, so the server hands it down as a prop
+  const gridRows = await prisma.$queryRaw<{ g: string | null }[]>`
+    SELECT snapshot->'worldParams'->>'gridSize' AS g FROM "PlayerSpace" WHERE id = ${space.id}`
   const gridParsed = gridRows[0]?.g ? parseInt(gridRows[0].g, 10) : NaN
   const gridSize = Number.isFinite(gridParsed) && gridParsed >= 64 && gridParsed <= 4096 ? gridParsed : undefined
-  const fit = gridRows[0]?.fit === 'mobile' ? 'mobile' : undefined
 
   const isOwner = userId === space.ownerId
   // viewing a save point is always read-only — syncing it would overwrite the live world
@@ -149,7 +144,6 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
         spaceId={space.id}
         spaceSlug={space.slug}
         gridSize={gridSize}
-        fit={fit}
         engineOwner={engineOwner}
         isOwner={isOwner}
         versionView={Number.isFinite(versionView) ? versionView : undefined}
