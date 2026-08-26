@@ -107,7 +107,7 @@ export default function PremiumGate({ slug, name }: { slug: string; name: string
       {/* the paywall — announces LIVE · EXPERIMENTAL and sells a SEAT AT THE
           WORKBENCH (co-program access), not just playback */}
       {walled && (
-        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[85] pointer-events-auto flex items-center justify-center bg-black/70 backdrop-blur-[3px]">
           <div className="max-w-md w-[92%] border border-[#b97a2a]/40 rounded-xl px-8 py-6 text-center bg-black/95 shadow-[0_0_60px_rgba(245,176,76,0.15)]">
             {/* the mandatory disclosure — Galen's law: announce live + experimental */}
             <div className="inline-flex items-center gap-1.5 mb-3 font-mono text-[10px] tracking-[0.25em] px-2 py-1 rounded-full border border-emerald-300/40 text-emerald-200/90">

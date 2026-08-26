@@ -86,13 +86,13 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
     <>
       <button
         onClick={() => { setOpen(true); if (st.docked) dock() }}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-[62] font-mono text-[12px] tracking-[0.15em] px-3.5 py-1.5 rounded-full border border-cyan-300/50 text-cyan-100 bg-black/70 hover:bg-cyan-400/15 transition-colors"
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-[62] pointer-events-auto font-mono text-[12px] tracking-[0.15em] px-3.5 py-1.5 rounded-full border border-cyan-300/50 text-cyan-100 bg-black/70 hover:bg-cyan-400/15 transition-colors"
         title="join this world's live edit flow">
         {label}
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[86] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-[86] pointer-events-auto flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-xl bg-[#0d1214]/97 border border-cyan-300/25 p-5 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[13px] tracking-[0.22em] text-cyan-200 mb-1">⚓ DOCK INTO {name.toUpperCase()}</div>
 

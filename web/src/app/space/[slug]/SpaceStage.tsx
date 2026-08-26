@@ -248,18 +248,32 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
             style={{ left: phoneInset.left, right: phoneInset.right }} />
         </div>
       )}
-      {/* nothing to share on a world that isn't real yet — hide SHARE while it's
-          still blank-and-building */}
-      {!building && !playMode && <ShareWorld slug={spaceSlug} name={name} />}
-      {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
-          worlds and for owners/buyers (server truth: /api/premium) */}
-      {!versionView && <PremiumGate slug={spaceSlug} name={name} />}
-      {/* DOCK: join a node-founded world's live edit flow (membership + a
-          dockstar). Renders nothing for owners / non-node worlds / play-only. */}
-      {!versionView && !playMode && !isOwner && <DockButton slug={spaceSlug} name={name} />}
-      {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) — the old
-          bottom-[52px] left them touching, so FOLLOW painted over SHARE */}
-      {!playMode && <div className="fixed bottom-[64px] right-4 z-[60]"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}
+      {/* THE CHROME COLUMN (Galen, Aug 26 — the phone-frame seam completion).
+          SpaceStage's chrome (SHARE/PREMIUM/DOCK/FOLLOW) is fixed-positioned to
+          the SCREEN, but the world is letterboxed into the phone column — so
+          without this the buttons float at the screen edges, colliding with the
+          title and sprawling outside the frame (the "UI on the wrong layer" bug).
+          A `transform` on this wrapper makes it the CONTAINING BLOCK for its
+          fixed children, so their `fixed ... right-4` resolves against the PHONE
+          COLUMN, not the viewport. No phone frame → full-screen passthrough. */}
+      <div
+        className="fixed z-[60] pointer-events-none"
+        style={phoneInset
+          ? { top: phoneInset.top, right: phoneInset.right, bottom: phoneInset.bottom, left: phoneInset.left, transform: 'translateZ(0)' }
+          : { inset: 0 }}
+      >
+        {/* nothing to share on a world that isn't real yet — hide SHARE while it's
+            still blank-and-building */}
+        {!building && !playMode && <ShareWorld slug={spaceSlug} name={name} />}
+        {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
+            worlds and for owners/buyers (server truth: /api/premium) */}
+        {!versionView && <PremiumGate slug={spaceSlug} name={name} />}
+        {/* DOCK: join a node-founded world's live edit flow (membership seat).
+            Renders nothing for owners / non-node worlds / play-only. */}
+        {!versionView && !playMode && !isOwner && <DockButton slug={spaceSlug} name={name} />}
+        {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) */}
+        {!playMode && <div className="fixed bottom-[64px] right-4 z-[60] pointer-events-auto"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}
+      </div>
       {/* ⚙ MANAGE moved off individual world pages → it now lives on your own
           shelf, /u/<you> (the MANAGE button in CafeShell's top bar). */}
       {/* ⚑ SWARM (SummonConsole) unmounted — Galen: the map button doesn't
