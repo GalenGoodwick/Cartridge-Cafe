@@ -752,6 +752,41 @@ export async function POST(req: NextRequest) {
         results.push(await handleSetCard(auth.spaceId!, cmd))
         continue
       }
+      // ── SPRITES (Galen, Aug 26 — the Fortis ask): the AI's door into the ONE
+      // sprite pipeline (lib/sprite-store shares it with the owner UI route).
+      // define_sheet {name, png, cols, rows, fps?} uploads + RIPS a sheet into
+      // slots name.0..n-1 (+ an anim clip when fps set); define_sprite is the
+      // 1×1 case. Metadata mirrors into worldData.sprites (rev → live tabs
+      // repack the atlas); sprite(i,uv)/spriteAnim(...) sample it in any visual.
+      if ((cmd.type === 'define_sprite' || cmd.type === 'define_sheet') && isSpaceScoped) {
+        const { putSheet } = await import('@/lib/sprite-store')
+        const one = cmd.type === 'define_sprite'
+        const out = await putSheet(auth.spaceId!, {
+          name: String(cmd.name ?? ''),
+          png_b64: String(cmd.png ?? cmd.png_b64 ?? ''),
+          cols: one ? 1 : Number(cmd.cols) || 1,
+          rows: one ? 1 : Number(cmd.rows) || 1,
+          fps: one ? undefined : Number(cmd.fps) || undefined,
+        })
+        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
+        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { sprites: out.meta } }).catch(() => {})
+        results.push({ type: cmd.type, ok: true, slots: out.meta.slots.map(s => ({ name: s.name, i: s.i })), clips: out.meta.clips })
+        continue
+      }
+      if (cmd.type === 'list_sprites' && isSpaceScoped) {
+        const { readSprites, spritesMeta } = await import('@/lib/sprite-store')
+        const doc = await readSprites(auth.spaceId!)
+        const meta = spritesMeta(doc)
+        results.push({ type: cmd.type, ok: true, sheets: doc.sheets.map(s => ({ name: s.name, cols: s.cols, rows: s.rows, fps: s.fps ?? null })), slots: meta.slots.map(s => ({ name: s.name, i: s.i })), clips: meta.clips })
+        continue
+      }
+      if (cmd.type === 'delete_sprite' && isSpaceScoped) {
+        const { deleteSheet } = await import('@/lib/sprite-store')
+        const { meta } = await deleteSheet(auth.spaceId!, String(cmd.name ?? ''))
+        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { sprites: meta } }).catch(() => {})
+        results.push({ type: cmd.type, ok: true, slots: meta.slots.length })
+        continue
+      }
 
       // Player key (uc_pt_): a personal, non-world credential. It may chat the
       // commons (main_say/main_read, handled below) and BOOTSTRAP world tokens —

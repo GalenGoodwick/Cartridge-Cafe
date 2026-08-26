@@ -1104,6 +1104,38 @@ wd.gpuUniforms = [boat.x, boat.y, boat.heading, windX, windY, gust]
 let boatPos = vec2f(uni(0), uni(1));
 ```
 
+### Sprites — uploaded pixel art + animated sheets
+
+Upload real images into a world and sample them from ANY visual. One pipeline
+(the owner's SPRITES panel and these bridge commands share it):
+
+```json
+{"type": "define_sprite", "name": "hero", "png": "<base64 png>"}
+{"type": "define_sheet", "name": "run", "png": "<base64>", "cols": 8, "rows": 1, "fps": 12}
+{"type": "list_sprites"}
+{"type": "delete_sprite", "name": "run"}
+```
+
+`define_sheet` RIPS the image into cols×rows cells — slots named `run.0` …
+`run.7` — and `fps` registers the strip as an animation clip. The response (and
+`list_sprites`) returns every slot's NAME → INDEX; indexes are stable (sheets
+ordered by name, cells row-major).
+
+Sample in WGSL — returns linearized rgb (ACES-ready) + the png's real alpha,
+NEAREST-sampled (pixel-art crisp):
+
+```wgsl
+let s = sprite(0, cellUv);                       // cellUv 0..1 across the sprite, y down
+col = mix(col, s.rgb, s.a);                      // composite with its own alpha
+let f = spriteAnim(0, 8, 12.0, cellUv, time);    // first slot, 8 frames, 12fps — loops
+let sz = spriteSize(0);                          // native pixel size, for aspect math
+```
+
+Caps: 64 sheets · 4096 slots · 4MB/sheet · 24MB/world. Metadata lives in
+`worldData.sprites` ({rev, slots, clips}) — read it to map names to indexes.
+KNOWN BLIND SPOT: the cloud `render_probe` does not yet bind sprite atlases —
+verify sprite visuals in a live tab or the local eye.
+
 ### Entity Populations — the flock buffer
 
 For a POPULATION of entities (flocks, bullets, crowds, particles-with-gameplay), do NOT

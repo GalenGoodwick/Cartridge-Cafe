@@ -1776,6 +1776,53 @@ fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
 fn pop(i: i32) -> vec4f { return popBuf[1 + clamp(i, 0, 4094)]; }
 fn popCount() -> i32 { return i32(popBuf[0].x); }
 
+// ─── SPRITES (Galen, Aug 26: uploaded pixel art, sampled by any visual) ───
+// Player worlds pack their SPRITE ATLAS into iconBuf (the cafe hub packs icon
+// bubbles there instead — the two never share a world). Layout:
+//   iconBuf[0] = sprite count N · [1+i*4..] = rect i {offset, w, h, flags}
+//   pixels start at 1+N*4, per-sprite contiguous, row-major, RGBA8-in-u32 (LE).
+// sprite(slot, uv): uv 0..1 across the sprite (y down, image order), NEAREST
+// sampled (pixel-art crisp), returns linearized rgb (ACES-ready, matches
+// cafeIcon's exposure) + the png's real alpha — composite it yourself.
+fn sprCount() -> i32 {
+  if (arrayLength(&iconBuf) < 5u) { return 0; }
+  let n = iconBuf[0];
+  if (n == 0u || n > 4096u) { return 0; }
+  // header sanity: rect 0 must point inside the buffer, else this is the hub's
+  // icon atlas (raw pixels) wearing the wrong hat — refuse to misread it
+  let w0 = iconBuf[2]; let h0 = iconBuf[3];
+  if (w0 == 0u || h0 == 0u || w0 > 4096u || h0 > 4096u) { return 0; }
+  return i32(n);
+}
+fn spriteSize(slot: i32) -> vec2f {
+  if (slot < 0 || slot >= sprCount()) { return vec2f(0.0); }
+  let b = u32(1 + slot * 4);
+  return vec2f(f32(iconBuf[b + 1u]), f32(iconBuf[b + 2u]));
+}
+fn sprite(slot: i32, uv: vec2f) -> vec4f {
+  let n = sprCount();
+  if (slot < 0 || slot >= n) { return vec4f(0.0); }
+  if (uv.x < 0.0 || uv.x >= 1.0 || uv.y < 0.0 || uv.y >= 1.0) { return vec4f(0.0); }
+  let b = u32(1 + slot * 4);
+  let off = iconBuf[b]; let w = iconBuf[b + 1u]; let h = iconBuf[b + 2u];
+  if (w == 0u || h == 0u) { return vec4f(0.0); }
+  let x = clamp(u32(uv.x * f32(w)), 0u, w - 1u);
+  let y = clamp(u32(uv.y * f32(h)), 0u, h - 1u);
+  let idx = 1u + u32(n) * 4u + off + y * w + x;
+  if (idx >= arrayLength(&iconBuf)) { return vec4f(0.0); }
+  let p = iconBuf[idx];
+  let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
+  let a = f32((p >> 24u) & 0xffu) / 255.0;
+  return vec4f(pow(c, vec3f(2.2)) * 2.6, a);
+}
+// animated sheets: frames are consecutive slots (a ripped sheet's cells).
+// spriteAnim(first, frames, fps, uv, t) — the clip loops.
+fn spriteAnim(first: i32, frames: i32, fps: f32, uv: vec2f, t: f32) -> vec4f {
+  if (frames < 1) { return vec4f(0.0); }
+  let f = first + i32(floor(t * max(fps, 0.001))) % frames;
+  return sprite(f, uv);
+}
+
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.
 const CAFE_ICON: i32 = 64;
@@ -2359,6 +2406,53 @@ fn uni4(i: i32) -> vec4f { return worldUni[clamp(i, 0, 63)]; }
 // One buffer, zero extra dispatches — draw hundreds of entities in one shader.
 fn pop(i: i32) -> vec4f { return popBuf[1 + clamp(i, 0, 4094)]; }
 fn popCount() -> i32 { return i32(popBuf[0].x); }
+
+// ─── SPRITES (Galen, Aug 26: uploaded pixel art, sampled by any visual) ───
+// Player worlds pack their SPRITE ATLAS into iconBuf (the cafe hub packs icon
+// bubbles there instead — the two never share a world). Layout:
+//   iconBuf[0] = sprite count N · [1+i*4..] = rect i {offset, w, h, flags}
+//   pixels start at 1+N*4, per-sprite contiguous, row-major, RGBA8-in-u32 (LE).
+// sprite(slot, uv): uv 0..1 across the sprite (y down, image order), NEAREST
+// sampled (pixel-art crisp), returns linearized rgb (ACES-ready, matches
+// cafeIcon's exposure) + the png's real alpha — composite it yourself.
+fn sprCount() -> i32 {
+  if (arrayLength(&iconBuf) < 5u) { return 0; }
+  let n = iconBuf[0];
+  if (n == 0u || n > 4096u) { return 0; }
+  // header sanity: rect 0 must point inside the buffer, else this is the hub's
+  // icon atlas (raw pixels) wearing the wrong hat — refuse to misread it
+  let w0 = iconBuf[2]; let h0 = iconBuf[3];
+  if (w0 == 0u || h0 == 0u || w0 > 4096u || h0 > 4096u) { return 0; }
+  return i32(n);
+}
+fn spriteSize(slot: i32) -> vec2f {
+  if (slot < 0 || slot >= sprCount()) { return vec2f(0.0); }
+  let b = u32(1 + slot * 4);
+  return vec2f(f32(iconBuf[b + 1u]), f32(iconBuf[b + 2u]));
+}
+fn sprite(slot: i32, uv: vec2f) -> vec4f {
+  let n = sprCount();
+  if (slot < 0 || slot >= n) { return vec4f(0.0); }
+  if (uv.x < 0.0 || uv.x >= 1.0 || uv.y < 0.0 || uv.y >= 1.0) { return vec4f(0.0); }
+  let b = u32(1 + slot * 4);
+  let off = iconBuf[b]; let w = iconBuf[b + 1u]; let h = iconBuf[b + 2u];
+  if (w == 0u || h == 0u) { return vec4f(0.0); }
+  let x = clamp(u32(uv.x * f32(w)), 0u, w - 1u);
+  let y = clamp(u32(uv.y * f32(h)), 0u, h - 1u);
+  let idx = 1u + u32(n) * 4u + off + y * w + x;
+  if (idx >= arrayLength(&iconBuf)) { return vec4f(0.0); }
+  let p = iconBuf[idx];
+  let c = vec3f(f32(p & 0xffu), f32((p >> 8u) & 0xffu), f32((p >> 16u) & 0xffu)) / 255.0;
+  let a = f32((p >> 24u) & 0xffu) / 255.0;
+  return vec4f(pow(c, vec3f(2.2)) * 2.6, a);
+}
+// animated sheets: frames are consecutive slots (a ripped sheet's cells).
+// spriteAnim(first, frames, fps, uv, t) — the clip loops.
+fn spriteAnim(first: i32, frames: i32, fps: f32, uv: vec2f, t: f32) -> vec4f {
+  if (frames < 1) { return vec4f(0.0); }
+  let f = first + i32(floor(t * max(fps, 0.001))) % frames;
+  return sprite(f, uv);
+}
 
 // Sample slot's screenshot at disc-local uv (-1..1, y up). Returns rgb (linearized
 // from sRGB so the tonemapper treats it like every other visual). Off-disc → black.

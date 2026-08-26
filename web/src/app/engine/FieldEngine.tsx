@@ -216,6 +216,63 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       .finally(() => { if (!stop) setPlugBusy(false) })
     return () => { stop = true }
   }, [plugOpen, plugToken, spaceSlug])
+
+  // ── SPRITE ATLAS LOADER (Galen, Aug 26 — the Fortis ask). When the world's
+  // sprite metadata rev moves (upload/rip/delete, synced via worldData.sprites),
+  // fetch the sheets, slice cells in the SAME deterministic order the server
+  // meta uses (sheets by name, cells row-major), pack the contiguous-pixel
+  // atlas ([count · rects{offset,w,h,0} · pixels]) and push it through the
+  // existing uploadIconAtlas path. sprite(i, uv) in any visual reads it. ──
+  const spriteRevRef = useRef(0)
+  useEffect(() => {
+    if (!spaceSlug) return   // the cafe hub owns iconBuf for icon bubbles
+    let stop = false
+    const tick = async () => {
+      const sim = simulationRef.current
+      const meta = sim?.worldData?.sprites as { rev?: number } | undefined
+      const rev = Number(meta?.rev ?? 0)
+      if (!rev || rev === spriteRevRef.current) return
+      const r = rendererRef.current
+      if (!r || !r.isReady()) return
+      spriteRevRef.current = rev
+      try {
+        const d = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/sprites`, { cache: 'no-store' }).then(x => x.ok ? x.json() : null)
+        if (stop || !d?.sheets) return
+        const sheets = [...(d.sheets as Array<{ name: string; png_b64: string; cols: number; rows: number }>)]
+          .sort((a, b) => a.name < b.name ? -1 : 1)
+        const rects: Array<{ w: number; h: number; px: Uint32Array }> = []
+        for (const sh of sheets) {
+          const blob = await fetch(`data:image/png;base64,${sh.png_b64}`).then(x => x.blob())
+          const bmp = await createImageBitmap(blob)
+          const cv = document.createElement('canvas')
+          cv.width = bmp.width; cv.height = bmp.height
+          const cx = cv.getContext('2d', { willReadFrequently: true })
+          if (!cx) continue
+          cx.drawImage(bmp, 0, 0)
+          const cw = Math.floor(bmp.width / sh.cols), ch = Math.floor(bmp.height / sh.rows)
+          for (let row = 0; row < sh.rows; row++) for (let col = 0; col < sh.cols; col++) {
+            const img = cx.getImageData(col * cw, row * ch, cw, ch)
+            rects.push({ w: cw, h: ch, px: new Uint32Array(img.data.buffer.slice(0)) })
+          }
+        }
+        if (stop || rects.length === 0) return
+        const header = 1 + rects.length * 4
+        const totalPx = rects.reduce((n, s) => n + s.w * s.h, 0)
+        const atlas = new Uint32Array(header + totalPx)
+        atlas[0] = rects.length
+        let off = 0
+        rects.forEach((s, i) => {
+          atlas[1 + i * 4] = off; atlas[1 + i * 4 + 1] = s.w; atlas[1 + i * 4 + 2] = s.h; atlas[1 + i * 4 + 3] = 0
+          atlas.set(s.px, header + off)
+          off += s.w * s.h
+        })
+        if (!stop) r.uploadIconAtlas(atlas)
+      } catch { spriteRevRef.current = 0 /* transient — retry on the next tick */ }
+    }
+    tick()
+    const iv = setInterval(tick, 2500)
+    return () => { stop = true; clearInterval(iv) }
+  }, [spaceSlug])
   // MAKE ICON — the maker's AI authors a tiny self-contained shader for this
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
