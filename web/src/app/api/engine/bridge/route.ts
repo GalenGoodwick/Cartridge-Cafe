@@ -657,7 +657,7 @@ export async function POST(req: NextRequest) {
       const state = (cmd.state && typeof cmd.state === 'object') ? cmd.state as Record<string, unknown> : undefined
       const solves = list.map(vp => {
         const plan = worldSolve(doc, vp, state)
-        return { viewport: vp, ok: plan.ok, errors: plan.errors, culled: plan.culled, rects: planRects(plan) }
+        return { viewport: vp, ok: plan.ok, errors: plan.errors, culled: plan.culled, supported: plan.supported, rects: planRects(plan) }
       })
       return NextResponse.json({ scope: 'unified-world', solves })
     }

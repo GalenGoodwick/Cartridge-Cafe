@@ -33,6 +33,37 @@ export const ASPECT_POLICIES: readonly AspectPolicy[] = ['cover', 'contain', 'is
 export type FitWhen = { minW?: number; maxW?: number; minH?: number; maxH?: number }
 export type FitPolicy = { aspect: AspectPolicy; when?: FitWhen }
 
+// ── TARGETS ── the world's INTENDED DIMENSIONS (Galen: "specifications for
+// intended app dimensions"). One declaration drives everything downstream: the
+// catalog badges/filters by kind, the world door warns a phone off a
+// desktop-built world (or frames a mobile-built one on desktop — the existing
+// worldData.fit='mobile' phone frame), and worldSolve stamps every plan with a
+// supported verdict so an AI KNOWS a viewport is out of spec before building.
+//   kind: 'desktop'   built for a wide screen + fine pointer; phones get the door notice
+//         'mobile'    built for a portrait phone; desktop letterboxes it (phone frame)
+//         'universal' (default) recomposes to any viewport — the unified ideal
+export type TargetKind = 'desktop' | 'mobile' | 'universal'
+export const TARGET_KINDS: readonly TargetKind[] = ['desktop', 'mobile', 'universal']
+export type TargetsFacet = {
+  kind?: TargetKind
+  minW?: number; minH?: number          // hard minimums (px) below which the world breaks
+  minAspect?: number; maxAspect?: number // intended aspect window (w/h)
+}
+
+/** Does a viewport satisfy the world's intended dimensions? ok:false comes with
+ *  the human-readable why (the door notice text and the AI's dry-run verdict). */
+export function targetsSupport(t: TargetsFacet | undefined, vp: { w: number; h: number }): { ok: boolean; why?: string } {
+  if (!t) return { ok: true }
+  const aspect = vp.w / Math.max(1, vp.h)
+  if (t.kind === 'desktop' && vp.w < 700) return { ok: false, why: 'built for desktop — this screen is phone-narrow' }
+  if (t.kind === 'mobile' && aspect > 1.1 && vp.w > 900) return { ok: true, why: 'mobile-built — will letterbox into a phone frame on this wide screen' }
+  if (t.minW != null && vp.w < t.minW) return { ok: false, why: `needs at least ${t.minW}px of width (this viewport is ${vp.w})` }
+  if (t.minH != null && vp.h < t.minH) return { ok: false, why: `needs at least ${t.minH}px of height (this viewport is ${vp.h})` }
+  if (t.minAspect != null && aspect < t.minAspect) return { ok: false, why: `built for aspect ≥ ${t.minAspect} (this viewport is ${aspect.toFixed(2)})` }
+  if (t.maxAspect != null && aspect > t.maxAspect) return { ok: false, why: `built for aspect ≤ ${t.maxAspect} (this viewport is ${aspect.toFixed(2)})` }
+  return { ok: true }
+}
+
 // ── INPUT ── how a region is controlled. Click targets route via __uiClick;
 // touch/keys are declarative bindings the engine wires.
 export type InputMap = {
@@ -57,6 +88,7 @@ export type WorldDoc = {
   layout: UiGridDoc                    // regions — reuses the shipped ui-grid doc
   ui?: Record<string, UiContent>       // regionId → content
   fit?: Record<string, FitPolicy>      // regionId → fit policy
+  targets?: TargetsFacet               // intended dimensions (world-level)
   input?: InputMap
   behavior?: unknown                   // __nodes — node-runtime
   state?: Record<string, unknown>      // worldData
@@ -70,6 +102,7 @@ export function worldDocFacets(doc: WorldDoc): string[] {
   const f: string[] = ['render', 'layout']
   if (doc.ui && Object.keys(doc.ui).length) f.push('ui')
   if (doc.fit && Object.keys(doc.fit).length) f.push('fit')
+  if (doc.targets) f.push('targets')
   if (doc.input) f.push('input')
   if (doc.behavior) f.push('behavior')
   if (doc.state && Object.keys(doc.state).length) f.push('state')
@@ -96,6 +129,12 @@ export function validateWorldDoc(doc: WorldDoc): string[] {
     if (w && w.minH != null && w.maxH != null && w.minH > w.maxH) errs.push(`fit['${k}'].when has minH > maxH (never matches)`)
   }
   for (const id of doc.input?.clickTargets ?? []) if (typeof id !== 'string' || !id) errs.push('input.clickTargets has an empty target')
+  const t = doc.targets
+  if (t) {
+    if (t.kind != null && !TARGET_KINDS.includes(t.kind)) errs.push(`targets.kind '${t.kind}' is not a known kind`)
+    if (t.minAspect != null && t.maxAspect != null && t.minAspect > t.maxAspect) errs.push('targets has minAspect > maxAspect (never matches)')
+    if (t.kind === 'mobile' && t.minW != null && t.minW > 500) errs.push('targets: kind mobile with minW > 500 contradicts itself (no phone is that wide)')
+  }
   return errs
 }
 

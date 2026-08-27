@@ -1821,3 +1821,25 @@ TEMPLATE (the composite vector — trim to your kind):
    "input":{"touch":"stick+buttons","clickTargets":["chrome.exit"]}}
 
 Solve it at desktop AND phone before you build anything else on top.
+
+INTENDED DIMENSIONS — the `targets` facet (and today's worldData key):
+
+Declare what screens your world is BUILT FOR; one declaration drives the
+catalog badge, the door notice, and the dry-run verdict:
+
+  "targets": {"kind":"desktop"}            // wide screen + fine pointer; a phone
+                                           // visitor gets an honest door notice
+  "targets": {"kind":"mobile"}             // portrait phone; desktop letterboxes
+                                           // it into a phone frame automatically
+  "targets": {"kind":"universal"}          // (default) recomposes to any viewport
+  optional hard bounds: "minW"/"minH" (px), "minAspect"/"maxAspect" (w/h)
+
+`solve_world_doc` returns `supported: {ok, why}` per viewport — check it for
+BOTH {"w":1344,"h":800} and {"w":390,"h":844} before building. If phone comes
+back ok:false and you intend desktop-only, that is CORRECT — declare it.
+
+ON THE LIVE SITE TODAY: set `worldData.fit` on your world —
+  {"type":"set_world_data","data":{"fit":"desktop"}}   // phone visitors get the door notice
+  {"type":"set_world_data","data":{"fit":"mobile"}}    // desktop gets the phone frame
+Undeclared = universal (no gating). Declare honestly: a desktop-heavy raymarch
+world left undeclared just plays badly on a phone with no warning — tag it.

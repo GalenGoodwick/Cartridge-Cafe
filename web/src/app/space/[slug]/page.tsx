@@ -137,7 +137,9 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
     FROM "PlayerSpace" WHERE id = ${space.id}`
   const gridParsed = gridRows[0]?.g ? parseInt(gridRows[0].g, 10) : NaN
   const gridSize = Number.isFinite(gridParsed) && gridParsed >= 64 && gridParsed <= 4096 ? gridParsed : undefined
-  const fit = gridRows[0]?.fit === 'mobile' ? 'mobile' : undefined
+  // the targets matrix, both halves: 'mobile' → phone frame on desktop;
+  // 'desktop' → the door notice on a phone. worldData.fit is the declaration.
+  const fit = gridRows[0]?.fit === 'mobile' ? 'mobile' : gridRows[0]?.fit === 'desktop' ? 'desktop' : undefined
 
   const isOwner = userId === space.ownerId
   // viewing a save point is always read-only — syncing it would overwrite the live world

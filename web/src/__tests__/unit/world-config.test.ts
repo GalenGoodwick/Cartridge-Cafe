@@ -57,3 +57,42 @@ describe('WorldDoc validator — facet consistency', () => {
       .toEqual(['render', 'layout', 'ui', 'input'])
   })
 })
+
+// ── TARGETS — intended app dimensions (Galen: filter/notice, one declaration) ──
+import { targetsSupport, TARGET_KINDS } from '@/app/engine/world-config'
+
+describe('targetsSupport — the intended-dimensions verdict', () => {
+  const PHONE = { w: 390, h: 844 }, DESKTOP = { w: 1344, h: 800 }
+
+  it('desktop-built world: phone unsupported (with the door-notice why), desktop fine', () => {
+    const v = targetsSupport({ kind: 'desktop' }, PHONE)
+    expect(v.ok).toBe(false); expect(v.why).toMatch(/built for desktop/)
+    expect(targetsSupport({ kind: 'desktop' }, DESKTOP).ok).toBe(true)
+  })
+
+  it('universal / undeclared: every viewport supported (safe default for all existing worlds)', () => {
+    expect(targetsSupport(undefined, PHONE).ok).toBe(true)
+    expect(targetsSupport({ kind: 'universal' }, PHONE).ok).toBe(true)
+    expect(targetsSupport({ kind: 'universal' }, DESKTOP).ok).toBe(true)
+  })
+
+  it('mobile-built world on desktop: supported WITH the letterbox note (phone frame)', () => {
+    const v = targetsSupport({ kind: 'mobile' }, DESKTOP)
+    expect(v.ok).toBe(true); expect(v.why).toMatch(/letterbox/)
+  })
+
+  it('hard minimums + aspect windows carry measured whys', () => {
+    expect(targetsSupport({ minW: 900 }, PHONE)).toEqual({ ok: false, why: 'needs at least 900px of width (this viewport is 390)' })
+    expect(targetsSupport({ minAspect: 1.2 }, PHONE).ok).toBe(false)
+    expect(targetsSupport({ maxAspect: 1.0 }, DESKTOP).ok).toBe(false)
+    expect(targetsSupport({ minW: 900, minAspect: 1.2 }, DESKTOP).ok).toBe(true)
+  })
+
+  it('validator rejects unknown kinds, inverted aspect windows, self-contradicting mobile minW', () => {
+    // @ts-expect-error deliberately invalid kind
+    expect(validateWorldDoc(base({ targets: { kind: 'toaster' } })).some(e => /targets.kind/.test(e))).toBe(true)
+    expect(validateWorldDoc(base({ targets: { minAspect: 2, maxAspect: 1 } })).some(e => /minAspect > maxAspect/.test(e))).toBe(true)
+    expect(validateWorldDoc(base({ targets: { kind: 'mobile', minW: 800 } })).some(e => /contradicts/.test(e))).toBe(true)
+    expect(TARGET_KINDS).toContain('universal')
+  })
+})

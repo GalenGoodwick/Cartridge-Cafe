@@ -77,3 +77,16 @@ describe('worldSolve — one doc, an executable plan per viewport', () => {
     for (const r of plan.routes) expect(rects[r.id].rect).toEqual(r.rect)
   })
 })
+
+// ── plan.supported — the solver stamps the intended-dimensions verdict ──
+describe('worldSolve — supported verdict rides every plan', () => {
+  it('desktop-targeted doc: phone plan says no (with why), desktop plan says yes', () => {
+    const doc: WorldDoc = { ...DOC, targets: { kind: 'desktop' } }
+    expect(worldSolve(doc, PHONE).supported).toEqual({ ok: false, why: expect.stringMatching(/built for desktop/) })
+    expect(worldSolve(doc, DESKTOP).supported.ok).toBe(true)
+  })
+  it('undeclared targets: every plan supported (existing worlds unaffected)', () => {
+    expect(worldSolve(DOC, PHONE).supported.ok).toBe(true)
+    expect(worldSolve(DOC, DESKTOP).supported.ok).toBe(true)
+  })
+})

@@ -14,7 +14,7 @@
 // the declared form ('shaderUI' | 'dom' | …) and the executor decides policy.
 
 import { solveUiGrid, type UiGridState, type SolvedRegion } from './ui-grid'
-import { validateWorldDoc, defaultFit, type WorldDoc, type FitPolicy } from './world-config'
+import { validateWorldDoc, defaultFit, targetsSupport, type WorldDoc, type FitPolicy } from './world-config'
 import { fitWhenMatches, fitUniforms } from './fit'
 
 export type RegionRoute = {
@@ -39,6 +39,9 @@ export type WorldPlan = {
   routes: RegionRoute[]
   /** region ids declared in layout but culled at this viewport (fit.when) */
   culled: string[]
+  /** does this viewport satisfy the world's INTENDED DIMENSIONS (targets)?
+   *  ok:false carries the why — the door-notice text / the AI's dry-run verdict. */
+  supported: { ok: boolean; why?: string }
 }
 
 const GRID_STATE = (vp: { w: number; h: number }): UiGridState =>
@@ -67,7 +70,7 @@ export function worldSolve(doc: WorldDoc, viewport: { w: number; h: number }, st
   }
   // stable draw order: z ascending (the executor draws in plan order)
   routes.sort((a, b) => a.z - b.z)
-  return { ok: errors.length === 0, errors, viewport, routes, culled }
+  return { ok: errors.length === 0, errors, viewport, routes, culled, supported: targetsSupport(doc.targets, viewport) }
 }
 
 /** The plan's readable truth for the eye — id → rect/backends, mirroring

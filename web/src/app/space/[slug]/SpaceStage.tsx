@@ -23,7 +23,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   spaceId: string
   spaceSlug: string
   gridSize?: number
-  fit?: 'mobile'
+  fit?: 'mobile' | 'desktop'
   engineOwner: boolean
   isOwner: boolean
   versionView?: number
@@ -58,6 +58,24 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
     window.addEventListener('cafe:caption', onCaption)
     return () => { window.removeEventListener('cafe:caption', onCaption); if (timer) clearTimeout(timer) }
   }, [])
+
+  // THE DESKTOP DOOR (targets matrix, other half of the phone frame): a world
+  // declaring worldData.fit='desktop' is built for a wide screen + fine pointer.
+  // A phone visitor gets an honest notice AT THIS WORLD'S DOOR (per Galen's
+  // ruling: the wall lives at the door, per-world — never at the site gate) with
+  // copy-link + step-in-anyway. Absorbed later by the unified system as a plan
+  // verdict (worldSolve.supported); this is the same declaration, DOM-served.
+  const [desktopDoor, setDesktopDoor] = useState(false)
+  const [doorCopied, setDoorCopied] = useState(false)
+  useEffect(() => {
+    if (fit !== 'desktop') return
+    try {
+      if (sessionStorage.getItem('cc-door-' + spaceSlug) === '1') return
+      const phone = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 700
+      if (phone) setDesktopDoor(true)
+    } catch { /* private mode: no notice */ }
+  }, [fit, spaceSlug])
+  const stepIn = () => { setDesktopDoor(false); try { sessionStorage.setItem('cc-door-' + spaceSlug, '1') } catch { /* fine */ } }
 
   // LIVE HEAD-COUNT: report presence while inside this world. The hub (CafeShell)
   // heartbeats /api/presence, but the /space page never did — so a world's own
@@ -258,6 +276,35 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
 
   return (
     <>
+      {/* THE DESKTOP DOOR — a phone at a desktop-built world's door. Honest,
+          per-world, dismissible; the world loads behind it either way. */}
+      {desktopDoor && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6"
+          style={{ background: 'radial-gradient(120% 90% at 50% 40%, rgba(23,16,11,0.96) 0%, rgba(11,9,8,0.97) 70%)', fontFamily: 'var(--font-mono, monospace)' }}>
+          <div className="max-w-[360px] w-full text-center rounded-2xl px-7 py-9"
+            style={{ border: '1px solid rgba(185,122,42,0.35)', background: 'rgba(11,9,8,0.85)', boxShadow: '0 0 80px rgba(245,176,76,0.12)', color: '#e7dcc8' }}>
+            <div className="text-[44px] mb-3">🖥️</div>
+            <div className="text-[26px] mb-3" style={{ fontFamily: 'var(--font-display, serif)', fontStyle: 'italic', color: '#ffdba8' }}>
+              this world wants a bigger table
+            </div>
+            <p className="text-[14px] leading-relaxed m-0" style={{ color: '#c9b896' }}>
+              <b style={{ color: '#ffdba8' }}>{name}</b> was built for a desktop screen —
+              its maker tagged it that way. It may sprawl or fight your thumbs here.
+            </p>
+            <button
+              onClick={async () => { try { await navigator.clipboard.writeText(window.location.href); setDoorCopied(true); setTimeout(() => setDoorCopied(false), 1600) } catch { /* fine */ } }}
+              className="mt-5 w-full px-4 py-2.5 rounded-xl text-[13px] tracking-[0.12em]"
+              style={{ border: '1px solid rgba(185,122,42,0.5)', background: 'rgba(185,122,42,0.14)', color: '#ffdba8' }}>
+              {doorCopied ? 'LINK COPIED ✓' : '⧉ COPY LINK — OPEN ON YOUR COMPUTER'}
+            </button>
+            <button onClick={stepIn}
+              className="mt-2.5 w-full px-4 py-2.5 rounded-xl text-[13px] tracking-[0.15em]"
+              style={{ border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(201,184,150,0.75)' }}>
+              STEP IN ANYWAY
+            </button>
+          </div>
+        </div>
+      )}
       {/* the phone-frame margins: dark bands + a hairline bezel so the letterboxed
           mobile world reads as a device window, not a broken half-screen */}
       {phoneInset && (
