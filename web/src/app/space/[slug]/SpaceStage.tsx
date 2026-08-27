@@ -4,6 +4,7 @@ import { usePresenceBeat } from '@/lib/usePresenceBeat'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
+import { WorldTopbar, topbarActive } from '@/app/engine/ui-topbar'
 import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
 import FollowButton from './FollowButton'
@@ -249,6 +250,13 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
     return () => window.removeEventListener('resize', measure)
   }, [fit, versionView])
 
+  // CHROME.TOPBAR (DESIGN-ui-grid rung 3): on a narrow chrome column — a real
+  // phone, or the desktop phone frame — the top band consolidates into ONE bar
+  // (◂ · FocusChip · ⚓ DOCK), a tenant of chrome.topbar.narrow. The width that
+  // matters is the COLUMN's (colDims above), and topbarActive shares the doc's
+  // viewport predicate — this boolean and the solver can never disagree.
+  const narrowBar = versionView == null && topbarActive(colDims?.w ?? 0)
+
   return (
     <>
       {/* the phone-frame margins: dark bands + a hairline bezel so the letterboxed
@@ -291,9 +299,21 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
             worlds and for owners/buyers (server truth: /api/premium) */}
         {!versionView && <PremiumGate slug={spaceSlug} name={name} />}
+        {/* THE NARROW TOP BAR — one owner for the top band, placed BY THE
+            SOLVER at chrome.topbar.narrow (culled on wide windows by the doc's
+            viewport predicate). Hidden in play mode (the engine's ◂ + compact
+            pulse take over). */}
+        {narrowBar && !playMode && (
+          <GridSlot region="chrome.topbar.narrow" gravity="left" solved={gridSolved}>
+            <WorldTopbar slug={spaceSlug} name={name} ownerName={ownerName} ownerHandle={ownerHandle} ownerId={ownerId}
+              isOwner={isOwner} versionView={versionView}
+              dock={!isOwner ? <DockButton slug={spaceSlug} name={name} bar /> : null} />
+          </GridSlot>
+        )}
         {/* DOCK: join a node-founded world's live edit flow (membership seat).
-            Renders nothing for owners / non-node worlds / play-only. */}
-        {!versionView && !playMode && !isOwner && <DockButton slug={spaceSlug} name={name} />}
+            Renders nothing for owners / non-node worlds / play-only. In narrow
+            windows the pill lives INSIDE the bar above, never floats centered. */}
+        {!versionView && !playMode && !isOwner && !narrowBar && <DockButton slug={spaceSlug} name={name} />}
         {/* (FOLLOW moved into the bottombar slot above — tenant #2) */}
       </div>
       {/* ⚙ MANAGE moved off individual world pages → it now lives on your own
@@ -315,6 +335,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         onBuilding={setBuilding}
         viewport={null}
         frame={phoneInset}
+        externalTopbar={narrowBar}
       />
 
       {/* BRANCH ARENA REMOVED (branch→fork transition): a world no longer hosts a
@@ -323,7 +344,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
 
       {/* a world's OSD — captions/hints, restored from SpaceToolbar */}
       {caption && (caption.text || caption.kind === 'typing') && (
-        <div className="fixed top-8 left-10 z-50 pointer-events-none select-none font-mono uppercase tracking-[0.3em]"
+        <div className={`fixed ${narrowBar && !playMode ? 'top-[76px] left-4' : 'top-8 left-10'} z-50 pointer-events-none select-none font-mono uppercase tracking-[0.3em]`}
           style={{
             color: caption.kind === 'hint' ? 'rgba(140,255,170,0.45)' : 'rgb(140,255,170)',
             fontSize: caption.kind === 'hint' ? 13 : 26,

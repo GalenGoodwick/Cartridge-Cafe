@@ -18,7 +18,7 @@ type Status = {
   prices: { usd: number }
 }
 
-export default function DockButton({ slug, name }: { slug: string; name: string }) {
+export default function DockButton({ slug, name, bar }: { slug: string; name: string; bar?: boolean }) {
   const [st, setSt] = useState<Status | null>(null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -86,7 +86,9 @@ export default function DockButton({ slug, name }: { slug: string; name: string 
     <>
       <button
         onClick={() => { setOpen(true); if (st.docked) dock() }}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-[62] pointer-events-auto font-mono text-[12px] tracking-[0.15em] px-3.5 py-1.5 rounded-full border border-cyan-300/50 text-cyan-100 bg-black/70 hover:bg-cyan-400/15 transition-colors"
+        className={`${bar
+          ? 'whitespace-nowrap'
+          : 'fixed top-4 left-1/2 -translate-x-1/2 z-[62]'} pointer-events-auto font-mono text-[12px] tracking-[0.15em] px-3.5 py-1.5 rounded-full border border-cyan-300/50 text-cyan-100 bg-black/70 hover:bg-cyan-400/15 transition-colors`}
         title="join this world's live edit flow">
         {label}
       </button>

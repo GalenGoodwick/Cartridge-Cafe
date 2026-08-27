@@ -75,6 +75,11 @@ interface FieldEngineProps {
    *  `viewport` — but this is a FIRST-CLASS page wearing its chrome inside the
    *  frame, not a chromeless embed. Never affects chromeHidden. */
   frame?: { top: number; right: number; bottom: number; left: number } | null
+  /** NARROW TOP BAND (chrome.topbar, DESIGN-ui-grid rung 3): the host renders
+   *  ONE consolidated bar (◂ · FocusChip · DOCK), so the engine's own title
+   *  row yields and its dock stack starts below the bar. Play mode ignores it
+   *  (the bar hides; the engine's ◂ + compact pulse return). */
+  externalTopbar?: boolean
   /** Reports the bottom (y px) of the top-right UI dock whenever it resizes, so
    *  the shell can seat the in-world VOTE button directly under it — beneath the
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
@@ -137,7 +142,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -6451,7 +6456,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* items-stretch → every control in the dock takes the SAME width (the
               widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
               one clean column instead of ragged-right buttons */}
-          <div data-cc-chrome ref={dockRef} className={`absolute right-3 ${uiEditOn ? 'z-[75]' : 'z-40'} flex flex-col items-stretch gap-1.5 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain pr-0.5 ${chromeHidden ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : 'top-3'}`}>
+          <div data-cc-chrome ref={dockRef} className={`absolute right-3 ${uiEditOn ? 'z-[75]' : 'z-40'} flex flex-col items-stretch gap-1.5 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain pr-0.5 ${chromeHidden ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : externalTopbar ? 'top-16' : 'top-3'}`}>
             {/* GAMEPLAY MODE — one tap strips ALL chrome so the world plays clean.
                 Game worlds only; hubs are navigation surfaces. */}
             {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
@@ -7250,7 +7255,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* FOCUS — what world/branch/version this tab is actually looking at.
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
-          {ctx.surface === 'world' && (playScene || spaceId) && (() => {
+          {ctx.surface === 'world' && (playScene || spaceId) && !(externalTopbar && !playMode) && (() => {
             // the ONE identity strip: a UNIVERSAL back button, and the world
             // detail (name · owner / main·live) to its RIGHT. Host-only details
             // ctx can't know are passed in. NOT on the hub (CAFE/SUB-MAIN) —

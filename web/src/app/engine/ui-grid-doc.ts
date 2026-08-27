@@ -9,6 +9,11 @@
 // every region added here must immediately pass the overlap gate.
 import type { UiGridDoc } from './ui-grid'
 
+/** the phone-window cut: at or under this column width the top band
+ *  consolidates into ONE bar (chrome.topbar.narrow) — the calculated-instance
+ *  predicate every consumer (doc, bar mount, engine yield) must share. */
+export const NARROW_TOPBAR_MAX_W = 520
+
 export const WORLD_PAGE_GRID: UiGridDoc = {
   regions: [
     // THE GAME MOVER — everything between the bars. Hosts its own perchers
@@ -17,6 +22,10 @@ export const WORLD_PAGE_GRID: UiGridDoc = {
 
     // CAFE — the bars. Perchers roost here as they migrate off hand CSS.
     { id: 'chrome.topbar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, 0.055] }, z: 40 },
+    // narrow instance (rung 3): the consolidated bar [◂ · chip · ⚓] needs
+    // headroom for the two-line focus chip — a DEEPENED topbar band on phone
+    // windows only. Parented to chrome.topbar: same home, legal nesting.
+    { id: 'chrome.topbar.narrow', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, 0.08] }, z: 62, parent: 'chrome.topbar', when: { viewport: { maxW: NARROW_TOPBAR_MAX_W } } },
     { id: 'chrome.bottombar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0.94, 1] }, z: 40 },
 
     // bottombar slots (parented — legal nesting): actions right, console left
