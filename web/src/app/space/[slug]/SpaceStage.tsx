@@ -281,9 +281,11 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
             doc's chrome.bottombar.right region, solved against this chrome
             column (the wrapper is the containing block, so fixed = column-
             relative). Placement edits happen in ui-grid-doc.ts, never here. */}
-        {!building && !playMode && (
+        {!playMode && (
           <GridSlot region="chrome.bottombar.right" gravity="right" solved={gridSolved}>
-            <ShareWorld slug={spaceSlug} name={name} />
+            {/* TENANTS #1+#2 — the slot owns the row; the grid owns the slot */}
+            <span className="mr-2"><FollowButton handle={ownerHandle} isOwner={isOwner} /></span>
+            {!building && <ShareWorld slug={spaceSlug} name={name} />}
           </GridSlot>
         )}
         {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
@@ -292,8 +294,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         {/* DOCK: join a node-founded world's live edit flow (membership seat).
             Renders nothing for owners / non-node worlds / play-only. */}
         {!versionView && !playMode && !isOwner && <DockButton slug={spaceSlug} name={name} />}
-        {/* sits clearly ABOVE the SHARE button (bottom-4, ~34px tall) */}
-        {!playMode && <div className="fixed bottom-[64px] right-4 z-[60] pointer-events-auto"><FollowButton handle={ownerHandle} isOwner={isOwner} /></div>}
+        {/* (FOLLOW moved into the bottombar slot above — tenant #2) */}
       </div>
       {/* ⚙ MANAGE moved off individual world pages → it now lives on your own
           shelf, /u/<you> (the MANAGE button in CafeShell's top bar). */}
