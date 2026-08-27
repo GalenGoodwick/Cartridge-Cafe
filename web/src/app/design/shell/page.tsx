@@ -15,10 +15,18 @@ import { solveUiGrid, uiGridOverlaps, type SolvedRegion, type UiGridState, type 
 // session rail. Inset a hair off top/bottom bars so it clears the overlap gate
 // before it's ever proposed to the shared truth (this is the pattern: propose
 // local → gate → merge with the chair's review, never edit shared doc blind).
+// the shared doc's game.stage is full-bleed (cafe composites over it). For the
+// CONTAINED look (Galen — the reckoning's bounded inset: chrome AROUND the
+// world, never under), the shell overrides game.stage into a WINDOW that stops
+// before the rail on desktop and sits below the topbar / above the bottombar.
 const SHELL_DOC: UiGridDoc = {
   regions: [
-    ...WORLD_PAGE_GRID.regions,
-    { id: 'chrome.rail', layer: 'cafe', anchor: { vx: [0.858, 1], vy: [0.09, 0.93] }, z: 41, when: { viewport: { minW: 700 } } },   // clears the chair's deepened topbar (0.08) — gate-verified
+    ...WORLD_PAGE_GRID.regions.filter(r => r.id !== 'game.stage'),
+    // desktop: the world window is inset left of the rail
+    { id: 'game.stage', layer: 'game', anchor: { vx: [0.01, 0.85], vy: [0.10, 0.925] }, z: 5, when: { viewport: { minW: 700 } } },
+    // phone: no rail — the window spans the column, still bounded by the bars
+    { id: 'game.stage.narrow', layer: 'game', anchor: { vx: [0.02, 0.98], vy: [0.115, 0.925] }, z: 5, when: { viewport: { maxW: 699 } } },
+    { id: 'chrome.rail', layer: 'cafe', anchor: { vx: [0.858, 1], vy: [0.09, 0.93] }, z: 41, when: { viewport: { minW: 700 } } },
   ],
 }
 import { LiveArt } from '@/app/cards/LiveArt'
@@ -56,9 +64,10 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
       className="fixed overflow-hidden"
       style={{
         left: r.rect.x, top: r.rect.y, width: r.rect.w, height: r.rect.h, zIndex: r.z,
-        border: `1px dashed ${isGame ? 'rgba(80,200,255,0.35)' : 'rgba(255,190,60,0.35)'}`,
-        background: isGame ? '#05060c' : 'rgba(20,16,10,0.55)',
-        backdropFilter: isGame ? undefined : 'blur(2px)',
+        border: isGame ? '1px solid rgba(80,200,255,0.45)' : '1px dashed rgba(255,190,60,0.3)',
+        borderRadius: isGame ? 10 : 0,
+        background: isGame ? '#05060c' : 'transparent',
+        boxShadow: isGame ? '0 0 0 1px rgba(0,0,0,0.6), inset 0 0 40px rgba(0,0,0,0.5)' : undefined,
       }}
     >
       {art && <div className="absolute inset-0"><LiveArt wgsl={BACKDROP} hue={0.7} onFail={() => {}} /></div>}
@@ -102,10 +111,10 @@ export default function ShellProof() {
   }
 
   return (
-    <div ref={wrapRef} className="fixed inset-0 bg-black"
+    <div ref={wrapRef} className="fixed inset-0" style={{background:"radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)"}}
       style={dims && phone ? { left: (window.innerWidth - dims.w) / 2, width: dims.w } : undefined}>
       {solved.filter(r => !r.slip).map(r => (
-        <Region key={r.id} r={r} art={r.id === 'game.stage'}>{tenants[r.id]}</Region>
+        <Region key={r.id} r={r} art={r.layer === 'game'}>{tenants[r.id]}</Region>
       ))}
       <button onClick={() => setPhone(p => !p)}
         className="fixed top-2 left-1/2 -translate-x-1/2 z-[999] font-mono text-[11px] tracking-[0.2em] px-3 py-1.5 rounded-full border border-emerald-300/50 text-emerald-200 bg-black/80 pointer-events-auto">
