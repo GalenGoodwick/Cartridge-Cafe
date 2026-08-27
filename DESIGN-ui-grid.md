@@ -102,3 +102,38 @@ meters, buttons — the ui-solver + UiBox/glyph passes; clicks land in
 | uigrid-compositor | renderer clip + cafe-region render | open |
 | uigrid-topbar | rung-3 region | open |
 | uigrid-migrate | rungs 4-6 | open (coordinate: sibling + chair) |
+
+## THE WORLD FRAME — the app-shell rung (Galen, Aug 26 night)
+
+> "We need to design this as a proper app. The old Unity Chant had a
+> common-ground iframe setup — it binds the UI well. Then the grid is inside
+> that." — pattern only; **no old code. Remade so it is ours.**
+
+**The architecture (clean-room, cafe-native):**
+- **THE APP SHELL** owns the page: the platform doc's cafe regions (topbar,
+  rails, bottombar, slip-ins) rendered by GridChrome. Shell chrome can never
+  enter the world — not by gate, by construction.
+- **THE WORLD FRAME** — an iframe, the largest MOVER on the shell's grid. The
+  world (FieldEngine + canvas + game UI + touch) lives inside with a REAL
+  viewport of its own:
+  · `fit=mobile` = frame sized 9:19.5 — the phone instance becomes literal;
+    no letterbox math, no containing-block transforms, no fit races.
+  · `position:fixed` inside is frame-relative BY BROWSER LAW — the bug class
+    that produced tonight's trapped buttons and ignored frames dies at the
+    platform level.
+  · the game's OWN grid governs inside (grid outside, grid inside, hard wall).
+- **THE SEAM PROTOCOL (ours, minimal):** one typed postMessage channel,
+  versioned, replacing ad-hoc window events:
+  `shell→frame: {mode, role, triggers, insets}` ·
+  `frame→shell: {caption, playmode, building, uiRects (the game perchers —
+  kills the runtime-ghost blindness), recTap}`.
+  Bridge/SSE stay in-frame (same-origin); REC taps the canvas in-frame and
+  streams blobs up; design-mode drag negotiates across the seam.
+
+**Rungs:** (F1) frame mount behind a flag — world boots in the frame, seam
+protocol v1 · (F2) shell chrome fully on GridChrome, zero chrome in-frame ·
+(F3) fit=mobile = frame dimensions; kill letterbox machinery · (F4) game-UI
+rects flow frame→shell (ghost finding resolved) · (F5) /cards + shells join
+the app shell. Lane owner: fable (container spec hardens into the frame);
+grid/seam-types/eye: opus; adversarial: chair.
+
