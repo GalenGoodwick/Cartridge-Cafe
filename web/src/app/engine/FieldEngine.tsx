@@ -313,13 +313,21 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     let sx = 0, sy = 0, ox = 0, oy = 0, moved = false
     const findChrome = (t: EventTarget | null): HTMLElement | null => {
       let el = t instanceof HTMLElement ? t : null
+      let fallback: HTMLElement | null = null
       while (el && el !== document.body) {
-        if (el.tagName === 'CANVAS') return null
+        if (el.tagName === 'CANVAS') return null                 // the game mover is NOT a percher
+        if (el.querySelector('canvas')) return fallback          // world containers never drag
+        // SMALLEST unit wins (Galen: 'they all move together') — the button/leaf,
+        // never the shared fixed wrapper
+        if (/^(BUTTON|A)$/.test(el.tagName) || el.getAttribute('role') === 'button' || el.hasAttribute('data-cc-chrome')) return el
         const cs = getComputedStyle(el)
-        if (cs.position === 'fixed' || el.hasAttribute('data-cc-chrome')) return el
+        if (!fallback && (cs.position === 'fixed' || cs.position === 'absolute')) {
+          const r = el.getBoundingClientRect()
+          if (r.width < innerWidth * 0.7 && r.height < innerHeight * 0.7) fallback = el
+        }
         el = el.parentElement
       }
-      return null
+      return fallback
     }
     const down = (e: PointerEvent) => {
       const el = findChrome(e.target)
@@ -327,6 +335,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       dragEl = el; moved = false
       const r = el.getBoundingClientRect()
       sx = e.clientX; sy = e.clientY; ox = r.x; oy = r.y
+      // SURFACE the percher (Galen: 'buttons hidden in world layer') — a
+      // transform ancestor imprisons position:fixed; lift to document.body at
+      // the exact viewport rect: the same plane as SHARE.
+      if (el.parentElement !== document.body) {
+        el.style.width = r.width + 'px'
+        el.style.height = r.height + 'px'
+        document.body.appendChild(el)
+        el.style.position = 'fixed'
+        el.style.left = r.x + 'px'; el.style.top = r.y + 'px'
+        el.style.right = 'auto'; el.style.bottom = 'auto'
+        el.style.transform = 'none'; el.style.margin = '0'
+        el.style.zIndex = '95'
+      }
       el.setPointerCapture?.(e.pointerId)
       el.style.outline = '2px dashed rgba(255,190,60,0.9)'
       el.style.outlineOffset = '2px'

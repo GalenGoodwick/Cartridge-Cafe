@@ -117,3 +117,24 @@ describe('cell out the black space', () => {
     expect(leftRail.fits).not.toContain('GIANT')
   })
 })
+
+// ─── regressions from the chair's adversarial review (commons, Aug 26) ───
+describe('chair findings', () => {
+  it('(1) a parent CYCLE cannot hang the overlap walk', () => {
+    const cyclic: UiGridDoc = { regions: [
+      { id: 'a', layer: 'cafe', anchor: { vx: [0, 0.5], vy: [0, 0.5] }, parent: 'b' },
+      { id: 'b', layer: 'cafe', anchor: { vx: [0.25, 0.75], vy: [0.25, 0.75] }, parent: 'a' },
+    ] }
+    const s = solveUiGrid(cyclic, desktop)
+    expect(() => uiGridOverlaps(cyclic, s)).not.toThrow()   // returns (parented → legal), never loops
+  })
+
+  it('(2) an occupied rect past the window edge cannot inflate free territory', () => {
+    const cells = cellOutFreeSpace({ w: 400, h: 400 }, [{ x: 500, y: 0, w: 100, h: 400 }])
+    for (const c of cells) expect(c.x + c.w).toBeLessThanOrEqual(400)
+  })
+
+  it('(3) a full-width open half is stage-extension, never a rail', () => {
+    expect(classifySense({ x: 0, y: 120, w: 1000, h: 680 }, { w: 1000, h: 800 })).toBe('stage-extension')
+  })
+})

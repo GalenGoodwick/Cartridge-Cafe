@@ -76,7 +76,7 @@ export function cellOutFreeSpace(win: { w: number; h: number }, occupied: Rect[]
     const y0 = bands[i], y1 = bands[i + 1]
     if (y1 - y0 < 2) continue
     const blockers = occupied.filter(r => r.y < y1 && r.y + r.h > y0)
-      .map(r => ({ x0: Math.max(0, r.x), x1: Math.min(win.w, r.x + r.w) }))
+      .map(r => ({ x0: Math.min(win.w, Math.max(0, r.x)), x1: Math.min(win.w, r.x + r.w) }))
       .sort((a, b) => a.x0 - b.x0)
     const runs: Run[] = []
     let x = 0
@@ -111,8 +111,8 @@ export function classifySense(c: Rect, win: { w: number; h: number }): CellSense
   const atLeft = c.x < win.w * 0.05, atRight = c.x + c.w > win.w * 0.95
   if (wide && short && atTop) return 'topbar'
   if (wide && short && atBottom) return 'bottombar'
-  if (tall && atLeft) return 'left-rail'
-  if (tall && atRight) return 'right-rail'
+  if (tall && atLeft && !wide) return 'left-rail'
+  if (tall && atRight && !wide) return 'right-rail'   // a wide open half is stage-extension, not a rail (chair)
   if (c.w < 180 && c.h < 180) return 'corner-badge'
   return 'stage-extension'   // big open space — the game MOVER may grow here
 }
@@ -194,8 +194,13 @@ export function uiGridOverlaps(doc: UiGridDoc, solved: SolvedRegion[]): UiOverla
   const parentOf = new Map<string, string>()
   for (const r of doc.regions ?? []) if (r.parent) parentOf.set(r.id, r.parent)
   const related = (a: string, b: string) => {
-    for (let p = parentOf.get(a); p; p = parentOf.get(p)) if (p === b) return true
-    for (let p = parentOf.get(b); p; p = parentOf.get(p)) if (p === a) return true
+    // cycle-safe (the chair's repro: a.parent=b, b.parent=a hung the event loop
+    // — and the doc lives in the SNAPSHOT, so a malformed world doc could hang
+    // any tab/probe that gates on it). Visited-set caps the walk.
+    const seen = new Set<string>()
+    for (let p = parentOf.get(a); p && !seen.has(p); p = parentOf.get(p)) { if (p === b) return true; seen.add(p) }
+    seen.clear()
+    for (let p = parentOf.get(b); p && !seen.has(p); p = parentOf.get(p)) { if (p === a) return true; seen.add(p) }
     return false
   }
   const out: UiOverlap[] = []
