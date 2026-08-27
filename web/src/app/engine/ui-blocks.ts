@@ -151,3 +151,69 @@ export function shellTopbarUi(o: ShellTopbarOpts): UiNode[] {
   }
   return nodes
 }
+
+// ─── THE WORLD SHELL — every world's chrome as engine pixels (THE CONVERSION,
+// Galen Aug 27: "any world birthing or existing worlds needs to show through
+// the one new UI"). Composes the FULL band set the DOM chrome used to draw:
+// topbar (back + title), the desktop action rail (PLAY / INSTRUCTIONS / FORK /
+// EDIT), and the footer BUILDERBOX pill. Placement is DECLARED (anchors +
+// aligns — the solver's arithmetic), never dragged. Actions ride the shell:
+// namespace to the host; the host commands the engine back by NAME
+// ('cafe:shell-cmd'), so the seam law holds in both directions.
+//
+// Phone instance (viewport-narrow): the rail collapses — PLAY joins the footer
+// beside BUILDERBOX; INSTRUCTIONS/EDIT wait for the menu sheet (a button with
+// no sheet behind it is a lie — the sheet is the next rung). FOLLOW/SHARE stay
+// DOM this rung (session flows), still solver-placed.
+
+export interface ShellWorldOpts {
+  title: string
+  sub?: string
+  instance: 'phone' | 'desktop'
+  isOwner: boolean
+  isHub?: boolean
+  /** engine-count badge for the BuilderBox pill (people + AI live now) */
+  live?: number
+}
+
+const RAIL_FS = 11
+const RAIL_W = 118          // one rail width — the widest label (INSTRUCTIONS) + pad
+
+export function shellWorldUi(o: ShellWorldOpts): UiNode[] {
+  const nodes: UiNode[] = shellTopbarUi({ title: o.title, sub: o.sub, instance: o.instance, dockable: false, menu: false })
+
+  const pill = (id: string, label: string, action: string, anchor: UiNode['anchor'], align: UiNode['align'], w?: number): UiNode => ({
+    id, kind: 'panel', pad: PILL_PAD, ...(w ? { w } : {}), glass: SHELL_GLASS,
+    click: shellAction(action), draggable: false, collapsible: false,
+    anchor, align,
+    children: [{ id: `${id}.t`, kind: 'text', text: label, fontSize: RAIL_FS, color: SHELL_INK }],
+  })
+
+  if (!o.isHub) {
+    if (o.instance === 'desktop') {
+      // THE RAIL — top-right stack, below the topbar band; uniform width so it
+      // reads as one clean column (the DOM dock's items-stretch, declared)
+      const railX = -EDGE
+      let y = EDGE + 34
+      const rail: Array<[string, string, string]> = [
+        ['shell.play', '# PLAY', 'play'],
+        ['shell.instructions', '? INSTRUCTIONS', 'instructions'],
+        ...(!o.isOwner ? [['shell.fork', '+ FORK WORLD', 'fork'] as [string, string, string]] : []),
+        ['shell.edit', '/ EDIT', 'edit'],
+      ]
+      for (const [id, label, action] of rail) {
+        nodes.push(pill(id, label, action, { vx: 1, vy: 0, dx: railX, dy: y }, 'tr', RAIL_W))
+        y += 30
+      }
+      nodes.push(pill('shell.builderbox', `= BUILDERBOX${o.live ? ` (${o.live})` : ''}`, 'builderbox',
+        { vx: 0, vy: 1, dx: EDGE, dy: -EDGE }, 'bl'))
+    } else {
+      // PHONE — footer row: BUILDERBOX + PLAY side by side, thumb-reachable
+      nodes.push(pill('shell.builderbox', `= BOX${o.live ? ` (${o.live})` : ''}`, 'builderbox',
+        { vx: 0, vy: 1, dx: EDGE, dy: -EDGE }, 'bl'))
+      nodes.push(pill('shell.play', '# PLAY', 'play',
+        { vx: 0, vy: 1, dx: EDGE + 86, dy: -EDGE }, 'bl'))
+    }
+  }
+  return nodes
+}

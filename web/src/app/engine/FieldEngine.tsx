@@ -1935,6 +1935,24 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     setBranchCreateOpen(v => !v)
   }, [me])
 
+  // ─── THE CONVERSION seam, host→engine half: the host's shell pills command
+  // the engine BY NAME ('cafe:shell-cmd' {cmd}) — the engine executes its own
+  // internals (play/instructions/edit/fork/builderbox); it never exposes them.
+  // (engine→host stays 'cafe:shell-ui' with shell:* actions — the chair's seam.)
+  const shellCmdRef = useRef<(cmd: string) => void>(() => {})
+  shellCmdRef.current = (cmd: string) => {
+    if (cmd === 'play') enterPlayMode()
+    else if (cmd === 'instructions') setInstrOpen(v => !v)
+    else if (cmd === 'edit') toggleUiDock()
+    else if (cmd === 'fork') { if (spaceSlug) instantForkSpace(); else handleBranch() }
+    else if (cmd === 'builderbox') setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })
+  }
+  useEffect(() => {
+    const on = (e: Event) => shellCmdRef.current(String((e as CustomEvent).detail || ''))
+    window.addEventListener('cafe:shell-cmd', on)
+    return () => window.removeEventListener('cafe:shell-cmd', on)
+  }, [])
+
   // OPEN GROUND notice (Galen): entering a house world quietly says editing is
   // allowed — once per world per session. A save FORKS it into a world the
   // saver owns (fork paradigm); the original stays immortal.
@@ -6407,8 +6425,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             </div>
           )}
 
-          {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock */}
-          {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !chromeHidden && (
+          {/* WORLD CHAT — its own door, bottom-left, apart from the EDIT dock.
+              THE CONVERSION: hidden when the ENGINE shell is on — the engine's
+              own BUILDERBOX pill (shellWorldUi) is this door now. */}
+          {!shellUi && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && !worldChatOpen && !chromeHidden && (
             <button data-cc-chrome
               onClick={() => setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })}
               className="absolute left-3 bottom-3 z-40 px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors inline-flex items-center gap-1.5"
@@ -6428,10 +6448,13 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* items-stretch → every control in the dock takes the SAME width (the
               widest one, e.g. INSTRUCTIONS / BUILD CONSOLE) so the stack reads as
               one clean column instead of ragged-right buttons */}
-          <div data-cc-chrome ref={dockRef} className={`absolute right-3 ${uiEditOn ? 'z-[75]' : 'z-40'} flex flex-col items-stretch gap-1.5 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain pr-0.5 ${chromeHidden ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : externalTopbar ? 'top-[8vh]' : 'top-3'}`}>
+          {/* THE CONVERSION: with the engine shell on, this DOM dock exists
+              ONLY as the EDIT fold (owner tools — the DOM escape hatch); the
+              always-visible buttons are engine pills now (shellWorldUi). */}
+          <div data-cc-chrome ref={dockRef} className={`absolute right-3 ${uiEditOn ? 'z-[75]' : 'z-40'} flex flex-col items-stretch gap-1.5 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain pr-0.5 ${chromeHidden || (shellUi && !uiDockOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN') ? 'hidden' : ''} ${playScene === 'CAFE' || playScene === 'SUB-MAIN' ? 'top-16' : externalTopbar ? 'top-[8vh]' : 'top-3'}`}>
             {/* GAMEPLAY MODE — one tap strips ALL chrome so the world plays clean.
                 Game worlds only; hubs are navigation surfaces. */}
-            {!isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+            {!shellUi && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
               <button
                 onClick={enterPlayMode}
                 title="gameplay mode — hide all UI and just play"
@@ -6440,12 +6463,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 ⛶ PLAY
               </button>
             )}
+            {!shellUi && (
             <button
               onClick={() => setInstrOpen(v => !v)}
               className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
             >
               ? INSTRUCTIONS
             </button>
+            )}
             {/* FORK stands ABOVE the EDIT fold (Galen: out of the dropdown) —
                 forking is the front-door act, not a buried control. GREEN = the
                 create action. Under it, the ◂/▸ browse row steps the family

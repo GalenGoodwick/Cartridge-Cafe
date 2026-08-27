@@ -1,12 +1,13 @@
 'use client'
 
 import { usePresenceBeat } from '@/lib/usePresenceBeat'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
 import { WorldTopbar } from '@/app/engine/ui-topbar'
 import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
+import { shellWorldUi } from '@/app/engine/ui-blocks'   // THE CONVERSION: the engine draws the chrome
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
 // (DockButton REMOVED — Galen, Aug 27: membership automatically allows editing
@@ -58,6 +59,40 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
     window.addEventListener('cafe:caption', onCaption)
     return () => { window.removeEventListener('cafe:caption', onCaption); if (timer) clearTimeout(timer) }
   }, [])
+
+  // ─── THE CONVERSION (Galen, Aug 27: every world shows through the one new
+  // UI). The world's chrome — back, title, PLAY/INSTRUCTIONS/FORK/EDIT rail,
+  // BUILDERBOX — is composed here as ui-solver nodes (shellWorldUi) and drawn
+  // BY THE ENGINE inside the world's own solve: real GPU pixels, one pass, the
+  // eye sees everything. shell:* clicks come back on 'cafe:shell-ui'; engine
+  // internals are commanded by name over 'cafe:shell-cmd' (the two-way seam).
+  // Version views keep the old DOM row (read-only browsing).
+  const [instanceW, setInstanceW] = useState<number>(9999)
+  useEffect(() => {
+    const m = () => setInstanceW(window.innerWidth)
+    m(); window.addEventListener('resize', m)
+    return () => window.removeEventListener('resize', m)
+  }, [])
+  const engineShell = useMemo(() => {
+    if (versionView != null) return null
+    return shellWorldUi({
+      title: name, sub: 'MAIN - LIVE',
+      instance: instanceW < 700 ? 'phone' : 'desktop',
+      isOwner,
+    })
+  }, [name, instanceW, isOwner, versionView])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const action = String((e as CustomEvent).detail || '')
+      if (!action.startsWith('shell:')) return
+      const a = action.slice(6)
+      if (a === 'back') router.push('/')
+      else if (a === 'play' || a === 'instructions' || a === 'edit' || a === 'fork' || a === 'builderbox')
+        window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: a }))
+    }
+    window.addEventListener('cafe:shell-ui', on)
+    return () => window.removeEventListener('cafe:shell-ui', on)
+  }, [router])
 
   // THE DESKTOP DOOR (targets matrix, other half of the phone frame): a world
   // declaring worldData.fit='desktop' is built for a wide screen + fine pointer.
@@ -337,11 +372,10 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
             worlds and for owners/buyers (server truth: /api/premium) */}
         {!versionView && <PremiumGate slug={spaceSlug} name={name} />}
-        {/* THE TOP BAR — one owner for the top band at every width, placed BY
-            THE SOLVER at chrome.topbar. DOCK lives in the bar (the centered
-            pill is dead — it collided with the title anywhere under ~734px).
-            Hidden in play mode (the engine's ◂ + compact pulse take over). */}
-        {barOn && !playMode && (
+        {/* THE TOP BAR — THE CONVERSION: the ENGINE draws it now (shellWorldUi
+            back+title pills through the world's own solve). The DOM bar remains
+            ONLY for version views (read-only browsing keeps its own row). */}
+        {barOn && !playMode && versionView != null && (
           <GridSlot region="chrome.topbar" gravity="left" solved={gridSolved}>
             <WorldTopbar slug={spaceSlug} name={name} ownerName={ownerName} ownerHandle={ownerHandle} ownerId={ownerId}
               isOwner={isOwner} versionView={versionView}
@@ -371,6 +405,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         viewport={null}
         frame={phoneInset}
         externalTopbar={barOn}
+        shellUi={engineShell}
       />
 
       {/* BRANCH ARENA REMOVED (branch→fork transition): a world no longer hosts a
