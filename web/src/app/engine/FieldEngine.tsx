@@ -1935,19 +1935,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     setBranchCreateOpen(v => !v)
   }, [me])
 
-  // OPEN GROUND notice (Galen): entering a house world quietly says editing is
-  // allowed — once per world per session. A save FORKS it into a world the
-  // saver owns (fork paradigm); the original stays immortal.
-  const openGroundToldRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    const cur = playScene || ''
-    if (!cur || spaceId || cur.includes(' ⑂ ') || cur === 'CAFE' || cur === 'SUB-MAIN') return
-    if (openGroundToldRef.current.has(cur)) return
-    openGroundToldRef.current.add(cur)
-    showToast('☕ open ground — this house world is everyone’s to edit', 'info',
-      'Edit freely; saving forks it into your own world. The original is immortal.')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playScene, spaceId])
+  // OPEN GROUND notice removed (Galen, Aug 27): open-ground editing needs no
+  // announcement — anyone can edit, that's the ground rule, not news.
 
   const handleSaveScene = useCallback(() => sceneIO.saveScenePrompted({ simulationRef, rendererRef, allStepHookSnapshots, showToast, refreshSceneList }), [showToast, refreshSceneList])
 
