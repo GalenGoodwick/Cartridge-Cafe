@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import FieldEngine from '@/app/engine/FieldEngine'
 import ShareWorld from './ShareWorld'
+import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
 import DockButton from './DockButton'
@@ -220,6 +221,18 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   // shrinks its root) and let the dark margins hold the site chrome. On an
   // actual phone (already-narrow / portrait) the frame is a no-op — full screen.
   const [phoneInset, setPhoneInset] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
+  // the solver's window = THE CHROME COLUMN (the wrapper below is a containing
+  // block at this rect, so slot fixed-positioning is column-relative)
+  const [colDims, setColDims] = useState<{ w: number; h: number } | null>(null)
+  useEffect(() => {
+    const m = () => setColDims({
+      w: window.innerWidth - (phoneInset ? phoneInset.left + phoneInset.right : 0),
+      h: window.innerHeight - (phoneInset ? phoneInset.top + phoneInset.bottom : 0),
+    })
+    m(); window.addEventListener('resize', m)
+    return () => window.removeEventListener('resize', m)
+  }, [phoneInset])
+  const gridSolved = useSolvedGrid(colDims)
   useEffect(() => {
     if (fit !== 'mobile' || versionView != null) { setPhoneInset(null); return }
     const measure = () => {
@@ -263,8 +276,16 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
           : { inset: 0 }}
       >
         {/* nothing to share on a world that isn't real yet — hide SHARE while it's
-            still blank-and-building */}
-        {!building && !playMode && <ShareWorld slug={spaceSlug} name={name} />}
+            still blank-and-building. RUNG 2 (ui-grid): SHARE is the FIRST
+            PERCHER placed BY THE SOLVER — its rect comes from the platform
+            doc's chrome.bottombar.right region, solved against this chrome
+            column (the wrapper is the containing block, so fixed = column-
+            relative). Placement edits happen in ui-grid-doc.ts, never here. */}
+        {!building && !playMode && (
+          <GridSlot region="chrome.bottombar.right" gravity="right" solved={gridSolved}>
+            <ShareWorld slug={spaceSlug} name={name} />
+          </GridSlot>
+        )}
         {/* PREMIUM GAMES: the demo meter + paywall — renders nothing on free
             worlds and for owners/buyers (server truth: /api/premium) */}
         {!versionView && <PremiumGate slug={spaceSlug} name={name} />}

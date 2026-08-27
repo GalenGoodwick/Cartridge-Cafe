@@ -23,7 +23,7 @@ export default function ShareWorld({ slug, name }: { slug: string; name: string 
   const item = 'w-full text-left px-3 py-2 rounded-lg font-mono text-[14px] tracking-[0.1em] text-steamer/85 hover:text-glow hover:bg-white/5 transition-colors'
 
   return (
-    <div data-cc-chrome className="fixed bottom-4 right-4 z-[60] font-mono select-none pointer-events-auto">
+    <div data-cc-chrome className="mr-3 font-mono select-none pointer-events-auto">   {/* TENANT: position comes from GridSlot (rung 2) — no hand CSS */}
       <button onClick={() => setOpen(o => !o)}
         className="rounded-lg border border-brass/40 hover:border-flame/60 bg-void/70 backdrop-blur px-3 py-1.5 text-[14px] tracking-[0.15em] text-steamer/80 hover:text-glow transition-colors">
         ↗ SHARE
