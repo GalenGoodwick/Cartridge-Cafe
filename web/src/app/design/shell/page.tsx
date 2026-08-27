@@ -29,18 +29,7 @@ const SHELL_DOC: UiGridDoc = {
     { id: 'chrome.rail', layer: 'cafe', anchor: { vx: [0.858, 1], vy: [0.09, 0.93] }, z: 41, when: { viewport: { minW: 700 } } },
   ],
 }
-import { LiveArt } from '@/app/cards/LiveArt'
-
-// a self-contained backdrop visual (a slow aurora) — engine renders the mover
-const BACKDROP = /* wgsl */`
-fn visual_shell_bg(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
-  let p = vec2f(uv.x, -uv.y);
-  let wav = sin(p.x * 3.0 + time * 0.3) * cos(p.y * 4.0 - time * 0.22) * 0.5 + 0.5;
-  var col = mix(vec3f(0.03, 0.035, 0.08), vec3f(0.12, 0.09, 0.24), wav);
-  col += vec3f(0.4, 0.24, 0.6) * pow(max(0.0, 0.7 - length(p - vec2f(0.0, -0.25))), 3.0) * 1.5;
-  col += vec3f(0.06, 0.05, 0.12) * sin(p.y * 9.0 + p.x * 3.0 + time * 0.6);
-  return vec4f(col, 1.0);
-}`
+import { FitShader } from './FitShader'
 
 function useSolved(container: { w: number; h: number } | null): SolvedRegion[] {
   const [solved, setSolved] = useState<SolvedRegion[]>([])
@@ -65,7 +54,6 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
   // to the region's larger side and is CROPPED by the region's overflow — the
   // aspect stays 1:1 so it can't stretch. Keyed by rect so it remounts fresh on
   // an instance change (fixes the phone→desktop canvas loss).
-  const cover = Math.max(r.rect.w, r.rect.h)
   return (
     <div
       className="absolute overflow-hidden"
@@ -77,12 +65,11 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
         boxShadow: isGame ? '0 0 0 1px rgba(0,0,0,0.6), inset 0 0 40px rgba(0,0,0,0.5)' : undefined,
       }}
     >
-      {art && (
-        <div key={`${r.rect.w}x${r.rect.h}`} className="absolute"
-          style={{ width: cover, height: cover, left: (r.rect.w - cover) / 2, top: (r.rect.h - cover) / 2 }}>
-          <LiveArt wgsl={BACKDROP} hue={0.7} onFail={() => {}} />
-        </div>
-      )}
+      {/* THE HONEST FIX (Galen: I hid the problem with crop-to-cover before).
+          FitShader reads its OWN real pixel size and recomposes — circles stay
+          round (no squish), it fills the box (no letterbox), content reflows
+          instead of being chopped (no crop). No square-and-crop. */}
+      {art && <FitShader />}
       <span className="absolute top-1 left-2 font-mono text-[10px] tracking-[0.15em] z-10"
         style={{ color: isGame ? '#50c8ff' : '#ffbe3c', textShadow: '0 1px 2px #000' }}>
         {r.id} · {r.rect.w}×{r.rect.h}
