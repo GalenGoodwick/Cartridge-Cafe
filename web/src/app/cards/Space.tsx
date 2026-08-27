@@ -21,13 +21,25 @@ export function CatalogSpace({ children }: { children: React.ReactNode }) {
     if (!ctx) return
     let w = 0, h = 0, raf = 0
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    // CSS size and drawing-buffer size are SEPARATE (Galen's live-site find):
+    // an absolutely-positioned canvas with width:auto takes its INTRINSIC
+    // (buffer) size as layout — setting cv.width = w*dpr made the canvas lay
+    // out at 2× the viewport on a dpr-2 phone (780×1688 on 390×844), and the
+    // reduced-motion early-return left it at the default 300×150 on desktop.
+    // Explicit style px pin the layout; the buffer alone carries the dpr.
+    // visualViewport beats innerWidth around mobile URL-bar chrome.
     const size = () => {
-      w = window.innerWidth; h = window.innerHeight
-      cv.width = w * dpr; cv.height = h * dpr
+      w = Math.round(window.visualViewport?.width ?? window.innerWidth)
+      h = Math.round(window.visualViewport?.height ?? window.innerHeight)
+      cv.style.width = `${w}px`
+      cv.style.height = `${h}px`
+      const bw = Math.round(w * dpr), bh = Math.round(h * dpr)
+      if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     size()
     window.addEventListener('resize', size)
+    window.visualViewport?.addEventListener('resize', size)
 
     // three depth layers of embers — far ones small/slow/dim, near ones warm
     const motes: Mote[] = Array.from({ length: 90 }, (_, i) => {
@@ -61,7 +73,7 @@ export function CatalogSpace({ children }: { children: React.ReactNode }) {
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', size); window.removeEventListener('scroll', onScroll) }
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', size); window.visualViewport?.removeEventListener('resize', size); window.removeEventListener('scroll', onScroll) }
   }, [])
 
   // the hovered card leans toward the cursor — one delegated listener, only
@@ -87,9 +99,11 @@ export function CatalogSpace({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <div className="relative min-h-screen"
+    <div className="relative min-h-[100dvh]"
       style={{ background: 'radial-gradient(1100px 500px at 70% -10%, rgba(255,138,61,0.08), transparent 60%), radial-gradient(900px 600px at 10% 110%, rgba(120,60,20,0.06), transparent 55%), #0a0705' }}>
-      <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" aria-hidden />
+      {/* explicit CSS size — layout NEVER comes from the drawing buffer (the
+          2×-viewport mobile bug); dvh, not vh, around mobile URL-bar chrome */}
+      <canvas ref={canvasRef} className="fixed inset-0 h-[100dvh] w-screen pointer-events-none" aria-hidden />
       {/* depth fog over the void, under the cards */}
       <div className="fixed inset-0 pointer-events-none" aria-hidden
         style={{ background: 'linear-gradient(180deg, rgba(10,7,5,0) 55%, rgba(10,7,5,0.55) 100%)' }} />

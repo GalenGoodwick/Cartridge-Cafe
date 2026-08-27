@@ -22,10 +22,11 @@ export default function BiggerTable() {
     if (!desktop) return
     setDismissed(sessionStorage.getItem('cafe:bigger-table') === '1')
     const onR = () => {
-      // "smaller than the desk": meaningfully under the screen the window sits on
-      const s = window.screen
-      const aw = s?.availWidth || 0, ah = s?.availHeight || 0
-      setSmall(aw >= 1024 && (window.innerWidth < aw * 0.72 || window.innerHeight < ah * 0.72))
+      // BREAKPOINT, not proportion (Galen: the catalog fits fine in a
+      // moderately shrunken window — the old 72%-of-screen rule nagged
+      // windows that worked and sat over the controls). Ask only when the
+      // window is genuinely under the catalog's working width/height.
+      setSmall(window.innerWidth < 900 || window.innerHeight < 560)
     }
     onR()
     window.addEventListener('resize', onR)
@@ -42,11 +43,12 @@ export default function BiggerTable() {
 
   if (dismissed || playMode || !small) return null
 
+  // bottom-right toast — off the top band where the catalog's controls live
   return (
-    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[65] max-w-[92vw] rounded-lg border border-[#b97a2a]/30 bg-[#171009]/90 backdrop-blur px-4 py-2.5 font-mono text-[13px] tracking-wider text-[#ffdba8]/90 shadow-lg">
+    <div className="fixed bottom-4 right-4 z-[65] max-w-[80vw] rounded-lg border border-[#b97a2a]/30 bg-[#171009]/90 backdrop-blur px-4 py-2.5 font-mono text-[13px] tracking-wider text-[#ffdba8]/90 shadow-lg">
       <div className="flex items-start gap-3">
         <div className="space-y-1">
-          <div>▢ the cafe needs a bigger table — <span className="text-[#ffdba8]">maximize this window</span></div>
+          <div>▢ tight fit — <span className="text-[#ffdba8]">widen this window</span> for the full table</div>
         </div>
         <button aria-label="dismiss" onClick={dismiss} className="text-[#ffdba8]/50 hover:text-[#ffdba8] transition-colors leading-none pt-0.5">✕</button>
       </div>
