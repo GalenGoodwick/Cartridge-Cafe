@@ -14,9 +14,9 @@
 // game's joystick + A/B. The fix: reserve a HEADER band and a FOOTER band, and
 // collapse the overflow into menus that EXPAND FROM those bands (the grid's
 // slip-in mechanic) — the world + its game controls stay clear between them.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { WORLD_PAGE_GRID } from '@/app/engine/ui-grid-doc'
-import { solveUiGrid, uiGridOverlaps, type SolvedRegion, type UiGridState, type UiGridDoc } from '@/app/engine/ui-grid'
+import { solveUiGrid, type SolvedRegion, type UiGridState, type UiGridDoc } from '@/app/engine/ui-grid'
 import { FitShader } from './FitShader'
 
 // the shared doc's game.stage is full-bleed; for the CONTAINED look (chrome
@@ -76,21 +76,15 @@ const menuItem = 'w-full text-left font-mono text-[13px] tracking-[0.18em] px-4 
 
 export default function ShellProof() {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
-  const [phone, setPhone] = useState(false)
   const [menu, setMenu] = useState<null | 'world' | 'cafe'>(null)   // which reserved-band drawer is open
-  const wrapRef = useRef<HTMLDivElement>(null)
+  // FILL THE TAB (Galen: "widen this window for the full tab"). The shell IS the
+  // real responsive app at the browser's real width — resize narrow and it's the
+  // mobile instance for real. No simulated phone column, no dev overlays.
   useEffect(() => {
-    const m = () => {
-      const W = window.innerWidth, H = window.innerHeight
-      if (phone) { const fw = Math.min(W, Math.round(H * 9 / 19.5), 460); setDims({ w: fw, h: H }) }
-      else setDims({ w: W, h: H })
-    }
+    const m = () => setDims({ w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
-  }, [phone])
-  // when entering the phone instance, open the header menu once so the
-  // "expand FROM the band" behaviour is visible at a glance.
-  useEffect(() => { setMenu(phone ? 'world' : null) }, [phone])
+  }, [])
   const solved = useSolved(dims)
   const isNarrow = (dims?.w ?? 9999) <= 699
 
@@ -134,18 +128,12 @@ export default function ShellProof() {
     ),
   }
 
-  const w = dims?.w ?? 0
-  const left = phone && dims ? Math.round((window.innerWidth - w) / 2) : 0
-  const gate = uiGridOverlaps(SHELL_DOC, solved).length === 0
-
   return (
     <>
       <div className="fixed inset-0 -z-10" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }} />
-      <div
-        ref={wrapRef}
-        className="fixed top-0 overflow-hidden"
-        style={{ left, width: w || '100%', height: '100%', transform: 'translateZ(0)', borderInline: phone ? '1px solid rgba(185,122,42,0.3)' : undefined }}
-      >
+      {/* the shell FILLS the tab — a containing block (transform) so its regions
+          resolve absolute against the real window; resize = the live instance */}
+      <div className="fixed inset-0 overflow-hidden" style={{ transform: 'translateZ(0)' }}>
         {solved.filter(r => !r.slip).map(r => (
           <Region key={r.id} r={r} art={r.layer === 'game'}>{tenants[r.id]}</Region>
         ))}
@@ -182,14 +170,6 @@ export default function ShellProof() {
             ))}
           </div>
         )}
-      </div>
-
-      <button onClick={() => setPhone(p => !p)}
-        className="fixed top-2 left-1/2 -translate-x-1/2 z-[999] font-mono text-[11px] tracking-[0.2em] px-3 py-1.5 rounded-full border border-emerald-300/50 text-emerald-200 bg-black/80 pointer-events-auto">
-        {phone ? '◻ DESKTOP INSTANCE' : '▯ PHONE INSTANCE'}
-      </button>
-      <div className="fixed bottom-1 left-1/2 -translate-x-1/2 z-[999] font-mono text-[10px] tracking-[0.15em] text-white/40">
-        {`reserved header + footer bands · menus expand FROM the bands · gate: ${gate ? 'PASS (overlaps: [])' : 'COLLIDE'}`}
       </div>
     </>
   )

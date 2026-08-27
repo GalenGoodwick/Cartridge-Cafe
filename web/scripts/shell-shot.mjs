@@ -1,0 +1,13 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ args:['--enable-unsafe-webgpu','--use-gl=angle'] })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 })
+await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override','1') } catch {} })
+const p = await ctx.newPage()
+await p.goto('http://localhost:3131/design/shell', { waitUntil: 'networkidle' })
+await p.waitForTimeout(900)
+const txt = await p.evaluate(() => document.body.innerText)
+console.log('toggle pill present:', /PHONE INSTANCE|DESKTOP INSTANCE/.test(txt))
+console.log('gate footer present:', /gate: PASS|overlaps: \[\]|expand FROM the bands/.test(txt))
+console.log('bigger-table present:', /bigger table|maximize this window/i.test(txt))
+await p.screenshot({ path: '/tmp/shell-fulltab.png' })
+await b.close()
