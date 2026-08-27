@@ -4110,9 +4110,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       {
         const ema = frameMsEmaRef.current
         const FLOOR = 0.55
-        const easeNote = () => {
-          if (!govNotifiedRef.current) { govNotifiedRef.current = true; showToast('⚡ easing render quality a touch to keep this world smooth', 'info') }
-        }
+        // SILENT downscale (Galen: "we don't need to announce we're lowering
+        // rendering quality anymore — it can just be automatic"). The governor
+        // still eases scale under load; it just no longer toasts the player.
+        const easeNote = () => { govNotifiedRef.current = true }
         if (ema > 120 && autoScaleRef.current > FLOOR) {
           autoScaleRef.current = FLOOR; govAdjAtRef.current = now; easeNote()   // catastrophic → snap to floor
         } else if (now - govAdjAtRef.current > 700) {
