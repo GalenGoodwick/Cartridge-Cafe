@@ -9,10 +9,15 @@
 // every region added here must immediately pass the overlap gate.
 import type { UiGridDoc } from './ui-grid'
 
-/** the phone-window cut: at or under this column width the top band
- *  consolidates into ONE bar (chrome.topbar.narrow) — the calculated-instance
- *  predicate every consumer (doc, bar mount, engine yield) must share. */
+/** the phone-window cut — the calculated-instance predicate for lanes that
+ *  still need a phone/desktop distinction (the topbar no longer does: one
+ *  region, one tenant row, every width). */
 export const NARROW_TOPBAR_MAX_W = 520
+
+/** the topbar band fraction — chrome.topbar's vy extent. FieldEngine's dock
+ *  stack offsets by exactly this (top-[8vh]) so the stack starts where the
+ *  band ends, by declaration not by eyeball. */
+export const TOPBAR_BAND = 0.08
 
 export const WORLD_PAGE_GRID: UiGridDoc = {
   regions: [
@@ -21,11 +26,11 @@ export const WORLD_PAGE_GRID: UiGridDoc = {
     { id: 'game.stage', layer: 'game', anchor: { vx: [0, 1], vy: [0.055, 0.94] }, z: 0 },
 
     // CAFE — the bars. Perchers roost here as they migrate off hand CSS.
-    { id: 'chrome.topbar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, 0.055] }, z: 40 },
-    // narrow instance (rung 3): the consolidated bar [◂ · chip · ⚓] needs
-    // headroom for the two-line focus chip — a DEEPENED topbar band on phone
-    // windows only. Parented to chrome.topbar: same home, legal nesting.
-    { id: 'chrome.topbar.narrow', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, 0.08] }, z: 62, parent: 'chrome.topbar', when: { viewport: { maxW: NARROW_TOPBAR_MAX_W } } },
+    // THE TOPBAR (rung 3, universalized): ONE bar row [◂ · chip · ⚓] at every
+    // width — the phone is the same declaration against a narrower window.
+    // Deepened to 0.08 for the two-line focus chip; overlaps game.stage's top
+    // sliver cross-layer only (cafe composites over game — legal by contract).
+    { id: 'chrome.topbar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, TOPBAR_BAND] }, z: 62 },
     { id: 'chrome.bottombar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0.94, 1] }, z: 40 },
 
     // bottombar slots (parented — legal nesting): actions right, console left
