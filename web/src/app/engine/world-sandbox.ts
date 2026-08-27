@@ -681,7 +681,7 @@ export class WorldSandbox {
         if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
-            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides')) {   // __uiRects (ui-solver) + __uiOverrides (UI EDIT) are HOST-owned — a worker echo is one tick stale and would clobber a fresh solve/drag past the change gates
+            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides' && k !== '__uiClick' && k !== '__uiClickT')) {   // __uiRects (ui-solver) + __uiOverrides (UI EDIT) + __uiClick/__uiClickT (click routing) are HOST-owned — a worker echo is one tick stale and would clobber a fresh solve/drag/CLICK past the change gates (the one-engine card race: a click landing between tick-send and result-apply was erased before the worker ever saw it)
           wd[k] = incoming[k]
         }
       }
