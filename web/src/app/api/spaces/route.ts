@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, birthWorld, sweepAbandonedDrafts, findOwnWorldByName } from '@/lib/world-create'
+import { canCreateWorld, birthWorld, sweepAbandonedDrafts, findOwnWorldByName, resolveBirthExtras } from '@/lib/world-create'
 
 export const dynamic = 'force-dynamic'
 
@@ -95,32 +95,23 @@ export async function POST(req: NextRequest) {
   // THE GENERATE FLOW (Galen, Aug 27): creation answers three questions, each a
   // facet set AT BIRTH through this ONE pipeline — BASE (blank | fork a shelf
   // world), DIMENSIONS (targets → worldData.fit), PEOPLE (access model).
-  const targets = body.targets === 'desktop' || body.targets === 'mobile' ? body.targets : undefined  // universal = undeclared
-  const access = body.access === 'invite' || body.access === 'open' ? body.access : undefined         // solo = undeclared
+  // Parsed by the SHARED resolveBirthExtras so /api/spaces and /api/generate
+  // can never drift (universal-pipelines law).
+  let extras: Awaited<ReturnType<typeof resolveBirthExtras>>
+  try {
+    extras = await resolveBirthExtras(user.id, body)
+  } catch (e) {
+    const err = e as { status?: number; error?: string }
+    return NextResponse.json({ error: err.error || 'bad base world' }, { status: err.status || 400 })
+  }
   const birthData: Record<string, unknown> = {
     ...(brief?.trim() ? { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } : {}),
-    ...(targets ? { fit: targets } : {}),
-    ...(access ? { access } : {}),
-    ...(access === 'open' ? { build: 'anyone' } : {}),   // open world = live editing for members
+    ...extras.birthData,
   }
-
-  // BASE: fork a forkable shelf world (or your own) as the starting snapshot —
-  // fork-from-here at CREATION, lineage recorded (forkOfId), one pipeline.
-  let baseSnapshot: import('@prisma/client').Prisma.InputJsonValue | undefined
-  let forkOfId: string | undefined
-  const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
-  if (baseWorld) {
-    const src = await prisma.playerSpace.findUnique({
-      where: { slug: baseWorld }, select: { id: true, ownerId: true, isPublic: true, snapshot: true },
-    })
-    if (!src) return NextResponse.json({ error: `base world "${baseWorld}" not found` }, { status: 404 })
-    const wd = ((src.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-    const mayFork = src.ownerId === user.id || (src.isPublic && wd['forkable'] === true)
-    if (!mayFork) return NextResponse.json({ error: `"${baseWorld}" is not forkable — its maker has not enabled forking` }, { status: 403 })
-    const snap = (src.snapshot && typeof src.snapshot === 'object') ? src.snapshot as Record<string, unknown> : { fields: [] }
-    baseSnapshot = { ...snap, worldData: { ...(snap.worldData as Record<string, unknown> ?? {}), ...birthData } } as import('@prisma/client').Prisma.InputJsonValue
-    forkOfId = src.id
-  }
+  // brief must ride the base snapshot too (extras merged only facet keys)
+  const baseSnapshot = extras.baseSnapshot && brief?.trim()
+    ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
+    : extras.baseSnapshot
 
   const { space, token: rawToken } = await birthWorld({
     ownerId: user.id,
@@ -130,7 +121,7 @@ export async function POST(req: NextRequest) {
     isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
     worldData: Object.keys(birthData).length ? birthData : undefined,
     ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
-    ...(forkOfId ? { forkOfId } : {}),
+    ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
   })
 
   // shape the response (the create returns the full row now — don't leak

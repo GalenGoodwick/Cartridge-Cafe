@@ -153,9 +153,9 @@ export async function createWorldgenCheckout(
     'line_items[0][price_data][currency]': 'usd',
     'line_items[0][price_data][unit_amount]': String(GEN_PRICE_USD * 100),
     'line_items[0][price_data][product_data][name]': 'generate a world',
-    'line_items[0][price_data][product_data][description]': 'the house AI builds your brief — one world generation',
-    success_url: `${origin}/cards?paid=worldgen`,
-    cancel_url: `${origin}/cards?paycancel=worldgen`,
+    'line_items[0][price_data][product_data][description]': 'one world generation — born with your brief; connect your AI and it builds it live',
+    success_url: `${origin}/create?paid=worldgen`,   // the generate flow lives at /create now
+    cancel_url: `${origin}/create?paycancel=worldgen`,
     'metadata[userId]': userId,
     'metadata[product]': 'worldgen',
   })

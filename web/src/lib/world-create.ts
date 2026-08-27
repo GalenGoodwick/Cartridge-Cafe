@@ -187,3 +187,47 @@ export async function forkSnapshotToSpace(opts: {
   }).catch(() => {})
   return space
 }
+
+/** THE GENERATE-FLOW EXTRAS, parsed ONCE for every birth route (universal
+ *  pipeline: /api/spaces and /api/generate must never drift). Reads the three
+ *  creation answers from a request body — DIMENSIONS (targets → worldData.fit),
+ *  PEOPLE (access; open ⇒ build:'anyone'), BASE (fork a forkable world's live
+ *  snapshot, lineage via forkOfId) — and returns what birthWorld needs.
+ *  Throws { status, error } on a bad base. */
+export async function resolveBirthExtras(userId: string, body: Record<string, unknown>): Promise<{
+  birthData: Record<string, unknown>
+  baseSnapshot?: Prisma.InputJsonValue
+  forkOfId?: string
+}> {
+  const targets = body.targets === 'desktop' || body.targets === 'mobile' ? body.targets : undefined  // universal = undeclared
+  const access = body.access === 'invite' || body.access === 'open' ? body.access : undefined         // solo = undeclared
+  const birthData: Record<string, unknown> = {
+    ...(targets ? { fit: targets } : {}),
+    ...(access ? { access } : {}),
+    ...(access === 'open' ? { build: 'anyone' } : {}),   // open world = live editing for members
+  }
+  const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
+  if (!baseWorld) return { birthData }
+  const src = await prisma.playerSpace.findUnique({
+    where: { slug: baseWorld }, select: { id: true, ownerId: true, isPublic: true, snapshot: true },
+  })
+  if (!src) throw { status: 404, error: `base world "${baseWorld}" not found` }
+  const wd = ((src.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
+  // your own world, or a public world marked as a BASE/forkable (the formats)
+  const mayFork = src.ownerId === userId || (src.isPublic && (wd['forkable'] === true || wd['__base'] === true))
+  if (!mayFork) throw { status: 403, error: `"${baseWorld}" is not forkable — its maker has not enabled forking` }
+  // SEED HYGIENE (the fork rules): a newborn must NEVER inherit base-hood or
+  // build rights from its seed — deep-clone and strip __base/forkable/policy,
+  // THEN lay the newborn's own declared facets on top.
+  const snap = JSON.parse(JSON.stringify(
+    (src.snapshot && typeof src.snapshot === 'object') ? src.snapshot : { fields: [] },
+  )) as Record<string, unknown>
+  const seedWd = { ...(snap.worldData as Record<string, unknown> ?? {}) }
+  delete seedWd.__base; delete seedWd.forkable; delete seedWd.policy
+  delete seedWd.access; delete seedWd.build; delete seedWd.fit   // seed's own facets never leak either
+  return {
+    birthData,
+    baseSnapshot: { ...snap, worldData: { ...seedWd, ...birthData } } as Prisma.InputJsonValue,
+    forkOfId: src.id,
+  }
+}

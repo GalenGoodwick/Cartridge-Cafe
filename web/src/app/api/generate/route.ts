@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, birthWorld, sweepAbandonedDrafts } from '@/lib/world-create'
+import { canCreateWorld, birthWorld, sweepAbandonedDrafts, resolveBirthExtras } from '@/lib/world-create'
 import { GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
 
 export const dynamic = 'force-dynamic'
@@ -68,6 +68,17 @@ export async function POST(req: NextRequest) {
   const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
+  // the generate flow's three answers (targets/access/base) — parsed by the
+  // SHARED resolveBirthExtras, same as /api/spaces (universal-pipelines law).
+  // Resolved BEFORE the credit spends — a bad base must never cost $5.
+  let extras: Awaited<ReturnType<typeof resolveBirthExtras>>
+  try {
+    extras = await resolveBirthExtras(user.id, body)
+  } catch (e) {
+    const err = e as { status?: number; error?: string }
+    return NextResponse.json({ error: err.error || 'bad base world' }, { status: err.status || 400 })
+  }
+
   // ADMIN generates FREE (Galen, Aug 26: "as admin it should be free so I can
   // demo") — the keeper skips the credit spend entirely (and the catch below
   // never refunds a credit that was never spent).
@@ -97,33 +108,26 @@ export async function POST(req: NextRequest) {
     // like every world: the OWNER sees it fine, connects their AI, and it goes
     // public through the normal publish gate (vision + instructions +
     // brief_done) when the build is real. Strangers never meet a bare curtain.
-    // THE FORMAT SEED: a chosen base's snapshot becomes the newborn's start
-    // (the fork rules apply: never inherit __base/forkable/policy). Only real
-    // bases may seed — the same gate the fork route holds.
-    let seedSnapshot: unknown
-    const baseSel = String(body?.base ?? '').trim()
-    if (baseSel) {
-      const src = await prisma.playerSpace.findUnique({ where: { slug: baseSel }, select: { isPublic: true, snapshot: true } })
-      const swd = ((src?.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-      if (!src?.isPublic || (swd.__base !== true && swd.forkable !== true)) {
-        return NextResponse.json({ error: 'that format is not a base' }, { status: 400 })
-      }
-      const clone = JSON.parse(JSON.stringify(src.snapshot)) as { worldData?: Record<string, unknown> }
-      clone.worldData = clone.worldData ?? {}
-      delete clone.worldData.__base
-      delete clone.worldData.forkable
-      delete clone.worldData.policy
-      clone.worldData.creation_brief = { prompt: brief, by: user.id, at: Date.now(), format: baseSel }
-      seedSnapshot = clone
+    // MERGED (rebase): the FORMAT-seed hygiene (strip __base/forkable/policy —
+    // a fork must never inherit base-hood or build rights) now lives INSIDE
+    // resolveBirthExtras, the ONE parser both birth routes share; lineage
+    // (forkOfId) + the targets/access facets ride with it.
+    const birthData = {
+      creation_brief: { prompt: brief, by: user.id, at: Date.now(), ...(extras.forkOfId ? { format: String(body?.base ?? '').trim() } : {}) },
+      ...extras.birthData,
     }
+    // brief rides the base snapshot too when a BASE/format was picked
+    const baseSnapshot = extras.baseSnapshot
+      ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
+      : undefined
     const { space } = await birthWorld({
       ownerId: user.id,
       name,
       baseSlug,
       description: brief.slice(0, 140),
-      ...(seedSnapshot !== undefined
-        ? { snapshot: seedSnapshot as Parameters<typeof birthWorld>[0]['snapshot'] }
-        : { worldData: { creation_brief: { prompt: brief, by: user.id, at: Date.now() } } }),
+      worldData: birthData,
+      ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
+      ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
     })
 
     // NO BuildJob, NO "awaits a builder" bus ring (Galen, Aug 26: "there is no
