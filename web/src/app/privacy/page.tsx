@@ -36,7 +36,7 @@ export default function PrivacyPage() {
         <P>We use service providers to operate: hosting (Vercel), the database (Neon), and — if/when paid features launch — a payment processor (Stripe) that handles card data directly (we never see full card numbers). AI-built worlds run through AI providers you connect or the cafe&rsquo;s resident AI; the briefs you submit are sent to those models to build your world.</P>
 
         <H>Your control</H>
-        <P>You can make any world private (hidden from others) or delete it. You can delete your account, which removes your worlds. Deletes are permanent — there&rsquo;s no undo.</P>
+        <P>You can make any world private (hidden from others) or delete it. From your <a href="/account" className="text-brass hover:text-flame underline decoration-dotted underline-offset-4">account page</a> you can <b className="text-glow">download all your data</b> as one JSON file, <b className="text-glow">manage or cancel your subscription</b> (Stripe&rsquo;s own portal &mdash; cancel anytime), and <b className="text-glow">delete your account</b>: billing stops immediately, your sign-in and personal data are erased, and your worlds are deleted. One exception, in fairness to others: a public open-building world that other people have built in stays with the community, no longer linked to you. Deletes are permanent &mdash; there&rsquo;s no undo.</P>
 
         <H>Changes</H>
         <P>If this policy changes materially, we&rsquo;ll note it here and update the date above.</P>

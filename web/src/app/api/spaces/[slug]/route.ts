@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { policyOf } from '@/lib/world-policy'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
 import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
@@ -173,13 +174,32 @@ export async function DELETE(
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
     select: {
-      id: true, ownerId: true, name: true,
+      id: true, ownerId: true, name: true, isPublic: true, snapshot: true,
       _count: { select: { childSpaces: true, flags: true } },
     },
   })
 
   if (!space || space.ownerId !== user.id) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
+  }
+
+  // DELETE PROTECTION for public open-building worlds (Galen, Aug 27): once a
+  // public world invites anyone to build, other people's work lives in it --
+  // it can't be one-click destroyed while co-builders hold a stake. The owner
+  // can close building or unpublish first (both reversible), then delete.
+  {
+    const wd = ((space.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
+    if (space.isPublic && policyOf(wd).build === 'anyone') {
+      const [memberTokens, foreignVersions] = await Promise.all([
+        prisma.spaceToken.count({ where: { spaceId: space.id, revokedAt: null, name: { startsWith: 'member:' } } }),
+        prisma.spaceVersion.count({ where: { spaceId: space.id, authorId: { not: user.id } } }),
+      ])
+      if (memberTokens > 0 || foreignVersions > 0) {
+        return NextResponse.json({
+          error: 'Cannot delete: this is a public open-building world with co-builders\u2019 work in it. Close building or unpublish it first \u2014 then delete.',
+        }, { status: 409 })
+      }
+    }
   }
 
   // Fairness gates: a world stops being only yours once others invest in it.

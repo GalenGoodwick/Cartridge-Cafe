@@ -289,6 +289,58 @@ export async function createEditorCheckout(
   return { url: j.url }
 }
 
+// ---- subscription management (the ACCOUNT page's legal surface) -------------
+// SDK-free like everything above. The billing portal is the sanctioned
+// cancel/update/invoices surface (click-to-cancel compliant — Stripe hosts it);
+// we resolve the customer by searching subscriptions on our own metadata.
+
+export interface ActiveSub { id: string; customer: string; product: string; currentPeriodEnd: number; cancelAtPeriodEnd: boolean }
+
+/** Every ACTIVE subscription carrying our metadata[userId]. */
+export async function findActiveSubscriptions(userId: string): Promise<ActiveSub[]> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return []
+  const q = encodeURIComponent(`metadata['userId']:'${userId}' AND status:'active'`)
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/search?query=${q}&limit=20`, {
+    headers: { Authorization: 'Bearer ' + secret },
+  })
+  if (!r.ok) return []
+  const j = (await r.json()) as { data?: Array<{ id: string; customer: string; metadata?: Record<string, string>; current_period_end?: number; cancel_at_period_end?: boolean }> }
+  return (j.data ?? []).map((s) => ({
+    id: s.id, customer: s.customer,
+    product: s.metadata?.product || 'unknown',
+    currentPeriodEnd: (s.current_period_end || 0) * 1000,
+    cancelAtPeriodEnd: !!s.cancel_at_period_end,
+  }))
+}
+
+/** Open the Stripe BILLING PORTAL for a customer — invoices, payment method,
+ *  and cancellation live there (the legally clean self-serve surface). */
+export async function createPortalSession(customerId: string, returnUrl: string): Promise<{ url: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const r = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ customer: customerId, return_url: returnUrl }).toString(),
+  })
+  const j = (await r.json()) as { url?: string; error?: { message?: string } }
+  if (!r.ok || !j.url) return { error: j.error?.message || 'stripe refused the portal session', status: 502 }
+  return { url: j.url }
+}
+
+/** Cancel a subscription IMMEDIATELY (account deletion path — a deleted
+ *  account must never be billed again; the webhook then revokes the seat). */
+export async function cancelSubscriptionNow(subId: string): Promise<boolean> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return false
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + secret },
+  })
+  return r.ok
+}
+
 export async function revokeEntitlement(userId: string, product: string, slug?: string): Promise<void> {
   const ents = await readEntitlements(userId)
   await saveGameSlot(entSlot(userId), {
