@@ -769,7 +769,7 @@ export async function POST(req: NextRequest) {
           const ownerId = auth.ownerId
           const allowed = ownerId ? (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId)) : false
           if (!allowed) {
-            results.push({ type: cmd.type, error: 'asset imports are a ◆ premium-suite feature — the world owner needs the IP control membership' })
+            results.push({ type: cmd.type, error: 'asset imports are a ◆ premium-suite feature (coming soon) — the world owner will need the IP control membership' })
             continue
           }
         }

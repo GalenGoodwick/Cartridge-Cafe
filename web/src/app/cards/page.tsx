@@ -180,7 +180,7 @@ export default function CardsMain() {
                   {[
                     { label: '◈ MY WORLDS', href: `/u/${myHandle}` },
                     { label: '◇ FRAMEWORK', href: '/framework' },
-                    { label: '◆ PREMIUM SUITE', href: '/suite' },
+                    { label: '◆ PREMIUM SUITE · SOON', href: '/suite' },
                     { label: '⚙ ACCOUNT', href: '/account' },
                   ].map(it => (
                     <a key={it.label} href={it.href} className="block px-2.5 py-2 rounded-lg text-white/75 hover:text-amber-200 hover:bg-black/40 transition-colors">{it.label}</a>

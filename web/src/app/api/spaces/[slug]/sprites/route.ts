@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const uid = await sessionUserId()
   if (!uid || uid !== sp.ownerId) return NextResponse.json({ error: 'only the owner uploads sprites' }, { status: 403 })
   if (!(await mayImportAssets(uid))) {
-    return NextResponse.json({ error: 'asset imports are a ◆ premium-suite feature — see /suite' }, { status: 402 })
+    return NextResponse.json({ error: 'asset imports are a ◆ premium-suite feature (coming soon) — see /suite' }, { status: 402 })
   }
   const b = await req.json().catch(() => ({}))
   const out = await putSheet(sp.id, {

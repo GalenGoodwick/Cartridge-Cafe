@@ -37,7 +37,7 @@ export default async function SuitePage() {
     <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
       <div className="mx-auto max-w-2xl px-6 py-14 font-mono">
         <a href="/" className="text-[13px] tracking-[0.2em] text-amber-200/60 hover:text-amber-200">◂ cartridge.cafe</a>
-        <h1 className="cafe-sign text-4xl text-glow mt-4 mb-2">◆ premium suite</h1>
+        <h1 className="cafe-sign text-4xl text-glow mt-4 mb-2">◆ premium suite{!active && !buyable && <span className="ml-3 align-middle font-mono text-[11px] tracking-[0.3em] text-amber-200/70 border border-amber-300/40 rounded px-2 py-1">COMING SOON</span>}</h1>
         <p className="text-[13px] text-white/50 mb-8">
           {active
             ? 'your IP control membership is active — everything below is yours.'
@@ -70,7 +70,7 @@ export default async function SuitePage() {
             ) : buyable ? (
               <SuiteBuy />
             ) : (
-              <p className="text-[12.5px] text-white/45">the suite opens soon — pricing lands with it. playing and the $10/mo editing membership are unaffected.</p>
+              <p className="text-[12.5px] text-white/45">the suite is COMING SOON — pricing lands with it, and nothing here is on sale yet. playing and the $10/mo editing membership are unaffected.</p>
             )}
           </section>
         </div>
