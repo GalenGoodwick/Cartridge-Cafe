@@ -2460,7 +2460,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     fit()
     const t = setTimeout(fit, 300)   // after the canvas settles
     window.addEventListener('resize', fit)
-    return () => { clearTimeout(t); window.removeEventListener('resize', fit) }
+    // THE FIT RACE (mobile track): the phone-frame insets land through a 0.32s
+    // CSS transition with NO window resize event — the 300ms retry can fire on
+    // either side of it, so the resting zoom kept whichever canvas aspect it
+    // happened to measure (the nondeterministic 235px letterbox). Observe the
+    // canvas ITSELF through a settle window, then disconnect — later panel
+    // toggles must never yank a camera the player has taken.
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined' && canvasRef.current) {
+      ro = new ResizeObserver(fit)
+      ro.observe(canvasRef.current)
+    }
+    const tRo = setTimeout(() => { ro?.disconnect(); ro = null }, 3000)
+    return () => { clearTimeout(t); clearTimeout(tRo); ro?.disconnect(); window.removeEventListener('resize', fit) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
