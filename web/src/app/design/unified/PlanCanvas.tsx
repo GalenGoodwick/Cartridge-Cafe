@@ -1,62 +1,35 @@
 'use client'
 
-// THE PLAN EXECUTOR (proof) — draws a WorldPlan as ONE WebGL2 pass. Every
-// region the solve routed is painted by backend: the game stage as a raymarched
-// scene, chrome bands as engine-drawn glass + glyph pixels (5x7 font — no DOM
-// text), reserved bands as faint glass. The fragment shader receives the SAME
-// rects worldSolve produced — what draws IS the plan the eye reads.
-//
-// Fit is honored per region via the solved scales (fit.ts): the stage's
-// composition is isotropic — the ring stays round at ANY viewport split.
+// THE PLAN EXECUTOR (proof, v2) — draws a WorldPlan as ONE WebGL2 pass and
+// makes it OPERABLE:
+//  · TEXT IS RIPPED FROM THE REAL FONT (Galen: "we have a system to rip fonts
+//    into shaders" — the RIP philosophy applied to type): each label is
+//    rasterized ONCE from the page's actual IBM Plex Mono into a texture at 3×
+//    and sampled with mips — crisp at any size, no more blocky 5×7.
+//  · BUTTONS FUNCTION: pointer events hit-test against THE PLAN'S OWN RECTS
+//    (topmost z first) — a region with a declared action is a button. Hover
+//    brightens it (uHot), click fires onAction. The hit table IS the plan.
+// Still scaffold-WebGL2; every piece (atlas texture, hit table, fit scales)
+// ports 1:1 to the WGSL engine at rung 4.
 import { useEffect, useRef } from 'react'
-import type { WorldPlan } from '@/app/engine/world-solve'
+import type { WorldPlan, RegionRoute } from '@/app/engine/world-solve'
 
 const MAX_R = 12
 
 const VERT = `#version 300 es
 in vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`
 
-// 5x7 glyph rows for the tiny label set (A-Z + space) — engine text, no DOM.
-const FONT: Record<string, number[]> = {
-  A:[0x1F,0x24,0x44,0x24,0x1F], B:[0x7F,0x49,0x49,0x49,0x36], C:[0x3E,0x41,0x41,0x41,0x22],
-  D:[0x7F,0x41,0x41,0x22,0x1C], E:[0x7F,0x49,0x49,0x49,0x41], F:[0x7F,0x48,0x48,0x48,0x40],
-  G:[0x3E,0x41,0x49,0x49,0x2F], H:[0x7F,0x08,0x08,0x08,0x7F], I:[0x41,0x41,0x7F,0x41,0x41],
-  K:[0x7F,0x08,0x14,0x22,0x41], L:[0x7F,0x01,0x01,0x01,0x01], M:[0x7F,0x20,0x18,0x20,0x7F],
-  N:[0x7F,0x10,0x08,0x04,0x7F], O:[0x3E,0x41,0x41,0x41,0x3E], P:[0x7F,0x48,0x48,0x48,0x30],
-  R:[0x7F,0x48,0x4C,0x4A,0x31], S:[0x32,0x49,0x49,0x49,0x26], T:[0x40,0x40,0x7F,0x40,0x40],
-  U:[0x7E,0x01,0x01,0x01,0x7E], W:[0x7E,0x01,0x0E,0x01,0x7E], X:[0x63,0x14,0x08,0x14,0x63],
-  Y:[0x60,0x10,0x0F,0x10,0x60], ' ':[0,0,0,0,0], '·':[0,0,0x08,0,0],
-}
-
-function glyphTex(gl: WebGL2RenderingContext, text: string): { tex: WebGLTexture; w: number; h: number } {
-  const cw = 6, w = text.length * cw, h = 7
-  const px = new Uint8Array(w * h)
-  text.toUpperCase().split('').forEach((ch, ci) => {
-    const cols = FONT[ch] ?? FONT[' ']
-    for (let x = 0; x < 5; x++) for (let y = 0; y < 7; y++)
-      if ((cols[x] >> (6 - y)) & 1) px[y * w + ci * cw + x] = 255
-  })
-  const tex = gl.createTexture()!
-  gl.bindTexture(gl.TEXTURE_2D, tex)
-  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, px)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-  return { tex, w, h }
-}
-
 const FRAG = `#version 300 es
 precision highp float;
 uniform vec2 uRes;
 uniform float uTime;
 uniform int uCount;
-uniform vec4 uRect[${MAX_R}];    // x,y,w,h (css px, y-down from top)
-uniform int uKind[${MAX_R}];     // 0 stage(raymarch) 1 glass 2 glassBright
+uniform vec4 uRect[${MAX_R}];
+uniform int uKind[${MAX_R}];     // 0 stage 1 glass 2 glassBright
+uniform int uHot;                // hovered actionable region index (-1 none)
 uniform float uDpr;
 out vec4 o;
 
-// tiny raymarched scene — floor + pulsing sphere + ring, lit; composed in
-// ISOTROPIC region units so it recomposes to any box without squish.
 vec3 stage(vec2 uv, float t){
   vec3 ro = vec3(0., 0.6, -2.2);
   vec3 rd = normalize(vec3(uv, 1.4));
@@ -71,7 +44,6 @@ vec3 stage(vec2 uv, float t){
   }
   vec3 col = mix(vec3(0.03,0.04,0.10), vec3(0.10,0.06,0.16), uv.y + 0.5);
   if (tt < 8.) {
-    vec2 e = vec2(0.004, 0.);
     vec3 q = ro + rd*tt;
     float sp = length(q - vec3(0., 0.55 + 0.15*sin(t*1.3), 1.2)) - 0.5;
     float fl = q.y + 0.4 + 0.06*sin(q.x*3.+t)*sin(q.z*3.);
@@ -84,12 +56,12 @@ vec3 stage(vec2 uv, float t){
     col *= exp(-tt*0.16);
   }
   float ring = abs(length(uv) - 0.42);
-  col += vec3(0.45,0.8,1.0) * smoothstep(0.010, 0.0, ring) * 0.9;   // THE ROUND PROOF
+  col += vec3(0.45,0.8,1.0) * smoothstep(0.010, 0.0, ring) * 0.9;
   return col;
 }
 
 void main(){
-  vec2 fcCss = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uDpr;  // css px, y-down
+  vec2 fcCss = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uDpr;
   vec3 col = vec3(0.016, 0.014, 0.028);
   for (int i = 0; i < ${MAX_R}; i++) {
     if (i >= uCount) break;
@@ -98,39 +70,71 @@ void main(){
     if (fcCss.x < lo.x || fcCss.x > hi.x || fcCss.y < lo.y || fcCss.y > hi.y) continue;
     vec2 local = fcCss - lo;
     if (uKind[i] == 0) {
-      // ISOTROPIC: centered, both axes / min(w,h) — fit.ts, in-shader
       vec2 uv = (local - 0.5 * R.zw) / min(R.z, R.w);
       uv.y = -uv.y;
       col = stage(uv, uTime);
-      // hairline frame
       vec2 eB = min(local, R.zw - local);
       if (min(eB.x, eB.y) < 1.5) col = mix(col, vec3(0.31,0.78,1.0), 0.8);
     } else {
       float bright = uKind[i] == 2 ? 1.0 : 0.45;
+      if (i == uHot) bright *= 1.9;                       // hover affordance
       vec3 glass = vec3(0.055, 0.05, 0.085) * (1.2 + 0.3 * bright);
-      // rounded-feel edge shading
       vec2 eB = min(local, R.zw - local);
       float edge = smoothstep(0.0, 3.0, min(eB.x, eB.y));
-      col = mix(vec3(0.35, 0.28, 0.14) * bright, glass, edge);
+      col = mix(vec3(0.35, 0.28, 0.14) * bright, glass * (i == uHot ? 1.6 : 1.0), edge);
     }
   }
   o = vec4(col, 1.0);
 }`
 
-/** labels drawn AFTER the pass from the same plan rects (glyph textures via a
- *  tiny 2nd program — still engine pixels, still no DOM text). */
 const LVERT = `#version 300 es
 in vec2 p; uniform vec4 uBox; uniform vec2 uRes; out vec2 vUv;
 void main(){ vUv = p*0.5+0.5; vec2 px = uBox.xy + (p*0.5+0.5)*uBox.zw;
   vec2 nd = (px/uRes)*2.-1.; gl_Position = vec4(nd.x, -nd.y, 0., 1.); }`
 const LFRAG = `#version 300 es
 precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform vec3 uCol; out vec4 o;
-void main(){ float a = texture(uTex, vUv).r; o = vec4(uCol, a*0.92); }`
+void main(){ float a = texture(uTex, vUv).a; o = vec4(uCol, a*0.95); }`
 
-export function PlanCanvas({ plan, labels }: { plan: WorldPlan; labels: Record<string, string> }) {
+/** THE FONT RIP — rasterize a label from the page's REAL font into a texture
+ *  (3× oversampled + mips). One draw call per label; monospace metrics make
+ *  placement arithmetic. This is the sprite-RIP move applied to type. */
+function ripLabel(gl: WebGL2RenderingContext, text: string): { tex: WebGLTexture; w: number; h: number } {
+  const scale = 3, px = 16 * scale
+  const cv = document.createElement('canvas')
+  const c = cv.getContext('2d')!
+  const font = `500 ${px}px "IBM Plex Mono", ui-monospace, Menlo, monospace`
+  c.font = font
+  const m = c.measureText(text)
+  cv.width = Math.ceil(m.width) + px; cv.height = Math.ceil(px * 1.5)
+  const c2 = cv.getContext('2d')!
+  c2.font = font
+  c2.textBaseline = 'middle'
+  c2.fillStyle = '#fff'
+  c2.fillText(text, px / 2, cv.height / 2)
+  const tex = gl.createTexture()!
+  gl.bindTexture(gl.TEXTURE_2D, tex)
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, cv)
+  gl.generateMipmap(gl.TEXTURE_2D)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  return { tex, w: cv.width / scale, h: cv.height / scale }
+}
+
+export function PlanCanvas({ plan, labels, actions, onAction }: {
+  plan: WorldPlan
+  labels: Record<string, string>
+  /** regionId → action id; a region with an action IS a button */
+  actions: Record<string, string>
+  onAction: (action: string, regionId: string) => void
+}) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const planRef = useRef(plan)
-  planRef.current = plan
+  const planRef = useRef(plan); planRef.current = plan
+  const labelsRef = useRef(labels); labelsRef.current = labels
+  const actionsRef = useRef(actions); actionsRef.current = actions
+  const onActionRef = useRef(onAction); onActionRef.current = onAction
+  const hotRef = useRef(-1)
+
   useEffect(() => {
     const cv = ref.current
     if (!cv) return
@@ -148,7 +152,36 @@ export function PlanCanvas({ plan, labels }: { plan: WorldPlan; labels: Record<s
     const lquad = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, lquad)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,-1, 1,1, -1,1]), gl.STATIC_DRAW)
-    const glyphCache = new Map<string, { tex: WebGLTexture; w: number; h: number }>()
+    const ripCache = new Map<string, { tex: WebGLTexture; w: number; h: number }>()
+
+    // ── THE HIT TABLE IS THE PLAN — pointer → topmost actionable rect ──
+    const routeAt = (x: number, y: number): { r: RegionRoute; i: number } | null => {
+      const routes = planRef.current.routes.slice(0, MAX_R)
+      for (let i = routes.length - 1; i >= 0; i--) {          // topmost z first
+        const r = routes[i]
+        if (!actionsRef.current[r.id]) continue
+        const { rect } = r
+        if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h) return { r, i }
+      }
+      return null
+    }
+    const toCss = (e: PointerEvent) => {
+      const b = cv.getBoundingClientRect()
+      return { x: e.clientX - b.left, y: e.clientY - b.top }
+    }
+    const onMove = (e: PointerEvent) => {
+      const { x, y } = toCss(e)
+      const hit = routeAt(x, y)
+      hotRef.current = hit ? hit.i : -1
+      cv.style.cursor = hit ? 'pointer' : 'default'
+    }
+    const onDown = (e: PointerEvent) => {
+      const { x, y } = toCss(e)
+      const hit = routeAt(x, y)
+      if (hit) onActionRef.current(actionsRef.current[hit.r.id], hit.r.id)
+    }
+    cv.addEventListener('pointermove', onMove)
+    cv.addEventListener('pointerdown', onDown)
 
     let raf = 0, stop = false
     const t0 = performance.now()
@@ -166,42 +199,41 @@ export function PlanCanvas({ plan, labels }: { plan: WorldPlan; labels: Record<s
       gl.uniform2f(U('uRes'), w, h)
       gl.uniform1f(U('uDpr'), dpr)
       gl.uniform1f(U('uTime'), (performance.now() - t0) / 1000)
+      gl.uniform1i(U('uHot'), hotRef.current)
       const routes = plan.routes.slice(0, MAX_R)
       gl.uniform1i(U('uCount'), routes.length)
       const rect = new Float32Array(MAX_R * 4), kind = new Int32Array(MAX_R)
       routes.forEach((r, i) => {
         rect.set([r.rect.x, r.rect.y, r.rect.w, r.rect.h], i * 4)
-        kind[i] = r.layer === 'game' ? 0 : (r.backend === 'empty' ? 1 : 2)
+        kind[i] = r.layer === 'game' ? 0 : (r.backend === 'empty' && !actionsRef.current[r.id] ? 1 : 2)
       })
       gl.uniform4fv(U('uRect'), rect)
       gl.uniform1iv(U('uKind'), kind)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
 
-      // labels from the SAME plan rects
       gl.useProgram(lprog)
       gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
       gl.bindBuffer(gl.ARRAY_BUFFER, lquad); bindP(lprog)
       gl.uniform2f(lU('uRes'), w, h)
       for (const r of routes) {
-        const label = labels[r.id]
+        const label = labelsRef.current[r.id]
         if (!label) continue
-        let g = glyphCache.get(label)
-        if (!g) { g = glyphTex(gl, label); glyphCache.set(label, g) }
-        const scale = r.layer === 'game' ? 2 : 2
-        const gw = g.w * scale * dpr, gh = g.h * scale * dpr
+        let g = ripCache.get(label)
+        if (!g) { g = ripLabel(gl, label); ripCache.set(label, g) }
+        const gw = g.w * dpr, gh = g.h * dpr
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, g.tex)
         gl.uniform1i(lU('uTex'), 0)
         const isGame = r.layer === 'game'
         gl.uniform3f(lU('uCol'), isGame ? 0.35 : 1.0, isGame ? 0.8 : 0.86, isGame ? 1.0 : 0.55)
-        const cx = r.layer === 'game' ? (r.rect.x + 10) * dpr : (r.rect.x + (r.rect.w - gw / dpr) / 2) * dpr
-        const cy = (r.rect.y + (r.layer === 'game' ? 8 : (r.rect.h - gh / dpr) / 2)) * dpr
+        const cx = isGame ? (r.rect.x + 10) * dpr : (r.rect.x + (r.rect.w - gw / dpr) / 2) * dpr
+        const cy = (r.rect.y + (isGame ? 6 : (r.rect.h - gh / dpr) / 2)) * dpr
         gl.uniform4f(lU('uBox'), cx, cy, gw, gh)
         gl.drawArrays(gl.TRIANGLES, 0, 6)
       }
       raf = requestAnimationFrame(draw)
     }
     draw()
-    return () => { stop = true; cancelAnimationFrame(raf) }
-  }, [labels])
+    return () => { stop = true; cancelAnimationFrame(raf); cv.removeEventListener('pointermove', onMove); cv.removeEventListener('pointerdown', onDown) }
+  }, [])
   return <canvas ref={ref} className="absolute inset-0 block" />
 }
