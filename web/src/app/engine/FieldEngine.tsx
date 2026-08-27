@@ -17,7 +17,7 @@ import { NodeGraphOverlay, buildNodeGraph, type AiNodeGraph } from './ai-view/No
 import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
 import { BuilderBoxPanel } from './builderbox/BuilderBoxPanel'
 import { WorldSandbox } from './world-sandbox'
-import { solveUi, hitUi, type UiTree, type SolvedUi, type UiOverride } from './ui-solver'
+import { solveUi, hitUi, type UiTree, type UiNode, type SolvedUi, type UiOverride } from './ui-solver'
 import { ArenaClient, fetchArenaRooms } from './arena-client'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -80,6 +80,12 @@ interface FieldEngineProps {
    *  row yields and its dock stack starts below the bar. Play mode ignores it
    *  (the bar hides; the engine's ◂ + compact pulse return). */
   externalTopbar?: boolean
+  /** THE ONE ENGINE (DESIGN-one-engine.md): host-injected SHELL UI — ui-solver
+   *  nodes (from engine/ui-blocks) appended to the world's own tree and drawn
+   *  by the same glass/glyph passes. Shell clicks (`shell:` namespace) route
+   *  to the host via a 'cafe:shell-ui' window event, NEVER into
+   *  worldData.__uiClick — the world cannot see or forge shell actions. */
+  shellUi?: UiNode[] | null
   /** Reports the bottom (y px) of the top-right UI dock whenever it resizes, so
    *  the shell can seat the in-world VOTE button directly under it — beneath the
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
@@ -142,7 +148,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, shellUi, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -1180,6 +1186,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // worldData.ui via the ui-solver) + a geometry fingerprint so __uiRects only
   // republishes on real change
   const uiSolvedRef = useRef<SolvedUi | null>(null)
+  // host-injected shell nodes (THE ONE ENGINE) — a ref so the frame loop reads
+  // the latest without re-binding; instance flips (phone↔desktop) land next frame.
+  // shellIdsRef = the ids of HOST-injected clickable nodes: click routing's
+  // provenance check (a world node claiming a shell: click is a forgery).
+  const shellUiRef = useRef<UiNode[] | null>(null)
+  const shellIdsRef = useRef<Set<string>>(new Set())
+  shellUiRef.current = shellUi ?? null
+  {
+    const ids = new Set<string>()
+    const walk = (n: UiNode) => { if (n.id && n.click) ids.add(n.id); (n.children ?? []).forEach(walk) }
+    ;(shellUi ?? []).forEach(walk)
+    shellIdsRef.current = ids
+  }
   // CHROME-SAFE INSETS (task #19): every element tagged data-cc-chrome is
   // measured against the resting world square; its overlap becomes a reserved
   // band (design units) the ui-solver keeps world panels out of. Vertical-ish
@@ -3428,11 +3447,31 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       if (sideU > 0) {
         const gx = (e.clientX - rectU.left - (rectU.width - sideU) / 2) * (512 / sideU)
         const gy = (e.clientY - rectU.top - (rectU.height - sideU) / 2) * (512 / sideU)
-        const action = hitUi(uiSolvedRef.current, gx, gy)
-        if (action) {
-          const wd = sim.worldData as Record<string, unknown>
-          wd['__uiClick'] = action
-          wd['__uiClickT'] = performance.now()
+        // same semantics as hitUi (last-painted wins) but keeping the hit's id
+        // so shell routing can verify PROVENANCE, not just the action string
+        let hit: { id: string; action: string } | null = null
+        {
+          const hits = uiSolvedRef.current.hits
+          for (let i = hits.length - 1; i >= 0; i--) {
+            const h = hits[i]
+            if (gx >= h.x && gx <= h.x + h.w && gy >= h.y && gy <= h.y + h.h) { hit = h; break }
+          }
+        }
+        if (hit) {
+          const action = hit.action
+          if (action.startsWith('shell:')) {
+            // SHELL actions go to the HOST, never into worldData — and only
+            // from nodes the HOST injected. A world tree declaring a shell:
+            // click is a forgery: swallowed, routed nowhere (one-engine seam
+            // law — the same rule as role-never-crosses-the-seam).
+            if (shellIdsRef.current.has(hit.id)) {
+              window.dispatchEvent(new CustomEvent('cafe:shell-ui', { detail: action }))
+            }
+          } else {
+            const wd = sim.worldData as Record<string, unknown>
+            wd['__uiClick'] = action
+            wd['__uiClickT'] = performance.now()
+          }
           e.preventDefault(); e.stopPropagation()
           return
         }
@@ -5011,13 +5050,32 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // in worldData after you leave — don't let it bleed onto the cafe)
         const onHubUi = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
         const uiT = onHubUi ? undefined : sim.worldData['ui'] as UiTree | undefined
-        if (uiT && Array.isArray(uiT.root) && uiT.root.length) {
+        // THE ONE ENGINE: the host's shell nodes join the world's tree in ONE
+        // solve — same solver, same passes, same hit table. Shell after world:
+        // later panels paint above (chrome over world, the chrome law).
+        // stripShell: the shell: click namespace is HOST-ONLY — a world tree
+        // declaring one is a forgery and loses the click (clones only on hit,
+        // so the common no-forgery case is zero-alloc).
+        const stripShell = (n: UiNode): UiNode => {
+          let kids = n.children
+          if (kids) { const m = kids.map(stripShell); if (m.some((k, i) => k !== kids![i])) kids = m }
+          if (n.click?.startsWith('shell:') || kids !== n.children) {
+            return { ...n, click: n.click?.startsWith('shell:') ? undefined : n.click, children: kids }
+          }
+          return n
+        }
+        const shellNodes = shellUiRef.current
+        const rootAll = [
+          ...(uiT && Array.isArray(uiT.root) ? uiT.root.map(stripShell) : []),
+          ...(shellNodes ?? []),
+        ]
+        if (rootAll.length) {
           // the FULL viewport in design units — powers anchor vx/vy (viewport-
           // edge panels, the responsive band layer; Galen's fit law Aug 23)
           const cnvUi = canvasRef.current
           const sideUi = cnvUi ? Math.min(cnvUi.clientWidth, cnvUi.clientHeight) : 0
           const solved = solveUi({
-            ui: uiT,
+            ui: { rev: uiT?.rev, theme: uiT?.theme, root: rootAll },
             entities: sim.worldData['__entities'] as Parameters<typeof solveUi>[0]['entities'],
             overrides: sim.worldData['__uiOverrides'] as Record<string, UiOverride> | undefined,
             insets: chromeInsetsRef.current,   // chrome-safe: world UI never lands under the cafe's own plate/rail/pills
