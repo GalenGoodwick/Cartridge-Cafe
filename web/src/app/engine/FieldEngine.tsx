@@ -298,6 +298,81 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // opens up design ui"). The fold derives from the mode; there is no
   // separate open/closed boolean to drift.
   const uiDockOpen = worldMode === 'design'
+
+  // ── CHROME DESIGN DRAG (Galen, Aug 26: "design mode toggles me clicking and
+  // dragging elements so I can show you what I want") — thirty-year-old tech,
+  // finally here. OWNER in DESIGN mode: press-drag ANY fixed chrome element
+  // (its nearest fixed-position root) to move it. Every drop persists to
+  // worldData.chrome_placement (the owner tab's normal sync carries it), which
+  // is BRIDGE-READABLE — the human's arrangement becomes data the AI reads and
+  // codifies into the uiGrid declaration. Old button behavior is suppressed
+  // only when an actual drag happened (>4px), so design mode stays clickable.
+  useEffect(() => {
+    if (worldMode !== 'design' || !isOwner) return
+    let dragEl: HTMLElement | null = null
+    let sx = 0, sy = 0, ox = 0, oy = 0, moved = false
+    const findChrome = (t: EventTarget | null): HTMLElement | null => {
+      let el = t instanceof HTMLElement ? t : null
+      while (el && el !== document.body) {
+        if (el.tagName === 'CANVAS') return null
+        const cs = getComputedStyle(el)
+        if (cs.position === 'fixed' || el.hasAttribute('data-cc-chrome')) return el
+        el = el.parentElement
+      }
+      return null
+    }
+    const down = (e: PointerEvent) => {
+      const el = findChrome(e.target)
+      if (!el) return
+      dragEl = el; moved = false
+      const r = el.getBoundingClientRect()
+      sx = e.clientX; sy = e.clientY; ox = r.x; oy = r.y
+      el.setPointerCapture?.(e.pointerId)
+      el.style.outline = '2px dashed rgba(255,190,60,0.9)'
+      el.style.outlineOffset = '2px'
+    }
+    const move = (e: PointerEvent) => {
+      if (!dragEl) return
+      const dx = e.clientX - sx, dy = e.clientY - sy
+      if (!moved && Math.hypot(dx, dy) < 4) return
+      moved = true
+      e.preventDefault()
+      dragEl.style.position = 'fixed'
+      dragEl.style.left = ox + dx + 'px'
+      dragEl.style.top = oy + dy + 'px'
+      dragEl.style.right = 'auto'; dragEl.style.bottom = 'auto'
+      dragEl.style.transform = 'none'; dragEl.style.margin = '0'
+      dragEl.style.zIndex = '90'
+    }
+    const up = (e: PointerEvent) => {
+      if (!dragEl) return
+      const el = dragEl; dragEl = null
+      el.style.outline = ''
+      if (!moved) return
+      // a real drag: swallow the click the browser fires after pointerup
+      const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
+      document.addEventListener('click', swallow, { capture: true, once: true })
+      setTimeout(() => document.removeEventListener('click', swallow, { capture: true } as never), 120)
+      const r = el.getBoundingClientRect()
+      const label = ((el.innerText || '').trim().split('\n')[0].slice(0, 28)) || el.tagName.toLowerCase()
+      const sim = simulationRef.current
+      if (sim) {
+        const wd = sim.worldData as Record<string, unknown>
+        const cur = (wd.chrome_placement && typeof wd.chrome_placement === 'object') ? wd.chrome_placement as Record<string, unknown> : {}
+        wd.chrome_placement = { ...cur, [label]: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), win: { w: window.innerWidth, h: window.innerHeight }, at: Date.now() } }
+        showToast(`◲ placed "${label}" — saved for the AI`, 'success')
+      }
+    }
+    document.addEventListener('pointerdown', down, true)
+    document.addEventListener('pointermove', move, true)
+    document.addEventListener('pointerup', up, true)
+    return () => {
+      document.removeEventListener('pointerdown', down, true)
+      document.removeEventListener('pointermove', move, true)
+      document.removeEventListener('pointerup', up, true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldMode, isOwner])
   const toggleUiDock = () => setWorldMode(m => (m === 'design' ? 'view' : 'design'))
   // owner's shelf switch: current visibility + the confirm popup (Galen: one
   // click to publish/private, confirm either way, ABOVE the edit button)
