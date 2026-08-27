@@ -5022,7 +5022,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           // so the worker tick payload doesn't carry a fresh clone every frame.
           let fp = solved.rev * 31 + solved.hits.length
           for (const id in solved.rects) { const r = solved.rects[id]; fp = (fp * 31 + id.length + r.x * 7 + r.y * 13 + r.w * 3 + r.h) % 1e9 }
-          if (fp !== uiRectsFpRef.current) {
+          // republish when the geometry changed OR the table is missing — a
+          // scene load wipes worldData (incl. __uiRects) while this ref
+          // survives, which orphaned the hit table until the next resize
+          // (found by the conversion functional eye, Aug 27)
+          if (fp !== uiRectsFpRef.current || !sim.worldData['__uiRects']) {
             uiRectsFpRef.current = fp
             sim.worldData['__uiRects'] = { rev: solved.rev, rects: solved.rects, hits: solved.hits.map(h => ({ id: h.id, action: h.action, x: h.x, y: h.y, w: h.w, h: h.h })) }
             // __uiSafe (fit law: "ui buttons cover the world"): the design-square

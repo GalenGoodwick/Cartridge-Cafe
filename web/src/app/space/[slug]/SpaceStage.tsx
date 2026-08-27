@@ -8,6 +8,7 @@ import { WorldTopbar } from '@/app/engine/ui-topbar'
 import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
 import { shellWorldUi } from '@/app/engine/ui-blocks'   // THE CONVERSION: the engine draws the chrome
+import { useShellHost } from '@/app/engine/useShellHost'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
 // (DockButton REMOVED — Galen, Aug 27: membership automatically allows editing
@@ -81,18 +82,8 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
       isOwner,
     })
   }, [name, instanceW, isOwner, versionView])
-  useEffect(() => {
-    const on = (e: Event) => {
-      const action = String((e as CustomEvent).detail || '')
-      if (!action.startsWith('shell:')) return
-      const a = action.slice(6)
-      if (a === 'back') router.push('/')
-      else if (a === 'play' || a === 'instructions' || a === 'edit' || a === 'fork' || a === 'builderbox')
-        window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: a }))
-    }
-    window.addEventListener('cafe:shell-ui', on)
-    return () => window.removeEventListener('cafe:shell-ui', on)
-  }, [router])
+  // THE ONE SHELL HOST (shared with the conversion proof — never a copy)
+  useShellHost({ onBack: () => router.push('/') })
 
   // THE DESKTOP DOOR (targets matrix, other half of the phone frame): a world
   // declaring worldData.fit='desktop' is built for a wide screen + fine pointer.
