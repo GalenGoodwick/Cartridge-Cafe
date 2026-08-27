@@ -9,7 +9,9 @@ import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
-import DockButton from './DockButton'
+// (DockButton REMOVED — Galen, Aug 27: membership automatically allows editing
+// open worlds; no dock ritual, no docking limit. The membership ask lives at
+// the edit action itself, not a chrome button.)
 
 /** The space page = the SAME engine dock a world uses (one unified chrome), plus
  *  the space-only PLUMBING that lives invisibly here: the delete / remix / flag
@@ -353,7 +355,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
           <GridSlot region="chrome.topbar" gravity="left" solved={gridSolved}>
             <WorldTopbar slug={spaceSlug} name={name} ownerName={ownerName} ownerHandle={ownerHandle} ownerId={ownerId}
               isOwner={isOwner} versionView={versionView}
-              dock={!isOwner ? <DockButton slug={spaceSlug} name={name} bar /> : null} />
+              dock={null} />
           </GridSlot>
         )}
         {/* (FOLLOW moved into the bottombar slot above — tenant #2; DOCK IN

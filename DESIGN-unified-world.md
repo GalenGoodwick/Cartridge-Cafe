@@ -130,3 +130,38 @@ Open decisions for him:
   any merge/split (e.g. is `input` part of `ui`)?
 - **Base** — build the unified engine here (off prod) and fold in the chair's
   `one-engine` render + my `ui-benchmark` fit, or merge those branches first?
+
+## RULINGS — Aug 27 (Galen) — chrome inventory + creation flow
+
+The full world-chrome inventory (~25 controls) was accounted; these rulings
+resolve the flagged items and set the creation flow:
+
+- **DOCK IN: REMOVED.** Membership automatically allows editing open worlds —
+  no dock ritual, no docking limit (limits verified already gone). The
+  membership ask surfaces at the EDIT ACTION, not as a chrome button.
+- **⚔ branch-standing: REMOVED** (button + its 10s arena poll). Branch/
+  tournament paradigm is retired; the riding chip keeps only author + discuss.
+- **PREMIUM GAMES → WHITE-LABEL.** Not deleted — repurposed: premium space
+  becomes the white-label lane where DEVS OWN THEIR IP (the Fortis shape:
+  tenant seam, own branding, own terms). Design pending; gate component stays.
+- **DELETE WORLD → the account page.** Off the world page; lives with the
+  user's game list (/mine). PROTECTION: a world with multiple editors is
+  protected — no single-click deletion of co-built work.
+
+### THE GENERATE FLOW (to build) — creation asks three questions
+
+New-world creation becomes a real flow; each answer is a FACET of the
+unified WorldDoc, set at birth through the ONE birth pipeline (birthWorld):
+
+1. **BASE** — "fork from here" moves OUT of the in-game dock INTO creation:
+   pick blank, or any forkable world on the shelf as your starting base
+   (lineage recorded, same as today's fork).
+2. **DIMENSIONS** — the targets facet, chosen up front: desktop | mobile |
+   universal (+ optional min bounds). Feeds the catalog badge, the door
+   notice, and every solve verdict from day one.
+3. **PEOPLE** — the access model: solo | invite-only | open world. Maps to
+   membership editing (open = members may edit), invites (co-build), or
+   private solo build.
+
+One form, three selections, one WorldDoc born through one pipeline. No
+parallel creation routes (universal-pipelines law).

@@ -789,20 +789,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // NOTE: cellData now carries only presence (viewers) + discussion. Voting was
   // a SECOND tally here (a parallel quorum-of-5 nobody counted) — removed. The
   // one and only vote is the ⚔ reckoning (TournamentBar / the tournament doc).
-  // the WORLD ARENA's view of the ridden branch — tier, cell, votes, podium.
-  // Shown in the dock so a branch owner sees their tournament standing without
-  // opening the reckoning; explicit filler when the branch has no votes yet.
-  const [arenaDoc, setArenaDoc] = useState<{ tier?: number; cells?: Array<{ worlds: string[]; votes: Record<string, string> }>; champion?: string | null } | null>(null)
-  useEffect(() => {
-    if (!riding) { setArenaDoc(null); return }
-    let stop = false
-    const load = () => fetch(`/api/engine/save?slot=${encodeURIComponent('tournament:world:' + cellBase().toUpperCase())}`)
-      .then(r => r.json()).then(j => { if (!stop) setArenaDoc(j?.data || null) }).catch(() => {})
-    load()
-    const t = setInterval(load, 10000)
-    return () => { stop = true; clearInterval(t) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [riding])
+  // (WORLD ARENA standing poll REMOVED with the ⚔ standing button — Galen,
+  // Aug 27: branch/tournament paradigm retired. No 10s poll, no dead state.)
 
   const loadCellDoc = useCallback(async (): Promise<CellDoc> => {
     try {
@@ -6851,35 +6839,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             {/* juror mode: riding a branch. ONE vote lives in the ⚔ reckoning
                 (TournamentBar) — here we show the authoritative standing (read
                 from the real tournament doc) + a way to discuss. No second cast. */}
+            {/* (⚔ branch-standing button REMOVED — Galen, Aug 27: the branch/
+                tournament paradigm is retired; no standing readout. The riding
+                chip below keeps only the author + discuss door.) */}
             {riding && (() => {
               const author = (riding.split(' ⑂ ')[1] || '').split(' · ')[0]
-              // this branch's standing in the WORLD ARENA — filler when unvoted
-              const ident = riding.replace(/ · v\d+$/, '')
-              let standing = '⚔ NOT IN THE VOTE YET'
-              let hot = false
-              if (arenaDoc?.champion === ident) { standing = '⚔ WINNER — on the podium'; hot = true }
-              else if (arenaDoc?.cells) {
-                const ci = arenaDoc.cells.findIndex(c => c.worlds.includes(ident))
-                if (ci >= 0) {
-                  const c = arenaDoc.cells[ci]
-                  const tally = Object.values(c.votes).filter(v => v === ident).length
-                  const voices = new Set(Object.keys(c.votes)).size
-                  standing = tally > 0
-                    ? `⚔ T${arenaDoc.tier ?? 1} · CELL ${ci + 1} · ${tally} VOTE${tally === 1 ? '' : 'S'} (${voices}/5 voices)`
-                    : `⚔ T${arenaDoc.tier ?? 1} · CELL ${ci + 1} · NO VOTES YET`
-                  hot = tally > 0
-                }
-              }
-              return (<>
-                <div className={`flex items-center px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border ${hot ? 'border-amber-300/40 text-amber-200/90' : 'border-white/10 text-white/45'}`}
-                  title="this branch's standing in the world's tournament — cast your vote in the ⚔ reckoning">
-                  {standing}
-                </div>
+              return (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
                   <span className="text-amber-200/80">⑂ {author}</span>
                   <button className="px-1 hover:text-white" title="discuss this branch" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
                 </div>
-              </>)
+              )
             })()}
             {/* the AI, honestly: unplugged / live / processing */}
             {(() => {

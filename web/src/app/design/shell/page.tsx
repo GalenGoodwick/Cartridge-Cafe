@@ -99,8 +99,7 @@ export default function ShellProof() {
 
   const tenants: Record<string, React.ReactNode> = {
     'chrome.topbar': <div className="absolute inset-0 flex items-center px-3 gap-2 pointer-events-none">
-      <span className={chip}>◂</span><span className="font-mono text-[13px] tracking-[0.15em] text-white/85">BASE · Galen</span>
-      <span className={`${chip} ml-auto`}>⚓ DOCK IN</span></div>,
+      <span className={chip}>◂</span><span className="font-mono text-[13px] tracking-[0.15em] text-white/85">BASE · Galen</span></div>,
     'chrome.rail': <div className="absolute inset-0 flex flex-col items-end p-2 gap-1.5 pointer-events-none">
       <span className={chip}>⛶ PLAY</span><span className={chip}>? INSTRUCTIONS</span><span className={chip}>✎ EDIT</span></div>,
     'chrome.bottombar.right': <div className="absolute inset-0 flex items-center justify-end px-2 gap-2 pointer-events-none">
