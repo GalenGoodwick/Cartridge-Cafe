@@ -111,8 +111,11 @@ export default function ShellProof() {
   }
 
   return (
-    <div ref={wrapRef} className="fixed inset-0" style={{background:"radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)"}}
-      style={dims && phone ? { left: (window.innerWidth - dims.w) / 2, width: dims.w } : undefined}>
+    <div ref={wrapRef} className="fixed inset-0"
+      style={{
+        background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)',
+        ...(dims && phone ? { left: (window.innerWidth - dims.w) / 2, width: dims.w } : {}),
+      }}>
       {solved.filter(r => !r.slip).map(r => (
         <Region key={r.id} r={r} art={r.layer === 'game'}>{tenants[r.id]}</Region>
       ))}
