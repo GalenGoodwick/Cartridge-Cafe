@@ -4084,7 +4084,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       //    reads smooth (30 ≠ the old 10). Tune UNFOCUSED_MS to taste.
       //  · HIDDEN tab → rAF pauses for free (browser), so this never runs.
       const UNFOCUSED_MS = 33
-      const minFrameMs = windowFocusedRef.current ? 15 : UNFOCUSED_MS
+      // Mobile GPUs also cap to ~30fps even when focused: the pixel ceiling
+      // (mobileDeviceRef, below) cuts per-frame cost, but an uncapped ~60fps
+      // still cooks a phone into thermal throttle over minutes — the SUSTAINED
+      // in-world lag on an iPhone 14. 30fps roughly halves render+sim load and
+      // reads smooth for shader worlds (30 ≠ the old 10). Desktop keeps 60fps.
+      const minFrameMs = windowFocusedRef.current ? (mobileDeviceRef.current ? 33 : 15) : UNFOCUSED_MS
       if (now - lastFrameRef.current < minFrameMs) {
         animFrameRef.current = requestAnimationFrame(frame)
         return
