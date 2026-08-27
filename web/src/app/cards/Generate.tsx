@@ -18,7 +18,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const STASH = 'cc-gen-brief'
 
 export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
-  const [gen, setGen] = useState<{ buyable: boolean; credits: number; priceUsd: number } | null>(null)
+  const [gen, setGen] = useState<{ buyable: boolean; credits: number; priceUsd: number; bases: { slug: string; name: string }[] } | null>(null)
+  // THE FORMAT STEP (Galen, Aug 27): generation starts by choosing a blank
+  // format (a base) or NOTHING — undefined = not chosen yet, null = nothing
+  const [fmt, setFmt] = useState<string | null | undefined>(undefined)
   const [open, setOpen] = useState(false)
   const [brief, setBrief] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,8 +30,9 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
 
   const refresh = useCallback(() => {
     fetch('/api/generate').then(r => r.json())
-      .then((d: { buyable?: boolean; credits?: number; priceUsd?: number }) => setGen({ buyable: !!d.buyable, credits: d.credits ?? 0, priceUsd: d.priceUsd ?? 5 }))
-      .catch(() => setGen({ buyable: false, credits: 0, priceUsd: 5 }))
+      .then((d: { buyable?: boolean; credits?: number; priceUsd?: number; bases?: { slug: string; name: string }[] }) =>
+        setGen({ buyable: !!d.buyable, credits: d.credits ?? 0, priceUsd: d.priceUsd ?? 5, bases: Array.isArray(d.bases) ? d.bases : [] }))
+      .catch(() => setGen({ buyable: false, credits: 0, priceUsd: 5, bases: [] }))
   }, [])
   useEffect(() => { refresh() }, [refresh])
 
@@ -67,7 +71,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
     try {
       const r = await fetch('/api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief }),
+        body: JSON.stringify({ brief, ...(fmt ? { base: fmt } : {}) }),
       })
       const d = await r.json().catch(() => ({}))
       if (r.status === 402 && d.needPayment) {
@@ -84,7 +88,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
       localStorage.removeItem(STASH)
       window.location.href = `/space/${d.slug}`
     } finally { setBusy(false) }
-  }, [brief, busy])
+  }, [brief, busy, fmt])
 
   if (!gen || (!gen.buyable && gen.credits === 0)) return null
 
@@ -95,15 +99,30 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
         setOpen(true)
       }}
         className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-amber-300/40 text-amber-200 hover:bg-amber-400/15 transition-colors"
-        title="describe a world — the house AI builds it for you">
+        title="pick a format, describe a world — then connect your AI to build it">
         ✦ GENERATE{gen.credits > 0 ? ` ·${gen.credits}` : ''}
       </button>
       {open && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-xl bg-[#171009]/95 border border-[#b97a2a]/30 p-5" onClick={e => e.stopPropagation()}>
             <h2 className="font-mono text-[13px] tracking-[0.25em] text-amber-200 mb-1">✦ GENERATE A WORLD</h2>
-            <p className="font-mono text-[11px] leading-relaxed text-white/45 mb-3">
-              describe it — the house AI builds your brief while you watch.
+            {/* STEP 1 — THE FORMAT: a blank base to start from, or nothing */}
+            <p className="font-mono text-[11px] tracking-[0.15em] text-white/45 mb-1.5">1 · PICK A FORMAT</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <button onClick={() => setFmt(null)}
+                className={`font-mono text-[11px] tracking-[0.1em] px-2.5 py-1.5 rounded border transition-colors ${fmt === null ? 'border-amber-300/70 text-amber-100 bg-amber-400/15' : 'border-white/15 text-white/50 hover:text-amber-200'}`}>
+                ◻ NOTHING — blank canvas
+              </button>
+              {gen.bases.map(b => (
+                <button key={b.slug} onClick={() => setFmt(b.slug)}
+                  className={`font-mono text-[11px] tracking-[0.1em] px-2.5 py-1.5 rounded border transition-colors ${fmt === b.slug ? 'border-amber-300/70 text-amber-100 bg-amber-400/15' : 'border-white/15 text-white/50 hover:text-amber-200'}`}>
+                  ⑄ {b.name.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <p className="font-mono text-[11px] tracking-[0.15em] text-white/45 mb-1.5">2 · DESCRIBE IT</p>
+            <p className="font-mono text-[11px] leading-relaxed text-white/45 mb-2">
+              your AI builds the brief while you watch.
               {gen.credits > 0
                 ? ` you have ${gen.credits} generation${gen.credits === 1 ? '' : 's'}.`
                 : ` $${gen.priceUsd} per world.`}
@@ -116,7 +135,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
             {note && <p className="mt-2 font-mono text-[11px] text-amber-200/80">{note}</p>}
             <div className="mt-3 flex items-center justify-end gap-2 font-mono text-[12px]">
               <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded text-white/45 hover:text-white transition-colors">not now</button>
-              <button onClick={submit} disabled={busy || brief.trim().length < 20}
+              <button onClick={submit} disabled={busy || brief.trim().length < 20 || fmt === undefined}
                 className="px-4 py-1.5 rounded border border-amber-300/50 text-amber-200 hover:bg-amber-400/15 disabled:opacity-40 transition-colors">
                 {busy ? '…' : gen.credits > 0 ? 'GENERATE' : `GENERATE · $${gen.priceUsd}`}
               </button>

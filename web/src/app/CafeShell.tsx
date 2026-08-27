@@ -175,15 +175,15 @@ export default function CafeShell({ initialScene = 'CAFE', initialMine = false, 
         ])
         const events: Array<{ text: string; pri: number; t: number }> = []
         // ── worlds: born · built-right-now · reworked ──
-        for (const s of (Array.isArray(bd?.spaces) ? bd.spaces : []) as Array<{ slug: string; name?: string; updatedAt?: string; blank?: boolean; building?: boolean; isPublic?: boolean }>) {
+        for (const s of (Array.isArray(bd?.spaces) ? bd.spaces : []) as Array<{ slug: string; name?: string; updatedAt?: string; rev?: number; blank?: boolean; building?: boolean; isPublic?: boolean }>) {
           if (s.blank || s.isPublic === false) continue
           const name = s.name || s.slug
-          const t = new Date(s.updatedAt || 0).getTime()
+          const t = s.rev ?? 0   // REAL builder edits only (see browse route)
           const prev = worlds.get(s.slug)
           if (primed) {
             if (s.building && !prev?.building) events.push({ text: `⚡ ${name} is being built right now`, pri: 5, t: now })
-            else if (!s.building && (prev === undefined || prev.building)) events.push({ text: `✦ ${name} just joined the cafe`, pri: 3, t })
-            else if (!s.building && prev && t > prev.t + 1000) events.push({ text: `✦ ${name} was just reworked`, pri: 2, t })
+            else if (!s.building && (prev === undefined || prev.building)) events.push({ text: `✦ ${name} just joined the cafe`, pri: 3, t: now })
+            else if (!s.building && prev && t > prev.t) events.push({ text: `✦ ${name} was just reworked`, pri: 2, t: now })
           }
           worlds.set(s.slug, { t, building: !!s.building })
         }

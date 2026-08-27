@@ -18,7 +18,9 @@ export const runtime = 'nodejs'
  *  prefilled — their AI builds it live. No BuildJob queue, no phantom builder.
  *
  *  GET  — credits + whether the product is buyable (renders the GENERATE door)
- *  POST {brief, name?} — spend a credit (admins free), birth the world.
+ *  POST {brief, name?, base?} — spend a credit (admins free), birth the world;
+ *       `base` = a base world's slug whose snapshot seeds the newborn (the
+ *       chosen BLANK FORMAT), or absent = born empty with its slots.
  *       402 when broke (client sends them through /api/pay/checkout).
  */
 
@@ -28,12 +30,21 @@ export async function GET() {
     ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
     : null
   const { isAdminUserId } = await import('@/lib/adminAuth')
+  // THE FORMATS (Galen, Aug 27): generation starts from a chosen BLANK
+  // FORMAT (a base world's snapshot) or from nothing — the picker's list.
+  const bases = await prisma.$queryRawUnsafe<Array<{ slug: string; name: string }>>(
+    `SELECT slug, name FROM "PlayerSpace"
+     WHERE "isPublic" = true
+       AND (snapshot->'worldData'->>'__base' = 'true' OR snapshot->'worldData'->>'forkable' = 'true')
+     ORDER BY name ASC LIMIT 24`,
+  ).catch(() => [] as Array<{ slug: string; name: string }>)
   return NextResponse.json({
     buyable: stripeConfigured(),   // ad-hoc priced — no per-product price id needed
     priceUsd: GEN_PRICE_USD,
     credits: user ? await readGenCredits(user.id) : 0,
     free: user ? await isAdminUserId(user.id) : false,   // the keeper demos without credits
     signedIn: !!user,
+    bases,
   })
 }
 
@@ -86,14 +97,33 @@ export async function POST(req: NextRequest) {
     // like every world: the OWNER sees it fine, connects their AI, and it goes
     // public through the normal publish gate (vision + instructions +
     // brief_done) when the build is real. Strangers never meet a bare curtain.
+    // THE FORMAT SEED: a chosen base's snapshot becomes the newborn's start
+    // (the fork rules apply: never inherit __base/forkable/policy). Only real
+    // bases may seed — the same gate the fork route holds.
+    let seedSnapshot: unknown
+    const baseSel = String(body?.base ?? '').trim()
+    if (baseSel) {
+      const src = await prisma.playerSpace.findUnique({ where: { slug: baseSel }, select: { isPublic: true, snapshot: true } })
+      const swd = ((src?.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
+      if (!src?.isPublic || (swd.__base !== true && swd.forkable !== true)) {
+        return NextResponse.json({ error: 'that format is not a base' }, { status: 400 })
+      }
+      const clone = JSON.parse(JSON.stringify(src.snapshot)) as { worldData?: Record<string, unknown> }
+      clone.worldData = clone.worldData ?? {}
+      delete clone.worldData.__base
+      delete clone.worldData.forkable
+      delete clone.worldData.policy
+      clone.worldData.creation_brief = { prompt: brief, by: user.id, at: Date.now(), format: baseSel }
+      seedSnapshot = clone
+    }
     const { space } = await birthWorld({
       ownerId: user.id,
       name,
       baseSlug,
       description: brief.slice(0, 140),
-      worldData: {
-        creation_brief: { prompt: brief, by: user.id, at: Date.now() },
-      },
+      ...(seedSnapshot !== undefined
+        ? { snapshot: seedSnapshot as Parameters<typeof birthWorld>[0]['snapshot'] }
+        : { worldData: { creation_brief: { prompt: brief, by: user.id, at: Date.now() } } }),
     })
 
     // NO BuildJob, NO "awaits a builder" bus ring (Galen, Aug 26: "there is no

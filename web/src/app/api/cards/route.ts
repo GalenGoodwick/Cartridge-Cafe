@@ -129,22 +129,21 @@ export async function GET(req: Request) {
     if (!known) return NextResponse.json({ ...out, error: `no base "${tab}"` }, { status: 404 })
     return NextResponse.json({ base: out.base, ...serve(out.cards, url) })
   }
-  // ?tabs=1 (and the bare GET) → the fixed strip counts (mine/shared need a session)
-  const [mine, shared] = await Promise.all([fetchMineRows('mine'), fetchMineRows('shared')])
+  // ?tabs=1 (and the bare GET) → the fixed strip counts (mine needs a session)
+  const mine = await fetchMineRows('mine')
   return NextResponse.json({
     published: rows.length,
     live: rows.filter(r => r.buildMode === 'anyone' && r.hasContent).length,
     premium: rows.filter(r => r.premium !== null).length,
     forkable: rows.filter(r => r.isBase || r.forkable).length,
     mine: mine === null ? null : mine.length,
-    shared: shared === null ? null : shared.length,
   })
 }
 
 /** MY/OUR: the signed-in maker's worlds — OWNED plus MEMBER (a live
  *  member:<handle> key on the world). Includes UNPUBLISHED (drafts); never
  *  cached (per-user truth). Null = signed out. */
-async function fetchMineRows(kind: 'mine' | 'shared'): Promise<FeedRow[] | null> {
+async function fetchMineRows(_kind: 'mine' | 'shared' = 'mine'): Promise<FeedRow[] | null> {
   let email: string | null | undefined
   try {
     const session = await getServerSession(authOptions)
@@ -154,10 +153,13 @@ async function fetchMineRows(kind: 'mine' | 'shared'): Promise<FeedRow[] | null>
   const me = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   if (!me) return null
   const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+  // MY WORLDS = every world you're INVESTED in: owned, OR holding a live
+  // member seat (Galen retired the separate SHARED tab — activity rolls in)
   const spaces = await prisma.playerSpace.findMany({
-    where: kind === 'mine'
-      ? { ownerId: me.id }
-      : { ownerId: { not: me.id }, tokens: { some: { revokedAt: null, name: `member:${handle}` } } },
+    where: { OR: [
+      { ownerId: me.id },
+      { tokens: { some: { revokedAt: null, name: `member:${handle}` } } },
+    ] },
     select: {
       id: true, slug: true, name: true, forkOfId: true, isPublic: true, updatedAt: true,
       owner: { select: { name: true, email: true } },

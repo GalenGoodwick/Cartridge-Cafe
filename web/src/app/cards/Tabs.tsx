@@ -2,10 +2,11 @@
 
 // cards-tabs — THE FOUR TABS (Galen's ruling): PUBLISHED · FORKABLE (the
 // start-here surface: bases + worlds whose makers enabled forking) ·
-// MY WORLDS (owned) · SHARED WORLDS (member, not owner). A base's family
+// MY WORLDS (owned OR member — your activity in a world makes it yours to
+// find; Galen retired the separate SHARED tab). A base's family
 // page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
 
-export interface TabCounts { published: number; live?: number; premium?: number; forkable: number; mine: number | null; shared: number | null }
+export interface TabCounts { published: number; live?: number; premium?: number; forkable: number; mine: number | null }
 
 export function CardTabs({ counts, active, familyName, onPick }: {
   counts: TabCounts
@@ -13,7 +14,7 @@ export function CardTabs({ counts, active, familyName, onPick }: {
   familyName?: string | null
   onPick: (slug: string) => void
 }) {
-  const fixed = ['live', 'published', 'premium', 'forkable', 'mine', 'shared']
+  const fixed = ['live', 'published', 'premium', 'forkable', 'mine']
   const tabs: Array<{ slug: string; label: string; count: number | null }> = [
     // LIVE EDITING — THE FIRST TAB (Galen, Aug 24): games open to edit live now;
     // an editing membership docks you in
@@ -27,7 +28,6 @@ export function CardTabs({ counts, active, familyName, onPick }: {
     ...(familyName && !fixed.includes(active)
       ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
     { slug: 'mine', label: 'MY WORLDS', count: counts.mine },
-    { slug: 'shared', label: 'SHARED WORLDS', count: counts.shared },
   ]
   return (
     <div className="flex items-end gap-1 overflow-x-auto pb-0 -mb-px" role="tablist" aria-label="the catalog">

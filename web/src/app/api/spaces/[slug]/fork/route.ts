@@ -37,8 +37,12 @@ export async function POST(
   // (worldData.forkable) — without it, nobody but the owner may copy the world.
   {
     const wd = (source.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
-    if (source.ownerId !== user.id && wd?.forkable !== true) {
-      return NextResponse.json({ error: 'this world is not forkable — its maker has not enabled forking' }, { status: 403 })
+    // BASES ONLY (Galen, Aug 27: "we don't want forking except for base
+    // versions"): a world forks iff it is a BASE — the house's __base mark or
+    // the maker's forkable switch. Ownership grants no bypass; an owner who
+    // wants a copy flips the switch in WORLD TOOLS first.
+    if (wd?.forkable !== true && wd?.__base !== true) {
+      return NextResponse.json({ error: 'only base worlds can be forked — this one is not a base' }, { status: 403 })
     }
   }
 

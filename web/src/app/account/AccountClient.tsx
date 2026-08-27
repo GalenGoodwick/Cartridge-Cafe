@@ -153,7 +153,7 @@ export default function AccountClient(p: {
 
           <div className="flex items-center justify-between">
             <button onClick={() => signOut({ callbackUrl: '/' })} className="font-mono text-[12px] text-white/40 hover:text-white/70">sign out</button>
-            <div className="text-[11px] text-white/25">questions: hello@cartridge.cafe</div>
+            <a href="/commons" className="text-[11px] text-white/25 hover:text-white/60">questions? ask in the commons ↗</a>
           </div>
 
           {note && <div className="font-mono text-[13px] text-amber-200/90">{note}</div>}

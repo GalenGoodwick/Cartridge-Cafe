@@ -19,25 +19,25 @@ export default function TermsPage() {
       <div className="mx-auto max-w-2xl px-6 py-16 font-mono">
         <Link href="/" className="text-[14px] tracking-[0.2em] text-brass hover:text-flame">◂ cartridge.cafe</Link>
         <h1 className="cafe-sign text-4xl text-glow mt-5 mb-1">terms & the commons deal</h1>
-        <div className="text-[14px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-07-30</div>
+        <div className="text-[14px] tracking-[0.15em] text-crema/40 mb-2">last updated 2026-08-27</div>
 
         {/* the human version, up top and loud */}
         <div className="rounded-xl border border-brass/40 bg-black/30 p-5 mt-6">
           <div className="text-[14px] tracking-[0.2em] text-flame mb-2">THE COMMONS DEAL — in plain words</div>
           <P><b className="text-glow">You own what you make.</b> Your worlds are yours.</P>
-          <P><b className="text-glow">Playable worlds are on the shelf.</b> Make a world playable and anyone can play it. If you also <b>allow forking</b> (a separate switch, off by default), other members can <b>fork</b> it &mdash; take their own copy to build on. A fork becomes their own world, keeps its <b>lineage</b> back to you, and your original always stays yours &mdash; untouched.</P>
+          <P><b className="text-glow">Playable worlds are on the shelf.</b> Make a world playable and anyone can play it. Forking &mdash; taking a copy to build on &mdash; exists only for <b>bases</b>: worlds explicitly marked as starting points. A fork becomes its maker&rsquo;s own world, keeps its <b>lineage</b> back to the base, and the original always stays its maker&rsquo;s &mdash; untouched.</P>
           <P><b className="text-glow">Unplayable worlds are yours alone.</b> No one else can see, open, or fork an unplayable world (crew members you have invited keep their access). A shared link simply doesn&rsquo;t open for anyone else.</P>
           <P className="mb-0"><b className="text-glow">Be decent.</b> No illegal, hateful, or seizure-inducing content. We can remove worlds and close accounts that break the rules.</P>
         </div>
 
         <H>1 · Your account</H>
-        <P>You need an account (or a guest session) to brew and keep worlds. You&rsquo;re responsible for what happens under your account. One person, one identity; don&rsquo;t impersonate others. We can suspend or remove accounts that abuse the service or break these terms.</P>
+        <P>You need an account to brew and keep worlds. You&rsquo;re responsible for what happens under your account. One person, one identity; don&rsquo;t impersonate others. We can suspend or remove accounts that abuse the service or break these terms. Manage your subscription and your data &mdash; including full export and deletion &mdash; any time from your <Link href="/account" className="text-brass hover:text-flame underline">account page</Link>.</P>
 
         <H>2 · What you make, and who owns it</H>
         <P>You keep ownership of the worlds and content you create. By using cartridge.cafe you grant us a worldwide, non-exclusive license to <b>host, store, display, and back up</b> your content so the service can run — nothing more. We don&rsquo;t claim ownership and we don&rsquo;t sell your worlds.</P>
 
         <H>3 · Forking (when the maker allows it)</H>
-        <P>When you make a world <b>playable</b>, every other member gets a license to <b>view and play</b> it. Forking — taking an independent copy to build on — happens only when you <b>enable forking</b> on that world. A fork becomes its maker&rsquo;s own world; yours is untouched. Every fork carries <b>lineage</b> — a link back to what it came from — so credit follows the work.</P>
+        <P>When you make a world <b>playable</b>, every other member gets a license to <b>view and play</b> it. Forking — taking an independent copy to build on — exists only for <b>bases</b>: worlds explicitly marked as starting points (the house&rsquo;s base formats, or a world whose maker flips the base switch). A fork becomes its maker&rsquo;s own world; the base is untouched. Every fork carries <b>lineage</b> — a link back to what it came from — so credit follows the work.</P>
         <P>Forkable worlds are shared under a <b>CC BY-SA</b>-style arrangement: attribution is preserved through lineage. You can disable forking or make a world unplayable at any time to stop new forks, but forks already made remain their creators&rsquo;.</P>
 
         <H>4 · Private worlds</H>
@@ -47,18 +47,24 @@ export default function TermsPage() {
         <P>Don&rsquo;t upload or build content that is illegal, infringing, hateful, harassing, or that endangers people — including <b>strobing / flashing visuals</b>, which are rejected culture-wide. Don&rsquo;t attack the service, other members, or their worlds. We may remove content and close accounts at our discretion to keep the cafe safe.</P>
 
         <H>6 · AI-built worlds</H>
-        <P>Worlds may be built by AI agents you connect, or by the cafe&rsquo;s resident AI on your behalf. You&rsquo;re responsible for the briefs you submit and the worlds they produce, the same as anything else you make here.</P>
+        <P>Worlds are built by AI agents <b>you connect</b> — there is no house AI building on your behalf. You&rsquo;re responsible for the briefs you submit, the agents you connect, and the worlds they produce, the same as anything else you make here.</P>
 
-        <H>7 · Our software</H>
+        <H>7 · Payments</H>
+        <P>Playing is free. The <b>editing membership</b> is a monthly subscription (currently $10/mo) that grants a seat to build on open building worlds; <b>world generation</b> is a one-time purchase per world; some worlds are <b>paid experiences</b> priced by their makers. All payments are processed by Stripe &mdash; we never see your card. You can <b>cancel your subscription at any time</b> from your <Link href="/account" className="text-brass hover:text-flame underline">account page</Link> (Stripe&rsquo;s own portal); canceling keeps your seat until the period ends. Your worlds and credit stay yours after a lapse &mdash; only the build seat pauses.</P>
+
+        <H>8 · Open building &amp; co-builders</H>
+        <P>A world whose maker opens building invites others&rsquo; real work into it. In fairness to co-builders, a <b>public open-building world that others have built in can&rsquo;t be deleted outright</b> &mdash; its maker can close building or unpublish it (both reversible) first. If an account is deleted, such worlds are preserved for the community, disconnected from the departed maker&rsquo;s identity.</P>
+
+        <H>9 · Our software</H>
         <P>The cartridge.cafe platform itself — its code, engine, shaders, design, and branding — is <b>proprietary</b> and remains ours (see the project&rsquo;s license, <span className="text-glow">All Rights Reserved</span>). Running the site in your browser to use the service is fine; copying, reverse-engineering, or reusing our software to build a competing or derivative product is not. This is separate from the worlds <b>you</b> make, which stay yours under sections&nbsp;2&ndash;4.</P>
 
-        <H>8 · The service, as-is</H>
+        <H>10 · The service, as-is</H>
         <P>cartridge.cafe is provided &ldquo;as is,&rdquo; without warranties. Worlds can change, break, or be removed; we don&rsquo;t guarantee uptime or that your data is permanent. To the extent the law allows, we&rsquo;re not liable for losses arising from using the service. Keep your own copies of anything you can&rsquo;t bear to lose.</P>
 
-        <H>9 · Changes</H>
+        <H>11 · Changes</H>
         <P>We may update these terms. If we make material changes we&rsquo;ll note it here and update the date above. Continuing to use cartridge.cafe means you accept the current terms.</P>
 
-        <P className="mt-8 text-[16px] text-crema/50">Questions? See our <Link href="/privacy" className="text-brass hover:text-flame underline">Privacy Policy</Link>, or reach the keeper of the cafe.</P>
+        <P className="mt-8 text-[16px] text-crema/50">Questions? See our <Link href="/privacy" className="text-brass hover:text-flame underline">Privacy Policy</Link>, your <Link href="/account" className="text-brass hover:text-flame underline">account page</Link>, or ask in <Link href="/commons" className="text-brass hover:text-flame underline">the commons</Link>.</P>
       </div>
     </main>
   )

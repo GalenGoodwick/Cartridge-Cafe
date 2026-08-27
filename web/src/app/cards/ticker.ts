@@ -24,13 +24,15 @@ export function useCatalogTicker(): { text: string; live: boolean } {
     const poll = async () => {
       try {
         const d = await fetch('/api/spaces/browse', { cache: 'no-store' }).then(r => r.json()) as
-          { spaces?: { slug: string; name: string; updatedAt?: string | number }[] }
+          { spaces?: { slug: string; name: string; rev?: number }[] }
         for (const s of d.spaces ?? []) {
-          const at = new Date(s.updatedAt ?? 0).getTime()
+          // rev counts REAL builder edits only — updatedAt bumps on any row
+          // write (owner-tab sync, icon bake), which made idle worlds "reworked"
+          const rev = s.rev ?? 0
           const prev = seen.get(s.slug)
           if (primed && prev === undefined) show(`⚙ ${(s.name || s.slug).toUpperCase()} was just born`)
-          else if (primed && prev !== undefined && at > prev) show(`✦ ${(s.name || s.slug).toUpperCase()} was just reworked`)
-          seen.set(s.slug, at)
+          else if (primed && prev !== undefined && rev > prev) show(`✦ ${(s.name || s.slug).toUpperCase()} was just reworked`)
+          seen.set(s.slug, rev)
         }
         primed = true
       } catch { /* quiet line stays quiet */ }

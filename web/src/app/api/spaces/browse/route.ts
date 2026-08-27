@@ -45,7 +45,7 @@ async function build(uid: string | undefined) {
   })
   // a world is BLANK until it holds something; only unblank worlds join the door
   const out = spaces.map(({ snapshot, ...rest }) => {
-    const sn = snapshot as { fields?: IconField[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown; creation_brief?: unknown; brief_done?: unknown } } | null
+    const sn = snapshot as { fields?: IconField[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown; creation_brief?: unknown; brief_done?: unknown; __bridge_rev?: unknown } } | null
     const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
     // still being built by an AI: a creation_brief was set but never finished.
     // Such a world is "stuck in AI is working" and must NOT surface on main.
@@ -60,7 +60,10 @@ async function build(uid: string | undefined) {
     const email = rest.owner?.email || ''
     const isGuest = /@guest\.cartridge\.cafe$/i.test(email) || !email
     const owner = rest.owner ? { id: rest.owner.id, name: rest.owner.name, image: rest.owner.image, handle: isGuest ? null : handleOf(email), isGuest } : null
-    return { ...rest, owner, blank, building, hue, iconWgsl }
+    // rev = REAL builder edits only (__bridge_rev bumps per key-authed bridge
+    // batch). updatedAt bumps on ANY row write (owner-tab sync, icon bake,
+    // save states) — keying "reworked" on it made idle worlds cry rework.
+    return { ...rest, owner, blank, building, hue, iconWgsl, rev: Number(sn?.worldData?.__bridge_rev) || 0 }
   })
 
   // MAKERS directory — one entry per player who has a real (non-blank) world,

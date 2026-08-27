@@ -69,7 +69,7 @@ export default function CardsMain() {
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
       setActive(want || 'live')
-    }).catch(() => setCounts({ published: 0, live: 0, forkable: 0, mine: null, shared: null }))
+    }).catch(() => setCounts({ published: 0, live: 0, forkable: 0, mine: null }))
   }, [])
 
   // the active tab's cards — PAGINATED server-side (pages 1, 2, 3…; search and
@@ -105,7 +105,7 @@ export default function CardsMain() {
 
   const open = useCallback((slug: string) => { window.location.href = `/space/${slug}` }, [])
 
-  const FIXED = ['live', 'published', 'forkable', 'mine', 'shared']
+  const FIXED = ['live', 'published', 'forkable', 'mine']
   const isFamily = !FIXED.includes(active)
   const familyName = isFamily ? (grid?.base?.name ?? active) : null
 
@@ -206,7 +206,7 @@ export default function CardsMain() {
 
               {shown === null ? (
                 <div className="py-24 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
-              ) : (active === 'mine' || active === 'shared') && shown.signedOut ? (
+              ) : active === 'mine' && shown.signedOut ? (
                 <div className="py-24 text-center font-mono text-[13px] tracking-[0.15em] text-white/40">
                   {active === 'mine'
                     ? 'SIGN IN TO SEE YOUR WORLDS — OWNED, INCLUDING YOUR UNPUBLISHED DRAFTS'
@@ -227,12 +227,7 @@ export default function CardsMain() {
                   )}
                   {active === 'mine' && (
                     <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
-                      YOUR WORLDS · UNPUBLISHED DRAFTS ARE VISIBLE ONLY HERE
-                    </p>
-                  )}
-                  {active === 'shared' && (
-                    <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-white/30">
-                      SHARED WITH YOU — WORLDS WHERE YOU HOLD A MEMBER KEY
+                      YOUR WORLDS — OWNED AND CO-BUILT (MEMBER SEATS) · UNPUBLISHED DRAFTS ARE VISIBLE ONLY HERE
                     </p>
                   )}
                   <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />

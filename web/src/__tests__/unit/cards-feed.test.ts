@@ -177,7 +177,7 @@ beforeEach(() => {
 })
 
 describe('GET /api/cards', () => {
-  it('?tabs=1 → the fixed strip counts (published / forkable / mine / shared)', async () => {
+  it('?tabs=1 → the fixed strip counts (published / forkable / mine — SHARED retired, activity rolls into mine)', async () => {
     // the GET path runs the real strip — feed it PRISMA-shaped rows
     findMany.mockResolvedValue(fixture().map(r => ({
       id: r.id, slug: r.slug, name: r.name, forkOfId: r.forkOfId, isPublic: true,
@@ -191,7 +191,7 @@ describe('GET /api/cards', () => {
     expect(d.published).toBe(fixture().length)
     expect(d.forkable).toBe(fixture().filter((r: FeedRow) => r.isBase || r.forkable).length)
     expect(d.mine).toBeNull()    // no session in tests = signed out
-    expect(d.shared).toBeNull()
+    expect('shared' in d).toBe(false)   // tab retired (Galen, Aug 27): member worlds live in MINE
   })
 
   it('?tab=<base> → { base, cards } with the base pinned first', async () => {
