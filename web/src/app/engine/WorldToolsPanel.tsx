@@ -215,13 +215,9 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                 {/* DIRECT EDIT KEYS removed — CONNECT AI / ALTER already mints the
                     world + branch keys, so a second door here only confused people.
                     CONTENTS (raw field list) removed too — dev-only clutter. */}
-                {isOwner && (
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
-                    className="w-full text-left px-3 py-2 border-t border-white/10 text-[16px] text-red-300/70 hover:text-red-300 hover:bg-red-500/10 transition-colors">
-                    ✕ delete this world
-                  </button>
-                )}
+                {/* (✕ delete this world REMOVED from world tools — Galen, Aug 27:
+                    deletion lives on YOUR ACCOUNT page (/mine) with the game
+                    list; co-built worlds are protected there.) */}
               </div>
             )
 }

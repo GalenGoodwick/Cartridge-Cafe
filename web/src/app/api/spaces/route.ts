@@ -92,15 +92,45 @@ export async function POST(req: NextRequest) {
   // THE ONE BIRTH PIPELINE (Galen's law: pipelines universal, no hand-rolls).
   // The creation brief rides in the world itself: the FIRST thing a connecting
   // AI reads is what the player asked for — it builds that, not its own idea.
+  // THE GENERATE FLOW (Galen, Aug 27): creation answers three questions, each a
+  // facet set AT BIRTH through this ONE pipeline — BASE (blank | fork a shelf
+  // world), DIMENSIONS (targets → worldData.fit), PEOPLE (access model).
+  const targets = body.targets === 'desktop' || body.targets === 'mobile' ? body.targets : undefined  // universal = undeclared
+  const access = body.access === 'invite' || body.access === 'open' ? body.access : undefined         // solo = undeclared
+  const birthData: Record<string, unknown> = {
+    ...(brief?.trim() ? { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } : {}),
+    ...(targets ? { fit: targets } : {}),
+    ...(access ? { access } : {}),
+    ...(access === 'open' ? { build: 'anyone' } : {}),   // open world = live editing for members
+  }
+
+  // BASE: fork a forkable shelf world (or your own) as the starting snapshot —
+  // fork-from-here at CREATION, lineage recorded (forkOfId), one pipeline.
+  let baseSnapshot: import('@prisma/client').Prisma.InputJsonValue | undefined
+  let forkOfId: string | undefined
+  const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
+  if (baseWorld) {
+    const src = await prisma.playerSpace.findUnique({
+      where: { slug: baseWorld }, select: { id: true, ownerId: true, isPublic: true, snapshot: true },
+    })
+    if (!src) return NextResponse.json({ error: `base world "${baseWorld}" not found` }, { status: 404 })
+    const wd = ((src.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
+    const mayFork = src.ownerId === user.id || (src.isPublic && wd['forkable'] === true)
+    if (!mayFork) return NextResponse.json({ error: `"${baseWorld}" is not forkable — its maker has not enabled forking` }, { status: 403 })
+    const snap = (src.snapshot && typeof src.snapshot === 'object') ? src.snapshot as Record<string, unknown> : { fields: [] }
+    baseSnapshot = { ...snap, worldData: { ...(snap.worldData as Record<string, unknown> ?? {}), ...birthData } } as import('@prisma/client').Prisma.InputJsonValue
+    forkOfId = src.id
+  }
+
   const { space, token: rawToken } = await birthWorld({
     ownerId: user.id,
     name: name.trim(),
     baseSlug,
     description: description?.trim() || null,
     isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
-    worldData: brief?.trim()
-      ? { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } }
-      : undefined,
+    worldData: Object.keys(birthData).length ? birthData : undefined,
+    ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
+    ...(forkOfId ? { forkOfId } : {}),
   })
 
   // shape the response (the create returns the full row now — don't leak

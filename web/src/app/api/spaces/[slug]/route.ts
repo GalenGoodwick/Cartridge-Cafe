@@ -213,6 +213,19 @@ export async function DELETE(
       error: 'Cannot delete: this world has been flagged into a vote. The community holds a stake until it resolves.',
     }, { status: 409 })
   }
+  // CO-BUILT PROTECTION (Galen, Aug 27: "multiple edit worlds are protected").
+  // An OPEN world invited members to build in it — their work lives here too,
+  // so a single click can't erase it. Close the world (make it solo) first;
+  // a deliberate second step, not a wall.
+  const openRows = await prisma.$queryRaw<{ b: string | null; a: string | null }[]>`
+    SELECT snapshot->'worldData'->>'build' AS b, snapshot->'worldData'->>'access' AS a
+    FROM "PlayerSpace" WHERE id = ${space.id}`
+  if (openRows[0]?.b === 'anyone' || openRows[0]?.a === 'open') {
+    return NextResponse.json({
+      error: 'Cannot delete: this is an OPEN world — members may have built here, and co-built work is protected. Close it (make it solo) first, then delete.',
+      coBuilt: true,
+    }, { status: 409 })
+  }
   // (being live in a cell no longer blocks deletion — everything here is live
   //  state, so the cell HEALS instead: TournamentBar prunes non-roster worlds on
   //  its next beat — votes for the dead release, an emptied cell completes.)

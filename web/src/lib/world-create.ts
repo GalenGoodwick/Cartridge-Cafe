@@ -77,7 +77,8 @@ export async function birthWorld(opts: {
   description?: string | null
   isPublic?: boolean                      // default FALSE — worlds are born private
   worldData?: Record<string, unknown>     // e.g. creation_brief — the first thing a connecting AI reads
-  snapshot?: Prisma.InputJsonValue        // full snapshot override (brew-with-cartridge); wins over worldData
+  snapshot?: Prisma.InputJsonValue        // full snapshot override (brew-with-cartridge / generate-flow BASE); wins over worldData
+  forkOfId?: string                       // generate-flow BASE: lineage back to the picked world
 }): Promise<{ space: { id: string; slug: string; name: string; description: string | null; isPublic: boolean; createdAt: Date }; token: string }> {
   const snapshot = opts.snapshot
     ?? (opts.worldData && Object.keys(opts.worldData).length
@@ -90,6 +91,7 @@ export async function birthWorld(opts: {
     ownerId: opts.ownerId,
     isPublic: opts.isPublic === true,
     ...(snapshot !== undefined ? { snapshot } : {}),
+    ...(opts.forkOfId ? { forkOfId: opts.forkOfId } : {}),
   }))
   // BORN WITH ITS SLOTS: seed the blank placeholder nodes so the sandbox is
   // alive from frame one and the anatomy is named; a connecting AI builds

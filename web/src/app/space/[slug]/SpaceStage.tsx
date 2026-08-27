@@ -37,8 +37,6 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   const router = useRouter()
   const [dockBottom, setDockBottom] = useState(0)
   const [building, setBuilding] = useState(false)   // world is still blank-and-building → hide SHARE
-  const [confirmDel, setConfirmDel] = useState(false)
-  const [delErr, setDelErr] = useState('')
   const [flagOpen, setFlagOpen] = useState(false)
   const [flagReason, setFlagReason] = useState('')
   const [busy, setBusy] = useState(false)
@@ -102,12 +100,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
     { id: 'dev:' + spaceSlug, intervalMs: 10_000, byeOnCleanup: true, enabled: isOwner && !versionView, deps: [spaceSlug, isOwner, versionView] },
   )
 
-  const deleteWorld = useCallback(async () => {
-    setDelErr('')
-    const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, { method: 'DELETE' })
-    if (r.ok) { window.location.href = '/'; return }
-    setDelErr((await r.json().catch(() => null))?.error || 'could not delete')
-  }, [spaceSlug])
+  // (deleteWorld REMOVED — deletion lives on /mine with the game list; Galen Aug 27)
 
   const remix = useCallback(async () => {
     setBusy(true)
@@ -137,17 +130,14 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
 
   // the dock's buttons reach these flows through window events
   useEffect(() => {
-    const onDel = () => { setDelErr(''); setConfirmDel(true) }
     // INSTANT FORK (Galen: the prompt box was in the way) — the copy lands in
     // your inventory and opens with the AI terminal; the contract is declared
     // once, later, from the terminal (first-set immutability).
     const onRemix = () => { remix() }
     const onVote = () => { setFlagReason(''); setFlagOpen(true) }
-    window.addEventListener('cafe:delete-world', onDel)
     window.addEventListener('cafe:remix-world', onRemix)
     window.addEventListener('cafe:call-vote', onVote)
     return () => {
-      window.removeEventListener('cafe:delete-world', onDel)
       window.removeEventListener('cafe:remix-world', onRemix)
       window.removeEventListener('cafe:call-vote', onVote)
     }
@@ -415,20 +405,7 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
         </div>
       )}
 
-      {/* delete confirm — reached by the dock's ✕ delete (cafe:delete-world) */}
-      {confirmDel && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60" onClick={() => setConfirmDel(false)}>
-          <div className="max-w-sm w-[90%] rounded-xl border border-red-400/30 bg-black/90 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
-            <div className="text-red-300/90 tracking-[0.2em] text-[16px] mb-2">✕ DELETE THIS WORLD</div>
-            <p className="text-white/60 text-[16px] mb-3">This removes <span className="text-white/85">{name}</span> for good. There is no undo.</p>
-            {delErr && <p className="text-red-400 text-[16px] mb-2">{delErr}</p>}
-            <div className="flex justify-end gap-2">
-              <button className={`${btn} border-white/20 text-white/70 hover:bg-white/10`} onClick={() => setConfirmDel(false)}>KEEP IT</button>
-              <button className={`${btn} border-red-400/50 bg-red-500/20 text-red-200 hover:bg-red-500/30`} onClick={deleteWorld}>DELETE</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* (delete confirm modal REMOVED — deletion lives on /mine; Galen Aug 27) */}
 
       {/* call a vote → opens a /chants deliberation. Reached by the dock's ⚖ button. */}
       {flagOpen && (
