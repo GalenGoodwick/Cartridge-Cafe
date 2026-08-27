@@ -962,9 +962,16 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // device-tier START: weak/mobile GPUs begin a notch down so the first heavy
   // frames can't spike into a freeze before the governor reacts (it recovers to
   // full on its own if the device can actually handle it).
+  // phones also get a PIXEL-BUDGET ceiling (below): the governor watches frame
+  // TIME, not heat/battery — a capable phone would otherwise recover to full
+  // scale and burn ~2.2M px/frame for sharpness invisible at phone density.
+  const mobileDeviceRef = useRef<boolean>(false)
   useEffect(() => {
     try {
-      const weak = (navigator.hardwareConcurrency || 8) <= 4 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+      const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
+        (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+      mobileDeviceRef.current = mobile
+      const weak = (navigator.hardwareConcurrency || 8) <= 4 || mobile
       if (weak) autoScaleRef.current = 0.8
     } catch { /* fine */ }
   }, [])
@@ -4982,7 +4989,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // back full retina sharpness (the 2.2M default upscales ~30-50% on hidpi,
       // which reads as soft focus). Clamped so no world can order a GPU-killer.
       const budget = sim.worldData['maxBufferPixels']
-      const wantPx = typeof budget === 'number' ? Math.max(1_000_000, Math.min(6_500_000, budget)) : 2_200_000
+      let wantPx = typeof budget === 'number' ? Math.max(1_000_000, Math.min(6_500_000, budget)) : 2_200_000
+      // MOBILE PIXEL CEILING: ~1.2M px ≈ effective dpr 1.8-1.9 on a 390pt
+      // phone — visually identical at phone density, roughly half the fragment
+      // work and battery. The governor still eases below this under load; a
+      // world's declared budget can only lower it further, never raise it.
+      if (mobileDeviceRef.current) wantPx = Math.min(wantPx, 1_200_000)
       if (wantPx !== renderer.maxBufferPixels) renderer.maxBufferPixels = wantPx
 
       // Process particle emission requests from worldData
