@@ -7,7 +7,7 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import { WorldTopbar } from '@/app/engine/ui-topbar'
 import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
-import { shellWorldUi } from '@/app/engine/ui-blocks'   // THE CONVERSION: the engine draws the chrome
+import { worldChromeUi } from '@/app/engine/ui-blocks'   // THE KEYSTONE: bands + perchers, engine-drawn
 import { useShellHost } from '@/app/engine/useShellHost'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
@@ -68,20 +68,20 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   // eye sees everything. shell:* clicks come back on 'cafe:shell-ui'; engine
   // internals are commanded by name over 'cafe:shell-cmd' (the two-way seam).
   // Version views keep the old DOM row (read-only browsing).
-  const [instanceW, setInstanceW] = useState<number>(9999)
+  const [winDim, setWinDim] = useState<{ w: number; h: number }>({ w: 9999, h: 800 })
   useEffect(() => {
-    const m = () => setInstanceW(window.innerWidth)
+    const m = () => setWinDim({ w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
   }, [])
   const engineShell = useMemo(() => {
     if (versionView != null) return null
-    return shellWorldUi({
+    return worldChromeUi({
       title: name, sub: 'MAIN - LIVE',
-      instance: instanceW < 700 ? 'phone' : 'desktop',
-      isOwner,
+      instance: winDim.w < 700 ? 'phone' : 'desktop',
+      isOwner, window: winDim,
     })
-  }, [name, instanceW, isOwner, versionView])
+  }, [name, winDim, isOwner, versionView])
   // THE ONE SHELL HOST (shared with the conversion proof — never a copy)
   useShellHost({ onBack: () => router.push('/') })
 

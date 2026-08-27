@@ -24,6 +24,7 @@
 // PURE: no DOM, no GPU — deterministic and unit-tested like the solver.
 
 import { ADV, type UiNode } from './ui-solver'
+import { solveUiGrid, uiGridOverlaps, type UiGridDoc, type UiGridState } from './ui-grid'
 import type { Block } from '@/lib/page-types'
 
 export const SHELL_NS = 'shell:'
@@ -166,53 +167,117 @@ export function shellTopbarUi(o: ShellTopbarOpts): UiNode[] {
 // no sheet behind it is a lie — the sheet is the next rung). FOLLOW/SHARE stay
 // DOM this rung (session flows), still solver-placed.
 
-export interface ShellWorldOpts {
+export interface WorldChromeOpts {
   title: string
   sub?: string
   instance: 'phone' | 'desktop'
   isOwner: boolean
   isHub?: boolean
-  /** engine-count badge for the BuilderBox pill (people + AI live now) */
-  live?: number
+  live?: number                 // engine-count badge for the BuilderBox pill
+  window: { w: number; h: number }   // real viewport px — the solve needs it
 }
 
-const RAIL_FS = 11
-const RAIL_W = 118          // one rail width — the widest label (INSTRUCTIONS) + pad
+// ─── THE WORLD-CHROME BANDS (Galen, Aug 27: "movers and perchers... it isn't
+// unifying"). THE KEYSTONE: the world's chrome is not hand-placed pills — it is
+// BANDS (movers) solved by the REAL ui-grid layout brain, with buttons
+// (perchers) roosting inside each solved band, emitted as ui-solver shader
+// nodes. Same declaration /design/shell used; now shader-drawn. One doc:
+// ui-grid solves the bars → perchers flow within → the engine draws them.
+const CHROME_BANDS: UiGridDoc = {
+  regions: [
+    // TOP BAR — back + title roost here; full width, thin.
+    { id: 'chrome.topbar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0, 0.075] }, z: 60 },
+    // SIDE BAR (rail) — the action stack; desktop only (a mover culled by the
+    // when-clause on a phone, exactly like the shell proof).
+    { id: 'chrome.rail', layer: 'cafe', anchor: { vx: [0.845, 1], vy: [0.1, 0.9] }, z: 50, when: { viewport: { minW: 700 } } },
+    // BOTTOM BAR — BuilderBox (desktop) / the whole action row (phone).
+    { id: 'chrome.bottombar', layer: 'cafe', anchor: { vx: [0, 1], vy: [0.925, 1] }, z: 55 },
+  ],
+}
+const CHROME_INK = 'rgba(236,235,242,0.92)'
+const CHROME_MUT = 'rgba(160,157,172,0.9)'
+const PILL_H = 30   // approx solved pill height (pad + text) for centering in a band
 
-export function shellWorldUi(o: ShellWorldOpts): UiNode[] {
-  const nodes: UiNode[] = shellTopbarUi({ title: o.title, sub: o.sub, instance: o.instance, dockable: false, menu: false })
+type Percher = { id: string; label: string; action: string | null; fs: number; sub?: string }
 
-  const pill = (id: string, label: string, action: string, anchor: UiNode['anchor'], align: UiNode['align'], w?: number): UiNode => ({
-    id, kind: 'panel', pad: PILL_PAD, ...(w ? { w } : {}), glass: SHELL_GLASS,
-    click: shellAction(action), draggable: false, collapsible: false,
-    anchor, align,
-    children: [{ id: `${id}.t`, kind: 'text', text: label, fontSize: RAIL_FS, color: SHELL_INK }],
-  })
+/** THE COMPILER — one WorldDoc-of-bands → solved bands → roosted perchers →
+ *  ui-solver shader nodes. Positions are viewport fractions (vx/vy, the same
+ *  space ui-solver anchors in); sizes are design units. */
+export function worldChromeUi(o: WorldChromeOpts): UiNode[] {
+  const W = Math.max(1, o.window.w), H = Math.max(1, o.window.h)
+  const scale = 512 / Math.min(W, H)          // window px → design units (short axis = 512)
+  const dvw = W * scale, dvh = H * scale       // the design viewport
+  const state: UiGridState = {
+    mode: 'view', role: o.isOwner ? 'owner' : 'visitor', worldState: 'done',
+    window: { w: W, h: H }, triggers: {},
+  }
+  const solved = solveUiGrid(CHROME_BANDS, state)
+  if (process.env.NODE_ENV !== 'production') {
+    const bad = uiGridOverlaps(CHROME_BANDS, solved)
+    if (bad.length) console.warn('[world-chrome] bands overlap:', bad)
+  }
+  const bandOf = (id: string) => {
+    const r = solved.find(s => s.id === id)?.rect
+    return r ? { x: r.x * scale, y: r.y * scale, w: r.w * scale, h: r.h * scale } : null
+  }
 
-  if (!o.isHub) {
-    if (o.instance === 'desktop') {
-      // THE RAIL — top-right stack, below the topbar band; uniform width so it
-      // reads as one clean column (the DOM dock's items-stretch, declared)
-      const railX = -EDGE
-      let y = EDGE + 34
-      const rail: Array<[string, string, string]> = [
-        ['shell.play', '# PLAY', 'play'],
-        ['shell.instructions', '? INSTRUCTIONS', 'instructions'],
-        ...(!o.isOwner ? [['shell.fork', '+ FORK WORLD', 'fork'] as [string, string, string]] : []),
-        ['shell.edit', '/ EDIT', 'edit'],
-      ]
-      for (const [id, label, action] of rail) {
-        nodes.push(pill(id, label, action, { vx: 1, vy: 0, dx: railX, dy: y }, 'tr', RAIL_W))
-        y += 30
-      }
-      nodes.push(pill('shell.builderbox', `= BUILDERBOX${o.live ? ` (${o.live})` : ''}`, 'builderbox',
-        { vx: 0, vy: 1, dx: EDGE, dy: -EDGE }, 'bl'))
-    } else {
-      // PHONE — footer row: BUILDERBOX + PLAY side by side, thumb-reachable
-      nodes.push(pill('shell.builderbox', `= BOX${o.live ? ` (${o.live})` : ''}`, 'builderbox',
-        { vx: 0, vy: 1, dx: EDGE, dy: -EDGE }, 'bl'))
-      nodes.push(pill('shell.play', '# PLAY', 'play',
-        { vx: 0, vy: 1, dx: EDGE + 86, dy: -EDGE }, 'bl'))
+  const nodes: UiNode[] = []
+  const EDGE = 8, PAD = 7, GAP = 6
+  const pillW = (label: string, fs: number) => Math.max(30, label.length * ADV * fs + PAD * 2)
+  const emit = (id: string, label: string, action: string | null, dx: number, dy: number, fs: number, w: number, sub?: string) => {
+    const children: UiNode[] = [{ id: `${id}.t`, kind: 'text', text: label, fontSize: fs, color: CHROME_INK }]
+    if (sub) children.push({ id: `${id}.s`, kind: 'text', text: sub, fontSize: 8, color: CHROME_MUT })
+    const node: UiNode = {
+      id, kind: 'panel', pad: PAD, gap: 2, w, glass: SHELL_GLASS, draggable: false, collapsible: false,
+      anchor: { vx: dx / dvw, vy: dy / dvh }, align: 'tl', children,
+    }
+    if (action) node.click = shellAction(action)
+    nodes.push(node)
+  }
+
+  const RFS = 11
+  const railPerchers: Percher[] = o.isHub ? [] : [
+    { id: 'shell.play', label: '# PLAY', action: 'play', fs: RFS },
+    { id: 'shell.instructions', label: '? INSTRUCTIONS', action: 'instructions', fs: RFS },
+    ...(!o.isOwner ? [{ id: 'shell.fork', label: '+ FORK WORLD', action: 'fork', fs: RFS }] : []),
+    { id: 'shell.edit', label: '/ EDIT', action: 'edit', fs: RFS },
+  ]
+  const boxLabel = (short: boolean) => `= ${short ? 'BOX' : 'BUILDERBOX'}${o.live ? ` (${o.live})` : ''}`
+
+  // ── TOP BAR — back + title roost at the start ──
+  const tb = bandOf('chrome.topbar')
+  if (tb) {
+    const cy = tb.y + Math.max(2, (tb.h - PILL_H) / 2)
+    let x = tb.x + EDGE
+    const bw = pillW('<', 15); emit('shell.back', '<', 'back', x, cy, 15, bw); x += bw + GAP
+    const sub = (o.sub ?? 'MAIN - LIVE').toUpperCase()
+    const titleW = Math.max(pillW(o.title.toUpperCase(), 13), pillW(sub, 8))
+    emit('shell.title', o.title.toUpperCase(), null, x, cy, 13, titleW, sub)
+  }
+
+  if (o.instance === 'desktop') {
+    // ── SIDE BAR — the action stack roosts vertically in the rail band ──
+    const rb = bandOf('chrome.rail')
+    if (rb && railPerchers.length) {
+      const w = Math.max(90, rb.w - PAD * 2)
+      let y = rb.y + PAD
+      for (const p of railPerchers) { emit(p.id, p.label, p.action, rb.x + PAD, y, p.fs, w); y += PILL_H + GAP }
+    }
+    // ── BOTTOM BAR — BuilderBox roosts at the left ──
+    const bb = bandOf('chrome.bottombar')
+    if (bb && !o.isHub) {
+      const cy = bb.y + Math.max(2, (bb.h - PILL_H) / 2)
+      emit('shell.builderbox', boxLabel(false), 'builderbox', bb.x + EDGE, cy, RFS, pillW(boxLabel(false), RFS))
+    }
+  } else {
+    // ── PHONE — the rail is culled; its perchers + BuilderBox flow in the
+    // footer band (thumb row). The expand-from-band menu sheet is the next rung. ──
+    const bb = bandOf('chrome.bottombar')
+    if (bb && !o.isHub) {
+      const cy = bb.y + Math.max(2, (bb.h - PILL_H) / 2)
+      let x = bb.x + EDGE
+      const footer: Percher[] = [...railPerchers, { id: 'shell.builderbox', label: boxLabel(true), action: 'builderbox', fs: RFS }]
+      for (const p of footer) { const w = pillW(p.label, p.fs); emit(p.id, p.label, p.action, x, cy, p.fs, w); x += w + GAP }
     }
   }
   return nodes

@@ -13,12 +13,12 @@
 //   · externalTopbar suppresses the engine's DOM title row — the pills ARE it
 import { useEffect, useMemo, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
-import { shellWorldUi } from '@/app/engine/ui-blocks'
+import { worldChromeUi } from '@/app/engine/ui-blocks'
 import { useShellHost } from '@/app/engine/useShellHost'
 
 export default function ConversionProof() {
   const [scene, setScene] = useState('CINDERFELL')
-  const [instanceW, setInstanceW] = useState<number>(9999)
+  const [winDim, setWinDim] = useState<{ w: number; h: number }>({ w: 9999, h: 800 })
   const [forcePhone, setForcePhone] = useState(false)
   useEffect(() => {
     try {
@@ -26,17 +26,46 @@ export default function ConversionProof() {
       const s = u.searchParams.get('scene'); if (s) setScene(s.toUpperCase())
       if (u.searchParams.get('phone') === '1') setForcePhone(true)
     } catch { /* ssr */ }
-    const m = () => setInstanceW(window.innerWidth)
+    const m = () => setWinDim({ w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
   }, [])
   // THE SAME HOST SPACESTAGE USES — back goes home, engine cmds route by name
   const lastAction = useShellHost()
-  const shell = useMemo(() => shellWorldUi({
+
+  // ?debug=1 — HIT-RECT TRUTH OVERLAY: DOM outlines at each solved hit's
+  // inverse-mapped client position. If an outline doesn't sit exactly on its
+  // drawn pill, the draw/hit mapping has drifted — visible instantly, no guess.
+  const [debug, setDebug] = useState(false)
+  const [hitBoxes, setHitBoxes] = useState<Array<{ id: string; x: number; y: number; w: number; h: number }>>([])
+  useEffect(() => {
+    try { if (new URL(window.location.href).searchParams.get('debug') === '1') setDebug(true) } catch { /* ssr */ }
+  }, [])
+  useEffect(() => {
+    if (!debug) return
+    const t = setInterval(() => {
+      type DevSim = { worldData?: { __uiRects?: { hits: Array<{ id: string; action?: string; x: number; y: number; w: number; h: number }> } } }
+      const sim = (globalThis as unknown as { __ccDevSim?: DevSim }).__ccDevSim
+      const hits = sim?.worldData?.__uiRects?.hits
+      const cv = document.querySelector('canvas')
+      if (!hits || !cv) return
+      const r = cv.getBoundingClientRect()
+      const side = Math.min(r.width, r.height)
+      setHitBoxes(hits.filter(h => h.action?.startsWith('shell:')).map(h => ({
+        id: h.id,
+        x: r.left + (r.width - side) / 2 + h.x * side / 512,
+        y: r.top + (r.height - side) / 2 + h.y * side / 512,
+        w: h.w * side / 512, h: h.h * side / 512,
+      })))
+    }, 500)
+    return () => clearInterval(t)
+  }, [debug])
+  const shell = useMemo(() => worldChromeUi({
     title: scene, sub: 'MAIN - LIVE',
-    instance: forcePhone || instanceW < 700 ? 'phone' : 'desktop',
+    instance: forcePhone || winDim.w < 700 ? 'phone' : 'desktop',
     isOwner: false,
-  }), [scene, instanceW, forcePhone])
+    window: forcePhone ? { w: Math.min(winDim.w, 412), h: winDim.h } : winDim,
+  }), [scene, winDim, forcePhone])
   return (
     <div className="fixed inset-0">
       <FieldEngine playScene={scene} shellUi={shell} hooksTrusted externalTopbar />
@@ -47,6 +76,13 @@ export default function ConversionProof() {
           {lastAction}
         </div>
       )}
+      {/* ?debug=1 — hit rects outlined at their true client positions */}
+      {debug && hitBoxes.map(b => (
+        <div key={b.id} className="fixed z-[998] pointer-events-none border border-emerald-400/80"
+          style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+          <span className="absolute -top-4 left-0 font-mono text-[9px] text-emerald-300">{b.id}</span>
+        </div>
+      ))}
     </div>
   )
 }
