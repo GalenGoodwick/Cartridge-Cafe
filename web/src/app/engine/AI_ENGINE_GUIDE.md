@@ -1758,3 +1758,66 @@ hook drives the inputs through the whiteboard or the population buffer.
 Crowds: publish `gpuPopulation` entries `[x, y, heading, phase]` from the hook
 and loop `pop(i)` in the visual — each walker builds in its local frame with
 `mod_a3_gait(phase)` driving the legs. 4095 animated bodies, one dispatch.
+
+## THE UNIFIED WORLD — one config, any kind of world (validate → solve → eye)
+
+STATUS: the schema, validator, and solver are LIVE (bridge verbs below). The
+render backends are being converged onto the one WGSL engine — declare docs and
+dry-run them now; pixel execution of full WorldDocs is landing rung by rung.
+
+A world is ONE declarative document — a `WorldDoc` — composing seven orthogonal
+FACETS. You do not learn an API; you emit a document and the engine solves it:
+
+  render   how the visual is drawn: 'field2d' | 'raymarch3d' | 'shaderUI' | 'composite'
+  layout   WHERE regions sit — a ui-grid doc: regions with vx/vy bands, layer
+           ('game'|'cafe'), z, and `when` clauses (mode / role / viewport)
+  ui       WHAT fills each region: {as:'nodes'|'blocks'|'dom', ...} per regionId
+  fit      HOW each region recomposes per viewport: {aspect:'isotropic'|'cover'|
+           'contain'|'stretch', when?:{minW,maxW,minH,maxH}}
+  input    clickTargets / touch ('stick'|'buttons'|'stick+buttons') / keys
+  behavior your step-hooks (__nodes) — unchanged from this guide
+  state    worldData — unchanged
+
+The facets are ORTHOGONAL: swap `render.kind` without touching layout/fit/ui.
+An FPS, a 2D puzzle, a catalog page, and a mobile app shell are the SAME schema
+with different facet vectors. Mobile is NOT a separate design — the same doc
+culled by `when`/`fit.when` at a narrow viewport (the calculated instance).
+
+THE LOOP (how you build without eyes, then verify with them):
+
+  1. VALIDATE — POST the doc; get named errors, fix, repeat (1-2 rounds):
+       {"type":"validate_world_doc","doc":{...}}
+       → {"ok":false,"errors":["ui targets region 'chrome.ghost' which is not in layout"]}
+  2. SOLVE — dry-run the doc at real viewports BEFORE any pixels exist:
+       {"type":"solve_world_doc","doc":{...},"viewports":[{"w":1344,"h":800},{"w":390,"h":844}]}
+       → per viewport: {ok, errors, culled:[...], rects:{regionId:{rect:{x,y,w,h},backend}}}
+     The rects are THE PLAN — exactly where every region will sit, what draws
+     it, and what got culled on the phone. Predict first; never guess.
+  3. EYE — once rendered, render_probe the pixels and check them AGAINST the
+     plan's rects. The plan is the shared truth between you, the engine, and
+     the eye: what draws and what verifies can never drift.
+
+RULES THAT KEEP DOCS HONEST:
+  · every `ui`/`fit` key MUST name a region that exists in `layout.regions`
+  · reserve chrome BANDS (header/footer) and expand menus FROM them — never
+    float buttons over the game stage (a region with when.mode:['view'] culls
+    itself in play mode; that is how PLAY strips chrome, no special cases)
+  · game regions default fit 'isotropic' (circles stay circles; the long axis
+    sees MORE world, never a stretched world); chrome defaults 'contain'
+  · an inconsistent doc still solves and reports errors — but ship only ok:true
+
+TEMPLATE (the composite vector — trim to your kind):
+
+  {"id":"my-world","name":"MY WORLD","render":{"kind":"raymarch3d"},
+   "layout":{"regions":[
+     {"id":"game.stage","layer":"game","anchor":{"vx":[0.01,0.85],"vy":[0.09,0.91]},"z":0,"when":{"mode":["view"],"viewport":{"minW":700}}},
+     {"id":"game.stage.narrow","layer":"game","anchor":{"vx":[0.02,0.98],"vy":[0.09,0.90]},"z":0,"when":{"mode":["view"],"viewport":{"maxW":699}}},
+     {"id":"game.stage.full","layer":"game","anchor":{"vx":[0,1],"vy":[0,1]},"z":0,"when":{"mode":["play"]}},
+     {"id":"chrome.topbar","layer":"cafe","anchor":{"vx":[0,1],"vy":[0,0.08]},"z":60,"when":{"mode":["view"]}},
+     {"id":"chrome.bottombar","layer":"cafe","anchor":{"vx":[0,1],"vy":[0.92,1]},"z":50,"when":{"mode":["view"]}},
+     {"id":"chrome.exit","layer":"cafe","anchor":{"vx":[0.92,0.995],"vy":[0.01,0.055]},"z":70,"when":{"mode":["play"]}}]},
+   "ui":{"chrome.topbar":{"as":"blocks","blocks":[]},"chrome.bottombar":{"as":"blocks","blocks":[]},"chrome.exit":{"as":"blocks","blocks":[]}},
+   "fit":{"game.stage":{"aspect":"isotropic"},"game.stage.narrow":{"aspect":"isotropic"},"game.stage.full":{"aspect":"isotropic"}},
+   "input":{"touch":"stick+buttons","clickTargets":["chrome.exit"]}}
+
+Solve it at desktop AND phone before you build anything else on top.

@@ -24,6 +24,8 @@ import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatche
 import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
 import { handleCardTypes, handleProposeCardType, handleSetCard } from '../cards-registry'   // SEAM-A (cards)
+import { validateWorldDoc, worldDocFacets, type WorldDoc } from '@/app/engine/world-config'   // unified world: pure schema
+import { worldSolve, planRects } from '@/app/engine/world-solve'                              // unified world: pure solve
 
 export const maxDuration = 30
 
@@ -626,6 +628,38 @@ export async function POST(req: NextRequest) {
 
     if (commands.length === 0) {
       return NextResponse.json({ error: 'No commands. Send {type:"paint",...} or {commands:[...]}' }, { status: 400 })
+    }
+
+    // ── THE UNIFIED WORLD — pure request/response verbs (guide: "THE UNIFIED
+    // WORLD"). validate/solve run the SAME schema + solver the engine renders
+    // from, so a remote AI gets the identical dry-run loop a local one has:
+    // declare → validate (named errors) → solve (planRects per viewport) →
+    // build → eye. Pure reads: intercepted BEFORE presence/claim-lock — they
+    // never contend for a world and mutate nothing.
+    if (commands.length === 1 && (commands[0].type === 'validate_world_doc' || commands[0].type === 'solve_world_doc')) {
+      const cmd = commands[0]
+      const doc = cmd.doc as WorldDoc | undefined
+      if (!doc || typeof doc !== 'object' || !Array.isArray((doc as WorldDoc).layout?.regions)) {
+        return NextResponse.json({ error: 'send {type:"' + String(cmd.type) + '", doc:{id,name,render,layout:{regions:[...]}}} — see guide section "THE UNIFIED WORLD"' }, { status: 400 })
+      }
+      if (doc.layout.regions.length > 64) {
+        return NextResponse.json({ error: 'layout.regions capped at 64' }, { status: 400 })
+      }
+      if (cmd.type === 'validate_world_doc') {
+        const errors = validateWorldDoc(doc)
+        return NextResponse.json({ ok: errors.length === 0, errors, facets: worldDocFacets(doc), scope: 'unified-world' })
+      }
+      // solve_world_doc: one viewport or a matrix (capped) — the dry-run eye
+      const list = (Array.isArray(cmd.viewports) ? cmd.viewports : [cmd.viewport ?? { w: 1344, h: 800 }])
+        .slice(0, 8)
+        .filter((v): v is { w: number; h: number } => !!v && typeof (v as { w?: unknown }).w === 'number' && typeof (v as { h?: unknown }).h === 'number')
+      if (list.length === 0) return NextResponse.json({ error: 'send viewport:{w,h} or viewports:[{w,h},...] (max 8)' }, { status: 400 })
+      const state = (cmd.state && typeof cmd.state === 'object') ? cmd.state as Record<string, unknown> : undefined
+      const solves = list.map(vp => {
+        const plan = worldSolve(doc, vp, state)
+        return { viewport: vp, ok: plan.ok, errors: plan.errors, culled: plan.culled, rects: planRects(plan) }
+      })
+      return NextResponse.json({ scope: 'unified-world', solves })
     }
 
     // AI PRESENCE — a working AI has a body. Dock it in its world's head-count only
