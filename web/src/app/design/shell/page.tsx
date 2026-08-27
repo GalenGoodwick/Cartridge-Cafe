@@ -56,12 +56,19 @@ function useSolved(container: { w: number; h: number } | null): SolvedRegion[] {
   return solved
 }
 
-/** A region made visible + its tenants — the shell IS the grid. */
+/** A region made visible + its tenants — the shell IS the grid. Regions are
+ *  ABSOLUTE inside the shell root (a containing block), so their solved rects
+ *  are honored exactly at any instance — no fixed-vs-wrapper drift. */
 function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactNode; art?: boolean }) {
   const isGame = r.layer === 'game'
+  // COVER, never squish (Galen — the fit-law): the shader fills a SQUARE sized
+  // to the region's larger side and is CROPPED by the region's overflow — the
+  // aspect stays 1:1 so it can't stretch. Keyed by rect so it remounts fresh on
+  // an instance change (fixes the phone→desktop canvas loss).
+  const cover = Math.max(r.rect.w, r.rect.h)
   return (
     <div
-      className="fixed overflow-hidden"
+      className="absolute overflow-hidden"
       style={{
         left: r.rect.x, top: r.rect.y, width: r.rect.w, height: r.rect.h, zIndex: r.z,
         border: isGame ? '1px solid rgba(80,200,255,0.45)' : '1px dashed rgba(255,190,60,0.3)',
@@ -70,8 +77,13 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
         boxShadow: isGame ? '0 0 0 1px rgba(0,0,0,0.6), inset 0 0 40px rgba(0,0,0,0.5)' : undefined,
       }}
     >
-      {art && <div className="absolute inset-0"><LiveArt wgsl={BACKDROP} hue={0.7} onFail={() => {}} /></div>}
-      <span className="absolute top-1 left-2 font-mono text-[10px] tracking-[0.15em]"
+      {art && (
+        <div key={`${r.rect.w}x${r.rect.h}`} className="absolute"
+          style={{ width: cover, height: cover, left: (r.rect.w - cover) / 2, top: (r.rect.h - cover) / 2 }}>
+          <LiveArt wgsl={BACKDROP} hue={0.7} onFail={() => {}} />
+        </div>
+      )}
+      <span className="absolute top-1 left-2 font-mono text-[10px] tracking-[0.15em] z-10"
         style={{ color: isGame ? '#50c8ff' : '#ffbe3c', textShadow: '0 1px 2px #000' }}>
         {r.id} · {r.rect.w}×{r.rect.h}
       </span>
@@ -110,22 +122,31 @@ export default function ShellProof() {
       <span className={chip}>⌁ BUILDERBOX</span></div>,
   }
 
+  const w = dims?.w ?? 0
+  const left = phone && dims ? Math.round((window.innerWidth - w) / 2) : 0
   return (
-    <div ref={wrapRef} className="fixed inset-0"
-      style={{
-        background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)',
-        ...(dims && phone ? { left: (window.innerWidth - dims.w) / 2, width: dims.w } : {}),
-      }}>
-      {solved.filter(r => !r.slip).map(r => (
-        <Region key={r.id} r={r} art={r.layer === 'game'}>{tenants[r.id]}</Region>
-      ))}
+    <>
+      {/* the page behind the frame — inert, so the phone margins read as device */}
+      <div className="fixed inset-0 -z-10" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }} />
+      {/* THE SHELL ROOT — a CONTAINING BLOCK (transform) at the instance rect.
+          Regions inside are absolute → solved rects honored exactly; the phone
+          column is genuinely centered; toggling instance re-solves cleanly. */}
+      <div
+        ref={wrapRef}
+        className="fixed top-0 overflow-hidden"
+        style={{ left, width: w || '100%', height: '100%', transform: 'translateZ(0)', borderInline: phone ? '1px solid rgba(185,122,42,0.3)' : undefined }}
+      >
+        {solved.filter(r => !r.slip).map(r => (
+          <Region key={r.id} r={r} art={r.layer === 'game'}>{tenants[r.id]}</Region>
+        ))}
+      </div>
       <button onClick={() => setPhone(p => !p)}
         className="fixed top-2 left-1/2 -translate-x-1/2 z-[999] font-mono text-[11px] tracking-[0.2em] px-3 py-1.5 rounded-full border border-emerald-300/50 text-emerald-200 bg-black/80 pointer-events-auto">
         {phone ? '◻ DESKTOP INSTANCE' : '▯ PHONE INSTANCE'}
       </button>
       <div className="fixed bottom-1 left-1/2 -translate-x-1/2 z-[999] font-mono text-[10px] tracking-[0.15em] text-white/40">
-        {`the whole layout is solved from the doc — no hand CSS · gate: ${uiGridOverlaps(SHELL_DOC, solved).length === 0 ? "PASS (overlaps: [])" : "COLLIDE"}`}
+        {`the whole layout is solved from the doc — no hand CSS · gate: ${uiGridOverlaps(SHELL_DOC, solved).length === 0 ? 'PASS (overlaps: [])' : 'COLLIDE'}`}
       </div>
-    </div>
+    </>
   )
 }
