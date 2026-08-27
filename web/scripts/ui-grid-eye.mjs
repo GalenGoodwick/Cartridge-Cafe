@@ -39,6 +39,7 @@ const url = target.startsWith('http') ? target : `https://cartridge.cafe/space/$
 const out = process.argv[3] && !process.argv[3].startsWith('--') ? process.argv[3] : 'ui-grid-eye.png'
 const argOf = (k) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : null }
 const waitMs = Number(argOf('--wait') || 14000)
+const worldKey = argOf('--key')   // optional: read the GAME layer's own perchers (wd.__uiRects) from the bridge
 
 // ── the DECLARATION: --doc file, or the platform default world-page doc ──
 const DEFAULT_DOC = {
@@ -83,6 +84,18 @@ const reality = await page.evaluate(() => {
   for (const e of els) { const k = `${e.canvas}:${e.x},${e.y},${e.w},${e.h}`; if (!m.has(k) || e.label.length > m.get(k).label.length) m.set(k, e) }
   return { els: [...m.values()], win: { w: innerWidth, h: innerHeight } }
 })
+
+// ── THE GAME LAYER'S OWN PERCHERS (the third population — found by stopping:
+// wd.ui/__uiRects are runtime ghosts, invisible to snapshots and probes; a
+// live tab syncs them, and the bridge is the only headless door) ──
+let gamePerchers = []
+if (worldKey) {
+  try {
+    const st = await fetch(url.replace(/\/space\/.*/, '') + '/api/engine/bridge', { headers: { Authorization: 'Bearer ' + worldKey } }).then(r => r.json())
+    const rects = st?.worldData?.__uiRects
+    if (Array.isArray(rects)) gamePerchers = rects.map(r => ({ id: r.id || '?', x: r.x, y: r.y, w: r.w, h: r.h }))
+  } catch { /* no live sync — the ghost stays a ghost; reported below */ }
+}
 
 // ── the DECLARATION solved for THIS window ──
 const state = { mode: 'view', role: 'visitor', worldState: 'done', window: reality.win }
@@ -158,6 +171,7 @@ const verdict = {
   dom_orphans: domOrphans,          // the migration TODO, auto-derived
   empty_regions: emptyRegions,      // declared homes awaiting tenants
   sense_map: senseMap.map(sm => ({ sense: sm.sense, cell: `${sm.cell.x},${sm.cell.y} ${sm.cell.w}×${sm.cell.h}`, fits: sm.fits })),
+  game_perchers: worldKey ? (gamePerchers.length ? gamePerchers : 'GHOST — wd.__uiRects empty (no live tab syncing; the game UI exists only at runtime)') : 'not read (pass --key)',
   png: out,
 }
 console.log(JSON.stringify(verdict, null, 1))
