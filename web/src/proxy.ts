@@ -20,6 +20,24 @@ const CSRF_EXEMPT_PATTERNS: RegExp[] = [
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
+  // ── COMPANY TENANTS (Galen, Aug 27): fortis.cartridge.cafe style — a
+  // premium company's private-dev door. Any non-www subdomain of the apex
+  // serves the company shelf at /c/<sub> (pages only; /api and assets pass
+  // through untouched). DNS + Vercel wildcard-domain config are dashboard
+  // steps — this rewrite is ready the moment they exist.
+  {
+    const host = (req.headers.get('host') || '').toLowerCase().split(':')[0]
+    const m = host.match(/^([a-z0-9-]+)\.cartridge\.cafe$/)
+    const sub = m?.[1]
+    if (sub && sub !== 'www' && sub !== 'api' &&
+        !pathname.startsWith('/api/') && !pathname.startsWith('/_next') && !pathname.startsWith('/c/') &&
+        req.method === 'GET' && !pathname.includes('.')) {
+      const url = req.nextUrl.clone()
+      url.pathname = `/c/${sub}${pathname === '/' ? '' : pathname}`
+      return NextResponse.rewrite(url)
+    }
+  }
+
   // ── CORS preflight for embed API routes ──
   if (req.method === 'OPTIONS' && pathname.startsWith('/api/embed/')) {
     return new NextResponse(null, {

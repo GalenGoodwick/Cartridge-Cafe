@@ -1,0 +1,104 @@
+import type { Metadata } from 'next'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { hasIpControl } from '@/lib/stripe'
+
+export const metadata: Metadata = { title: 'Company', description: 'A private development space on cartridge.cafe.' }
+export const dynamic = 'force-dynamic'
+
+/** /c/[company] — THE COMPANY DOOR (Galen, Aug 27: "a fortis.cartridge.cafe
+ *  style thing — just has the company's apps for private dev"). Serves a
+ *  ◆ premium (IP control) account's worlds as a private-dev shelf: the
+ *  company's own people (the owner, and anyone holding a member seat on one
+ *  of its worlds) see the apps; everyone else meets a closed door. Subdomain
+ *  hosts (<company>.cartridge.cafe) rewrite here via proxy.ts. */
+export default async function CompanyPage({ params }: { params: Promise<{ company: string }> }) {
+  const { company } = await params
+  const handle = company.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+
+  // the company account = the ACTIVE user whose email local-part is the handle
+  const users = await prisma.$queryRawUnsafe<Array<{ id: string; name: string | null; email: string }>>(
+    `SELECT id, name, email FROM "User" WHERE lower(split_part(email, '@', 1)) = $1 AND status = 'ACTIVE' LIMIT 5`,
+    handle,
+  ).catch(() => [])
+  let owner: { id: string; name: string | null } | null = null
+  for (const u of users) if (await hasIpControl(u.id)) { owner = u; break }
+
+  const shell = (body: React.ReactNode) => (
+    <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
+      <div className="mx-auto max-w-2xl px-6 py-16 font-mono">{body}</div>
+    </main>
+  )
+
+  if (!owner) {
+    return shell(
+      <>
+        <div className="text-[13px] tracking-[0.2em] text-amber-200/60 mb-4">cartridge.cafe</div>
+        <h1 className="cafe-sign text-3xl text-glow mb-3">no company here</h1>
+        <p className="text-[14px] text-white/50">this address isn&rsquo;t claimed. company spaces come with the ◆ IP control membership.</p>
+        <a href="/" className="inline-block mt-6 text-[13px] tracking-[0.2em] text-amber-200/70 hover:text-amber-200">◂ the cafe</a>
+      </>,
+    )
+  }
+
+  // WHO MAY ENTER: the owner, or a holder of a member seat on any company world
+  const session = await getServerSession(authOptions)
+  const me = session?.user?.email
+    ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true, email: true } })
+    : null
+  const myHandle = me?.email ? me.email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
+  let inside = me?.id === owner.id
+  if (!inside && myHandle) {
+    const seat = await prisma.spaceToken.count({
+      where: { name: `member:${myHandle}`, revokedAt: null, space: { ownerId: owner.id } },
+    })
+    inside = seat > 0
+  }
+
+  const companyName = (owner.name || handle).toUpperCase()
+
+  if (!inside) {
+    return shell(
+      <>
+        <div className="text-[13px] tracking-[0.2em] text-amber-200/60 mb-4">cartridge.cafe · company space</div>
+        <h1 className="cafe-sign text-3xl text-glow mb-3">◆ {companyName}</h1>
+        <p className="text-[14px] text-white/50 leading-relaxed">
+          a private development space. entry is by the company&rsquo;s member seats —
+          {me ? ' your account holds none of them.' : ' sign in if you hold one.'}
+        </p>
+        {!me && (
+          <a href={`/auth/signin?callbackUrl=${encodeURIComponent(`/c/${handle}`)}`}
+            className="inline-block mt-5 font-mono text-[13px] tracking-[0.15em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">
+            SIGN IN
+          </a>
+        )}
+      </>,
+    )
+  }
+
+  const worlds = await prisma.playerSpace.findMany({
+    where: { ownerId: owner.id },
+    select: { slug: true, name: true, description: true, isPublic: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+  })
+
+  return shell(
+    <>
+      <div className="text-[13px] tracking-[0.2em] text-amber-200/60 mb-4">cartridge.cafe · private dev</div>
+      <h1 className="cafe-sign text-4xl text-glow mb-1">◆ {companyName}</h1>
+      <p className="text-[13px] text-white/40 mb-8">{worlds.length} app{worlds.length === 1 ? '' : 's'} · closed source · member access</p>
+      <div className="flex flex-col gap-3">
+        {worlds.length === 0 && <p className="text-[14px] text-white/45">no apps yet — brew one and it appears here.</p>}
+        {worlds.map(w => (
+          <a key={w.slug} href={`/space/${w.slug}`}
+            className="rounded-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-4 hover:border-amber-300/50 transition-colors">
+            <div className="text-[15px] text-white/85">{w.name}</div>
+            {w.description && <div className="text-[12px] text-white/40 mt-1">{w.description}</div>}
+            <div className="text-[11px] text-white/30 mt-2">{w.isPublic ? 'on the shelf' : 'private dev'} · updated {w.updatedAt.toLocaleDateString()}</div>
+          </a>
+        ))}
+      </div>
+    </>,
+  )
+}

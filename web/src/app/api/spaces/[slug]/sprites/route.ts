@@ -23,6 +23,14 @@ async function findSpace(slug: string) {
   })
 }
 
+/** PREMIUM SUITE gate: media imports ride the ◆ IP-control membership
+ *  (admins pass — the keeper demos). Shader-made art needs no upload. */
+async function mayImportAssets(ownerId: string): Promise<boolean> {
+  const { hasIpControl } = await import('@/lib/stripe')
+  const { isAdminUserId } = await import('@/lib/adminAuth')
+  return (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId))
+}
+
 async function sessionUserId(): Promise<string | null> {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return null
@@ -49,6 +57,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   if (!sp) return NextResponse.json({ error: 'no such world' }, { status: 404 })
   const uid = await sessionUserId()
   if (!uid || uid !== sp.ownerId) return NextResponse.json({ error: 'only the owner uploads sprites' }, { status: 403 })
+  if (!(await mayImportAssets(uid))) {
+    return NextResponse.json({ error: 'asset imports are a ◆ premium-suite feature — see /suite' }, { status: 402 })
+  }
   const b = await req.json().catch(() => ({}))
   const out = await putSheet(sp.id, {
     name: String(b?.name ?? ''), png_b64: String(b?.png ?? b?.png_b64 ?? ''),

@@ -759,6 +759,20 @@ export async function POST(req: NextRequest) {
       // 1×1 case. Metadata mirrors into worldData.sprites (rev → live tabs
       // repack the atlas); sprite(i,uv)/spriteAnim(...) sample it in any visual.
       if ((cmd.type === 'define_sprite' || cmd.type === 'define_sheet') && isSpaceScoped) {
+        // PREMIUM SUITE (Galen, Aug 27): importing REAL media (sprite sheets;
+        // 3D models + audio when they land) rides the ◆ IP-control membership.
+        // Shader-made art stays free — the gate is on uploads, not creativity.
+        // Admin owners pass (the keeper demos).
+        {
+          const { hasIpControl } = await import('@/lib/stripe')
+          const { isAdminUserId } = await import('@/lib/adminAuth')
+          const ownerId = auth.ownerId
+          const allowed = ownerId ? (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId)) : false
+          if (!allowed) {
+            results.push({ type: cmd.type, error: 'asset imports are a ◆ premium-suite feature — the world owner needs the IP control membership' })
+            continue
+          }
+        }
         const { putSheet } = await import('@/lib/sprite-store')
         const one = cmd.type === 'define_sprite'
         const out = await putSheet(auth.spaceId!, {
