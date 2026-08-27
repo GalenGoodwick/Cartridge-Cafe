@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { hasEditingMembership, readEntitlements, readGenCredits, findActiveSubscriptions, stripeConfigured, EDITOR_PRICE_USD } from '@/lib/stripe'
+import { hasEditingMembership, hasIpControl, readEntitlements, readGenCredits, findActiveSubscriptions, stripeConfigured, isProductConfigured, EDITOR_PRICE_USD } from '@/lib/stripe'
 import AccountClient from './AccountClient'
 
 export const metadata: Metadata = {
@@ -24,8 +24,9 @@ export default async function AccountPage() {
   })
   if (!user) redirect('/auth/signin')
 
-  const [member, ents, credits, subs, worlds] = await Promise.all([
+  const [member, ipControl, ents, credits, subs, worlds] = await Promise.all([
     hasEditingMembership(user.id),
+    hasIpControl(user.id),
     readEntitlements(user.id),
     readGenCredits(user.id),
     stripeConfigured() ? findActiveSubscriptions(user.id) : Promise.resolve([]),
@@ -45,6 +46,8 @@ export default async function AccountPage() {
       buyable={stripeConfigured()}
       genCredits={credits}
       entitlements={ents.filter(e => e.active).map(e => e.product)}
+      ipControl={ipControl}
+      ipBuyable={isProductConfigured('ip')}
       worldCount={worlds}
     />
   )

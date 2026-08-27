@@ -26,6 +26,11 @@ const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; 
   // a plain optional tip — the price itself has custom_unit_amount enabled,
   // so the donor picks the amount on Stripe's own checkout page.
   donate: { env: 'STRIPE_PRICE_DONATE', mode: 'payment', label: 'donate to cartridge.cafe' },
+  // IP CONTROL (Galen, Aug 27): the premium tier over the platform's
+  // open-source-within-the-cafe deal — the holder's worlds are CLOSED SOURCE
+  // (playable, never readable: the library refuses their code) + a custom
+  // company page. Inert until STRIPE_PRICE_IP lands (the key-drop law).
+  ip: { env: 'STRIPE_PRICE_IP', mode: 'subscription', label: 'IP control — closed-source worlds + company page' },
 }
 // PAID EXPERIENCES and WORLD GENERATION are NOT in this env-mapped table on
 // purpose (Galen, Aug 24: "I need a product pricing mechanism"). Their prices
@@ -242,6 +247,14 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
 // The pay webhook revokes the moment Stripe reports the subscription deleted.
 // Lapse costs the build seat ONLY — your worlds and node lineage stay forever.
 export const EDITOR_PRICE_USD = 10        // the ONE membership
+
+/** IP CONTROL (the premium tier): the holder's worlds are closed source —
+ *  the platform's open-source-within-the-cafe deal does not apply to them.
+ *  Read by the library before serving any world's code. */
+export async function hasIpControl(userId: string): Promise<boolean> {
+  const ents = await readEntitlements(userId)
+  return ents.some((e) => e.active && e.product === 'ip')
+}
 
 /** Does this account hold the editing membership? The build gate.
  *  ADMINS are members by virtue of being admin (Galen: free demos; no payment,

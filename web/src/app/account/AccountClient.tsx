@@ -19,6 +19,8 @@ export default function AccountClient(p: {
   buyable: boolean
   genCredits: number
   entitlements: string[]
+  ipControl: boolean
+  ipBuyable: boolean
   worldCount: number
 }) {
   const [busy, setBusy] = useState<string | null>(null)
@@ -140,6 +142,25 @@ export default function AccountClient(p: {
             {p.entitlements.length > 0 && (
               <div className="text-[11.5px] text-white/30 mt-3">purchases on record: {p.entitlements.join(', ')}</div>
             )}
+            {/* IP CONTROL — the premium tier over the platform commons */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              {p.ipControl ? (
+                <>
+                  <div className="text-[13px] text-amber-200/90">◆ IP control — active</div>
+                  <p className="text-[11.5px] leading-relaxed text-white/35 mt-1">
+                    your worlds are closed source: playable on the shelf, never readable or reusable by others.
+                    includes your custom company page — ask in the commons to set it up.
+                  </p>
+                </>
+              ) : (
+                <p className="text-[11.5px] leading-relaxed text-white/35">
+                  standard deal: your published worlds&rsquo; code is open source <em>within the platform</em>, attributed through lineage.
+                  {p.ipBuyable
+                    ? <> the ◆ IP control membership closes your source + adds a company page — available on the front door.</>
+                    : <> a ◆ IP control membership (closed source + company page) is coming.</>}
+                </p>
+              )}
+            </div>
           </section>
 
           {/* DATA RIGHTS */}

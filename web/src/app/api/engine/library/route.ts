@@ -157,6 +157,14 @@ export async function GET(req: NextRequest) {
       select: { id: true, ownerId: true, slug: true, name: true, snapshot: true, isPublic: true },
     })
     if (space && (space.isPublic || mayRead(viewer, space))) {
+      // IP CONTROL (Galen, Aug 27): a premium holder's worlds are CLOSED
+      // SOURCE even when public — playable on the shelf, never readable here.
+      // Their own people (owner/member/admin) still read; everyone else gets
+      // the same 403 shape regardless of which world it is.
+      const { hasIpControl } = await import('@/lib/stripe')
+      if (space.isPublic && !mayRead(viewer, space) && await hasIpControl(space.ownerId)) {
+        return NextResponse.json({ error: 'closed source — this maker holds IP control' }, { status: 403 })
+      }
       const s = (space.snapshot as unknown as Sceneish) || {}
       return NextResponse.json({ world: { ...sourceOf(space.name, 'space', s, space.slug), private: !space.isPublic || undefined } })
     }
@@ -180,8 +188,15 @@ export async function GET(req: NextRequest) {
     const spaces = await prisma.playerSpace.findMany({
       select: { id: true, ownerId: true, slug: true, name: true, snapshot: true, isPublic: true },
     })
+    const { hasIpControl: hasIp } = await import('@/lib/stripe')
+    const ipCache = new Map<string, boolean>()
+    const ownerClosed = async (ownerId: string) => {
+      if (!ipCache.has(ownerId)) ipCache.set(ownerId, await hasIp(ownerId))
+      return ipCache.get(ownerId)!
+    }
     for (const sp of spaces) {
       if (!sp.isPublic && !mayRead(viewer, sp)) continue   // private source never leaks into search
+      if (sp.isPublic && !mayRead(viewer, sp) && await ownerClosed(sp.ownerId)) continue   // IP control: closed source never leaks either
       const s = (sp.snapshot as unknown as Sceneish) || {}
       const matches = searchScene(s, needle)
       if (matches.length) {
