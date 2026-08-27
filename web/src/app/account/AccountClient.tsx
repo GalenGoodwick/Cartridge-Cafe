@@ -38,6 +38,13 @@ export default function AccountClient(p: {
     if (ok && data.url) { window.location.href = data.url; return }
     setNote(data.error || 'could not open the billing portal'); setBusy(null)
   }
+  const cancel = async () => {
+    if (!window.confirm('Cancel your editing membership? Billing stops now; your seat lasts until the period ends.')) return
+    setBusy('cancel'); setNote('')
+    const { ok, data } = await post('/api/account/cancel')
+    if (ok) { window.location.reload(); return }
+    setNote(data.error || 'could not cancel — try MANAGE SUBSCRIPTION'); setBusy(null)
+  }
   const join = async () => {
     setBusy('join'); setNote('')
     const { ok, data } = await post('/api/membership')
@@ -98,16 +105,25 @@ export default function AccountClient(p: {
                 {p.renewsAt && <div className="text-[12px] text-white/40">renews {fmt(p.renewsAt)} · ${p.priceUsd}/mo</div>}
                 {p.endsAt && <div className="text-[12px] text-amber-200/70">cancels at period end — access until {fmt(p.endsAt)}</div>}
                 {p.hasSubscription ? (
-                  <button onClick={portal} disabled={busy !== null}
-                    className={`${btn} mt-4 border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
-                    {busy === 'portal' ? '…' : 'MANAGE SUBSCRIPTION'}
-                  </button>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button onClick={portal} disabled={busy !== null}
+                      className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
+                      {busy === 'portal' ? '…' : 'MANAGE SUBSCRIPTION'}
+                    </button>
+                    {!p.endsAt && (
+                      <button onClick={cancel} disabled={busy !== null}
+                        className={`${btn} border-white/20 text-white/60 hover:bg-white/10 disabled:opacity-40`}>
+                        {busy === 'cancel' ? '…' : 'CANCEL MEMBERSHIP'}
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <div className="text-[12px] text-white/40 mt-3">your seat is granted (no billing on this account)</div>
                 )}
                 <p className="text-[11.5px] leading-relaxed text-white/35 mt-3">
-                  manage subscription opens Stripe&rsquo;s secure portal — update your card, download invoices, or cancel anytime.
-                  canceling keeps your seat until the period ends; your worlds and credit stay yours forever.
+                  cancel membership stops billing in one click — your seat lasts until the period ends, and your worlds and
+                  credit stay yours forever. manage subscription opens Stripe&rsquo;s secure portal for your card and invoices
+                  (canceling works there too).
                 </p>
               </>
             ) : (

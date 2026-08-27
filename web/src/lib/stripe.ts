@@ -329,6 +329,20 @@ export async function createPortalSession(customerId: string, returnUrl: string)
   return { url: j.url }
 }
 
+/** Cancel at PERIOD END (the /account CANCEL button): billing stops, the
+ *  paid-for seat runs out its month — cancel as easy as signup, nothing
+ *  taken away that was paid for. */
+export async function cancelSubscriptionAtPeriodEnd(subId: string): Promise<boolean> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return false
+  const r = await fetch(`https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ cancel_at_period_end: 'true' }).toString(),
+  })
+  return r.ok
+}
+
 /** Cancel a subscription IMMEDIATELY (account deletion path — a deleted
  *  account must never be billed again; the webhook then revokes the seat). */
 export async function cancelSubscriptionNow(subId: string): Promise<boolean> {

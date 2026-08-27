@@ -65,6 +65,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 2b — the person's MEMBER SEATS on other people's worlds: revoked (the
+  // seat is an access credential carrying their handle; their landed WORK —
+  // save points, nodes — stays in those worlds, attributed to the anonymized
+  // row, exactly like history should)
+  const handle = user.email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+  if (handle) {
+    await prisma.spaceToken.updateMany({
+      where: { name: `member:${handle}`, revokedAt: null },
+      data: { revokedAt: new Date() },
+    })
+  }
+
   // 3 — the sign-in surface
   await prisma.$transaction([
     prisma.account.deleteMany({ where: { userId: user.id } }),
