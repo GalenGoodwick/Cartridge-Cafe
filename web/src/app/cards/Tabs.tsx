@@ -1,12 +1,12 @@
 'use client'
 
-// cards-tabs — THE FOUR TABS (Galen's ruling): PUBLISHED · FORKABLE (the
-// start-here surface: bases + worlds whose makers enabled forking) ·
-// MY WORLDS (owned OR member — your activity in a world makes it yours to
-// find; Galen retired the separate SHARED tab). A base's family
-// page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
+// cards-tabs — THE TABS: LIVE EDITING · PUBLISHED (finished worlds only —
+// an OPEN world is an indefinite expansion, so it lives on LIVE, never
+// PUBLISHED) · PREMIUM · MY WORLDS. (FORKABLE tab retired, Galen Aug 27 —
+// bases surface in the /create FORMAT picker, not a browse tab.) A base's
+// family page (?tab=<baseSlug>) rides as a contextual tab while you're on it.
 
-export interface TabCounts { published: number; live?: number; premium?: number; forkable: number; mine: number | null }
+export interface TabCounts { published: number; live?: number; premium?: number; forkable?: number; mine: number | null }
 
 export function CardTabs({ counts, active, familyName, onPick }: {
   counts: TabCounts
@@ -14,7 +14,7 @@ export function CardTabs({ counts, active, familyName, onPick }: {
   familyName?: string | null
   onPick: (slug: string) => void
 }) {
-  const fixed = ['live', 'published', 'premium', 'forkable', 'mine']
+  const fixed = ['live', 'published', 'premium', 'mine']
   const tabs: Array<{ slug: string; label: string; count: number | null }> = [
     // LIVE EDITING — THE FIRST TAB (Galen, Aug 24): games open to edit live now;
     // an editing membership docks you in
@@ -22,9 +22,8 @@ export function CardTabs({ counts, active, familyName, onPick }: {
     { slug: 'published', label: 'PUBLISHED', count: counts.published },
     // PREMIUM GAMES (Galen, Aug 24) — shown once the first premium world exists
     ...(counts.premium ? [{ slug: 'premium', label: '✦ PREMIUM', count: counts.premium }] : []),
-    { slug: 'forkable', label: 'FORKABLE', count: counts.forkable },
-    // (ALTERABLE/UNALTERABLE retired, Galen Aug 26 — alterable ≡ LIVE EDITING;
-    // the membership is the seat, one tab tells that truth)
+    // (FORKABLE tab retired Aug 27 — bases live in /create's FORMAT picker.
+    // ALTERABLE/UNALTERABLE retired Aug 26 — alterable ≡ LIVE EDITING.)
     ...(familyName && !fixed.includes(active)
       ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
     { slug: 'mine', label: 'MY WORLDS', count: counts.mine },

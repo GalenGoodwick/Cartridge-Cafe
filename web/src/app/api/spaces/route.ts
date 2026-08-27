@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
   const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
 
+
   const body = await req.json()
   const { name, slug: rawSlug, description, brief } = body
   // draft: true — a brew in progress. The row must exist so the AI key can
@@ -113,19 +114,43 @@ export async function POST(req: NextRequest) {
     ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
     : extras.baseSnapshot
 
-  const { space, token: rawToken } = await birthWorld({
-    ownerId: user.id,
-    name: name.trim(),
-    baseSlug,
-    description: description?.trim() || null,
-    isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
-    worldData: Object.keys(birthData).length ? birthData : undefined,
-    ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
-    ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
-  })
+  // ONE CREATION, ONE PRICE (Galen, Aug 27: "birth and generate are the same
+  // process — we have to charge $5 per world created to prevent clutter/
+  // attacks"). The SAME credit gate as /api/generate — no free side door
+  // through this route. Spent AFTER all validation (a 400 never charges);
+  // keeper demos free; a failed birth refunds.
+  const { isAdminUserId } = await import('@/lib/adminAuth')
+  const { spendGenCredit, refundGenCredit, stripeConfigured, GEN_PRICE_USD } = await import('@/lib/stripe')
+  const isKeeper = await isAdminUserId(user.id)
+  if (!isKeeper) {
+    const spent = await spendGenCredit(user.id)
+    if (spent === null) {
+      return NextResponse.json(
+        { error: 'creating a world costs one generation credit', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
+        { status: 402 },
+      )
+    }
+  }
 
-  // shape the response (the create returns the full row now — don't leak
-  // snapshot / ownerId to the client)
-  const shaped = { id: space.id, slug: space.slug, name: space.name, description: space.description, isPublic: space.isPublic, createdAt: space.createdAt }
-  return NextResponse.json({ space: shaped, token: rawToken }, { status: 201 })
+  try {
+    const { space, token: rawToken } = await birthWorld({
+      ownerId: user.id,
+      name: name.trim(),
+      baseSlug,
+      description: description?.trim() || null,
+      isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
+      worldData: Object.keys(birthData).length ? birthData : undefined,
+      ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
+      ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
+    })
+
+    // shape the response (the create returns the full row now — don't leak
+    // snapshot / ownerId to the client)
+    const shaped = { id: space.id, slug: space.slug, name: space.name, description: space.description, isPublic: space.isPublic, createdAt: space.createdAt }
+    return NextResponse.json({ space: shaped, token: rawToken }, { status: 201 })
+  } catch (e) {
+    if (!isKeeper) void refundGenCredit(user.id).catch(() => {})   // birth failed — the credit comes back
+    const msg = e instanceof Error ? e.message : 'world creation failed'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }

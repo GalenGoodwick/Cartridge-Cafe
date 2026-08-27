@@ -70,21 +70,9 @@ export default function CreateWorld() {
     access: access === 'solo' ? undefined : access,
   })
 
-  // ✦ BIRTH — free; connect your own AI on the world page
-  const birth = async () => {
-    setBusy(true); setErr('')
-    try {
-      const r = await fetch('/api/spaces', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), brief: brief.trim() || undefined, ...facets() }),
-      })
-      const d = await r.json()
-      if (r.ok) { localStorage.removeItem(STASH); window.location.href = `/space/${d.space.slug}?connect=1` }
-      else setErr(d.error || 'could not create')
-    } finally { setBusy(false) }
-  }
-
-  // ✦ GENERATE — the paid path (credit or checkout), same facets
+  // ONE CREATION, ONE PRICE (Galen, Aug 27: "birth and generate are the same
+  // process — $5 per world created, to prevent clutter/attacks"). No free side
+  // door: every world costs a generation credit (the keeper demos free).
   const generate = async () => {
     if (busy) return
     setBusy(true); setErr(''); setNote('')
@@ -104,13 +92,12 @@ export default function CreateWorld() {
       }
       if (!r.ok) { setErr(d.error || 'generation failed'); return }
       localStorage.removeItem(STASH)
-      window.location.href = `/space/${d.slug}`
+      window.location.href = `/space/${d.slug}?connect=1`
     } finally { setBusy(false) }
   }
 
-  const nameOk = name.trim().length >= 2
   const briefOk = brief.trim().length >= 20
-  const genLabel = !gen ? '…' : gen.free ? '✦ GENERATE (keeper — free)' : gen.credits > 0 ? `✦ GENERATE · ${gen.credits} ready` : `✦ GENERATE · $${gen.priceUsd}`
+  const genLabel = !gen ? '…' : gen.free ? '✦ CREATE THE WORLD (keeper — free)' : gen.credits > 0 ? `✦ CREATE THE WORLD · ${gen.credits} ready` : `✦ CREATE THE WORLD · $${gen.priceUsd}`
   return (
     <div className="min-h-screen px-4 py-8 font-mono" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)', color: '#e7dcc8' }}>
       <div className="max-w-[560px] mx-auto">
@@ -173,19 +160,12 @@ export default function CreateWorld() {
 
         {err && <p className="text-red-400 text-[13px] mb-3">{err}</p>}
         {note && <p className="text-amber-200/80 text-[13px] mb-3">{note}</p>}
-        <div className="grid grid-cols-2 gap-2">
-          <button disabled={!nameOk || busy} onClick={birth}
-            className="px-4 py-3 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-200 text-[14px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors"
-            title="free — the world is born with your facets + its first AI build key; you connect your AI">
-            {busy ? '…' : '✦ BIRTH — CONNECT MY AI'}
-          </button>
-          <button disabled={!briefOk || busy || !gen || (!gen.buyable && gen.credits === 0 && !gen.free)} onClick={generate}
-            className="px-4 py-3 rounded-xl border border-amber-300/50 bg-amber-400/10 text-amber-200 text-[14px] tracking-[0.15em] hover:bg-amber-400/20 disabled:opacity-35 transition-colors"
-            title="a generation credit births it from your brief — then connect your AI to build">
-            {busy ? '…' : genLabel}
-          </button>
-        </div>
-        <p className="text-[11px] text-white/30 mt-2 text-center">one pipeline either way: born with these facets + its first AI build key. no house AI — your AI builds it.</p>
+        <button disabled={!briefOk || busy || !gen || (!gen.buyable && gen.credits === 0 && !gen.free)} onClick={generate}
+          className="w-full px-4 py-3 rounded-xl border border-amber-300/50 bg-amber-400/10 text-amber-200 text-[15px] tracking-[0.2em] hover:bg-amber-400/20 disabled:opacity-35 transition-colors"
+          title="one price per world — born with your facets + its first AI build key; connect your AI to build">
+          {busy ? '…' : genLabel}
+        </button>
+        <p className="text-[11px] text-white/30 mt-2 text-center">${gen?.priceUsd ?? 5} per world keeps the shelf real. born with these facets + its first AI build key — no house AI, your AI builds it.</p>
       </div>
     </div>
   )

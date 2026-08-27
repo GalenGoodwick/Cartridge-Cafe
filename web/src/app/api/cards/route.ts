@@ -104,7 +104,10 @@ export async function GET(req: Request) {
   // forking enabled — the start-here surface) · MY WORLDS (owned) · SHARED
   // WORLDS (member, not owner). Family pages (?tab=<baseSlug>) and open-ground
   // remain as click-through pages.
-  if (tab === 'published') return NextResponse.json(serve(feedPublished(rows).cards, url))
+  // PUBLISHED = FINISHED (Galen, Aug 27): an OPEN world is an indefinite
+  // expansion, not a published product — it lives on LIVE EDITING only.
+  // Published is owners making a FINISHED world public.
+  if (tab === 'published') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone')).cards, url))
   // LIVE EDITING (Galen, Aug 26 fix): the ONE signal is the owner OPENING the
   // world (build:'anyone'). hasNodes stopped meaning anything the day every
   // world was born with its slots — it made this tab catch everything, and
@@ -117,7 +120,7 @@ export async function GET(req: Request) {
   // (both were build:'anyone'), and nobody browses for "can't edit". Old links
   // alias to the surviving truths instead of 404ing.
   if (tab === 'alterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone' && r.hasContent)).cards, url))
-  if (tab === 'unalterable') return NextResponse.json(serve(feedPublished(rows).cards, url))
+  if (tab === 'unalterable') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone')).cards, url))
   if (tab === 'mine' || tab === 'shared') {
     const own = await fetchMineRows(tab)
     if (own === null) return NextResponse.json({ cards: [], page: 1, pages: 1, total: 0, signedOut: true })
@@ -132,10 +135,9 @@ export async function GET(req: Request) {
   // ?tabs=1 (and the bare GET) → the fixed strip counts (mine needs a session)
   const mine = await fetchMineRows('mine')
   return NextResponse.json({
-    published: rows.length,
+    published: rows.filter(r => r.buildMode !== 'anyone').length,   // finished only — open worlds live on LIVE
     live: rows.filter(r => r.buildMode === 'anyone' && r.hasContent).length,
     premium: rows.filter(r => r.premium !== null).length,
-    forkable: rows.filter(r => r.isBase || r.forkable).length,
     mine: mine === null ? null : mine.length,
   })
 }

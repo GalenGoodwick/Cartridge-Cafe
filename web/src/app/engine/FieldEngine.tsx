@@ -304,101 +304,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // separate open/closed boolean to drift.
   const uiDockOpen = worldMode === 'design'
 
-  // ── CHROME DESIGN DRAG (Galen, Aug 26: "design mode toggles me clicking and
-  // dragging elements so I can show you what I want") — thirty-year-old tech,
-  // finally here. OWNER in DESIGN mode: press-drag ANY fixed chrome element
-  // (its nearest fixed-position root) to move it. Every drop persists to
-  // worldData.chrome_placement (the owner tab's normal sync carries it), which
-  // is BRIDGE-READABLE — the human's arrangement becomes data the AI reads and
-  // codifies into the uiGrid declaration. Old button behavior is suppressed
-  // only when an actual drag happened (>4px), so design mode stays clickable.
-  useEffect(() => {
-    if (worldMode !== 'design' || !isOwner) return
-    let dragEl: HTMLElement | null = null
-    let sx = 0, sy = 0, ox = 0, oy = 0, moved = false
-    const findChrome = (t: EventTarget | null): HTMLElement | null => {
-      let el = t instanceof HTMLElement ? t : null
-      let fallback: HTMLElement | null = null
-      while (el && el !== document.body) {
-        if (el.tagName === 'CANVAS') return null                 // the game mover is NOT a percher
-        if (el.querySelector('canvas')) return fallback          // world containers never drag
-        // SMALLEST unit wins (Galen: 'they all move together') — the button/leaf,
-        // never the shared fixed wrapper
-        if (/^(BUTTON|A)$/.test(el.tagName) || el.getAttribute('role') === 'button' || el.hasAttribute('data-cc-chrome')) return el
-        const cs = getComputedStyle(el)
-        if (!fallback && (cs.position === 'fixed' || cs.position === 'absolute')) {
-          const r = el.getBoundingClientRect()
-          if (r.width < innerWidth * 0.7 && r.height < innerHeight * 0.7) fallback = el
-        }
-        el = el.parentElement
-      }
-      return fallback
-    }
-    const down = (e: PointerEvent) => {
-      const el = findChrome(e.target)
-      if (!el) return
-      dragEl = el; moved = false
-      const r = el.getBoundingClientRect()
-      sx = e.clientX; sy = e.clientY; ox = r.x; oy = r.y
-      // SURFACE the percher (Galen: 'buttons hidden in world layer') — a
-      // transform ancestor imprisons position:fixed; lift to document.body at
-      // the exact viewport rect: the same plane as SHARE.
-      if (el.parentElement !== document.body) {
-        el.style.width = r.width + 'px'
-        el.style.height = r.height + 'px'
-        document.body.appendChild(el)
-        el.style.position = 'fixed'
-        el.style.left = r.x + 'px'; el.style.top = r.y + 'px'
-        el.style.right = 'auto'; el.style.bottom = 'auto'
-        el.style.transform = 'none'; el.style.margin = '0'
-        el.style.zIndex = '95'
-      }
-      el.setPointerCapture?.(e.pointerId)
-      el.style.outline = '2px dashed rgba(255,190,60,0.9)'
-      el.style.outlineOffset = '2px'
-    }
-    const move = (e: PointerEvent) => {
-      if (!dragEl) return
-      const dx = e.clientX - sx, dy = e.clientY - sy
-      if (!moved && Math.hypot(dx, dy) < 4) return
-      moved = true
-      e.preventDefault()
-      dragEl.style.position = 'fixed'
-      dragEl.style.left = ox + dx + 'px'
-      dragEl.style.top = oy + dy + 'px'
-      dragEl.style.right = 'auto'; dragEl.style.bottom = 'auto'
-      dragEl.style.transform = 'none'; dragEl.style.margin = '0'
-      dragEl.style.zIndex = '90'
-    }
-    const up = (e: PointerEvent) => {
-      if (!dragEl) return
-      const el = dragEl; dragEl = null
-      el.style.outline = ''
-      if (!moved) return
-      // a real drag: swallow the click the browser fires after pointerup
-      const swallow = (ce: MouseEvent) => { ce.stopPropagation(); ce.preventDefault() }
-      document.addEventListener('click', swallow, { capture: true, once: true })
-      setTimeout(() => document.removeEventListener('click', swallow, { capture: true } as never), 120)
-      const r = el.getBoundingClientRect()
-      const label = ((el.innerText || '').trim().split('\n')[0].slice(0, 28)) || el.tagName.toLowerCase()
-      const sim = simulationRef.current
-      if (sim) {
-        const wd = sim.worldData as Record<string, unknown>
-        const cur = (wd.chrome_placement && typeof wd.chrome_placement === 'object') ? wd.chrome_placement as Record<string, unknown> : {}
-        wd.chrome_placement = { ...cur, [label]: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), win: { w: window.innerWidth, h: window.innerHeight }, at: Date.now() } }
-        showToast(`◲ placed "${label}" — saved for the AI`, 'success')
-      }
-    }
-    document.addEventListener('pointerdown', down, true)
-    document.addEventListener('pointermove', move, true)
-    document.addEventListener('pointerup', up, true)
-    return () => {
-      document.removeEventListener('pointerdown', down, true)
-      document.removeEventListener('pointermove', move, true)
-      document.removeEventListener('pointerup', up, true)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worldMode, isOwner])
+  // (CHROME DESIGN DRAG removed — Galen, Aug 27: "remove button moving". The
+  // drag-to-place practice is retired; placement is DECLARED in the uiGrid doc
+  // and solved — never hand-dragged. chrome_placement is no longer written.)
   const toggleUiDock = () => setWorldMode(m => (m === 'design' ? 'view' : 'design'))
   // owner's shelf switch: current visibility + the confirm popup (Galen: one
   // click to publish/private, confirm either way, ABOVE the edit button)
@@ -6665,21 +6573,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 {inspectOn ? '◉ INSPECT ON' : '◎ INSPECT'}
               </button>
             )}
-            {/* UI EDIT — manual layout mode for worlds on the UI SYSTEM
-                (worldData.ui): drag/resize/collapse panels; gestures write
-                __uiOverrides for the solver AND the AI. Only offered when the
-                world actually publishes a ui tree. */}
-            {!isHub && uiSolvedRef.current && (
-              <button
-                onClick={() => { setUiEditOn(v => { uiEditOnRef.current = !v; if (!v) { uiRectsFpRef.current = -1 } else { uiEditDragRef.current = null } return !v }); setEditCoach(false) }}
-                title="UI edit mode — drag panels to move, edges to resize, ▾ to collapse. Changes persist in worldData.__uiOverrides."
-                className={uiEditOn
-                  ? 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-amber-500/25 backdrop-blur border border-amber-400/60 text-amber-100 transition-colors'
-                  : 'px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors'}
-              >
-                {uiEditOn ? '⧉ UI EDIT ON' : '⧉ UI EDIT'}
-              </button>
-            )}
+            {/* (⧉ UI EDIT removed — Galen, Aug 27: "remove button moving".
+                Panel placement is declared + solved, never hand-dragged; the
+                machinery behind uiEditOn is unreachable and drains next pass.) */}
             {/* DESIGN MODE (SAVE STATES) — owner only. OFF (default): the owner gets
                 their own per-player save like everyone else. ON: live edits author
                 the CARTRIDGE (tuning knobs → shared ROM, not the owner's save). */}

@@ -177,7 +177,7 @@ beforeEach(() => {
 })
 
 describe('GET /api/cards', () => {
-  it('?tabs=1 → the fixed strip counts (published / forkable / mine — SHARED retired, activity rolls into mine)', async () => {
+  it('?tabs=1 → the fixed strip counts (published excludes OPEN worlds; FORKABLE + SHARED retired)', async () => {
     // the GET path runs the real strip — feed it PRISMA-shaped rows
     findMany.mockResolvedValue(fixture().map(r => ({
       id: r.id, slug: r.slug, name: r.name, forkOfId: r.forkOfId, isPublic: true,
@@ -188,8 +188,10 @@ describe('GET /api/cards', () => {
     })))
     const res = await GET(new Request('http://cafe.test/api/cards?tabs=1'))
     const d = await res.json()
-    expect(d.published).toBe(fixture().length)
-    expect(d.forkable).toBe(fixture().filter((r: FeedRow) => r.isBase || r.forkable).length)
+    // PUBLISHED = FINISHED (Galen, Aug 27): open (build:anyone) worlds are an
+    // indefinite expansion — they live on LIVE only, never in published.
+    expect(d.published).toBe(fixture().filter((r: FeedRow) => r.buildMode !== 'anyone').length)
+    expect('forkable' in d).toBe(false)  // tab retired (Galen, Aug 27): bases live in /create's FORMAT picker
     expect(d.mine).toBeNull()    // no session in tests = signed out
     expect('shared' in d).toBe(false)   // tab retired (Galen, Aug 27): member worlds live in MINE
   })
