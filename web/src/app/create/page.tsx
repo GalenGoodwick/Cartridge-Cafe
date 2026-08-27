@@ -30,12 +30,15 @@ export default function CreateWorld() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [gen, setGen] = useState<{ buyable: boolean; credits: number; priceUsd: number; free: boolean; signedIn: boolean } | null>(null)
+  const [bases, setBases] = useState<Array<{ slug: string; name: string }>>([])   // THE FORMATS — public base worlds
   const paidReturn = useRef(false)
 
   const refreshGen = useCallback(() => {
     fetch('/api/generate').then(r => r.json())
-      .then((d: { buyable?: boolean; credits?: number; priceUsd?: number; free?: boolean; signedIn?: boolean }) =>
-        setGen({ buyable: !!d.buyable, credits: d.credits ?? 0, priceUsd: d.priceUsd ?? 5, free: !!d.free, signedIn: !!d.signedIn }))
+      .then((d: { buyable?: boolean; credits?: number; priceUsd?: number; free?: boolean; signedIn?: boolean; bases?: Array<{ slug: string; name: string }> }) => {
+        setGen({ buyable: !!d.buyable, credits: d.credits ?? 0, priceUsd: d.priceUsd ?? 5, free: !!d.free, signedIn: !!d.signedIn })
+        if (Array.isArray(d.bases)) setBases(d.bases)
+      })
       .catch(() => setGen({ buyable: false, credits: 0, priceUsd: 5, free: false, signedIn: false }))
   }, [])
   useEffect(() => { refreshGen() }, [refreshGen])
@@ -130,12 +133,20 @@ export default function CreateWorld() {
             <div className="text-[12px] opacity-70">born empty — built from your brief</div>
           </button>
           <div className={`${card} ${base.trim() ? on : off}`}>
-            <div className="text-[14px] mb-0.5">⑂ FORK A WORLD</div>
-            <input value={base} onChange={e => setBase(e.target.value)} placeholder="world slug, e.g. cinderfell"
-              className="w-full bg-transparent border-b border-white/20 text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+            <div className="text-[14px] mb-0.5">⑂ FROM A FORMAT</div>
+            {bases.length > 0 ? (
+              <select value={base} onChange={e => setBase(e.target.value)}
+                className="w-full bg-transparent border-b border-white/20 text-[13px] text-white/85 outline-none focus:border-amber-300/50 [&>option]:bg-[#171009]">
+                <option value="">— pick a base —</option>
+                {bases.map(b => <option key={b.slug} value={b.slug}>{b.name}</option>)}
+              </select>
+            ) : (
+              <input value={base} onChange={e => setBase(e.target.value)} placeholder="world slug, e.g. cinderfell"
+                className="w-full bg-transparent border-b border-white/20 text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+            )}
           </div>
         </div>
-        <p className="text-[11px] text-white/30 mb-5">forkable worlds only — you start from its live snapshot, lineage recorded.</p>
+        <p className="text-[11px] text-white/30 mb-5">bases + forkable worlds — you start from its live snapshot, lineage recorded; base-hood and build rights never inherit.</p>
 
         <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">2 · DIMENSIONS</div>
         <div className="grid grid-cols-3 gap-2 mb-2">
