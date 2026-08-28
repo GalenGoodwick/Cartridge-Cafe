@@ -101,44 +101,43 @@ export default function TheGrid() {
         ))}
       </div>
 
-      {/* THE DOCKSTAR — the ONE control: top-right corner of the GAME FIELD
-          (anchored to the frame, riding the same ease). Opens the UI selector.
-          No title, no back, no world name — the grid speaks for itself. */}
-      <button
-        onClick={() => setSelOpen(o => !o)}
-        aria-label="ui selector"
-        className={`fixed z-[130] w-10 h-10 grid place-items-center rounded-xl backdrop-blur border text-[16px] transition-colors ${
-          selOpen ? 'bg-amber-400/25 border-amber-300/70 text-amber-100' : 'bg-black/55 border-white/15 text-white/75 hover:text-amber-200'}`}
-        style={{ top: inset.top + 8, right: inset.right + 8, transition: `${EASE}, background-color 0.15s, color 0.15s` }}
-        title="▣ dockstar — choose the UI"
-      >▣</button>
-
-      {/* THE UI SELECTOR — the sets that MOVE IN around the grid. Picking one
-          docks that UI (GAMES wires first, next rung; the rest are seats). */}
+      {/* THE UI SELECTOR — an OVERLAY over the GAME FIELD only (Galen: "I don't
+          want a dropdown, I want an overlay. Bottom bar is NEVER covered.").
+          It fills the frame's inset rect exactly — the bottom bar stays live
+          below it. Every set is offered on every device (mobile has the engine:
+          create = paste the prompt into your working AI). */}
       {selOpen && (
-        <>
-          <div className="fixed inset-0 z-[128]" onClick={() => setSelOpen(false)} />
-          <div className="fixed z-[131] rounded-2xl overflow-hidden border border-amber-300/25 bg-[#12100a]/97 backdrop-blur shadow-2xl"
-            style={{ top: inset.top + 54, right: inset.right + 8, minWidth: 190, transition: EASE }}>
+        <div
+          className="fixed z-[126] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.82)', borderRadius: 10, transition: EASE }}
+          onClick={() => setSelOpen(false)}
+        >
+          <div className="grid grid-cols-2 gap-3 p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
             {([
-              ['games', '▶ GAMES', 'browse — click the grid to play'],
-              ['main', '◉ MAIN', 'the commons + social space'],
-              ['engine', '⚙ ENGINE', 'world tools · builderbox'],
-              ['create', '✚ CREATE', 'new world · fork from grid'],
-            ] as const).map(([k, label, sub]) => (
+              ['games', '▶', 'GAMES', 'browse — click the grid to play'],
+              ['main', '◉', 'MAIN', 'the commons + social space'],
+              ['engine', '⚙', 'ENGINE', 'world tools · builderbox'],
+              ['create', '✚', 'CREATE', 'new world · fork from grid · paste the prompt to your AI'],
+            ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); setSelOpen(false) }}
-                className={`w-full text-left px-4 py-3 border-b border-white/8 last:border-0 active:bg-white/10 ${uiSet === k ? 'bg-amber-400/10' : ''}`}>
-                <div className={`font-mono text-[13px] tracking-[0.15em] ${uiSet === k ? 'text-amber-200' : 'text-white/85'}`}>{label}</div>
-                <div className="font-mono text-[9.5px] text-white/35 mt-0.5">{sub}</div>
+                className={`text-left rounded-2xl border p-4 transition-colors active:bg-white/10 ${
+                  uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
+                <div className={`text-[22px] mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
+                <div className={`font-mono text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
+                <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
           </div>
-        </>
+        </div>
       )}
 
-      {/* THE PROOF — dimension buttons: click → the grid + frame flow together */}
-      <div className="fixed bottom-0 inset-x-0 h-[64px] z-[120] flex items-center justify-center gap-2">
+      {/* THE BOTTOM BAR — the ONE control spot (never covered by any overlay).
+          The ▣ dockstar lives here now; the dimension buttons remain as the
+          resize proof until GAMES docks (sizing itself moves into the world
+          GENERATION flow — a world's dimension is declared at creation). */}
+      <div className="fixed bottom-0 inset-x-0 h-[64px] z-[135] flex items-center justify-center gap-2"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {PRESETS.map(p => (
           <button key={p} onClick={() => setPreset(p)}
             className={`font-mono text-[12px] tracking-[0.2em] px-4 py-2 rounded-xl border transition-colors ${
@@ -146,6 +145,14 @@ export default function TheGrid() {
             {p}
           </button>
         ))}
+        <span className="w-px h-6 bg-white/10 mx-1" aria-hidden />
+        <button
+          onClick={() => setSelOpen(o => !o)}
+          aria-label="ui selector"
+          className={`w-10 h-10 grid place-items-center rounded-xl backdrop-blur border text-[16px] transition-colors ${
+            selOpen ? 'bg-amber-400/25 border-amber-300/70 text-amber-100' : 'bg-black/55 border-white/15 text-white/75 hover:text-amber-200'}`}
+          title="▣ dockstar — choose the UI"
+        >▣</button>
       </div>
     </div>
   )
