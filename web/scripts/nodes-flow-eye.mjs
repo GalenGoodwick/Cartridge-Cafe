@@ -1,0 +1,25 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ args: ['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--enable-unsafe-swiftshader'] })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override','1') } catch {} })
+const p = await ctx.newPage()
+await p.goto('http://localhost:3131/grid?ui=engine', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('button:has-text("⬢ NODES")', { timeout: 20000 }); await p.waitForTimeout(3500)
+await p.click('button:has-text("⬢ NODES")'); await p.waitForTimeout(1200)
+await p.click('button:has-text("⬡ ADVANCED")'); await p.waitForTimeout(500)
+console.log('ADVANCED swapped in-area:', await p.evaluate(() => /THE GRAPH — tap a node/.test(document.body.innerText) && /links/.test(document.body.innerText)) ? '✓' : '✗')
+// click a HOOK node → code opens
+await p.locator('button', { hasText: 'cf_' }).first().click().catch(async () => { await p.locator('div:has-text("HOOKS") ~ button').first().click().catch(()=>{}) })
+await p.waitForTimeout(400)
+const code = await p.evaluate(() => ({ back: /◂ BACK/.test(document.body.innerText), pre: !!document.querySelector('pre') }))
+console.log('node → CODE view:', JSON.stringify(code), code.back && code.pre ? '✓' : '✗')
+await p.click('button:has-text("◂ BACK")'); await p.waitForTimeout(300)
+console.log('back to graph:', await p.evaluate(() => /THE GRAPH — tap a node|⬢ NODES/.test(document.body.innerText)) ? '✓' : '✗')
+// zoom guard: ctrl+wheel is prevented (defaultPrevented true)
+const guarded = await p.evaluate(() => {
+  const e = new WheelEvent('wheel', { ctrlKey: true, deltaY: -100, cancelable: true, bubbles: true })
+  window.dispatchEvent(e)
+  return e.defaultPrevented
+})
+console.log('ctrl+wheel zoom blocked:', guarded ? '✓' : '✗')
+await b.close(); console.log('NODES FLOW COMPLETE')

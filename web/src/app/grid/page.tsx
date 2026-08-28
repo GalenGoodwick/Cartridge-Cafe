@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
-import { NodeGraphOverlay, type AiNodeGraph } from '@/app/engine/ai-view/NodeGraph'
+import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
@@ -54,7 +54,7 @@ export default function TheGrid() {
     graph?: AiNodeGraph | null
     config?: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; presenceOff: boolean; policy: string | null } | null
   } | null>(null)
-  const [graphOpen, setGraphOpen] = useState(false)   // ⬡ ADVANCED — the real graph + code inspector
+
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
 
@@ -62,6 +62,24 @@ export default function TheGrid() {
     const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
+  }, [])
+
+  // BLOCK ZOOM (Galen: zooming throws off the UI). Pinch is off via the layout
+  // viewport; here: ctrl/cmd+wheel, ctrl/cmd +/-/0, and Safari gesture events.
+  useEffect(() => {
+    const wheel = (e: WheelEvent) => { if (e.ctrlKey || e.metaKey) e.preventDefault() }
+    const key = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) e.preventDefault() }
+    const gesture = (e: Event) => e.preventDefault()
+    window.addEventListener('wheel', wheel, { passive: false })
+    window.addEventListener('keydown', key)
+    window.addEventListener('gesturestart', gesture as EventListener)
+    window.addEventListener('gesturechange', gesture as EventListener)
+    return () => {
+      window.removeEventListener('wheel', wheel)
+      window.removeEventListener('keydown', key)
+      window.removeEventListener('gesturestart', gesture as EventListener)
+      window.removeEventListener('gesturechange', gesture as EventListener)
+    }
   }, [])
 
   // catalog + icons (prod real; local = bundled cartridges)
@@ -426,7 +444,7 @@ export default function TheGrid() {
                 </div>
               </div>
             )}
-            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} onAdvanced={() => setGraphOpen(true)} />}
+            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
             {tool === 'config' && (
               <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
             )}
@@ -445,13 +463,6 @@ export default function TheGrid() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ⬡ ADVANCED — the REAL node graph + code inspector, field-bounded */}
-      {graphOpen && eyeData?.graph && (
-        <div className="fixed z-[128]" style={{ top: M, right: M, bottom: BAR_H + 10, left: M, borderRadius: 10, overflow: 'hidden' }}>
-          <NodeGraphOverlay graph={eyeData.graph} onClose={() => setGraphOpen(false)} />
         </div>
       )}
 
@@ -503,37 +514,82 @@ export default function TheGrid() {
 }
 
 
-// ⬢ NODES — who builds what, FROM THE GAME: the engine's live node graph
-// (fields · visuals · hooks · modules, code included). ADVANCED opens the real
-// graph + code inspector (NodeGraphOverlay — pure reuse).
-function NodesView({ graph, onAdvanced }: { graph: AiNodeGraph | null; onAdvanced: () => void }) {
-  const rows = graph
-    ? [
-      ...graph.fields.map(n => ({ id: n.id, kind: 'field', title: n.title })),
-      ...graph.visuals.map(n => ({ id: n.id, kind: 'visual', title: n.title })),
-      ...graph.hooks.map(n => ({ id: n.id, kind: 'hook', title: n.title, author: (n as { author?: string }).author })),
-      ...graph.modules.map(n => ({ id: n.id, kind: 'module', title: n.title })),
-    ]
-    : []
+// ⬢ NODES — who builds what, FROM THE GAME (the engine's live graph, code
+// included). ADVANCED SWAPS the view in-area (no overlay, no two-column —
+// responsive single column): grouped sections with edges; clicking a node
+// opens its CODE full-area; ◂ backs out at every level.
+function NodesView({ graph }: { graph: AiNodeGraph | null }) {
+  const [mode, setMode] = useState<'list' | 'adv'>('list')
+  const [sel, setSel] = useState<ANode | null>(null)
   const tint: Record<string, string> = { field: 'text-sky-200/90', visual: 'text-amber-200/90', hook: 'text-violet-300/90', module: 'text-emerald-200/90' }
+
+  if (sel) {
+    const code = sel.kind === 'hook' ? (sel as { code?: string }).code : (sel as { wgsl?: string }).wgsl
+    return (
+      <div className="w-full h-full flex flex-col p-4 font-mono">
+        <div className="flex items-center gap-2 mb-2">
+          <button onClick={() => setSel(null)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
+          <span className={`text-[10px] tracking-[0.15em] ${tint[sel.kind]}`}>{sel.kind.toUpperCase()}</span>
+          <span className="text-[12px] text-white/90 truncate">{sel.title}</span>
+          {'author' in sel && (sel as { author?: string }).author ? <span className="ml-auto text-[10px] text-amber-200/70">{(sel as { author?: string }).author}</span> : null}
+        </div>
+        <pre className="flex-1 min-h-0 overflow-auto rounded-xl border border-white/12 bg-black/60 p-3 text-[10.5px] leading-relaxed text-white/85 whitespace-pre-wrap break-words">
+          {code || '(no code on this node — a field/registry entry)'}
+        </pre>
+      </div>
+    )
+  }
+
+  if (mode === 'adv' && graph) {
+    const groups: Array<[string, ANode[]]> = [
+      ['MODULES', graph.modules as ANode[]], ['VISUALS', graph.visuals as ANode[]],
+      ['FIELDS', graph.fields as ANode[]], ['HOOKS', graph.hooks as ANode[]],
+    ]
+    const edgeCount = (id: string) => graph.edges.filter(e => e.from === id || e.to === id).length
+    return (
+      <div className="w-full h-full overflow-y-auto p-4 font-mono">
+        <div className="flex items-center gap-2 mb-3">
+          <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
+          <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬡ THE GRAPH — tap a node for its code</span>
+        </div>
+        {groups.map(([label, ns]) => ns.length > 0 && (
+          <div key={label} className="mb-3">
+            <div className="text-[9.5px] tracking-[0.25em] text-white/45 mb-1">{label} · {ns.length}</div>
+            {ns.map(n => (
+              <button key={n.id} onClick={() => setSel(n)}
+                className="w-full text-left flex items-center gap-3 py-2 px-2 rounded-lg border-b border-white/6 hover:bg-white/5 text-[11.5px]">
+                <span className={`shrink-0 ${tint[n.kind]}`}>●</span>
+                <span className="text-white/90 truncate">{n.title}</span>
+                <span className="ml-auto shrink-0 text-[9.5px] text-white/35">{edgeCount(n.id)} links</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const rows: ANode[] = graph
+    ? [...(graph.fields as ANode[]), ...(graph.visuals as ANode[]), ...(graph.hooks as ANode[]), ...(graph.modules as ANode[])]
+    : []
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
-        <button onClick={onAdvanced} disabled={!graph}
-          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35"
-          title="the full graph + code inspector">
+        <button onClick={() => setMode('adv')} disabled={!graph}
+          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
           ⬡ ADVANCED
         </button>
       </div>
       {!graph && <div className="text-[11px] text-white/45">reading the world…</div>}
       {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">an empty world — no nodes yet.</div>}
       {rows.map(n => (
-        <div key={n.id} className="flex items-center gap-3 py-1.5 border-b border-white/8 text-[11.5px]">
+        <button key={n.id} onClick={() => { setSel(n) }}
+          className="w-full text-left flex items-center gap-3 py-1.5 border-b border-white/8 text-[11.5px] hover:bg-white/5">
           <span className={`shrink-0 w-14 text-[9.5px] tracking-[0.15em] ${tint[n.kind]}`}>{n.kind.toUpperCase()}</span>
           <span className="text-white/90 truncate">{n.title}</span>
-          {'author' in n && n.author ? <span className="ml-auto text-amber-200/70 shrink-0">{String(n.author)}</span> : null}
-        </div>
+          {'author' in n && (n as { author?: string }).author ? <span className="ml-auto text-amber-200/70 shrink-0">{(n as { author?: string }).author}</span> : null}
+        </button>
       ))}
     </div>
   )
