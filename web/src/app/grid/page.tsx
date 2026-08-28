@@ -18,14 +18,14 @@ type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
 type Tab = 'live' | 'published' | 'premium' | 'search'
-type Entry = { slug: string; name: string; scene: string }
+type Entry = { slug: string; name: string; scene: string; maker?: string }
 
 const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out'
 const M = 16, BAR_H = 64, DOCK_W = 248
 const MIN_W = 180, MIN_H = 120   // the frame can NEVER smash to a line
 const LOCAL: Entry[] = [
-  { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL' },
-  { slug: 'one-home', name: 'STARFIELD', scene: 'ONE-HOME' },
+  { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL', maker: 'Galen' },
+  { slug: 'one-home', name: 'STARFIELD', scene: 'ONE-HOME', maker: 'Opus' },
 ]
 
 export default function TheGrid() {
@@ -53,9 +53,9 @@ export default function TheGrid() {
   useEffect(() => {
     const feed = tab === 'search' ? 'published' : tab
     fetch(`/api/cards?tab=${feed}`).then(r => r.json())
-      .then((d: { cards?: Array<{ slug: string; name: string }> }) => {
+      .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         if (Array.isArray(d.cards) && d.cards.length)
-          setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug })))
+          setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })))
         else setEntries(LOCAL)
       })
       .catch(() => setEntries(LOCAL))
@@ -96,12 +96,16 @@ export default function TheGrid() {
   // the frame below MIN_W×MIN_H — it holds shape until there's room) ──
   const browsing = uiSet === 'games' && phase === 'browse'
   const engineSet = uiSet === 'engine'
+  const narrow = win.w < 700                      // the dock becomes a BOTTOM SHEET on narrow screens
+  const dockBottomH = 168                          // narrow engine dock height
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
-    const rightPad = engineSet ? M + DOCK_W + 10 : M
+    const rightPad = engineSet && !narrow ? M + DOCK_W + 10 : M
+    const bottomPad = engineSet && narrow ? BAR_H + 10 + dockBottomH + 8 : BAR_H + 10
     if (!browsing) {
       const w = Math.max(W - M - rightPad, MIN_W)
-      return { top: M, right: W - M - w, bottom: BAR_H + 10, left: M }
+      const h = Math.max(H - M - bottomPad, MIN_H)
+      return { top: M, right: W - M - w, bottom: H - M - h, left: M }
     }
     const availH = H - M - BAR_H - 10
     let w = (W - M * 2) * 0.42, h = w / (16 / 10)
@@ -125,6 +129,14 @@ export default function TheGrid() {
   }, [inset])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
+
+  // TRANSITION HYGIENE (Galen: builderbox stuck open from engine → play): any
+  // set/phase change closes the engine's panels — nothing follows you through.
+  useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
+    setConnectOpen(false); setInstrOpen(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiSet, phase])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
 
   // instructions for the selected world
@@ -239,28 +251,46 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* ═ THE ENGINE DOCK — tools move in from the RIGHT; the grid holds center ═ */}
+      {/* ═ THE ENGINE DOCK — right strip on wide screens; a BOTTOM SHEET above
+          the bar on narrow ones (a sidebar would starve a phone's frame) ═ */}
       {engineSet && (
-        <div className="fixed z-[118] flex flex-col gap-2 font-mono"
-          style={{ top: M, right: M, bottom: BAR_H + 10, width: DOCK_W, transition: EASE }}>
-          <div className="rounded-2xl border border-amber-300/25 bg-[#12100a]/90 backdrop-blur p-3">
+        <div className={`fixed z-[118] font-mono ${narrow ? 'flex flex-row gap-2 overflow-x-auto items-stretch' : 'flex flex-col gap-2'}`}
+          style={narrow
+            ? { left: M, right: M, bottom: BAR_H + 10, height: dockBottomH, transition: EASE }
+            : { top: M, right: M, bottom: BAR_H + 10, width: DOCK_W, transition: EASE }}>
+          <div className={`rounded-2xl border border-amber-300/25 bg-[#12100a]/90 backdrop-blur p-3 ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
             <div className="text-[10px] tracking-[0.25em] text-amber-200/70 mb-0.5">⚙ ENGINE</div>
             <div className="text-[13px] tracking-[0.12em] text-white/90 truncate">{selected?.name ?? '—'}</div>
+            {selected?.maker && <div className="text-[10px] text-amber-200/60 mt-0.5 truncate">by {selected.maker}</div>}
           </div>
           <button onClick={() => cmd('builderbox')}
-            className="text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/80 hover:border-emerald-300/40 hover:text-white transition-colors">
+            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
             ⌁ BUILDERBOX
-            <span className="block text-[9.5px] text-white/35 mt-0.5">build log + world chat, in the frame</span>
+            <span className="block text-[9.5px] text-white/45 mt-0.5">build log + world chat</span>
+          </button>
+          <button onClick={() => cmd('tools')}
+            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-amber-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
+            ⚙ WORLD TOOLS
+            <span className="block text-[9.5px] text-white/45 mt-0.5">name · visibility · lineage · the card</span>
           </button>
           <button onClick={() => setConnectOpen(true)}
-            className="text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/80 hover:border-emerald-300/40 hover:text-white transition-colors">
+            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
             ⚿ CONNECT AI
-            <span className="block text-[9.5px] text-white/35 mt-0.5">paste the prompt into your working AI</span>
+            <span className="block text-[9.5px] text-white/45 mt-0.5">paste the prompt into your AI</span>
           </button>
-          <div className="rounded-xl border border-white/8 bg-black/30 px-3.5 py-3 text-[10px] text-white/30 leading-relaxed">
-            ✎ world tools · versions · playable switch dock here next
-          </div>
         </div>
+      )}
+
+      {/* CLICK THE FRAME → PLAY, in ENGINE too (the world is always the play
+          button — the universal law) */}
+      {engineSet && (
+        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => { setUiSet('games'); setPhase('play') }}
+          className="fixed z-[114] group cursor-pointer"
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
+          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
+            ▶ PLAY {selected?.name ?? ''}
+          </span>
+        </button>
       )}
 
       {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen) */}
@@ -337,13 +367,25 @@ export default function TheGrid() {
           style={{ marginBottom: 8, boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
           <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
         </button>
-        <div className="flex-1 flex justify-end pr-3">
+        <div className="flex-1 flex justify-end gap-2 pr-3">
           <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
             className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
               instrOpen ? 'bg-white/15 border-white/30 text-white' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}
             style={{ marginBottom: 8 }}>
             ? INSTRUCTIONS
           </button>
+          {uiSet === 'games' && phase === 'play' && (
+            <button onClick={async () => {
+              const url = window.location.href
+              try { await navigator.share?.({ url, title: selected?.name }) }
+              catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+              if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+            }}
+              className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/50 border-white/12 text-white/55 hover:text-white/85 transition-colors"
+              style={{ marginBottom: 8 }}>
+              {copied ? '✓ COPIED' : '↗ SHARE'}
+            </button>
+          )}
         </div>
       </div>
     </div>

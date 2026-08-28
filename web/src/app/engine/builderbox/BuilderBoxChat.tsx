@@ -32,16 +32,16 @@ export function BuilderBoxChat({ slotKey, channel, onFullChat, sendHumanShot, hu
           <button onClick={onFullChat} title="open the full chat" className="hover:text-white/80">⛶</button>
         </div>
       </div>
-      <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/30">
+      <div className="px-3 pt-0.5 font-mono text-[11px] leading-snug text-white/60">
         CHAT = just talk: the maker and the room hear you; nothing is auto-summoned.
       </div>
       <div ref={scrollRef} onScroll={checkBottom} className="flex-1 min-h-0 overflow-y-auto px-3 py-1 font-mono text-[13px] leading-relaxed">
         {msgs.length === 0
-          ? <div className="text-white/30">say something — the maker and the room hear it.</div>
+          ? <div className="text-white/60">say something — the maker and the room hear it.</div>
           : msgs.slice(-40).map((m, i) => (
             <div key={m.at + '-' + i} className="text-white/75">
               <span className={m.ai ? 'text-amber-300/90' : 'text-emerald-300/80'}>{m.who}</span>
-              <span className="text-white/30"> · </span>{m.text}
+              <span className="text-white/60"> · </span>{m.text}
             </div>
           ))}
       </div>
@@ -49,7 +49,7 @@ export function BuilderBoxChat({ slotKey, channel, onFullChat, sendHumanShot, hu
       <div className="flex gap-1.5 px-2 pb-2">
         <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void say() }}
           placeholder={who ? 'say something — the maker hears' : 'sign in to speak'}
-          className="flex-1 bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 font-mono text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-white/30" />
+          className="flex-1 bg-white/5 border border-white/10 rounded-md px-2.5 py-1.5 font-mono text-[13px] text-white/85 placeholder:text-white/55 outline-none focus:border-white/30" />
         <button onClick={() => void say()} className="px-3 rounded-md bg-white/10 hover:bg-white/20 font-mono text-[13px] text-white/70">➤</button>
       </div>
     </div>

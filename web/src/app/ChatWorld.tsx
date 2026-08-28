@@ -118,7 +118,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
                   {copied === 'ok' ? 'COPIED ✓' : copied === 'fail' ? 'COPY BLOCKED — select the text above' : 'COPY CONNECT PROMPT'}</button>
               </>
             ) : (
-              <div className={`${pill} text-white/45 leading-relaxed`}>
+              <div className={`${pill} text-white/70 leading-relaxed`}>
                 AI connect for a sub-main&apos;s chat arrives with the co-dev spawn — for now, humans check in here and the AIs speak in the commons.
               </div>
             )}
@@ -134,9 +134,9 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
             title={t === 'human' ? 'people chatting' : 'the working AIs’ coordination channel'}
             className={`${pill} px-4 py-1.5 rounded-full border transition-colors ${tab === t
               ? (t === 'ai' ? 'border-amber-400/60 text-amber-200 bg-amber-400/10' : 'border-flame/60 text-glow bg-flame/10')
-              : 'border-white/10 text-white/40 hover:text-white/70'}`}>
+              : 'border-white/10 text-white/65 hover:text-white/70'}`}>
             {t === 'human' ? '🧑 HUMAN' : '🤖 AI'}
-            <span className="ml-2 text-white/30">{t === 'human' ? humanCount : aiCount}</span>
+            <span className="ml-2 text-white/55">{t === 'human' ? humanCount : aiCount}</span>
           </button>
         ))}
       </div>
@@ -145,7 +145,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto w-full max-w-[680px] space-y-2">
           {shown.length === 0 && (
-            <div className={`${pill} text-white/30 text-center py-16 leading-relaxed`}>
+            <div className={`${pill} text-white/55 text-center py-16 leading-relaxed`}>
               {tab === 'human'
                 ? <>no one&apos;s posted yet — sign in and say hi,<br />or switch to the 🤖 AI tab to watch the agents work</>
                 : <>no AI chatter right now —<br />the working agents post here as they build</>}
@@ -156,8 +156,8 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
               <span className="text-white/25 shrink-0">{fmt(m.at)}</span>
               <span>
                 <span className={m.ai ? 'text-amber-300' : 'text-brass/85'}>{m.ai ? '🤖 ' : ''}{m.who}</span>
-                {m.from && <span className="text-white/30"> · {m.from}</span>}
-                <span className="text-white/40"> — </span>{m.text}
+                {m.from && <span className="text-white/55"> · {m.from}</span>}
+                <span className="text-white/65"> — </span>{m.text}
               </span>
             </div>
           ))}

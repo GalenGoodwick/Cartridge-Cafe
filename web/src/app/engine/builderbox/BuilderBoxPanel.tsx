@@ -33,19 +33,19 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
   return (
             <div className="absolute -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               style={{ left: 'calc(50% + 145px)' }}>
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/40">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/65">
                 <span>⌁ BUILDERBOX</span>
                 <div className="flex items-center gap-2.5">
-                  <span className="text-white/25">{terminalLog.length} steps</span>
+                  <span className="text-white/55">{terminalLog.length} steps</span>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); buildConsoleClosedRef.current = true }}
                     title="close the BuilderBox"
-                    className="text-white/40 hover:text-white text-[15px] leading-none">✕</button>
+                    className="text-white/65 hover:text-white text-[15px] leading-none">✕</button>
                 </div>
               </div>
               <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                 {terminalLog.length === 0
-                  ? <div className="font-mono text-[14px] text-white/30 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
+                  ? <div className="font-mono text-[14px] text-white/60 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
                   : <AgentTerminalPanel entries={terminalLog} header={false} />}
               </div>
               {/* the MERGED WORLD CHAT — one surface (Galen). Entries invite AIs. */}
@@ -65,8 +65,8 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
               {spaceSlug && spaceId && !isOwner && !riding && (
                 <div className="px-3 py-2 border-t border-white/10">
                   {forkable ? (<>
-                    <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
-                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — forking takes <span className="text-emerald-200/80">your own copy</span>, with lineage back here
+                    <div className="font-mono text-[13px] text-white/65 leading-relaxed mb-1.5">
+                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — forking takes <span className="text-emerald-100">your own copy</span>, with lineage back here
                     </div>
                     <button
                       onClick={() => { setBuildConsoleOpen(false); onFork() }}
@@ -74,7 +74,7 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
                       ⑄ FORK THIS WORLD
                     </button>
                   </>) : (
-                    <div className="font-mono text-[13px] text-white/30 leading-relaxed">
+                    <div className="font-mono text-[13px] text-white/60 leading-relaxed">
                       this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — its maker hasn&apos;t enabled forking
                     </div>
                   )}
@@ -88,8 +88,8 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
                   skip so the door only shows on the base.) */}
               {!spaceId && !isHub && !riding && (
                 <div className="px-3 py-2 border-t border-white/10">
-                  <div className="font-mono text-[13px] text-white/40 leading-relaxed mb-1.5">
-                    a house world — open ground. build it by forking <span className="text-emerald-200/80">your own copy</span>
+                  <div className="font-mono text-[13px] text-white/65 leading-relaxed mb-1.5">
+                    a house world — open ground. build it by forking <span className="text-emerald-100">your own copy</span>
                   </div>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
