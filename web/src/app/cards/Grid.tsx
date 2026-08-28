@@ -8,12 +8,15 @@ import type { Card } from '@/app/api/cards/route'
 import { WorldCardView } from './Card'
 import type { CardPresence } from './presence'
 
-export function CardGrid({ base, cards, pngBySlug, presence, onOpen }: {
+export function CardGrid({ base, cards, pngBySlug, presence, onOpen, playPersona }: {
   base: Card | null
   cards: Card[]            // feed order: base first (when present), then updatedAt desc
   pngBySlug: Map<string, string>
   presence: Map<string, CardPresence>
   onOpen: (slug: string) => void
+  /** PLAY persona (mode split): the card is a PRODUCT — play only; no fork/edit
+   *  affordances, no build-status chips. ENGINE persona shows the workshop card. */
+  playPersona?: boolean
 }) {
   if (!cards.length) {
     return (
@@ -33,6 +36,7 @@ export function CardGrid({ base, cards, pngBySlug, presence, onOpen }: {
           index={i}
           onOpen={onOpen}
           presence={presence.get(c.slug)}
+          playPersona={playPersona}
         />
       ))}
     </div>

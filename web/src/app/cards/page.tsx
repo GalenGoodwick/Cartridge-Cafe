@@ -12,6 +12,7 @@ import { CardTabs, type TabCounts } from './Tabs'
 import { CardGrid } from './Grid'
 import { CatalogSpace } from './Space'
 import ModeToggle from '@/app/ModeToggle'
+import { useAppMode, getAppMode } from '@/app/engine/app-mode'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 import ConnectPanel from '@/app/ConnectPanel'
@@ -32,6 +33,11 @@ export default function CardsMain() {
   const [q, setQ] = useState('')
   const presence = useCatalogPresence()   // one beat + one rollup poll for every card
   const ticker = useCatalogTicker()       // main's slogan line, shared (lib/slogan.ts)
+  // ─── THE MODE SPLIT (Galen, Aug 28): PLAY = a game console (GAMES · PREMIUM,
+  // play-cards, zero creation clutter); ENGINE = the workshop (LIVE · SOURCES ·
+  // MY WORLDS + every creation door). Two products, one door.
+  const { mode, ready: modeReady } = useAppMode()
+  const engineMode = modeReady && mode === 'engine'
   const [me, setMe] = useState<{ email?: string | null; name?: string | null } | null | 'anon'>(null)
   // MASTHEAD CHROME (task #17 — the cutover prerequisite): the catalog carries
   // main's working doors — CONNECT AI, the bell, THE COMMONS, the reckoning.
@@ -69,7 +75,7 @@ export default function CardsMain() {
     if (p0 > 1) setPageN(p0)
     fetch('/api/cards?tabs=1').then(r => r.json()).then((t: TabCounts) => {
       setCounts(t)
-      setActive(want || 'live')
+      setActive(want || (getAppMode() === 'engine' ? 'live' : 'published'))
     }).catch(() => setCounts({ published: 0, live: 0, forkable: 0, mine: null }))
   }, [])
 
@@ -94,6 +100,19 @@ export default function CardsMain() {
 
   // a new tab or a new search starts back at page 1
   useEffect(() => { setPageN(1) }, [active, q])
+
+  // TWO CATALOGS, not one filtered (the mode split): PLAY = GAMES (published,
+  // finished) · PREMIUM; ENGINE = LIVE EDITING · SOURCES · MY WORLDS. Flipping
+  // the mode corrects an out-of-set active tab to that mode's home.
+  const PLAY_TABS = useMemo(() => ['published', 'premium'], [])
+  const ENGINE_TABS = useMemo(() => ['live', 'published', 'premium', 'mine'], [])
+  useEffect(() => {
+    if (!modeReady || !counts) return
+    const set = engineMode ? ENGINE_TABS : PLAY_TABS
+    const isFamilyTab = !['live', 'published', 'premium', 'mine'].includes(active)
+    if (!isFamilyTab && !set.includes(active)) setActive(engineMode ? 'live' : 'published')
+    if (!engineMode && isFamilyTab) setActive('published')   // family pages are fork-surfaces — engine territory
+  }, [modeReady, engineMode, counts, active, PLAY_TABS, ENGINE_TABS])
 
   // baked shader photos — ONE batch fetch, mapped by slug
   useEffect(() => {
@@ -139,12 +158,16 @@ export default function CardsMain() {
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[38vw] max-sm:order-last max-sm:w-full max-sm:max-w-none bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
           />
-          <button onClick={() => setConnectOpen(true)}
-            className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/15 transition-colors"
-            title="connect your AI — it builds your worlds and chats the commons as you">
-            ⚿ CONNECT AI
-          </button>
-          <GenerateDoor signedIn={!!me && me !== 'anon'} />
+          {/* CREATION DOORS — ENGINE ONLY (Galen: a player never connects an AI;
+              PLAY is a clean console with zero creation clutter) */}
+          {engineMode && (
+            <button onClick={() => setConnectOpen(true)}
+              className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/15 transition-colors"
+              title="connect your AI — it builds your worlds and chats the commons as you">
+              ⚿ CONNECT AI
+            </button>
+          )}
+          {engineMode && <GenerateDoor signedIn={!!me && me !== 'anon'} />}
           {me && me !== 'anon' && (
             <div className="relative shrink-0">
               <button onClick={() => {
@@ -200,7 +223,7 @@ export default function CardsMain() {
           <div className="py-32 text-center font-mono text-[12px] tracking-[0.3em] text-white/30">DEALING…</div>
         ) : (
           <>
-            <CardTabs counts={counts} active={active} familyName={familyName} onPick={setActive} />
+            <CardTabs counts={counts} active={active} familyName={familyName} onPick={setActive} engine={engineMode} />
             <div className="rounded-b-xl rounded-tr-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-3.5">
               {isMobile && shown?.hidden === -1 && (
                 <p className="px-1 pb-3 font-mono text-[10.5px] tracking-[0.12em] text-amber-200/50">
@@ -234,7 +257,7 @@ export default function CardsMain() {
                       YOUR WORLDS — OWNED AND CO-BUILT (MEMBER SEATS) · UNPUBLISHED DRAFTS ARE VISIBLE ONLY HERE
                     </p>
                   )}
-                  <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} />
+                  <CardGrid base={shown.base} cards={shown.cards} pngBySlug={pngBySlug} presence={presence} onOpen={open} playPersona={!engineMode} />
                   {shown.pages > 1 && (
                     <div className="mt-5 flex items-center justify-center gap-1.5 font-mono text-[12px]" role="navigation" aria-label="pages">
                       <button disabled={shown.page <= 1} onClick={() => setPageN(shown.page - 1)}
@@ -261,10 +284,11 @@ export default function CardsMain() {
           </>
         )}
       </div>
-      {/* THE COMMONS door + room — the same chat main carries, on the catalog */}
-      <MainCommonsChat visible={!connectOpen && !chatOpen} onEnter={() => setChatOpen(true)} />
-      {chatOpen && <ChatWorld channel="commons:main" title="The Commons" subtitle="the AIs at scale" onExit={() => setChatOpen(false)} />}
-      {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
+      {/* THE COMMONS — the BUILDERS' network: ENGINE only (Galen: "the commons
+          wouldn't show in play"). PLAY keeps the console clean. */}
+      {engineMode && <MainCommonsChat visible={!connectOpen && !chatOpen} onEnter={() => setChatOpen(true)} />}
+      {engineMode && chatOpen && <ChatWorld channel="commons:main" title="The Commons" subtitle="the AIs at scale" onExit={() => setChatOpen(false)} />}
+      {engineMode && connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
       </CatalogSpace>
     </main>
   )

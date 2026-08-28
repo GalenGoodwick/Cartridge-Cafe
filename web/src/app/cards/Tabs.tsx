@@ -8,26 +8,32 @@
 
 export interface TabCounts { published: number; live?: number; premium?: number; forkable?: number; mine: number | null }
 
-export function CardTabs({ counts, active, familyName, onPick }: {
+export function CardTabs({ counts, active, familyName, onPick, engine }: {
   counts: TabCounts
   active: string
   familyName?: string | null
   onPick: (slug: string) => void
+  /** THE MODE SPLIT (Galen, Aug 28): two catalogs, not one filtered.
+   *  PLAY  → GAMES · PREMIUM (a console: finished products only)
+   *  ENGINE → LIVE EDITING · SOURCES · PREMIUM · MY WORLDS (the workshop) */
+  engine?: boolean
 }) {
   const fixed = ['live', 'published', 'premium', 'mine']
-  const tabs: Array<{ slug: string; label: string; count: number | null }> = [
-    // LIVE EDITING — THE FIRST TAB (Galen, Aug 24): games open to edit live now;
-    // an editing membership docks you in
-    { slug: 'live', label: '◉ LIVE EDITING', count: counts.live ?? 0 },
-    { slug: 'published', label: 'PUBLISHED', count: counts.published },
-    // PREMIUM GAMES (Galen, Aug 24) — shown once the first premium world exists
-    ...(counts.premium ? [{ slug: 'premium', label: '✦ PREMIUM', count: counts.premium }] : []),
-    // (FORKABLE tab retired Aug 27 — bases live in /create's FORMAT picker.
-    // ALTERABLE/UNALTERABLE retired Aug 26 — alterable ≡ LIVE EDITING.)
-    ...(familyName && !fixed.includes(active)
-      ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
-    { slug: 'mine', label: 'MY WORLDS', count: counts.mine },
-  ]
+  const tabs: Array<{ slug: string; label: string; count: number | null }> = engine
+    ? [
+      // THE WORKSHOP — building first
+      { slug: 'live', label: '◉ LIVE EDITING', count: counts.live ?? 0 },
+      { slug: 'published', label: 'SOURCES', count: counts.published },   // finished worlds as fork-sources
+      ...(counts.premium ? [{ slug: 'premium', label: '✦ PREMIUM', count: counts.premium }] : []),
+      ...(familyName && !fixed.includes(active)
+        ? [{ slug: active, label: familyName.toUpperCase(), count: null }] : []),
+      { slug: 'mine', label: 'MY WORLDS', count: counts.mine },
+    ]
+    : [
+      // THE CONSOLE — finished games only; zero creation surface
+      { slug: 'published', label: '▶ GAMES', count: counts.published },
+      ...(counts.premium ? [{ slug: 'premium', label: '✦ PREMIUM', count: counts.premium }] : []),
+    ]
   return (
     <div className="flex items-end gap-1 overflow-x-auto pb-0 -mb-px" role="tablist" aria-label="the catalog">
       {tabs.map(t => {

@@ -69,13 +69,16 @@ function PlaceholderArt({ card }: { card: Card }) {
   )
 }
 
-export function WorldCardView({ card, png, featured, index, onOpen, presence }: {
+export function WorldCardView({ card, png, featured, index, onOpen, presence, playPersona }: {
   card: Card
   png?: string          // baked icon as a data URL (batch icons feed) — absent = placeholder
   featured?: boolean    // the base card — spans 2x2, larger art
   index: number         // deal-in stagger
   onOpen?: (slug: string) => void
   presence?: CardPresence   // who's inside / is its maker building right now
+  /** PLAY persona (Galen's mode split): the card is a PRODUCT — play it. No
+   *  fork button, no build-status chips, no maker-at-work badge. */
+  playPersona?: boolean
 }) {
   const hue = typeHue(card.type || 'untyped')
   const typed = !!card.type
@@ -119,13 +122,15 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
         <span className={`font-mono tracking-[0.12em] text-[#f0e6d2] truncate ${featured ? 'text-[19px]' : 'text-[14px]'}`}>
           {card.name.toUpperCase()}
         </span>
-        {presence && presence.devLive && (
+        {!playPersona && presence && presence.devLive && (
           <span className="shrink-0 font-mono text-[9.5px] tracking-[0.15em] px-1 py-px rounded border border-amber-300/50 text-amber-200 animate-pulse"
             title="its maker is building right now">LIVE</span>
         )}
+        {!playPersona && (
         <span className="ml-auto shrink-0 font-mono text-[11px] text-white/35" title={`${card.counts.forks} forks`}>
           ⑄ {card.counts.forks}
         </span>
+        )}
       </div>
 
       {/* the MAKER — right under the name (Galen, Aug 26: "move creator name
@@ -191,7 +196,7 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
       {/* categories breathe on their OWN row — crew chip + tags */}
       {(card.edit.mode !== 'static' || card.tags.length > 0 || card.perf) && (
         <div className="px-3.5 pt-1.5 flex items-center gap-1.5 min-w-0">
-          {card.edit.mode !== 'static' && (
+          {!playPersona && card.edit.mode !== 'static' && (
             <span className={`shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
               card.edit.mode === 'open' ? 'border-emerald-300/50 text-emerald-200/90' : 'border-sky-300/40 text-sky-200/80'}`}
               title={card.edit.mode === 'open' ? 'anyone can build here' : 'a crew builds here'}>
@@ -238,7 +243,7 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence }: 
           <div className="flex flex-col gap-1.5 text-[14px]">
             <button onClick={() => { setSheet(false); onOpen?.(card.slug) }}
               className="px-3 py-2.5 rounded-lg border border-white/15 text-white/80 hover:bg-white/5 text-left">⛶ OPEN</button>
-            {(card.isBase || card.playable) && (
+            {!playPersona && (card.isBase || card.playable) && (
               <button onClick={async () => {
                 setSheet(false)
                 const r = await fetch(`/api/spaces/${encodeURIComponent(card.slug)}/fork`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
