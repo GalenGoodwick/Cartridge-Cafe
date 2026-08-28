@@ -26,7 +26,7 @@ type Preset = typeof PRESETS[number]
 
 function insetFor(p: Preset, W: number, H: number): Inset {
   const M = 16                                   // breathing margin
-  const TOP = 52, BOTTOM = 64                    // reserved bands (title / buttons)
+  const TOP = 16, BOTTOM = 64                    // no top bar — just margin; bottom = proof buttons
   const availW = W - M * 2, availH = H - TOP - BOTTOM
   const fit = (aspect: number, scale = 1) => {
     let w = availW * scale, h = w / aspect
@@ -48,6 +48,8 @@ const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, l
 export default function TheGrid() {
   const [win, setWin] = useState({ w: 1280, h: 800 })
   const [preset, setPreset] = useState<Preset>('FULL')
+  const [selOpen, setSelOpen] = useState(false)                                  // the dockstar's selector
+  const [uiSet, setUiSet] = useState<'games' | 'main' | 'engine' | 'create'>('games')   // the docked UI set
   useEffect(() => {
     const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
@@ -99,21 +101,41 @@ export default function TheGrid() {
         ))}
       </div>
 
-      {/* THE TOP BAR — world identity (moved OUT of the game) + site title.
-          The title is the SELECTOR click-target next rung. */}
-      <div className="fixed top-0 inset-x-0 h-[52px] z-[120] flex items-center gap-2 px-3">
-        <button onClick={() => { window.location.href = '/' }} aria-label="back"
-          className="w-9 h-9 grid place-items-center rounded-xl bg-black/50 border border-white/12 text-white/75 text-[15px] hover:bg-black/70">◂</button>
-        <div className="min-w-0">
-          <div className="font-mono text-[12px] tracking-[0.14em] text-white/90 leading-tight truncate">CINDERFELL</div>
-          <div className="font-mono text-[9px] tracking-[0.12em] text-white/35 leading-tight">main · live</div>
-        </div>
-        <button
-          className="absolute left-1/2 -translate-x-1/2 font-mono text-[13px] tracking-[0.3em] text-white/70 hover:text-amber-200 transition-colors"
-          title="the UI selector opens here (next rung)">
-          CARTRIDGE.CAFE ▾
-        </button>
-      </div>
+      {/* THE DOCKSTAR — the ONE control: top-right corner of the GAME FIELD
+          (anchored to the frame, riding the same ease). Opens the UI selector.
+          No title, no back, no world name — the grid speaks for itself. */}
+      <button
+        onClick={() => setSelOpen(o => !o)}
+        aria-label="ui selector"
+        className={`fixed z-[130] w-10 h-10 grid place-items-center rounded-xl backdrop-blur border text-[16px] transition-colors ${
+          selOpen ? 'bg-amber-400/25 border-amber-300/70 text-amber-100' : 'bg-black/55 border-white/15 text-white/75 hover:text-amber-200'}`}
+        style={{ top: inset.top + 8, right: inset.right + 8, transition: `${EASE}, background-color 0.15s, color 0.15s` }}
+        title="▣ dockstar — choose the UI"
+      >▣</button>
+
+      {/* THE UI SELECTOR — the sets that MOVE IN around the grid. Picking one
+          docks that UI (GAMES wires first, next rung; the rest are seats). */}
+      {selOpen && (
+        <>
+          <div className="fixed inset-0 z-[128]" onClick={() => setSelOpen(false)} />
+          <div className="fixed z-[131] rounded-2xl overflow-hidden border border-amber-300/25 bg-[#12100a]/97 backdrop-blur shadow-2xl"
+            style={{ top: inset.top + 54, right: inset.right + 8, minWidth: 190, transition: EASE }}>
+            {([
+              ['games', '▶ GAMES', 'browse — click the grid to play'],
+              ['main', '◉ MAIN', 'the commons + social space'],
+              ['engine', '⚙ ENGINE', 'world tools · builderbox'],
+              ['create', '✚ CREATE', 'new world · fork from grid'],
+            ] as const).map(([k, label, sub]) => (
+              <button key={k}
+                onClick={() => { setUiSet(k); setSelOpen(false) }}
+                className={`w-full text-left px-4 py-3 border-b border-white/8 last:border-0 active:bg-white/10 ${uiSet === k ? 'bg-amber-400/10' : ''}`}>
+                <div className={`font-mono text-[13px] tracking-[0.15em] ${uiSet === k ? 'text-amber-200' : 'text-white/85'}`}>{label}</div>
+                <div className="font-mono text-[9.5px] text-white/35 mt-0.5">{sub}</div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* THE PROOF — dimension buttons: click → the grid + frame flow together */}
       <div className="fixed bottom-0 inset-x-0 h-[64px] z-[120] flex items-center justify-center gap-2">
