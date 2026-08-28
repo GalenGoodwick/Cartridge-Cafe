@@ -258,6 +258,57 @@ export default function TheGrid() {
     return () => { clearTimeout(t); clearTimeout(t2) }
   }, [engineSet, createSet, scene, spc])
 
+  // MOBILE = GAMES ONLY (Galen): phones get the play set, nothing else
+  useEffect(() => { if (narrow && uiSet !== 'games') setUiSet('games') }, [narrow, uiSet])
+
+  // ✦ THE PREMIUM GATE (Galen): a premium world PREVIEWS free in the frame;
+  // clicking the frame to PLAY while unpaid opens payment (Stripe, saved to
+  // the account via the experience entitlement) — once owned, the same click
+  // just opens it. Server truth: /api/premium (price read server-side).
+  const [premGate, setPremGate] = useState<null | { slug: string; usd: number; signedIn: boolean; buyable: boolean; busy?: boolean; err?: string }>(null)
+  const tryPlay = useCallback(async () => {
+    if (scene.startsWith('space:')) {
+      const slug = scene.slice(6)
+      try {
+        const d = await fetch(`/api/premium?slug=${encodeURIComponent(slug)}`).then(r => r.json())
+        if (d?.premium && !d.owned) { setPremGate({ slug, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable }); return }
+      } catch { /* gate unreachable — default open (free) */ }
+    }
+    setUiSet('games'); setPhase('play')
+  }, [scene])
+  // BELT: a deep link straight to ?ph=play can't skip the gate
+  useEffect(() => {
+    if (phase !== 'play' || !scene.startsWith('space:')) return
+    const slug = scene.slice(6)
+    let dead = false
+    fetch(`/api/premium?slug=${encodeURIComponent(slug)}`).then(r => r.json()).then(d => {
+      if (!dead && d?.premium && !d.owned) { setPhase('browse'); setPremGate({ slug, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable }) }
+    }).catch(() => { /* free default */ })
+    return () => { dead = true }
+  }, [phase, scene])
+  // checkout return (?paid=experience): the webhook may land a beat later — poll
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    if (u.searchParams.get('paid') !== 'experience' || !scene.startsWith('space:')) return
+    const slug = scene.slice(6)
+    let tries = 0
+    const iv = setInterval(async () => {
+      tries++
+      try {
+        const d = await fetch(`/api/premium?slug=${encodeURIComponent(slug)}`).then(r => r.json())
+        if (d?.owned || !d?.premium) {
+          clearInterval(iv); setPremGate(null)
+          u.searchParams.delete('paid'); window.history.replaceState(null, '', u.toString())
+          setUiSet('games'); setPhase('play')
+        }
+      } catch { /* keep polling */ }
+      if (tries > 20) clearInterval(iv)
+    }, 2000)
+    return () => clearInterval(iv)
+  // scene is the dep: on a checkout return the URL-restore effect sets ?w=
+  // AFTER mount — polling must start once the space is actually in the frame
+  }, [scene])
+
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
   // TRANSITION HYGIENE (Galen: builderbox stuck open from engine → play): any
@@ -335,7 +386,7 @@ export default function TheGrid() {
 
       {/* CLICK THE FRAME TO PLAY (games·browse) */}
       {browsing && (
-        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => setPhase('play')}
+        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -406,7 +457,7 @@ export default function TheGrid() {
           button — the universal law). While ◎ INSPECT is on, the frame yields:
           clicks must reach the canvas to document what's under them. */}
       {(engineSet || createSet) && !eyeData?.inspect?.on && (
-        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => { setUiSet('games'); setPhase('play') }}
+        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -450,7 +501,7 @@ export default function TheGrid() {
               ['main', '◉', 'MAIN', 'the commons + social space'],
               ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
               ['create', '✚', 'CREATE', 'new world · fork from grid'],
-            ] as const).map(([k, icon, label, sub]) => (
+            ] as const).filter(([k]) => !narrow || k === 'games').map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
                 className={`text-left rounded-2xl border p-4 transition-colors active:bg-white/10 ${
@@ -648,88 +699,122 @@ export default function TheGrid() {
         <BrewIconPanel bounds={inset} onClose={() => setBrewIconOpen(false)} />
       )}
 
-      {/* ═ THE BOTTOM BAR ═ */}
-      <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
-        style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-        <div className="flex-1 flex items-center justify-between pl-3 pr-2">
-          {/* THE TITLE — leftmost; clicking opens attribution/lineage. On MAIN
-              it reads Cartridge.Cafe and opens the dockstar menu (the house's
-              own name, not the parked game's). Not in ENGINE. */}
-          {uiSet === 'main' ? (
-          <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
-            className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors"
-            style={{ margin: '8px 0' }}>
-            Cartridge.Cafe
-          </button>
-          ) : uiSet !== 'engine' ? (
-          <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
-            className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors"
-            style={{ margin: '8px 0' }}>
-            {selected?.name ?? '—'}
-          </button>
-          ) : <span />}
-          {/* ◉ COMMONS — left of the dockstar (Galen) */}
-          {uiSet === 'main' && (
-            <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
-              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-                chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
-              style={{ margin: '8px 0' }}>
-              ◉ COMMONS
-            </button>
-          )}
-          {/* ● REC — left of the dockstar, GAMES-play only (Galen): the world
-              in the frame → a video file on your computer (canvas only, no UI). */}
-          {uiSet === 'games' && phase === 'play' && (
-            <button data-grid-rec onClick={() => cmd('rec')}
-              title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
-              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 ${
-                rec.on ? 'bg-red-500/25 border-red-400/60 text-red-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
-              style={{ margin: '8px 0' }}>
-              <span className={`inline-block w-2 h-2 rounded-full bg-red-500 ${rec.on ? 'animate-pulse' : ''}`} />
-              {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
-            </button>
-          )}
+      {/* ✦ THE PREMIUM GATE — field-bounded; buy once, it's on your account */}
+      {premGate && (
+        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.9)', borderRadius: 10 }}
+          onClick={() => setPremGate(null)}>
+          <div className="w-full max-w-[440px] rounded-2xl border border-amber-300/30 bg-[#14100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[12px] tracking-[0.25em] text-amber-200/90">✦ PREMIUM WORLD</span>
+              <button onClick={() => setPremGate(null)} aria-label="close"
+                className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+            </div>
+            <div className="text-[15px] tracking-[0.15em] text-white/95 mb-1">{selected?.name ?? premGate.slug.toUpperCase()}</div>
+            <p className="text-[11px] text-white/55 leading-relaxed mb-3">buy it once — it saves to your account and this world opens for you forever (plus co-program access).</p>
+            {premGate.err && <p className="text-[11px] text-amber-200/90 mb-2">{premGate.err}</p>}
+            {premGate.signedIn ? (
+              <button data-prem-buy disabled={!premGate.buyable || premGate.busy}
+                onClick={async () => {
+                  setPremGate(g => g && { ...g, busy: true, err: undefined })
+                  try {
+                    const r = await fetch('/api/premium', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug: premGate.slug }) })
+                    const d = await r.json().catch(() => null)
+                    if (r.ok && d?.url) { window.location.href = d.url; return }
+                    setPremGate(g => g && { ...g, busy: false, err: d?.error || 'checkout failed' })
+                  } catch { setPremGate(g => g && { ...g, busy: false, err: 'checkout failed — are you offline?' }) }
+                }}
+                className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+                {premGate.busy ? '…' : premGate.buyable ? `✦ BUY & PLAY — $${premGate.usd}` : 'payments not configured yet'}
+              </button>
+            ) : (
+              <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid?w=space:' + premGate.slug)}
+                className="block text-center w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 transition-colors">
+                SIGN IN TO BUY — ${premGate.usd}
+              </a>
+            )}
+          </div>
         </div>
-        {/* THE DOCKSTAR — the cup, buffered above AND below */}
-        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setChatOpen(false) }} aria-label="ui selector"
-          title="the dockstar — choose your UI"
-          className={`w-12 h-12 grid place-items-center rounded-2xl border transition-all ${
-            selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-          style={{ margin: '8px 0', boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
-          <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
-        </button>
-        <div className="flex-1 flex items-center justify-start gap-2 pl-2 pr-3">
-          {/* ◆ BREW ICON — right of the dockstar, MAIN only (Galen) */}
-          {uiSet === 'main' && (
-            <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
-              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-                brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
-              style={{ margin: '8px 0' }}>
-              ◆ BREW ICON
+      )}
+
+      {/* ═ THE BOTTOM BAR ═  The DOCKSTAR is ABSOLUTELY centered and PRIMARY
+          (Galen: "always primary and centered" — mobile was smooshing it out).
+          Side zones are absolute and overflow-hidden: they can never push the
+          cup. NARROW: no title, no REC — the phone bar is cup + essentials. */}
+      <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: BAR_H }}>
+        <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
+          {/* LEFT ZONE */}
+          <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
+            {!narrow && (uiSet === 'main' ? (
+            <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
+              className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
+              Cartridge.Cafe
             </button>
-          )}
-          <span className="flex-1" />
-          {/* ? INSTRUCTIONS — not on MAIN (nothing to explain; the commons is the porch) */}
-          {uiSet !== 'main' && (
-          <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
-            className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-              instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
-            style={{ margin: '8px 0' }}>
-            ? INSTRUCTIONS
+            ) : uiSet !== 'engine' ? (
+            <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
+              className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-full truncate">
+              {selected?.name ?? '—'}
+            </button>
+            ) : null)}
+            <span className="flex-1" />
+            {/* ◉ COMMONS — immediately left of the dockstar (MAIN) */}
+            {uiSet === 'main' && (
+              <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
+                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                  chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+                ◉ COMMONS
+              </button>
+            )}
+            {/* ● REC — GAMES-play, desktop only (Galen: not needed on mobile) */}
+            {!narrow && uiSet === 'games' && phase === 'play' && (
+              <button data-grid-rec onClick={() => cmd('rec')}
+                title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
+                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 shrink-0 ${
+                  rec.on ? 'bg-red-500/25 border-red-400/60 text-red-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+                <span className={`inline-block w-2 h-2 rounded-full bg-red-500 ${rec.on ? 'animate-pulse' : ''}`} />
+                {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
+              </button>
+            )}
+          </div>
+          {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
+          <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setChatOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
+            title="the dockstar — choose your UI"
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
+              selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
+            style={{ boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
+            <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
           </button>
-          )}
-          {uiSet === 'games' && phase === 'play' && (
-            <button onClick={async () => {
-              const url = window.location.href
-              try { await navigator.share?.({ url, title: selected?.name }) }
-              catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-              if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-            }}
-              className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors"
-              style={{ margin: '8px 0' }}>
-              {copied ? '✓ COPIED' : '↗ SHARE'}
+          {/* RIGHT ZONE */}
+          <div className="absolute inset-y-0 right-0 flex items-center justify-start gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 38px)' }}>
+            {/* ◆ BREW ICON — immediately right of the dockstar (MAIN) */}
+            {uiSet === 'main' && (
+              <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
+                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+                ◆ BREW ICON
+              </button>
+            )}
+            <span className="flex-1" />
+            {/* ? INSTRUCTIONS — GAMES only (not MAIN, not ENGINE, not CREATE) */}
+            {uiSet === 'games' && (
+            <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
+              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+              ? INSTRUCTIONS
             </button>
-          )}
+            )}
+            {uiSet === 'games' && phase === 'play' && (
+              <button onClick={async () => {
+                const url = window.location.href
+                try { await navigator.share?.({ url, title: selected?.name }) }
+                catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+                if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+              }}
+                className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
+                {copied ? '✓ COPIED' : '↗ SHARE'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

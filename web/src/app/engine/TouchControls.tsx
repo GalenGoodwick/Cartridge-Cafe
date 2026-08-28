@@ -10,7 +10,14 @@ import { layoutTouchZones } from './touch-layout'
  *  buttons (A = space, B = enter) writing the same worldData.key_* the keyboard
  *  writes, so every existing cartridge gains touch support unchanged.
  *  Renders only on touch devices; the stick nub is moved via style (no re-renders). */
-export function TouchControls({ simRef }: { simRef: { current: FieldSimulation | null } }) {
+export function TouchControls({ simRef, frame }: {
+  simRef: { current: FieldSimulation | null }
+  /** the contained frame's inset (the grid's viewport) — controls lay out
+   *  INSIDE it instead of the window (Galen: "controls outside the grid").
+   *  Absent = legacy full-window layout. NOTE: layout is still the generic
+   *  stick+A/B; per-world PROGRAMMABLE controls are the named next rung. */
+  frame?: { top: number; right: number; bottom: number; left: number } | null
+}) {
   const [isTouch] = useState(() =>
     typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0))
   const originRef = useRef<{ x: number; y: number } | null>(null)
@@ -18,14 +25,20 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
   // LAYOUT IS COMPUTED, not hand-placed (touch-layout.ts — collision-free by
   // construction, proven across the device matrix in its unit suite). The
   // Aug 23 phone test caught the old magic-px stick/buttons overlap.
-  const [zones, setZones] = useState(() =>
-    typeof window !== 'undefined' ? layoutTouchZones(window.innerWidth, window.innerHeight) : null)
+  const dims = useCallback(() => {
+    if (typeof window === 'undefined') return null
+    return frame
+      ? [Math.max(120, window.innerWidth - frame.left - frame.right), Math.max(120, window.innerHeight - frame.top - frame.bottom)] as const
+      : [window.innerWidth, window.innerHeight] as const
+  }, [frame])
+  const [zones, setZones] = useState(() => { const d = dims(); return d ? layoutTouchZones(d[0], d[1]) : null })
   useEffect(() => {
-    const onR = () => setZones(layoutTouchZones(window.innerWidth, window.innerHeight))
+    const onR = () => { const d = dims(); if (d) setZones(layoutTouchZones(d[0], d[1])) }
+    onR()   // frame changes re-lay immediately (the eased resize fires resize events too)
     window.addEventListener('resize', onR)
     window.addEventListener('orientationchange', onR)
     return () => { window.removeEventListener('resize', onR); window.removeEventListener('orientationchange', onR) }
-  }, [])
+  }, [dims])
 
   // set a flag + bump its _n pulse counter on the rising edge — the keyboard
   // contract exactly, so input.pressed / hit() edges never miss a short tap
@@ -74,7 +87,10 @@ export function TouchControls({ simRef }: { simRef: { current: FieldSimulation |
   const Z = zones
   const btnKeys: Array<[string, string]> = [['key_space', 'A'], ['key_enter', 'B']]
   return (
-    <div className="absolute inset-0 z-30 pointer-events-none select-none" style={{ touchAction: 'none' }}>
+    <div className={`${frame ? 'fixed' : 'absolute'} z-30 pointer-events-none select-none`}
+      style={frame
+        ? { touchAction: 'none', top: frame.top, right: frame.right, bottom: frame.bottom, left: frame.left }
+        : { touchAction: 'none', inset: 0 }}>
       <div
         data-cc-chrome
         className="absolute rounded-full border border-white/20 bg-white/5 backdrop-blur-sm pointer-events-auto"

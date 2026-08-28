@@ -4,12 +4,10 @@ import { notFound } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { handleOf } from '@/lib/notify'
-import SpaceStage from './SpaceStage'
 
 interface SpacePageProps {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ version?: string; join?: string }>
+  searchParams: Promise<{ version?: string; join?: string; paid?: string; paycancel?: string }>
 }
 
 export async function generateMetadata({ params }: SpacePageProps) {
@@ -96,7 +94,7 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
     // every join path ENDS IN CO-REGISTRATION (Galen's law): the new member
     // lands with the CONNECT AI terminal opening — their key mints there and
     // the paste-prompt walks their AI through the guide. Same door as a fork.
-    redirect(`/space/${slug}?connect=1`)
+    redirect(`/grid?w=space:${encodeURIComponent(slug)}&ui=engine`)   // the workshop; ⚿ CONNECT AI is a tab away
   }
 
   if (!space.isPublic && userId !== space.ownerId) {
@@ -127,39 +125,13 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
     }
   }
 
-  // THE GRID (task #20): one cheap jsonb read — the engine must be BORN at
-  // the world's declared size, so the server hands it down as a prop. Same read
-  // grabs worldData.fit — a 'mobile' world renders in a portrait phone frame on
-  // desktop (SpaceStage), so the client must know its declared fit up front.
-  const gridRows = await prisma.$queryRaw<{ g: string | null; fit: string | null }[]>`
-    SELECT snapshot->'worldParams'->>'gridSize' AS g,
-           snapshot->'worldData'->>'fit' AS fit
-    FROM "PlayerSpace" WHERE id = ${space.id}`
-  const gridParsed = gridRows[0]?.g ? parseInt(gridRows[0].g, 10) : NaN
-  const gridSize = Number.isFinite(gridParsed) && gridParsed >= 64 && gridParsed <= 4096 ? gridParsed : undefined
-  // the targets matrix, both halves: 'mobile' → phone frame on desktop;
-  // 'desktop' → the door notice on a phone. worldData.fit is the declaration.
-  const fit = gridRows[0]?.fit === 'mobile' ? 'mobile' : gridRows[0]?.fit === 'desktop' ? 'desktop' : undefined
-
-  const isOwner = userId === space.ownerId
-  // viewing a save point is always read-only — syncing it would overwrite the live world
-  const engineOwner = versionView !== undefined ? false : isOwner
-
-  return (
-    <>
-      <SpaceStage
-        spaceId={space.id}
-        spaceSlug={space.slug}
-        gridSize={gridSize}
-        fit={fit}
-        engineOwner={engineOwner}
-        isOwner={isOwner}
-        versionView={Number.isFinite(versionView) ? versionView : undefined}
-        name={space.name}
-        ownerName={space.owner?.name ?? null}
-        ownerId={space.owner?.id ?? null}
-        ownerHandle={space.owner?.email ? handleOf(space.owner.email) : null}
-      />
-    </>
-  )
+  // OLD UI DEPRECATED (Galen, Aug 28: "deprecate all old ui") — the gates
+  // above (private/members, play policy, join door) still hold this URL's law;
+  // past them, THE GRID is the one renderer. paid/paycancel ride along so the
+  // premium-checkout round-trip (success_url = /space/<slug>?paid=experience)
+  // finishes in the grid's gate. generateMetadata still serves the OG card.
+  const qs = new URLSearchParams({ w: 'space:' + slug, ui: 'games', ph: 'play' })
+  if (typeof search.paid === 'string') qs.set('paid', search.paid)
+  if (typeof search.paycancel === 'string') qs.set('paycancel', search.paycancel)
+  redirect('/grid?' + qs.toString())
 }

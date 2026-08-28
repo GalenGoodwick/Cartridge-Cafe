@@ -7343,7 +7343,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
           {/* Virtual touch controls — writes the same worldData.key_* the keyboard
               does, so every cartridge gains touch support unchanged. Touch-only. */}
-          <TouchControls simRef={simulationRef} />
+          <TouchControls simRef={simulationRef} frame={viewport ?? undefined} />
 
           {/* Space breadcrumb — shown when in a child space */}
           {spaceSlug && <SpaceBreadcrumb spaceSlug={spaceSlug} />}
