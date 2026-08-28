@@ -286,6 +286,23 @@ export default function TheGrid() {
     }).catch(() => { /* free default */ })
     return () => { dead = true }
   }, [phase, scene])
+  // sign-in return (?buy=<slug>): the account was just created for THIS
+  // purchase (Galen: account before payment, critical) — reopen the gate with
+  // BUY live instead of dropping the player on the shelf to re-find the world.
+  useEffect(() => {
+    const u = new URL(window.location.href)
+    const want = u.searchParams.get('buy')
+    if (!want || !scene.startsWith('space:') || scene.slice(6) !== want) return
+    let dead = false
+    fetch(`/api/premium?slug=${encodeURIComponent(want)}`).then(r => r.json()).then(d => {
+      if (dead) return
+      u.searchParams.delete('buy'); window.history.replaceState(null, '', u.toString())
+      if (d?.premium && !d.owned) setPremGate({ slug: want, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable })
+      else { setUiSet('games'); setPhase('play') }   // owned (or free) — just open it
+    }).catch(() => { /* gate unreachable — leave them browsing */ })
+    return () => { dead = true }
+  }, [scene])
+
   // checkout return (?paid=experience): the webhook may land a beat later — poll
   useEffect(() => {
     const u = new URL(window.location.href)
@@ -389,8 +406,8 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
-            ▶ PLAY {selected?.name ?? ''}
+          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
       )}
@@ -460,8 +477,8 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
-            ▶ PLAY {selected?.name ?? ''}
+          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
       )}
@@ -728,9 +745,9 @@ export default function TheGrid() {
                 {premGate.busy ? '…' : premGate.buyable ? `✦ BUY & PLAY — $${premGate.usd}` : 'payments not configured yet'}
               </button>
             ) : (
-              <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid?w=space:' + premGate.slug)}
+              <a data-prem-signin href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid?w=space:' + premGate.slug + '&buy=' + premGate.slug)}
                 className="block text-center w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 transition-colors">
-                SIGN IN TO BUY — ${premGate.usd}
+                CREATE ACCOUNT / SIGN IN — THEN BUY ${premGate.usd}
               </a>
             )}
           </div>

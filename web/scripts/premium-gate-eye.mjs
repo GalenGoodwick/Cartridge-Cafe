@@ -42,4 +42,35 @@ await p.goto('http://localhost:3131/grid?ui=games&ph=play&w=space:prem', { waitU
 await p.waitForTimeout(3000)
 T('deep-link belt: unpaid ?ph=play → gate, play revoked', await p.evaluate(() =>
   document.body.innerText.includes('✦ PREMIUM WORLD') && new URL(location.href).searchParams.get('ph') !== 'play'))
+// ── ACCOUNT-BEFORE-PAYMENT (critical): signed OUT → gate offers account
+// creation carrying the buy intent; the sign-in return REOPENS the gate at BUY
+let signedIn = false
+await ctx.unroute('**/api/premium?slug=prem')
+await ctx.route('**/api/premium?slug=prem', r => r.fulfill({ json: { premium: { usd: 5 }, owned, signedIn, buyable: true } }))
+await p.goto('http://localhost:3131/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('button[aria-label^="play"]', { timeout: 30000 }); await p.waitForTimeout(2000)
+await p.click('button[aria-label^="play"]'); await p.waitForTimeout(1200)
+const door = await p.evaluate(() => {
+  const a = document.querySelector('a[data-prem-signin]')
+  return { there: !!a, href: a?.getAttribute('href') ?? '' }
+})
+T('signed-out gate = CREATE ACCOUNT door', door.there && /CREATE ACCOUNT/.test(await p.evaluate(() => document.body.innerText)))
+T('door carries the buy intent (callback → &buy=prem)', decodeURIComponent(door.href).includes('&buy=prem'))
+// simulate the sign-in return: account exists now, URL carries ?buy=prem
+signedIn = true
+await p.goto('http://localhost:3131/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
+await p.waitForTimeout(3500)
+const resumed = await p.evaluate(() => ({
+  gate: document.body.innerText.includes('✦ PREMIUM WORLD'),
+  buy: !!document.querySelector('[data-prem-buy]'),
+  cleaned: !new URL(location.href).searchParams.get('buy'),
+}))
+T('sign-in return AUTO-REOPENS the gate at BUY (param cleaned)', resumed.gate && resumed.buy && resumed.cleaned)
+// and if they already owned it, the return just opens the world
+owned = true
+await p.goto('http://localhost:3131/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
+await p.waitForFunction(() => new URL(location.href).searchParams.get('ph') === 'play', null, { timeout: 15000 }).catch(() => {})
+console.log('  · debug:', await p.evaluate(() => ({ url: location.search, gate: document.body.innerText.includes('PREMIUM WORLD') })))
+T('owned on return → just plays', await p.evaluate(() => new URL(location.href).searchParams.get('ph') === 'play'))
+
 await b.close(); console.log('PREMIUM GATE EYE COMPLETE')
