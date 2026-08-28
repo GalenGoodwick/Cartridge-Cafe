@@ -630,8 +630,7 @@ export default function TheGrid() {
           <div className="w-full max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[16px] tracking-[0.2em] text-white/95 mb-1">{selected?.name}</div>
             {selected?.maker && <div className="text-[12px] text-amber-200/85 mb-3">by {selected.maker}</div>}
-            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1">⑂ LINEAGE</div>
-            <div className="text-[10.5px] text-white/45 leading-relaxed">what it grew from · its forks (wires to the lineage store next)</div>
+            <AttribLineage scene={scene} />
           </div>
         </div>
       )}
@@ -1603,6 +1602,46 @@ function BrewIconPanel({ bounds, onClose }: { bounds: Inset; onClose: () => void
         </button>
         {!tok && <p className="mt-2 text-[10px] text-white/40">sign in to mint your icon key — the prompt needs it.</p>}
       </div>
+    </div>
+  )
+}
+
+// ⑂ the REAL lineage trail (the stub is dead — Galen: "screwy lineage"):
+// GET /api/engine/lineage/trail?space=<slug> → trail root-first + remixes.
+function AttribLineage({ scene }: { scene: string }) {
+  const [t, setT] = useState<null | { trail: Array<{ name: string; slug?: string; kind: string }>; remixes: Array<{ name: string; slug?: string }> }>(null)
+  const isSpace = scene.startsWith('space:')
+  useEffect(() => {
+    if (!isSpace) { setT(null); return }
+    let dead = false
+    fetch(`/api/engine/lineage/trail?space=${encodeURIComponent(scene.slice(6))}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!dead) setT(d && Array.isArray(d.trail) ? { trail: d.trail, remixes: Array.isArray(d.remixes) ? d.remixes : [] } : null) })
+      .catch(() => { if (!dead) setT(null) })
+    return () => { dead = true }
+  }, [scene, isSpace])
+  return (
+    <div data-attrib-lineage>
+      <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1">⑂ LINEAGE</div>
+      {!isSpace && <div className="text-[10.5px] text-white/45 leading-relaxed">house cartridge — an original of the cafe.</div>}
+      {isSpace && t === null && <div className="text-[10.5px] text-white/40">…</div>}
+      {isSpace && t && (
+        <div className="text-[10.5px] leading-relaxed">
+          <div className="text-white/70">
+            {t.trail.length <= 1
+              ? 'an original — no upstream.'
+              : t.trail.map((n, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="text-white/30"> ⑂ </span>}
+                    <span className={i === t.trail.length - 1 ? 'text-amber-200/90' : 'text-white/70'}>{n.name}</span>
+                  </span>
+                ))}
+          </div>
+          {t.remixes.length > 0 && (
+            <div className="mt-1 text-white/45">forks: {t.remixes.map(r => r.name).join(' · ')}</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

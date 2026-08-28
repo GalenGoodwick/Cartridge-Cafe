@@ -3273,6 +3273,26 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   //  deliberate click inside the world must. Time-gate on the last swap.
   const swapAtRef = useRef(0)
 
+  // LOCK BELT + DIAGNOSIS (Galen: "veilfire lost click to bind cursor" in the
+  // grid; the primary path is byte-identical to /space where it worked, so a
+  // capture-phase retry catches anything upstream swallowing the click — and
+  // pointerlockerror now SAYS SO in the console instead of failing silently).
+  useEffect(() => {
+    const cv = canvasRef.current
+    if (!cv) return
+    const onDown = () => {
+      const sim = simulationRef.current
+      if (!sim || !sim.worldData['__mouseLook']) return
+      if (document.pointerLockElement === cv) return
+      if (performance.now() - swapAtRef.current < 600) return
+      try { cv.requestPointerLock() } catch (e) { console.warn('[cafe] pointer lock refused:', (e as Error).message) }
+    }
+    const onErr = () => console.warn('[cafe] pointerlockerror — the browser refused the cursor bind')
+    cv.addEventListener('pointerdown', onDown, true)
+    document.addEventListener('pointerlockerror', onErr)
+    return () => { cv.removeEventListener('pointerdown', onDown, true); document.removeEventListener('pointerlockerror', onErr) }
+  }, [])
+
   // inspect frame-snapshot loop: cheap (4Hz, only while inspect is on)
   useEffect(() => {
     if (!inspectOn) { inspectPixRef.current = null; return }
