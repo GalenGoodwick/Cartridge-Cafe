@@ -1,0 +1,12 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ args: ['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--enable-unsafe-swiftshader'] })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override','1') } catch {} })
+const p = await ctx.newPage()
+p.on('pageerror', e => console.log('PAGEERROR:', String(e).slice(0,150)))
+await p.goto('http://localhost:3131/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(2500)
+console.log('chat btn:', await p.evaluate(() => [...document.querySelectorAll('button')].filter(x=>/◉ CHAT/.test(x.textContent||'')).length))
+await p.click('button:has-text("◉ CHAT")'); await p.waitForTimeout(1000)
+console.log('after click — THE ROOM:', await p.evaluate(() => /THE ROOM/.test(document.body.innerText)))
+console.log('inputs:', await p.evaluate(() => [...document.querySelectorAll('input')].map(i=>i.placeholder)))
+await b.close()

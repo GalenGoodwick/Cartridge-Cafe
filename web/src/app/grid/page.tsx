@@ -42,7 +42,8 @@ export default function TheGrid() {
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
-  const [toolsOpen, setToolsOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)   // ⚙ WORLD CONFIG
+  const [eyeOpen, setEyeOpen] = useState(false)       // ◈ EYE / NODE TOOLS
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -140,8 +141,8 @@ export default function TheGrid() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => {
-    if (toolsOpen) { try { window.dispatchEvent(new Event('cafe:ai-log-pull')) } catch { /* ssr */ } }
-  }, [toolsOpen])
+    if (eyeOpen) { try { window.dispatchEvent(new Event('cafe:ai-log-pull')) } catch { /* ssr */ } }
+  }, [eyeOpen])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
@@ -149,7 +150,7 @@ export default function TheGrid() {
   // set/phase change closes the engine's panels — nothing follows you through.
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false); setToolsOpen(false); setAttribOpen(false); setChatOpen(false)
+    setConnectOpen(false); setInstrOpen(false); setToolsOpen(false); setAttribOpen(false); setChatOpen(false); setEyeOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
@@ -283,10 +284,15 @@ export default function TheGrid() {
             ◉ CHAT
             <span className="block text-[9.5px] text-white/45 mt-0.5">the humans in this world</span>
           </button>
+          <button onClick={() => setEyeOpen(true)}
+            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-sky-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
+            ◈ EYE · NODES
+            <span className="block text-[9.5px] text-white/45 mt-0.5">the AI console · node tools</span>
+          </button>
           <button onClick={() => setToolsOpen(true)}
             className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-amber-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ⚙ WORLD TOOLS
-            <span className="block text-[9.5px] text-white/45 mt-0.5">attribution · ai logs · lineage</span>
+            ⚙ WORLD CONFIG
+            <span className="block text-[9.5px] text-white/45 mt-0.5">name · visibility · dimensions</span>
           </button>
           <button onClick={() => setConnectOpen(true)}
             className={`text-left rounded-xl border border-emerald-300/60 bg-emerald-400/10 px-3.5 py-3 text-[12px] tracking-[0.12em] text-emerald-100 hover:bg-emerald-400/20 hover:border-emerald-300/80 transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
@@ -389,18 +395,33 @@ export default function TheGrid() {
         <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setToolsOpen(false)}>
-          <div className="w-full max-w-[680px] h-[80%] flex flex-col rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[12px] tracking-[0.25em] text-amber-200/80">⚙ WORLD TOOLS — {selected?.name}</div>
-              <button onClick={() => { cmd('tools'); setToolsOpen(false) }}
-                className="text-[10.5px] tracking-[0.15em] px-3 py-1.5 rounded-lg border border-white/20 text-white/75 hover:bg-white/5">
-                ⚙ CLASSIC TOOLS
-              </button>
+          <div className="w-full max-w-[680px] h-[80%] overflow-y-auto rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[12px] tracking-[0.25em] text-amber-200/80 mb-3">⚙ WORLD CONFIG — {selected?.name}</div>
+            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">SETTINGS</div>
+            <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px] leading-relaxed">
+              <div className="flex justify-between py-1 border-b border-white/5"><span className="text-white/55">name</span><span className="text-white/90">{selected?.name}</span></div>
+              <div className="flex justify-between py-1 border-b border-white/5"><span className="text-white/55">maker</span><span className="text-amber-200/85">{selected?.maker ?? '—'}</span></div>
+              <div className="flex justify-between py-1 border-b border-white/5"><span className="text-white/55">scene</span><span className="text-white/70">{scene}</span></div>
+              <div className="flex justify-between py-1"><span className="text-white/55">visibility · forkable · dimensions</span><span className="text-white/40">owner controls — wire next</span></div>
             </div>
-            {/* ◈ THE AI CONSOLE — the engine's live build log (the builderbox
-                console, rehomed): every bridge edit, named and timed */}
-            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">◈ AI CONSOLE</div>
-            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[11px] leading-relaxed">
+            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">▤ THE CARD</div>
+            <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] text-white/45 leading-relaxed">
+              the world's shelf card — blurb, tags, icon bake. docks here from the classic panel next.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ◈ THE EYE — the AI console + node tools (the builderbox's working
+          half, rehomed as its own door) */}
+      {eyeOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+          onClick={() => setEyeOpen(false)}>
+          <div className="w-full max-w-[680px] h-[80%] flex flex-col rounded-2xl border border-sky-300/25 bg-[#0c1016]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[12px] tracking-[0.25em] text-sky-200/80 mb-3">◈ THE EYE — {selected?.name}</div>
+            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">AI CONSOLE</div>
+            <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[11px] leading-relaxed mb-3">
               {aiLog.length === 0 && <div className="text-white/40">no AI edits yet this session — connect an AI and its every build step lands here, live.</div>}
               {aiLog.map((l, i) => (
                 <div key={i} className="flex gap-2 py-0.5 border-b border-white/5 last:border-0">
@@ -410,6 +431,10 @@ export default function TheGrid() {
                   {l.author && <span className="text-amber-200/70 shrink-0 ml-auto">{l.author}</span>}
                 </div>
               ))}
+            </div>
+            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">⬢ NODE TOOLS</div>
+            <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] text-white/45 leading-relaxed">
+              who builds what — node holds, history, revert. docks here next.
             </div>
           </div>
         </div>
@@ -429,15 +454,18 @@ export default function TheGrid() {
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
         <div className="flex-1 flex justify-start pl-3">
-          {/* THE TITLE — leftmost; clicking opens attribution/lineage */}
+          {/* THE TITLE — leftmost; clicking opens attribution/lineage.
+              Not in ENGINE (the dock already names the world). */}
+          {uiSet !== 'engine' && (
           <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
             className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors"
             style={{ margin: '8px 0' }}>
             {selected?.name ?? '—'}
           </button>
+          )}
         </div>
         {/* THE DOCKSTAR — the cup, buffered above AND below */}
-        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setToolsOpen(false); setChatOpen(false) }} aria-label="ui selector"
+        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setToolsOpen(false); setChatOpen(false); setEyeOpen(false) }} aria-label="ui selector"
           title="the dockstar — choose your UI"
           className={`w-12 h-12 grid place-items-center rounded-2xl border transition-all ${
             selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
