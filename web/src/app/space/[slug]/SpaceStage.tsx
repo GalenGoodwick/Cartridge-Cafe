@@ -9,6 +9,8 @@ import ShareWorld from './ShareWorld'
 import { useSolvedGrid, GridSlot } from '@/app/engine/GridChrome'
 import { worldChromeUi } from '@/app/engine/ui-blocks'   // THE KEYSTONE: bands + perchers, engine-drawn
 import { useShellHost } from '@/app/engine/useShellHost'
+import MobileWorldWrapper from './MobileWorldWrapper'   // Aug 28: mobile = play-only wrapper
+import DesktopDoor from './DesktopDoor'
 import FollowButton from './FollowButton'
 import PremiumGate from './PremiumGate'
 // (DockButton REMOVED — Galen, Aug 27: membership automatically allows editing
@@ -84,6 +86,18 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   }, [name, winDim, isOwner, versionView])
   // THE ONE SHELL HOST (shared with the conversion proof — never a copy)
   useShellHost({ onBack: () => router.push('/') })
+
+  // ─── MOBILE DEVICE (Galen, Aug 28: "the engine is only on desktop; mobile is
+  // just for playing mobile products"). A mobile DEVICE (coarse pointer) gets
+  // the standard mobile-first PLAY wrapper — no editing, no engine tools. This
+  // is device-based, not width-based: a narrow desktop window is still desktop.
+  const [mobileDevice, setMobileDevice] = useState(false)
+  const [mobileStepIn, setMobileStepIn] = useState(false)   // stepped past the desktop-only door
+  const [deviceReady, setDeviceReady] = useState(false)     // detect BEFORE mounting either engine (no double-mount)
+  useEffect(() => {
+    try { setMobileDevice(window.matchMedia('(pointer: coarse)').matches) } catch { /* ssr */ }
+    setDeviceReady(true)
+  }, [])
 
   // THE DESKTOP DOOR (targets matrix, other half of the phone frame): a world
   // declaring worldData.fit='desktop' is built for a wide screen + fine pointer.
@@ -291,6 +305,24 @@ export default function SpaceStage({ spaceId, spaceSlug, gridSize, fit, engineOw
   // placed by the solver against the column. Version views keep the engine's
   // own read-only title row (the bar's mutations don't apply there).
   const barOn = versionView == null
+
+  // detect the device BEFORE mounting any engine — a neutral hold avoids
+  // booting the desktop engine on a phone just to tear it down (WebGPU churn).
+  if (!deviceReady) return <div className="fixed inset-0" style={{ background: '#04050b' }} aria-hidden />
+
+  // ── THE MOBILE BRANCH — a phone gets the play-only wrapper, never the desktop
+  // engine chrome. A desktop-tagged world shows the door first (step-in plays it
+  // anyway). Version views stay on the desktop path (read-only browsing). ──
+  if (mobileDevice && versionView == null) {
+    if (fit === 'desktop' && !mobileStepIn) {
+      return (
+        <DesktopDoor name={name} why="built for desktop — it may sprawl or fight your thumbs here" onStepIn={() => setMobileStepIn(true)} />
+      )
+    }
+    return (
+      <MobileWorldWrapper spaceId={spaceId} spaceSlug={spaceSlug} gridSize={gridSize} name={name} ownerName={ownerName} />
+    )
+  }
 
   return (
     <>

@@ -86,6 +86,12 @@ interface FieldEngineProps {
    *  to the host via a 'cafe:shell-ui' window event, NEVER into
    *  worldData.__uiClick — the world cannot see or forge shell actions. */
   shellUi?: UiNode[] | null
+  /** MOBILE PLAY (Galen, Aug 28: "mobile is just for playing mobile products —
+   *  all editing and engine tools are moot on mobile"). Boots the engine into
+   *  PURE PLAY: no desktop chrome (dock / rail / edit / builderbox), no
+   *  play-mode overlay (EXIT / REC are desktop affordances) — just the world +
+   *  touch controls. The mobile DOM wrapper provides the thin back/title chrome. */
+  mobilePlay?: boolean
   /** Reports the bottom (y px) of the top-right UI dock whenever it resizes, so
    *  the shell can seat the in-world VOTE button directly under it — beneath the
    *  AI plugged/unplugged lamp — instead of at a guessed fixed offset. */
@@ -148,7 +154,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, shellUi, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, shellUi, mobilePlay, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -304,7 +310,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // unchanged while the six-boolean soup drains into this cell rung by rung.
   // 'design' is reserved for the EDIT rail (rung 3). Do not add a new
   // chrome-visibility boolean; add a mode.
-  const [worldMode, setWorldMode] = useState<WorldMode>('view')
+  // mobilePlay boots straight into pure play — no view chrome ever renders.
+  const [worldMode, setWorldMode] = useState<WorldMode>(mobilePlay ? 'play' : 'view')
   // ✎ EDIT IS the design toggle (rung 2b, Galen: "just one edit button —
   // opens up design ui"). The fold derives from the mode; there is no
   // separate open/closed boolean to drift.
@@ -6413,8 +6420,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
           {/* GAMEPLAY MODE overlay — total-UI-close. The engine's OWN back button
               (top-left, below) stays; here we add only the ▣ reopen so play is
-              clean with exactly one way out + one way back to the UI. */}
-          {playMode && (
+              clean with exactly one way out + one way back to the UI.
+              mobilePlay suppresses it entirely — EXIT/REC are desktop
+              affordances; the mobile DOM wrapper owns back. */}
+          {playMode && !mobilePlay && (
             <div className="absolute right-3 top-3 z-[60] flex items-center gap-2">
               {/* RECORD → downloads a video of this world to your computer (canvas only,
                   no UI in the frame). Native MP4 where the browser supports it. */}
@@ -7226,7 +7235,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* FOCUS — what world/branch/version this tab is actually looking at.
               Every UI view carries this so the player is never lost: spaces get
               it from SpaceToolbar; the shell's play view gets it here. */}
-          {ctx.surface === 'world' && (playScene || spaceId) && !(externalTopbar && !playMode) && (() => {
+          {ctx.surface === 'world' && (playScene || spaceId) && !(externalTopbar && !playMode) && !mobilePlay && (() => {
             // the ONE identity strip: a UNIVERSAL back button, and the world
             // detail (name · owner / main·live) to its RIGHT. Host-only details
             // ctx can't know are passed in. NOT on the hub (CAFE/SUB-MAIN) —
