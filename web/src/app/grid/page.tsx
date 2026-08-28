@@ -42,7 +42,8 @@ const M = 16, BAR_H = 64, DOCK_W = 248
 const MIN_W = 180, MIN_H = 120   // the frame can NEVER smash to a line
 const LOCAL: Entry[] = [
   { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL', maker: 'Galen' },
-  { slug: 'one-home', name: 'STARFIELD', scene: 'ONE-HOME', maker: 'Opus' },
+  // (STARFIELD removed from the shelf — Galen, Aug 28; the cartridge file
+  // stays on disk for reference, nothing lists it.)
 ]
 
 export default function TheGrid() {
@@ -134,9 +135,9 @@ export default function TheGrid() {
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         if (Array.isArray(d.cards) && d.cards.length)
           setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })))
-        else setEntries(feed === 'mine' ? [] : LOCAL)   // an empty deed is EMPTY, not the house shelf
+        else setEntries(feed === 'mine' || feed === 'premium' ? [] : LOCAL)   // empty deed/premium is EMPTY, not the house shelf
       })
-      .catch(() => setEntries(tab === 'mine' ? [] : LOCAL))
+      .catch(() => setEntries(tab === 'mine' || tab === 'premium' ? [] : LOCAL))
   }, [tab])
   useEffect(() => {
     fetch('/api/spaces/icons').then(r => r.json())
@@ -369,6 +370,9 @@ export default function TheGrid() {
           {/* the icons */}
           {tab === 'mine' && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">no worlds on your deed yet — sign in, or brew one at /create.</div>
+          )}
+          {tab === 'premium' && shown.length === 0 && (
+            <div className="font-mono text-[11px] text-white/45 py-6 text-center">no premium worlds yet.</div>
           )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
