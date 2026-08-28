@@ -2090,8 +2090,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => window.removeEventListener('cafe:shell-cmd', on)
   }, [])
 
-  // (OPEN GROUND toast REMOVED — Galen, Aug 28: no pop-up on house-world entry.
-  // The open-ground rule itself is unchanged: editing allowed, a save forks.)
+  // (OPEN GROUND toast REMOVED — Galen, Aug 27/28: open-ground editing needs no
+  // announcement — anyone can edit, that's the ground rule, not news.)
 
   const handleSaveScene = useCallback(() => sceneIO.saveScenePrompted({ simulationRef, rendererRef, allStepHookSnapshots, showToast, refreshSceneList }), [showToast, refreshSceneList])
 

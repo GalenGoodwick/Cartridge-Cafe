@@ -18,35 +18,8 @@ export function typeHue(type: string): number {
   return h % 360
 }
 
-// DEVICE BENCHMARK (Galen, with the wall's removal): a one-time ~0.7s frame
-// sample — the device's own measured tier, cached per session. Never gates;
-// it colors the ☕ rating so a phone KNOWS a three-cup world is a lift.
-let _devTier: 'low' | 'high' | null = null
-function deviceTier(): 'low' | 'high' {
-  if (_devTier) return _devTier
-  try {
-    const cached = sessionStorage.getItem('cc-dev-tier')
-    if (cached === 'low' || cached === 'high') { _devTier = cached; return cached }
-  } catch { /* private mode */ }
-  _devTier = 'high'
-  try {
-    const mem = (navigator as { deviceMemory?: number }).deviceMemory
-    const t0 = performance.now()
-    let frames = 0
-    const tick = () => {
-      frames++
-      if (performance.now() - t0 < 700) requestAnimationFrame(tick)
-      else {
-        const fps = frames / ((performance.now() - t0) / 1000)
-        const tier = fps < 45 || (mem !== undefined && mem <= 4) ? 'low' : 'high'
-        _devTier = tier
-        try { sessionStorage.setItem('cc-dev-tier', tier) } catch { /* fine */ }
-      }
-    }
-    requestAnimationFrame(tick)
-  } catch { /* ssr */ }
-  return _devTier
-}
+// (deviceTier benchmark removed with the ☕ resource-rating cups — Galen, Aug 27:
+//  it existed only to color the cup badge, which cards no longer show.)
 
 /** Procedural art for a world with no baked photo yet: its own hue field +
  *  glyph — a placeholder that still reads as THAT world, never a gray box. */
@@ -193,8 +166,9 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence, pl
         </span>
       </div>
 
-      {/* categories breathe on their OWN row — crew chip + tags */}
-      {(card.edit.mode !== 'static' || card.tags.length > 0 || card.perf) && (
+      {/* categories breathe on their OWN row — crew chip + tags. (The ☕
+          resource-rating cups were removed — Galen, Aug 27.) */}
+      {(card.edit.mode !== 'static' || card.tags.length > 0) && (
         <div className="px-3.5 pt-1.5 flex items-center gap-1.5 min-w-0">
           {!playPersona && card.edit.mode !== 'static' && (
             <span className={`shrink-0 font-mono text-[10px] tracking-[0.14em] px-1.5 py-0.5 rounded border ${
@@ -208,15 +182,6 @@ export function WorldCardView({ card, png, featured, index, onOpen, presence, pl
               {card.tags.slice(0, featured ? 8 : 4).map(t => '·' + t).join(' ')}
             </span>
           )}
-          {/* ☕ RESOURCE RATING — measured on publish (or the live tabs' own
-              frame meter): one cup runs anywhere, three asks for real GPU */}
-          {card.perf && (() => { const strain = card.perf.cups === 3 && deviceTier() === 'low'
-            return (
-            <span className={`ml-auto shrink-0 font-mono text-[10px] px-1 py-px rounded ${strain ? 'text-red-300/90 border border-red-400/30' : card.perf.cups === 3 ? 'text-orange-300/90' : card.perf.cups === 2 ? 'text-amber-200/80' : 'text-amber-200/50'}`}
-              title={`measured ~${card.perf.frameMs}ms/frame — ${strain ? 'heavy, and THIS device measured light on power: expect a struggle' : card.perf.cups === 1 ? 'light: runs anywhere, phones welcome' : card.perf.cups === 2 ? 'medium: fine on most machines' : 'heavy: wants a real GPU — may struggle on phones'}`}>
-              {'☕'.repeat(card.perf.cups)}{strain ? '⚠' : ''}
-            </span>
-          )})()}
         </div>
       )}
 
