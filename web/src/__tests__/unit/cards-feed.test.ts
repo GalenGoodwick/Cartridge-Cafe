@@ -27,6 +27,7 @@ const row = (id: string, slug: string, over: Partial<FeedRow> = {}): FeedRow => 
   maker: { handle: 'mara', name: 'Mara' },
   counts: { forks: 0, versions: 1 },
   card: null,
+  unfinished: false,
   blurb: '',
   vision: '',
   isBase: false,

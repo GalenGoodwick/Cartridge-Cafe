@@ -11,7 +11,7 @@
 // ENGINE — the tools dock in from the RIGHT: ⌁ BuilderBox (real — the engine's
 // build console opens in the frame), ⚿ CONNECT AI (the paste-prompt), world
 // tools seat. Frame yields the strip; the grid stays center.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
@@ -20,11 +20,12 @@ import SpritesPanel from '@/app/engine/SpritesPanel'
 import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
+import { signOut } from 'next-auth/react'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'mine' | 'search'
+type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'mine' | 'search'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
@@ -33,7 +34,7 @@ type GridCfg = {
   designMode?: boolean; ver?: number | null; isPublic?: boolean | null
   card?: { kind?: string; type?: string; tags?: string[] } | null
   blurb?: string; vision?: string; instructions?: string
-  premium?: number | null; device?: string | null; gridW?: number | null; gridH?: number | null
+  premium?: number | null; unfinished?: boolean; device?: string | null; gridW?: number | null; gridH?: number | null
   presenceOff: boolean; policy: string | null
 }
 
@@ -75,6 +76,12 @@ export default function TheGrid() {
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
   const [rec, setRec] = useState<{ on: boolean; secs: number }>({ on: false, secs: 0 })
+  // who's signed in — the dockstar menu's ACCOUNT block reads this
+  const [me, setMe] = useState<{ name?: string | null; email?: string | null } | null>(null)
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => (r.ok ? r.json() : null))
+      .then(d => setMe(d?.user ?? null)).catch(() => setMe(null))
+  }, [])
   // ✕ CLEAR on the eye image: a local dismissal watermark — images at or before
   // it stay hidden; the next probe/shot (newer `at`) reappears on its own.
   const [eyeCleared, setEyeCleared] = useState(0)
@@ -135,9 +142,9 @@ export default function TheGrid() {
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         if (Array.isArray(d.cards) && d.cards.length)
           setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })))
-        else setEntries(feed === 'mine' || feed === 'premium' ? [] : LOCAL)   // empty deed/premium is EMPTY, not the house shelf
+        else setEntries(feed === 'mine' || feed === 'premium' || feed === 'unfinished' ? [] : LOCAL)   // empty deed/premium/unfinished is EMPTY, not the house shelf
       })
-      .catch(() => setEntries(tab === 'mine' || tab === 'premium' ? [] : LOCAL))
+      .catch(() => setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' ? [] : LOCAL))
   }, [tab])
   useEffect(() => {
     fetch('/api/spaces/icons').then(r => r.json())
@@ -162,14 +169,34 @@ export default function TheGrid() {
       if (u.searchParams.get('ph') === 'play') setPhase('play')
     } catch { /* ssr */ }
   }, [])
+  // PUSH (not replace) so the BROWSER BACK BUTTON backs out to the previously
+  // viewed thing (Galen) — world→world, browse→play, set→set are all history.
+  const firstSyncRef = useRef(true)
   useEffect(() => {
     try {
       const u = new URL(window.location.href)
       u.searchParams.set('w', scene); u.searchParams.set('ui', uiSet)
       if (phase === 'play') u.searchParams.set('ph', 'play'); else u.searchParams.delete('ph')
-      window.history.replaceState(null, '', u.toString())
+      if (u.toString() === window.location.href) return
+      if (firstSyncRef.current) window.history.replaceState(null, '', u.toString())   // normalizing the arrival is not a step
+      else window.history.pushState(null, '', u.toString())
     } catch { /* fine */ }
+    finally { firstSyncRef.current = false }
   }, [scene, uiSet, phase])
+  // back/forward → restore the viewed thing from the URL
+  useEffect(() => {
+    const onPop = () => {
+      try {
+        const u = new URL(window.location.href)
+        const w = u.searchParams.get('w'); if (w) setScene(w)
+        const ui = u.searchParams.get('ui') as UiSet | null
+        setUiSet(ui && ['games', 'main', 'engine', 'create'].includes(ui) ? ui : 'games')
+        setPhase(u.searchParams.get('ph') === 'play' ? 'play' : 'browse')
+      } catch { /* fine */ }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
 
   // ── THE INSET — one function, CLAMPED (a window mid-resize can never smash
   // the frame below MIN_W×MIN_H — it holds shape until there's room) ──
@@ -258,8 +285,8 @@ export default function TheGrid() {
     return () => { clearTimeout(t); clearTimeout(t2) }
   }, [engineSet, createSet, scene, spc])
 
-  // MOBILE = GAMES ONLY (Galen): phones get the play set, nothing else
-  useEffect(() => { if (narrow && uiSet !== 'games') setUiSet('games') }, [narrow, uiSet])
+  // (mobile games-only coercion REVERSED — Galen, Aug 28 pm: create/engine/
+  // main ride the dockstar on phones too.)
 
   // ✦ THE PREMIUM GATE (Galen): a premium world PREVIEWS free in the frame;
   // clicking the frame to PLAY while unpaid opens payment (Stripe, saved to
@@ -418,7 +445,7 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
@@ -441,6 +468,9 @@ export default function TheGrid() {
           )}
           {tab === 'premium' && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">no premium worlds yet.</div>
+          )}
+          {tab === 'unfinished' && shown.length === 0 && (
+            <div className="font-mono text-[11px] text-white/45 py-6 text-center">nothing on the workbench shelf.</div>
           )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
@@ -518,7 +548,7 @@ export default function TheGrid() {
               ['main', '◉', 'MAIN', 'the commons + social space'],
               ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
               ['create', '✚', 'CREATE', 'new world · fork from grid'],
-            ] as const).filter(([k]) => !narrow || k === 'games').map(([k, icon, label, sub]) => (
+            ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
                 className={`text-left rounded-2xl border p-4 transition-colors active:bg-white/10 ${
@@ -528,6 +558,19 @@ export default function TheGrid() {
                 <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
+            {me ? (
+            <div data-grid-account className="col-span-2 rounded-2xl border border-white/12 bg-black/40 p-4 flex items-center gap-3">
+              <span className="text-[20px] text-emerald-300/80">◐</span>
+              <span className="min-w-0 flex-1">
+                <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block truncate">{me.name ?? me.email ?? 'SIGNED IN'}</span>
+                <span className="font-mono text-[10px] text-white/40">your account · membership</span>
+              </span>
+              <button data-grid-signout onClick={() => void signOut({ callbackUrl: '/grid' })}
+                className="font-mono text-[10.5px] tracking-[0.15em] px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-colors shrink-0">
+                SIGN OUT
+              </button>
+            </div>
+            ) : (
             <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')} data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
               <span className="text-[20px] text-white/70">◐</span>
@@ -536,6 +579,7 @@ export default function TheGrid() {
                 <span className="font-mono text-[10px] text-white/40">sign in · membership</span>
               </span>
             </a>
+            )}
           </div>
           </div>
         </div>
@@ -762,6 +806,12 @@ export default function TheGrid() {
         <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
           {/* LEFT ZONE */}
           <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
+            {/* ◂ BACK — the bar's own back button (walks the same history the
+                browser back walks) */}
+            <button data-grid-back onClick={() => window.history.back()} aria-label="back"
+              className="font-mono text-[14px] w-9 h-9 grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0">
+              ◂
+            </button>
             {!narrow && (uiSet === 'main' ? (
             <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
               className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
@@ -1276,18 +1326,36 @@ function CardSection({ cfg }: { cfg: GridCfg | null }) {
   )
 }
 
-// ⬆ PUBLISH — the draft⇄live seam (Galen: design rolled in — "design on
-// doesn't update main; design off publishes and updates the game list").
+// ⬆ PUBLISH — the destination seam (Galen, Aug 28): a draft publishes TO a
+// shelf. ● GAME LIST (finished) ⇄ ⚒ UNFINISHED are reversible listings.
+// ◉ OPEN LIVE EDITING declares the social contract (build:anyone) — SEALED,
+// not something you can take back — so it gets a disclaimer confirm, and an
+// open world BLOCKS the other destinations (it lives on LIVE EDITING only).
 function PublishView({ cfg }: { cfg: GridCfg | null }) {
   const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
+  const [confirmLive, setConfirmLive] = useState(false)
   const slug = cfg?.spaceSlug ?? null
   const owner = !!cfg?.isOwner
   if (!slug) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — publishing lives on real worlds.</div>
   if (!owner) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">only the maker publishes this world.</div>
   const drafting = !!cfg?.designMode
   const live = cfg?.isPublic === true
-  const state = drafting ? '✎ DRAFTING' : live ? '● LIVE' : '○ UNLISTED'
-  const stateTint = drafting ? 'text-amber-200 border-amber-300/50 bg-amber-400/10' : live ? 'text-emerald-200 border-emerald-300/50 bg-emerald-400/10' : 'text-white/60 border-white/20 bg-black/40'
+  const openBuild = cfg?.policy === 'anyone'
+  const state = drafting ? '✎ DRAFTING'
+    : openBuild ? '◉ OPEN LIVE EDITING'
+    : live && cfg?.unfinished ? '⚒ LIVE — UNFINISHED'
+    : live ? '● LIVE — GAME LIST'
+    : '○ UNLISTED'
+  const stateTint = drafting ? 'text-amber-200 border-amber-300/50 bg-amber-400/10'
+    : openBuild ? 'text-sky-200 border-sky-300/50 bg-sky-400/10'
+    : live ? 'text-emerald-200 border-emerald-300/50 bg-emerald-400/10'
+    : 'text-white/60 border-white/20 bg-black/40'
+  const Btn = ({ label, onClick, tone, disabled, hint }: { label: string; onClick: () => void; tone: string; disabled?: boolean; hint?: string }) => (
+    <button onClick={onClick} disabled={disabled} title={hint}
+      className={`px-3.5 py-2 rounded-xl border text-[11px] tracking-[0.15em] transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${tone}`}>
+      {label}
+    </button>
+  )
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono text-[11px]">
       <div className="flex items-center gap-3 mb-3">
@@ -1295,33 +1363,53 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
         <span data-pub-state className={`px-3 py-1 rounded-full border text-[10.5px] tracking-[0.18em] ${stateTint}`}>{state}</span>
       </div>
       <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 leading-relaxed text-white/60">
-        <span className="text-amber-200/90">✎ draft</span>: your edits author the cartridge in the workshop — the live game and the shelf don&apos;t change.<br />
-        <span className="text-emerald-200/90">● publish</span>: ends the draft, puts this world on the game list, and players get what you built.
+        <span className="text-amber-200/90">✎ draft</span>: edits author the cartridge in the workshop — nothing public changes.<br />
+        <span className="text-emerald-200/90">● game list</span>: a finished, playable game.  <span className="text-white/85">⚒ unfinished</span>: public, honestly in-progress.<br />
+        <span className="text-sky-200/90">◉ open live editing</span>: anyone with a membership builds on it — <span className="text-white/85">permanent</span>.
       </div>
       <div className="flex flex-wrap gap-2">
-        {!drafting && (
-          <button onClick={() => cmd('cfg:design')}
-            className="px-3.5 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-200 text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
-            ✎ START A DRAFT
-          </button>
+        {!drafting
+          ? <Btn label="✎ START A DRAFT" onClick={() => cmd('cfg:design')} tone="border-amber-300/50 bg-amber-400/15 text-amber-200 hover:bg-amber-400/25" />
+          : <Btn label="✎ END DRAFT (keep unpublished)" onClick={() => cmd('cfg:design')} tone="border-white/20 bg-black/50 text-white/75 hover:text-white" />}
+        <Btn label="● PUBLISH — GAME LIST" onClick={() => cmd('publish:game')} disabled={openBuild}
+          hint={openBuild ? 'an open live-editing world lives on LIVE EDITING only' : 'finished — everyone can play it'}
+          tone="border-emerald-300/50 bg-emerald-400/15 text-emerald-100 hover:bg-emerald-400/25" />
+        <Btn label="⚒ PUBLISH — UNFINISHED" onClick={() => cmd('publish:unfinished')} disabled={openBuild}
+          hint={openBuild ? 'an open live-editing world lives on LIVE EDITING only' : 'public on the ⚒ shelf, marked in-progress'}
+          tone="border-white/25 bg-white/5 text-white/85 hover:bg-white/10" />
+        {!openBuild && (
+          <Btn label="◉ OPEN LIVE EDITING…" onClick={() => setConfirmLive(true)}
+            hint="declare the build contract open — THIS CANNOT BE TAKEN BACK"
+            tone="border-sky-300/50 bg-sky-400/10 text-sky-200 hover:bg-sky-400/20" />
         )}
-        {drafting && (
-          <button onClick={() => cmd('cfg:design')}
-            className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/75 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
-            ✎ END DRAFT (keep unpublished)
-          </button>
-        )}
-        <button onClick={() => cmd('publish:on')}
-          className="px-3.5 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
-          ● PUBLISH — ON THE GAME LIST
-        </button>
         {live && (
-          <button onClick={() => cmd('publish:off')}
-            className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
-            ○ UNPUBLISH
-          </button>
+          <Btn label="○ UNPUBLISH" onClick={() => cmd('publish:off')}
+            hint={openBuild ? 'takes it off the shelves — the open build contract itself stays sealed' : 'off the shelves; yours to edit'}
+            tone="border-white/20 bg-black/50 text-white/70 hover:text-white" />
         )}
       </div>
+      {/* ◉ THE DISCLAIMER — the seal named before it closes (Galen: "isn't
+          something you can take back… disclaimer pop up to confirm") */}
+      {confirmLive && (
+        <div data-live-confirm className="mt-3 rounded-xl border border-sky-300/40 bg-sky-950/40 p-4">
+          <div className="text-[11px] tracking-[0.2em] text-sky-200 mb-2">◉ OPEN LIVE EDITING — READ THIS FIRST</div>
+          <p className="text-white/75 leading-relaxed mb-3">
+            This declares the world&apos;s social contract as <span className="text-sky-200">build: anyone</span> — every member can
+            edit it live, forever. <span className="text-amber-200">The contract SEALS on declaration: it cannot be
+            reversed, and this world leaves the game lists to live on LIVE EDITING only.</span>
+          </p>
+          <div className="flex gap-2">
+            <button data-live-confirm-go onClick={() => { cmd('publish:live'); setConfirmLive(false) }}
+              className="px-3.5 py-2 rounded-xl border border-sky-300/60 bg-sky-400/20 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/30 transition-colors">
+              I UNDERSTAND — OPEN IT PERMANENTLY
+            </button>
+            <button onClick={() => setConfirmLive(false)}
+              className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
+              cancel
+            </button>
+          </div>
+        </div>
+      )}
       {/* ✦ PREMIUM — the listing's price seat (worldData.premium.usd) */}
       <div className="mt-3 rounded-xl border border-white/12 bg-black/40 p-3.5">
         <div className="text-[10.5px] tracking-[0.2em] text-white/50 mb-2">✦ PREMIUM</div>

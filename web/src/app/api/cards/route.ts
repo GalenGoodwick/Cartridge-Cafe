@@ -52,6 +52,7 @@ export interface FeedRow {
   kind: CardKind                     // toy · world · game (Galen's taxonomy)
   perf: number | null                // measured frame ms (publish stress test, else the live tabs' EMA)
   premium: number | null             // $ price — worldData.premium.usd (PREMIUM GAMES)
+  unfinished: boolean                // worldData.unfinished — the ⚒ UNFINISHED shelf (Galen, Aug 28)
   hasNodes: boolean                  // proper node foundations (__nodes registry) → dockable / live-editable
   hasContent: boolean                // has ≥1 field — a BLANK world (0 fields) is not a live-editable game (Galen: "blanks are not live editing")
 }
@@ -107,7 +108,12 @@ export async function GET(req: Request) {
   // PUBLISHED = FINISHED (Galen, Aug 27): an OPEN world is an indefinite
   // expansion, not a published product — it lives on LIVE EDITING only.
   // Published is owners making a FINISHED world public.
-  if (tab === 'published') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone')).cards, url))
+  // FREE GAMES = FINISHED + FREE (Galen, Aug 28): premium worlds live on ✦
+  // PREMIUM, unfinished worlds on ⚒ UNFINISHED — neither doubles here.
+  if (tab === 'published') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode !== 'anyone' && r.premium === null && !r.unfinished)).cards, url))
+  // ⚒ UNFINISHED (Galen, Aug 28: "publish to unfinished is a thing") — public
+  // but honestly in-progress. Open-build worlds stay on LIVE EDITING only.
+  if (tab === 'unfinished') return NextResponse.json(serve(feedPublished(rows.filter(r => r.unfinished && r.buildMode !== 'anyone')).cards, url))
   // LIVE EDITING (Galen, Aug 26 fix): the ONE signal is the owner OPENING the
   // world (build:'anyone'). hasNodes stopped meaning anything the day every
   // world was born with its slots — it made this tab catch everything, and
@@ -292,6 +298,7 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       hasNodes,
       hasContent,
       premium: typeof premRec?.usd === 'number' && premRec.usd > 0 ? premRec.usd : null,
+      unfinished: wd.unfinished === true,
       updatedAt: updatedAt.getTime(),
       maker: { handle: isGuest ? null : handleOf(email), name: owner?.name ?? null },
       counts: { forks: _count.forks, versions: _count.versions },

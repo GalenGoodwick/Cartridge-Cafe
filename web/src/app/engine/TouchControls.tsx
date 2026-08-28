@@ -84,6 +84,16 @@ export function TouchControls({ simRef, frame }: {
   }, [simRef, flag])
 
   if (!isTouch || !zones) return null
+  // a MINI frame (the grid's browse/engine shrink) is not a playfield — the
+  // stick/buttons only ride a frame big enough to play in (Galen: "UI controls
+  // are showing on mobile" over the shrunk grid)
+  if (frame && typeof window !== 'undefined') {
+    // PROPORTIONAL, not absolute px — a phone's full frame is only ~350px wide
+    // and absolutely IS the playfield; a mini frame is small RELATIVE to the
+    // window (the browse/engine shrink ≈40% tall).
+    const fh = window.innerHeight - frame.top - frame.bottom
+    if (fh < window.innerHeight * 0.55) return null
+  }
   const Z = zones
   const btnKeys: Array<[string, string]> = [['key_space', 'A'], ['key_enter', 'B']]
   return (

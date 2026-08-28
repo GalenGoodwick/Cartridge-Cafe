@@ -24,7 +24,7 @@ const mctx = await b.newContext({ viewport: { width: 375, height: 740 }, hasTouc
 const m = await mctx.newPage()
 await m.goto('http://localhost:3131/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await m.waitForSelector('button[aria-label="ui selector"]', { timeout: 30000 }); await m.waitForTimeout(2500)
-T('mobile: engine COERCED to games', await m.evaluate(() => new URL(location.href).searchParams.get('ui') === 'games' || !document.body.innerText.includes('◈ EYE')))
+T('mobile: engine set allowed (reversal)', await m.evaluate(() => new URL(location.href).searchParams.get('ui') === 'engine'))
 const mm = await m.evaluate(() => {
   const cup = document.querySelector('button[aria-label="ui selector"]')
   const r = cup.getBoundingClientRect()
@@ -38,11 +38,8 @@ const mm = await m.evaluate(() => {
 T('mobile: dockstar centered (' + mm.off.toFixed(1) + 'px off) + full size', mm.off < 2 && mm.visible)
 T('mobile: no title, no REC', !mm.title && !mm.rec)
 await m.click('button[aria-label="ui selector"]', { force: true }); await m.waitForTimeout(600)
-const menu = await m.evaluate(() => ({
-  games: document.body.innerText.includes('GAMES'),
-  engine: /ENGINE\n/.test(document.body.innerText), main: /MAIN\n/.test(document.body.innerText), create: /CREATE\n/.test(document.body.innerText),
-}))
-T('mobile menu: GAMES only', menu.games && !menu.engine && !menu.main && !menu.create)
+const menu = await m.evaluate(() => ['GAMES', 'MAIN', 'ENGINE', 'CREATE'].every(t => document.body.innerText.includes(t)))
+T('mobile menu: all four sets (reversal)', menu)
 // touch controls inside the frame in play
 await m.goto('http://localhost:3131/grid?ui=games&ph=play&w=CINDERFELL', { waitUntil: 'domcontentloaded' }); await m.waitForTimeout(4000)
 const tc = await m.evaluate(() => {

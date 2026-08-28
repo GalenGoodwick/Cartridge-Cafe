@@ -1397,6 +1397,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           vision: typeof wd?.['vision'] === 'string' ? wd['vision'] : '',
           instructions: typeof wd?.['instructions'] === 'string' ? wd['instructions'] : '',
           premium: (wd?.['premium'] as { usd?: number } | undefined)?.usd ?? null,
+          unfinished: wd?.['unfinished'] === true,
           device: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['deviceConfig'] as string | undefined) ?? null,
           gridW: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['gridW'] as number | undefined) ?? null,
           gridH: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['gridH'] as number | undefined) ?? null,
@@ -2044,9 +2045,22 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         } catch { /* malformed patch — drop */ }
       }
     }
-    else if (cmd === 'publish:on' || cmd === 'publish:off') {                   // ⬆ PUBLISH — the shelf switch; publishing also drops DRAFT (design)
+    else if (cmd === 'publish:game' || cmd === 'publish:unfinished' || cmd === 'publish:live' || cmd === 'publish:off') {
+      // ⬆ PUBLISH DESTINATIONS (Galen, Aug 28): GAME LIST (finished) ·
+      // ⚒ UNFINISHED (public, honestly in-progress) · ◉ OPEN LIVE EDITING
+      // (declares the social contract build:anyone — SEALED, can't be taken
+      // back; the host shows the disclaimer). Publishing always ends a draft.
       if (isOwner && spaceSlug) {
-        const pub = cmd === 'publish:on'
+        const sim = simulationRef.current
+        if (sim) {
+          if (cmd === 'publish:unfinished') sim.worldData['unfinished'] = true
+          else if (cmd === 'publish:game') delete sim.worldData['unfinished']
+          else if (cmd === 'publish:live') {
+            const pol = (sim.worldData['policy'] && typeof sim.worldData['policy'] === 'object' ? sim.worldData['policy'] : {}) as Record<string, unknown>
+            if (pol['build'] == null) sim.worldData['policy'] = { ...pol, build: 'anyone' }   // seal law: only an UNDECLARED contract can open
+          }
+        }
+        const pub = cmd !== 'publish:off'
         if (pub) setDesignMode(false)   // Galen: design off = publishes; going live ends the draft
         const patchPub = () => fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -2062,6 +2076,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           body: JSON.stringify({ note: 'pre-publish' }),
         }).catch(() => { /* best-effort */ }).then(() => patchPub())
         else void patchPub()
+        setCfgTick(n => n + 1)   // unfinished/policy writes read back immediately
       }
     }
     else if (cmd.startsWith('cfg:')) {                                          // ⚙ CONFIG toggles — the old panel's writes, host-driven
