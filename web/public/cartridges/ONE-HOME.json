@@ -1,0 +1,12 @@
+{
+  "name": "ONE-HOME",
+  "fields": [
+    { "id": "home_bg", "name": "home_bg", "visualType": "onehome", "x": 256, "y": 256, "scale": 1, "shape": "rect", "w": 512, "h": 512, "color": [1, 1, 1, 1] }
+  ],
+  "visualTypes": [
+    { "name": "onehome", "wgsl": "fn visual_onehome(uv: vec2f, fieldSize: vec2f, t: f32) -> vec4f {\n  let p = uv / fieldSize;\n  var col = mix(vec3f(0.015, 0.018, 0.045), vec3f(0.05, 0.03, 0.09), p.y);\n  // drifting star layers — the void the catalog floats in\n  for (var l: i32 = 0; l < 3; l++) {\n    let lf = f32(l);\n    let sc = 18.0 + lf * 26.0;\n    let drift = vec2f(t * (0.004 + lf * 0.006), 0.0);\n    let g = (p + drift) * sc;\n    let cell = floor(g);\n    let h = fract(sin(dot(cell, vec2f(127.1, 311.7))) * 43758.5453);\n    let star = smoothstep(0.985 - lf * 0.004, 1.0, h);\n    let tw = 0.6 + 0.4 * sin(t * (1.0 + h * 3.0) + h * 40.0);\n    col += vec3f(0.9, 0.85, 1.0) * star * tw * (0.25 + lf * 0.2);\n  }\n  // a faint amber hearth-glow low center — the cafe's ember\n  let d = distance(p, vec2f(0.5, 0.85));\n  col += vec3f(0.45, 0.25, 0.08) * exp(-d * d * 9.0) * 0.35;\n  return vec4f(col, 1.0);\n}" }
+  ],
+  "stepHooks": [],
+  "worldData": { "instructions": "THE ONE GRID — pick a world; it loads right here." },
+  "worldParams": {}
+}
