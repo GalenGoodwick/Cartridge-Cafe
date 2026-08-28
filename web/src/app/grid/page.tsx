@@ -1,16 +1,16 @@
 'use client'
 
 // ═══ THE GRID (Galen, Aug 28) ═══
-// ONE contained grid (the reckoning's viewport-inset containment + the blue/
-// gold frame), UI SETS docking around it, picked from the ▣ dockstar's OVERLAY
-// (which fills the game field exactly — the BOTTOM BAR is never covered,
-// structurally). Every set on every device (create on mobile = paste the
-// prompt to your working AI).
+// ONE contained grid (reckoning viewport-inset + blue/gold frame), UI SETS
+// docking around it via the DOCKSTAR — the cafe-cup button, CENTERED in the
+// bottom bar (the one control spot, never covered). No GAMES button anywhere:
+// the dockstar IS the way between sets.
 //
-// GAMES — DOCKED: the grid shrinks to a preview window; the bottom bar becomes
-// a TAB ROW + the game selector (previews hot-swap INTO the grid, live);
-// CLICKING THE GRID CONFIRMS → the grid expands into play. ◱ returns to browse.
-// MAIN / ENGINE / CREATE — seats held (they dock next).
+// GAMES · BROWSE — the frame shrinks to a MINI window at the TOP; the space
+// below is the ICON SHELF: big game tiles (baked icons) + the tab row.
+// Selecting a tile hot-swaps that world INTO the frame, live. CLICKING THE
+// FRAME CONFIRMS → it expands into play. Bottom bar: ? INSTRUCTIONS right,
+// cup-dockstar center.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 
@@ -20,8 +20,7 @@ type Phase = 'browse' | 'play'
 type Entry = { slug: string; name: string; scene: string }
 
 const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out'
-const M = 16
-// local fallback worlds (no DB): both bundled cartridges — selection is real
+const M = 16, BAR_H = 64
 const LOCAL: Entry[] = [
   { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL' },
   { slug: 'one-home', name: 'STARFIELD', scene: 'ONE-HOME' },
@@ -33,8 +32,11 @@ export default function TheGrid() {
   const [phase, setPhase] = useState<Phase>('browse')
   const [tab, setTab] = useState<'published' | 'premium'>('published')
   const [entries, setEntries] = useState<Entry[]>(LOCAL)
+  const [icons, setIcons] = useState<Map<string, string>>(new Map())
   const [scene, setScene] = useState<string>(LOCAL[0].scene)
   const [selOpen, setSelOpen] = useState(false)
+  const [instrOpen, setInstrOpen] = useState(false)
+  const [instrText, setInstrText] = useState<string>('')
 
   useEffect(() => {
     const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
@@ -42,7 +44,7 @@ export default function TheGrid() {
     return () => window.removeEventListener('resize', m)
   }, [])
 
-  // the catalog for the selector row (prod: real cards; local: the cartridges)
+  // catalog + baked icons (prod: real; local: bundled cartridges, letter tiles)
   useEffect(() => {
     fetch(`/api/cards?tab=${tab}`).then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string }> }) => {
@@ -52,8 +54,16 @@ export default function TheGrid() {
       })
       .catch(() => setEntries(LOCAL))
   }, [tab])
+  useEffect(() => {
+    fetch('/api/spaces/icons').then(r => r.json())
+      .then((d: { icons?: Array<{ name: string; png: string }> }) => {
+        const m = new Map<string, string>()
+        for (const it of d.icons ?? []) m.set(it.name.toLowerCase(), `data:image/png;base64,${it.png}`)
+        setIcons(m)
+      }).catch(() => { /* letter tiles carry it */ })
+  }, [])
 
-  // linkable: ?w=<scene>&ui=<set>&ph=<phase>
+  // linkable state
   useEffect(() => {
     try {
       const u = new URL(window.location.href)
@@ -71,22 +81,20 @@ export default function TheGrid() {
     } catch { /* fine */ }
   }, [scene, uiSet, phase])
 
-  // ── THE INSET — one function for every state (browse shrinks, play fills;
-  // browser resize flows through the same math automatically) ──
+  // ── THE INSET — browse: MINI frame at the TOP (the icon shelf gets the room) ──
   const browsing = uiSet === 'games' && phase === 'browse'
-  const barH = browsing ? 118 : 64          // browse: tab row + preview row
   const inset = useMemo<Inset>(() => {
     const W = win.w, H = win.h
-    const availW = W - M * 2, availH = H - M - barH - 10
-    if (!browsing) return { top: M, right: M, bottom: barH + 10, left: M }
-    // browse: a centered preview window (~55% of the fit box, 16:10)
-    let w = availW * 0.55, h = w / (16 / 10)
-    if (h > availH * 0.62) { h = availH * 0.62; w = h * (16 / 10) }
-    const left = (W - w) / 2, top = M + (availH - h) / 2
-    return { top, right: W - left - w, bottom: H - top - h, left }
-  }, [browsing, win, barH])
+    if (!browsing) return { top: M, right: M, bottom: BAR_H + 10, left: M }
+    const availH = H - M - BAR_H - 10
+    let w = (W - M * 2) * 0.42, h = w / (16 / 10)
+    const hMax = availH * 0.4
+    if (h > hMax) { h = hMax; w = h * (16 / 10) }
+    const left = (W - w) / 2
+    return { top: M, right: W - left - w, bottom: H - M - h, left }
+  }, [browsing, win])
 
-  // UNIFIED eased resize: re-fit the cover-camera every frame of the ease
+  // unified eased resize — camera re-fits every frame of the ease
   useEffect(() => {
     let raf = 0
     const t0 = performance.now()
@@ -101,12 +109,33 @@ export default function TheGrid() {
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
 
+  // instructions for the selected world (local cartridge or live space)
+  useEffect(() => {
+    if (!instrOpen) return
+    const load = async () => {
+      try {
+        if (scene.startsWith('space:')) {
+          const d = await fetch(`/api/spaces/${encodeURIComponent(scene.slice(6))}/snapshot`).then(r => r.json())
+          const t = d?.snapshot?.worldData?.instructions
+          setInstrText(typeof t === 'string' && t.trim() ? t : 'No instructions yet.')
+        } else {
+          const d = await fetch(`/cartridges/${encodeURIComponent(scene)}.json`).then(r => r.json())
+          const wd = d?.snapshot?.worldData ?? d?.worldData ?? {}
+          setInstrText(typeof wd.instructions === 'string' && wd.instructions.trim() ? wd.instructions : 'No instructions yet.')
+        }
+      } catch { setInstrText('Could not load instructions.') }
+    }
+    setInstrText('…'); load()
+  }, [instrOpen, scene])
+
+  const shelfTop = win.h - inset.bottom + 12   // just under the frame in browse
+
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
-      {/* THE ONE GRID — worlds hot-swap in; chromeless; contained at the inset */}
+      {/* THE ONE GRID */}
       <FieldEngine playScene={scene} hooksTrusted viewport={inset} externalTopbar />
 
-      {/* THE FRAME — blue outline + gold corners, riding the same inset/ease */}
+      {/* THE FRAME */}
       <div className="fixed pointer-events-none z-[110]"
         style={{
           top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left,
@@ -124,29 +153,65 @@ export default function TheGrid() {
         ))}
       </div>
 
-      {/* CLICK THE GRID TO PLAY — browse phase only: the world itself is the
-          confirm button (the reckoning's cell-click, site-wide) */}
+      {/* CLICK THE FRAME TO PLAY (browse) — the world is the button */}
       {browsing && (
-        <button
-          aria-label={`play ${selected?.name ?? ''}`}
-          onClick={() => setPhase('play')}
+        <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => setPhase('play')}
           className="fixed z-[115] group cursor-pointer"
-          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}
-        >
-          <span className="absolute inset-x-0 bottom-3 mx-auto w-max font-mono text-[11px] tracking-[0.25em] px-3 py-1.5 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
-            ▶ CLICK TO PLAY {selected?.name ?? ''}
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
+          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/55 border border-white/15 text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
+            ▶ PLAY {selected?.name ?? ''}
           </span>
         </button>
+      )}
+
+      {/* ═ THE ICON SHELF (browse) — the space the mini frame frees up ═ */}
+      {browsing && (
+        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
+          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          {/* tab row — which games deal in */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {([['published', '▶ GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)}
+                className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                  tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* the icons — big tiles, real estate */}
+          <div className="grid gap-3 w-full max-w-[980px] pb-2"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
+            {entries.map(e => {
+              const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
+              const on = scene === e.scene
+              return (
+                <button key={e.slug} onClick={() => pick(e)}
+                  className={`group rounded-2xl border overflow-hidden text-left transition-colors ${
+                    on ? 'border-sky-300/70 bg-sky-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
+                  <div className="aspect-square w-full grid place-items-center overflow-hidden"
+                    style={{ background: 'linear-gradient(160deg, #141224, #0a0913)' }}>
+                    {ic
+                      ? <img src={ic} alt="" className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform" />
+                      : <span className="font-mono text-[34px] text-white/25">{e.name[0]}</span>}
+                  </div>
+                  <div className={`font-mono text-[10.5px] tracking-[0.1em] px-2.5 py-2 truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
+                    {e.name}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {/* THE UI SELECTOR — overlay over the FIELD only; the bar is never covered */}
       {selOpen && (
         <div className="fixed z-[126] flex items-center justify-center backdrop-blur-sm"
-          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.82)', borderRadius: 10, transition: EASE }}
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setSelOpen(false)}>
           <div className="grid grid-cols-2 gap-3 p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
             {([
-              ['games', '▶', 'GAMES', 'browse — click the grid to play'],
+              ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
               ['main', '◉', 'MAIN', 'the commons + social space'],
               ['engine', '⚙', 'ENGINE', 'world tools · builderbox'],
               ['create', '✚', 'CREATE', 'new world · fork from grid · paste the prompt to your AI'],
@@ -164,64 +229,39 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* ═ THE BOTTOM BAR — the one control spot, NEVER covered ═ */}
-      <div className="fixed bottom-0 inset-x-0 z-[135] flex flex-col justify-end"
-        style={{ height: barH, paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}>
-        {browsing && (
-          <>
-            {/* TAB ROW — which games deal into the selector */}
-            <div className="flex items-center justify-center gap-1.5 pb-1.5">
-              {([['published', '▶ GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
-                <button key={k} onClick={() => setTab(k)}
-                  className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                    tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            {/* PREVIEW ROW — selecting hot-swaps the world INTO the grid */}
-            <div className="flex items-center gap-2 px-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
-              <div className="flex items-center gap-2 mx-auto">
-                {entries.map(e => (
-                  <button key={e.slug} onClick={() => pick(e)}
-                    className={`shrink-0 font-mono text-[11px] tracking-[0.12em] px-3.5 py-2.5 rounded-xl border transition-colors ${
-                      scene === e.scene ? 'bg-sky-400/15 border-sky-300/60 text-sky-100' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}>
-                    {e.name}
-                  </button>
-                ))}
-                <span className="w-px h-6 bg-white/10 mx-1" aria-hidden />
-                <Dockstar open={selOpen} onToggle={() => setSelOpen(o => !o)} />
-              </div>
-            </div>
-          </>
-        )}
-        {!browsing && (
-          <div className="flex items-center justify-center gap-2 pb-1">
-            {uiSet === 'games' && (
-              <button onClick={() => setPhase('browse')}
-                className="font-mono text-[12px] tracking-[0.2em] px-4 py-2 rounded-xl bg-black/55 border border-white/15 text-white/75 hover:text-white transition-colors">
-                ◱ GAMES
-              </button>
-            )}
-            {uiSet !== 'games' && (
-              <span className="font-mono text-[10.5px] tracking-[0.2em] text-white/30 px-3">
-                {uiSet.toUpperCase()} — docks here next
-              </span>
-            )}
-            <Dockstar open={selOpen} onToggle={() => setSelOpen(o => !o)} />
+      {/* INSTRUCTIONS — field-bounded overlay (the bar stays live) */}
+      {instrOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
+          onClick={() => setInstrOpen(false)}>
+          <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="font-mono text-[12px] tracking-[0.25em] text-white/50 mb-2">? INSTRUCTIONS — {selected?.name}</div>
+            <div className="font-mono text-[13px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* ═ THE BOTTOM BAR — instructions right · CUP DOCKSTAR center ═ */}
+      <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
+        style={{ height: BAR_H, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="flex-1" />
+        {/* THE DOCKSTAR — the cafe cup, a real button; the one way between sets */}
+        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false) }} aria-label="ui selector"
+          title="the dockstar — choose your UI"
+          className={`w-12 h-12 grid place-items-center rounded-2xl border transition-all ${
+            selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
+          style={{ boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
+          <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
+        </button>
+        <div className="flex-1 flex justify-end pr-3">
+          <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false) }}
+            className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
+              instrOpen ? 'bg-white/15 border-white/30 text-white' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}>
+            ? INSTRUCTIONS
+          </button>
+        </div>
       </div>
     </div>
-  )
-}
-
-function Dockstar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <button onClick={onToggle} aria-label="ui selector" title="▣ dockstar — choose the UI"
-      className={`shrink-0 w-10 h-10 grid place-items-center rounded-xl backdrop-blur border text-[16px] transition-colors ${
-        open ? 'bg-amber-400/25 border-amber-300/70 text-amber-100' : 'bg-black/55 border-white/15 text-white/75 hover:text-amber-200'}`}>
-      ▣
-    </button>
   )
 }
