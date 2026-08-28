@@ -6357,13 +6357,18 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           />
 
           {/* INSPECT overlay: blue cast + 64-unit grid + click console. The tint is
-              pointer-events-none; the console panel is interactive (click = copy). */}
+              pointer-events-none; the console panel is interactive (click = copy).
+              HOSTED (viewport set): the tint rides the FRAME only, and the console
+              panel doesn't render at all — the host's EYE tab is the feed (Galen:
+              "the old inspect info panel popping up over everything"). */}
           {inspectOn && (
-            <div className="fixed inset-0 z-[80] pointer-events-none"
-              style={{ background: 'rgba(56,110,190,0.10)', boxShadow: 'inset 0 0 0 3px rgba(90,160,255,0.55)',
+            <div className="fixed z-[80] pointer-events-none"
+              style={{ top: viewport?.top ?? 0, right: viewport?.right ?? 0, bottom: viewport?.bottom ?? 0, left: viewport?.left ?? 0,
+                borderRadius: viewport ? 10 : 0,
+                background: 'rgba(56,110,190,0.10)', boxShadow: 'inset 0 0 0 3px rgba(90,160,255,0.55)',
                 backgroundImage: 'repeating-linear-gradient(0deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%), repeating-linear-gradient(90deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%)' }} />
           )}
-          {inspectOn && (
+          {inspectOn && !viewport && (
             <div className="fixed top-14 left-3 z-[999] pointer-events-auto font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-sky-400/40 p-2.5 max-w-[380px]">
               <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)
                 {inspectHover ? <span className="ml-2 text-white/80"><span style={{ display: 'inline-block', width: 10, height: 10, background: inspectHover.hex, border: '1px solid rgba(255,255,255,0.4)', marginRight: 4 }} />{inspectHover.hex} ({inspectHover.x},{inspectHover.y})</span> : null}</div>

@@ -23,7 +23,7 @@ import { iconAuthorPrompt } from '@/lib/connectPrompt'
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'search'
+type Tab = 'live' | 'published' | 'premium' | 'mine' | 'search'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 
 const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out'
@@ -49,7 +49,7 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'config' | 'chat' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -62,6 +62,9 @@ export default function TheGrid() {
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
   const [rec, setRec] = useState<{ on: boolean; secs: number }>({ on: false, secs: 0 })
+  // ✕ CLEAR on the eye image: a local dismissal watermark — images at or before
+  // it stay hidden; the next probe/shot (newer `at`) reappears on its own.
+  const [eyeCleared, setEyeCleared] = useState(0)
 
   // ── SPACES FOR REAL: a `space:` scene resolves to a live space mount (id +
   // ownership), not a dead snapshot — versions/invite/sprites/config all light
@@ -119,9 +122,9 @@ export default function TheGrid() {
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         if (Array.isArray(d.cards) && d.cards.length)
           setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })))
-        else setEntries(LOCAL)
+        else setEntries(feed === 'mine' ? [] : LOCAL)   // an empty deed is EMPTY, not the house shelf
       })
-      .catch(() => setEntries(LOCAL))
+      .catch(() => setEntries(tab === 'mine' ? [] : LOCAL))
   }, [tab])
   useEffect(() => {
     fetch('/api/spaces/icons').then(r => r.json())
@@ -302,7 +305,7 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
+            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
@@ -320,6 +323,9 @@ export default function TheGrid() {
             )}
           </div>
           {/* the icons */}
+          {tab === 'mine' && shown.length === 0 && (
+            <div className="font-mono text-[11px] text-white/45 py-6 text-center">no worlds on your deed yet — sign in, or brew one at /create.</div>
+          )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
             {shown.map(e => {
@@ -444,7 +450,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/45 hover:text-white/75'}`}>
@@ -479,10 +485,17 @@ export default function TheGrid() {
                 {eyeData?.focus?.action && (
                   <div className="text-[10.5px] text-white/60 mb-2">ai focus: <span className="text-emerald-200/90">{eyeData.focus.action}</span>{eyeData.focus.fieldName ? <span className="text-white/45"> · {eyeData.focus.fieldName}</span> : null}</div>
                 )}
-                <div className="flex-1 min-h-0 rounded-xl border border-white/12 bg-black/50 grid place-items-center overflow-hidden">
-                  {eyeData?.eye?.png
-                    ? <img src={`data:image/png;base64,${eyeData.eye.png}`.replace('base64,data:', '').replace('base64,i', 'base64,i')} alt="the eye" className="max-w-full max-h-full object-contain" />
-                    : <span className="text-[11px] text-white/45 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
+                <div className="relative flex-1 min-h-0 rounded-xl border border-white/12 bg-black/50 grid place-items-center overflow-hidden">
+                  {eyeData?.eye?.png && (eyeData.eye.at ?? 1) > eyeCleared ? (
+                    <>
+                      <img src={`data:image/png;base64,${eyeData.eye.png}`.replace('base64,data:', '').replace('base64,i', 'base64,i')} alt="the eye" className="max-w-full max-h-full object-contain" />
+                      <button data-eye-clear onClick={() => setEyeCleared(eyeData?.eye?.at ?? Date.now())}
+                        title="clear this snapshot — the next probe or 📸 reappears on its own"
+                        className="absolute top-2 right-2 px-2.5 py-1 rounded-lg border border-white/25 bg-black/70 text-white/75 text-[10.5px] tracking-[0.15em] hover:text-white hover:bg-black/85 transition-colors">
+                        ✕ CLEAR
+                      </button>
+                    </>
+                  ) : <span className="text-[11px] text-white/45 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
                 </div>
                 {/* the INSPECT feed — every documented click, newest first */}
                 {eyeData?.inspect?.on && (
@@ -518,7 +531,10 @@ export default function TheGrid() {
                 </div>
               </div>
             )}
-            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} spaceSlug={eyeData?.config?.spaceSlug ?? null} isOwner={!!eyeData?.config?.isOwner} />}
+            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
+            {tool === 'crew' && <CrewView spaceSlug={eyeData?.config?.spaceSlug ?? null} isOwner={!!eyeData?.config?.isOwner} />}
+            {tool === 'versions' && <VersionsView cfg={eyeData?.config ?? null} />}
+            {tool === 'mine' && <MyWorldsView icons={icons} current={scene} onPick={s => setScene(s)} />}
             {tool === 'config' && (
               <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
             )}
@@ -553,9 +569,9 @@ export default function TheGrid() {
             {selected?.name ?? '—'}
           </button>
           ) : <span />}
-          {/* ● REC — left of the dockstar, on play + engine: the world in the
-              frame → a video file on your computer (canvas only, no UI). */}
-          {((uiSet === 'games' && phase === 'play') || uiSet === 'engine') && (
+          {/* ● REC — left of the dockstar, GAMES-play only (Galen): the world
+              in the frame → a video file on your computer (canvas only, no UI). */}
+          {uiSet === 'games' && phase === 'play' && (
             <button data-grid-rec onClick={() => cmd('rec')}
               title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
               className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 ${
@@ -604,26 +620,26 @@ export default function TheGrid() {
 // included). ADVANCED SWAPS the view in-area (no overlay, no two-column —
 // responsive single column): grouped sections with edges; clicking a node
 // opens its CODE full-area; ◂ backs out at every level.
-function NodesView({ graph, spaceSlug, isOwner }: { graph: AiNodeGraph | null; spaceSlug: string | null; isOwner: boolean }) {
-  const [mode, setMode] = useState<'list' | 'adv' | 'crew'>('list')
-  const [sel, setSel] = useState<ANode | null>(null)
-  const [crewNote, setCrewNote] = useState('')
-  const tint: Record<string, string> = { field: 'text-sky-200/90', visual: 'text-amber-200/90', hook: 'text-violet-300/90', module: 'text-emerald-200/90' }
-
-  // ⛭ CO-BUILD — the real NodeDockPanel (holds · per-node history · owner
-  // revert · internals feeds), embedded in the under-area. Spaces only.
-  if (mode === 'crew' && spaceSlug) {
-    return (
-      <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
-          {crewNote && <span className="text-[10.5px] text-amber-200/80 truncate">{crewNote}</span>}
-        </div>
-        <NodeDockPanel spaceSlug={spaceSlug} isOwner={isOwner} onClose={() => setMode('list')}
-          showToast={(m, _t, sub) => { setCrewNote(sub ? `${m} — ${sub}` : m); setTimeout(() => setCrewNote(''), 3500) }} />
-      </div>
-    )
+// ⛭ CO-BUILD — its own tab (Galen): the real NodeDockPanel (holds · per-node
+// history · owner revert · internals feeds), embedded in the under-area.
+function CrewView({ spaceSlug, isOwner }: { spaceSlug: string | null; isOwner: boolean }) {
+  const [note, setNote] = useState('')
+  if (!spaceSlug) {
+    return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — the co-build roster lives on real worlds.</div>
   }
+  return (
+    <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
+      {note && <div className="text-[10.5px] text-amber-200/80 truncate">{note}</div>}
+      <NodeDockPanel spaceSlug={spaceSlug} isOwner={isOwner} onClose={() => { /* a tab, not a popup — nothing to close */ }}
+        showToast={(m, _t, sub) => { setNote(sub ? `${m} — ${sub}` : m); setTimeout(() => setNote(''), 3500) }} />
+    </div>
+  )
+}
+
+function NodesView({ graph }: { graph: AiNodeGraph | null }) {
+  const [mode, setMode] = useState<'list' | 'adv'>('list')
+  const [sel, setSel] = useState<ANode | null>(null)
+  const tint: Record<string, string> = { field: 'text-sky-200/90', visual: 'text-amber-200/90', hook: 'text-violet-300/90', module: 'text-emerald-200/90' }
 
   if (sel) {
     const code = sel.kind === 'hook' ? (sel as { code?: string }).code : (sel as { wgsl?: string }).wgsl
@@ -643,30 +659,61 @@ function NodesView({ graph, spaceSlug, isOwner }: { graph: AiNodeGraph | null; s
   }
 
   if (mode === 'adv' && graph) {
-    const groups: Array<[string, ANode[]]> = [
-      ['MODULES', graph.modules as ANode[]], ['VISUALS', graph.visuals as ANode[]],
-      ['FIELDS', graph.fields as ANode[]], ['HOOKS', graph.hooks as ANode[]],
-    ]
-    const edgeCount = (id: string) => graph.edges.filter(e => e.from === id || e.to === id).length
+    // THE FLOW TREE (Galen): the world's dataflow, top to bottom — HOOKS drive
+    // the VISUALS, visuals PAINT their fields, MODULES compose the shader.
+    // `paints` edges are specific (visual → its field); drives/composes are the
+    // megashader's everything-feeds-everything, shown as flow stages, not fans.
+    const hooks = graph.hooks as ANode[], visuals = graph.visuals as ANode[]
+    const fields = graph.fields as ANode[], modules = graph.modules as ANode[]
+    const paintedBy = new Map<string, string[]>()   // visualId → fieldIds it paints
+    for (const e of graph.edges) if (e.kind === 'paints') { const a = paintedBy.get(e.from) ?? []; a.push(e.to); paintedBy.set(e.from, a) }
+    const fieldById = new Map(fields.map(f => [f.id, f]))
+    const paintedIds = new Set(graph.edges.filter(e => e.kind === 'paints').map(e => e.to))
+    const orphanFields = fields.filter(f => !paintedIds.has(f.id))
+    const NodeBtn = ({ n, pre }: { n: ANode; pre: string }) => (
+      <button onClick={() => setSel(n)}
+        className="w-full text-left flex items-center py-1 px-1 rounded hover:bg-white/5 text-[11.5px] leading-snug">
+        <span className="shrink-0 text-white/25 whitespace-pre">{pre}</span>
+        <span className={`shrink-0 mr-2 ${tint[n.kind]}`}>●</span>
+        <span className="text-white/90 truncate">{n.title}</span>
+      </button>
+    )
+    const Stage = ({ label }: { label: string }) => (
+      <div className="flex items-center gap-2 my-1.5 text-[9.5px] tracking-[0.25em] text-white/40">
+        <span className="text-sky-300/60">↓</span>{label}
+      </div>
+    )
     return (
       <div className="w-full h-full overflow-y-auto p-4 font-mono">
         <div className="flex items-center gap-2 mb-3">
           <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
-          <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬡ THE GRAPH — tap a node for its code</span>
+          <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬡ THE FLOW — tap any node for its code</span>
         </div>
-        {groups.map(([label, ns]) => ns.length > 0 && (
-          <div key={label} className="mb-3">
-            <div className="text-[9.5px] tracking-[0.25em] text-white/45 mb-1">{label} · {ns.length}</div>
-            {ns.map(n => (
-              <button key={n.id} onClick={() => setSel(n)}
-                className="w-full text-left flex items-center gap-3 py-2 px-2 rounded-lg border-b border-white/6 hover:bg-white/5 text-[11.5px]">
-                <span className={`shrink-0 ${tint[n.kind]}`}>●</span>
-                <span className="text-white/90 truncate">{n.title}</span>
-                <span className="ml-auto shrink-0 text-[9.5px] text-white/35">{edgeCount(n.id)} links</span>
-              </button>
-            ))}
-          </div>
-        ))}
+        {hooks.length > 0 && <>
+          <div className="text-[9.5px] tracking-[0.25em] text-violet-300/70">✎ HOOKS — run every tick, drive the world</div>
+          {hooks.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === hooks.length - 1 ? ' └─ ' : ' ├─ '} />)}
+          <Stage label="DRIVE THE VISUALS" />
+        </>}
+        <div className="text-[9.5px] tracking-[0.25em] text-amber-200/70">◆ VISUALS ─paint→ ▦ FIELDS</div>
+        {visuals.map((v, i) => {
+          const kids = (paintedBy.get(v.id) ?? []).map(id => fieldById.get(id)).filter(Boolean) as ANode[]
+          const last = i === visuals.length - 1 && orphanFields.length === 0
+          return (
+            <div key={v.id}>
+              <NodeBtn n={v} pre={last ? ' └─ ' : ' ├─ '} />
+              {kids.map((f, j) => <NodeBtn key={f.id} n={f} pre={`${last ? '    ' : ' │  '}${j === kids.length - 1 ? '└─paints→ ' : '├─paints→ '}`} />)}
+            </div>
+          )
+        })}
+        {orphanFields.length > 0 && <>
+          <div className="mt-1 text-[9.5px] tracking-[0.25em] text-sky-200/60">▦ FIELDS with no visual (data only — render as nothing)</div>
+          {orphanFields.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === orphanFields.length - 1 ? ' └─ ' : ' ├─ '} />)}
+        </>}
+        {modules.length > 0 && <>
+          <Stage label="COMPOSED FROM" />
+          <div className="text-[9.5px] tracking-[0.25em] text-emerald-200/70">⚙ MODULES — the shader library under every visual</div>
+          {modules.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === modules.length - 1 ? ' └─ ' : ' ├─ '} />)}
+        </>}
       </div>
     )
   }
@@ -678,19 +725,10 @@ function NodesView({ graph, spaceSlug, isOwner }: { graph: AiNodeGraph | null; s
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
-        <div className="flex gap-1.5">
-          {spaceSlug && (
-            <button onClick={() => setMode('crew')}
-              title="the co-build roster — holds, per-node history, internals feeds"
-              className="px-3 py-1 rounded-lg border border-amber-300/40 text-amber-200/90 text-[10px] tracking-[0.15em] hover:bg-amber-400/10">
-              ⛭ CO-BUILD
-            </button>
-          )}
-          <button onClick={() => setMode('adv')} disabled={!graph}
-            className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
-            ⬡ ADVANCED
-          </button>
-        </div>
+        <button onClick={() => setMode('adv')} disabled={!graph}
+          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
+          ⬡ ADVANCED
+        </button>
       </div>
       {!graph && <div className="text-[11px] text-white/45">reading the world…</div>}
       {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">an empty world — no nodes yet.</div>}
@@ -714,7 +752,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
   sceneIsSpace: boolean
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
-  const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
   const Row = ({ label, on, k, disabled, hint }: { label: string; on: boolean; k: string; disabled?: boolean; hint?: string }) => (
     <div className="flex items-center justify-between py-2 border-b border-white/8 text-[12px]" title={hint}>
       <span className="text-white/80">{label}</span>
@@ -728,30 +765,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
   const ownerLaw = !!cfg?.isOwner
   const slug = cfg?.spaceSlug ?? null
   const ownedSpace = ownerLaw && !!slug
-
-  // ⏱ VERSIONS — the save-point history (owner: pick → engine hot-swaps in place)
-  const [vers, setVers] = useState<Array<{ version: number; note: string | null; createdAt: string }>>([])
-  const [verBusy, setVerBusy] = useState(false)
-  const [verNote, setVerNote] = useState('')
-  const loadVers = useCallback(async () => {
-    if (!slug) return
-    try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`).then(x => x.json())
-      setVers(Array.isArray(r.versions) ? r.versions.filter((v: { version: number }) => v.version >= 1) : [])
-    } catch { setVers([]) }
-  }, [slug])
-  useEffect(() => { loadVers() }, [loadVers])
-  const savePoint = async () => {
-    if (!slug || verBusy) return
-    setVerBusy(true)
-    try {
-      await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(verNote.trim() ? { note: verNote.trim() } : {}),
-      })
-      setVerNote(''); await loadVers()
-    } finally { setVerBusy(false) }
-  }
 
   // ⚭ INVITE — one-time crew link, minted + copied in one tap
   const [invite, setInvite] = useState<'idle' | 'busy' | 'copied' | 'failed'>('idle')
@@ -836,40 +849,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
         </div>
       )}
 
-      {/* ⏱ VERSIONS — save points; picking one hot-swaps the world in place */}
-      {ownedSpace && (
-        <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10.5px] tracking-[0.2em] text-white/50">⏱ VERSIONS</span>
-            <div className="flex gap-2 items-center">
-              <input value={verNote} onChange={e => setVerNote(e.target.value)} maxLength={200} placeholder="note (optional)"
-                className="w-36 px-2 py-1 rounded-lg bg-black/50 border border-white/15 text-[10.5px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
-              <button onClick={savePoint} disabled={verBusy}
-                className="px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
-                {verBusy ? '…' : '⚑ SAVE A POINT'}
-              </button>
-            </div>
-          </div>
-          <div className="max-h-40 overflow-y-auto">
-            <button onClick={() => cmd('ver:live')}
-              className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors ${
-                cfg?.ver == null ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
-              LIVE <span className="text-white/40 ml-2">now</span>
-            </button>
-            {[...vers].sort((a, b) => b.version - a.version).map(v => (
-              <button key={v.version} onClick={() => cmd('ver:' + v.version)}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors ${
-                  cfg?.ver === v.version ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
-                v{v.version}
-                <span className="text-white/40 ml-2">{new Date(v.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                {v.note && <span className="text-amber-200/70 ml-2">{v.note}</span>}
-              </button>
-            ))}
-            {vers.length === 0 && <div className="text-white/40 px-1 py-1">no save points yet — ⚑ makes one from the live world.</div>}
-          </div>
-        </div>
-      )}
-
       <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] leading-relaxed text-white/55">
         social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
         {!sceneIsSpace && <div className="mt-1.5 text-white/40">house cartridge — owner controls apply on real worlds.</div>}
@@ -878,6 +857,113 @@ function ConfigView({ cfg, sceneIsSpace }: {
 
       {/* the sprites panel fills THIS area — the under-area, never the game */}
       {spritesOpen && slug && <SpritesPanel slug={slug} onClose={() => setSpritesOpen(false)} />}
+    </div>
+  )
+}
+
+// ⏱ VERSIONS — its own tab (Galen): the world's save-point history. Owner:
+// ⚑ save a point, pick any rung → the engine hot-swaps it in place (ver: cmd).
+function VersionsView({ cfg }: { cfg: { isOwner: boolean; spaceSlug: string | null; ver?: number | null } | null }) {
+  const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
+  const slug = cfg?.spaceSlug ?? null
+  const owner = !!cfg?.isOwner
+  const [vers, setVers] = useState<Array<{ version: number; note: string | null; createdAt: string }>>([])
+  const [verBusy, setVerBusy] = useState(false)
+  const [verNote, setVerNote] = useState('')
+  const loadVers = useCallback(async () => {
+    if (!slug) return
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`).then(x => x.json())
+      setVers(Array.isArray(r.versions) ? r.versions.filter((v: { version: number }) => v.version >= 1) : [])
+    } catch { setVers([]) }
+  }, [slug])
+  useEffect(() => { loadVers() }, [loadVers])
+  const savePoint = async () => {
+    if (!slug || verBusy) return
+    setVerBusy(true)
+    try {
+      await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(verNote.trim() ? { note: verNote.trim() } : {}),
+      })
+      setVerNote(''); await loadVers()
+    } finally { setVerBusy(false) }
+  }
+  if (!slug) {
+    return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — versions live on real worlds.</div>
+  }
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <span className="text-[10.5px] tracking-[0.2em] text-amber-200/70">⏱ VERSIONS — every save point of this world</span>
+        {owner && (
+          <div className="flex gap-2 items-center">
+            <input value={verNote} onChange={e => setVerNote(e.target.value)} maxLength={200} placeholder="note (optional)"
+              className="w-36 px-2 py-1 rounded-lg bg-black/50 border border-white/15 text-[10.5px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
+            <button onClick={savePoint} disabled={verBusy}
+              className="px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+              {verBusy ? '…' : '⚑ SAVE A POINT'}
+            </button>
+          </div>
+        )}
+      </div>
+      <button onClick={() => owner && cmd('ver:live')} disabled={!owner}
+        className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors disabled:cursor-default ${
+          cfg?.ver == null ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
+        LIVE <span className="text-white/40 ml-2">now</span>
+      </button>
+      {[...vers].sort((a, b) => b.version - a.version).map(v => (
+        <button key={v.version} onClick={() => owner && cmd('ver:' + v.version)} disabled={!owner}
+          className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors disabled:cursor-default ${
+            cfg?.ver === v.version ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
+          v{v.version}
+          <span className="text-white/40 ml-2">{new Date(v.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          {v.note && <span className="text-amber-200/70 ml-2">{v.note}</span>}
+        </button>
+      ))}
+      {vers.length === 0 && <div className="text-white/40 px-1 py-1">no save points yet{owner ? ' — ⚑ makes one from the live world.' : '.'}</div>}
+      {!owner && <div className="mt-2 text-[10px] text-white/40">only the maker restores versions.</div>}
+    </div>
+  )
+}
+
+// ⌂ MY WORLDS in ENGINE — your worlds, pickable into the frame without leaving
+// the workshop (the GAMES shelf has the same tab for play).
+function MyWorldsView({ icons, current, onPick }: {
+  icons: Map<string, string>
+  current: string
+  onPick: (scene: string) => void
+}) {
+  const [mine, setMine] = useState<Entry[] | null>(null)
+  useEffect(() => {
+    fetch('/api/cards?tab=mine').then(r => r.json())
+      .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
+        setMine(Array.isArray(d.cards) ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })) : [])
+      })
+      .catch(() => setMine([]))
+  }, [])
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌂ MY WORLDS — pick one into the frame</div>
+      {mine === null && <div className="text-[11px] text-white/45">…</div>}
+      {mine?.length === 0 && <div className="text-[11px] text-white/45">no worlds on your deed yet — sign in, or brew one at /create.</div>}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+        {(mine ?? []).map(e => {
+          const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
+          const on = current === e.scene
+          return (
+            <button key={e.slug} onClick={() => onPick(e.scene)}
+              className={`rounded-2xl border overflow-hidden text-left transition-colors ${
+                on ? 'border-emerald-300/70 bg-emerald-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
+              <div className="aspect-square w-full grid place-items-center overflow-hidden bg-black/50">
+                {ic ? <img src={ic} alt="" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                  : <span className="text-[20px] text-white/30">{e.name.slice(0, 1)}</span>}
+              </div>
+              <div className="px-2 py-1.5 text-[10px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
