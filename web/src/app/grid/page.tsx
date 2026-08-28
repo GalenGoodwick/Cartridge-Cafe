@@ -16,6 +16,9 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
+import SpritesPanel from '@/app/engine/SpritesPanel'
+import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
+import { iconAuthorPrompt } from '@/lib/connectPrompt'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
@@ -52,11 +55,38 @@ export default function TheGrid() {
     eye?: { png?: string; at?: number; name?: string } | null
     shot?: string
     graph?: AiNodeGraph | null
-    config?: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; presenceOff: boolean; policy: string | null } | null
+    inspect?: { on: boolean; log: Array<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; ui?: { id: string; text: string } | null; source?: string | null }> } | null
+    config?: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; designMode?: boolean; ver?: number | null; presenceOff: boolean; policy: string | null } | null
   } | null>(null)
 
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
+  const [rec, setRec] = useState<{ on: boolean; secs: number }>({ on: false, secs: 0 })
+
+  // ── SPACES FOR REAL: a `space:` scene resolves to a live space mount (id +
+  // ownership), not a dead snapshot — versions/invite/sprites/config all light
+  // up through the engine's own machinery. undefined = resolving; null = not a
+  // reachable space (private/404) → snapshot fallback.
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean } | null | undefined>(undefined)
+  useEffect(() => {
+    if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
+    const slug = scene.slice(6)
+    let dead = false
+    setSpaceInfo(undefined)
+    Promise.all([
+      fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null } } | null, { user?: { id?: string } } | null]) => {
+      if (dead) return
+      const sp = d?.space
+      if (!sp?.id) { setSpaceInfo(null); return }
+      const meId = s?.user?.id ?? null
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId })
+    }).catch(() => { if (!dead) setSpaceInfo(null) })
+    return () => { dead = true }
+  }, [scene])
+  const spc = scene.startsWith('space:') && spaceInfo && spaceInfo.slug === scene.slice(6) ? spaceInfo : null
+  const spaceResolving = scene.startsWith('space:') && spaceInfo === undefined
 
   useEffect(() => {
     const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
@@ -170,12 +200,22 @@ export default function TheGrid() {
     window.addEventListener('cafe:eye', on)
     return () => window.removeEventListener('cafe:eye', on)
   }, [])
-  // entering ENGINE arms the engine's eye-watch (after the transition hygiene)
+  // ● REC — the engine mirrors recorder state; the bar button reads it
+  useEffect(() => {
+    const on = (e: Event) => setRec(((e as CustomEvent).detail ?? { on: false, secs: 0 }) as { on: boolean; secs: number })
+    window.addEventListener('cafe:rec', on)
+    return () => window.removeEventListener('cafe:rec', on)
+  }, [])
+  // entering ENGINE arms the engine's eye-watch (after the transition hygiene).
+  // spc is a dep: a space mount arrives LATE (after its fetch resolves) — the
+  // arm must re-fire once the real engine exists, or config never publishes.
   useEffect(() => {
     if (!engineSet) return
-    const t = setTimeout(() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'eye' })) } catch { /* ssr */ } }, 50)
-    return () => clearTimeout(t)
-  }, [engineSet, scene])
+    const fire = () => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'eye' })) } catch { /* ssr */ } }
+    const t = setTimeout(fire, 50)
+    const t2 = setTimeout(fire, 1200)   // belt: survives a slow first mount
+    return () => { clearTimeout(t); clearTimeout(t2) }
+  }, [engineSet, scene, spc])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
@@ -217,7 +257,15 @@ export default function TheGrid() {
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
-      <FieldEngine playScene={scene} hooksTrusted viewport={inset} externalTopbar />
+      {/* SPACE mount = the real thing (saves/sync/versions/tokens live); house
+          cartridges keep the stable hot-swap mount. A space remounts per slug
+          (the space path loads once, at birth). While a space resolves (~one
+          fetch) the frame holds dark — the same threshold-black as a world swap. */}
+      {spc
+        ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
+            spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
+            viewport={inset} externalTopbar />
+        : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
 
       {/* THE FRAME */}
       <div className="fixed pointer-events-none z-[110]"
@@ -301,8 +349,9 @@ export default function TheGrid() {
       )}
 
       {/* CLICK THE FRAME → PLAY, in ENGINE too (the world is always the play
-          button — the universal law) */}
-      {engineSet && (
+          button — the universal law). While ◎ INSPECT is on, the frame yields:
+          clicks must reach the canvas to document what's under them. */}
+      {engineSet && !eyeData?.inspect?.on && (
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => { setUiSet('games'); setPhase('play') }}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
@@ -411,12 +460,21 @@ export default function TheGrid() {
           <div className="w-full max-w-[860px] flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-hidden">
             {tool === 'eye' && (
               <div className="w-full h-full flex flex-col p-4 font-mono">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                   <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">◈ THE EYE — hand the AI your view</span>
-                  <button onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'snapshot' })) } catch { /* ssr */ } }}
-                    className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
-                    {eyeData?.shot === 'sending' ? '…' : eyeData?.shot === 'sent' ? '✓ SENT TO THE AI' : '📸 SNAPSHOT → AI'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* ◎ INSPECT — click-telling: while ON, canvas clicks document
+                        what's under them (wd.__clicks) for the AI; game input paused */}
+                    <button onClick={() => cmd('inspect')}
+                      className={`px-3 py-1.5 rounded-lg border text-[11px] tracking-[0.15em] transition-colors ${
+                        eyeData?.inspect?.on ? 'bg-sky-500/25 border-sky-400/60 text-sky-100' : 'border-white/15 bg-black/40 text-white/60 hover:text-white'}`}>
+                      {eyeData?.inspect?.on ? '◉ INSPECT ON' : '◎ INSPECT'}
+                    </button>
+                    <button onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'snapshot' })) } catch { /* ssr */ } }}
+                      className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
+                      {eyeData?.shot === 'sending' ? '…' : eyeData?.shot === 'sent' ? '✓ SENT TO THE AI' : '📸 SNAPSHOT → AI'}
+                    </button>
+                  </div>
                 </div>
                 {eyeData?.focus?.action && (
                   <div className="text-[10.5px] text-white/60 mb-2">ai focus: <span className="text-emerald-200/90">{eyeData.focus.action}</span>{eyeData.focus.fieldName ? <span className="text-white/45"> · {eyeData.focus.fieldName}</span> : null}</div>
@@ -426,6 +484,22 @@ export default function TheGrid() {
                     ? <img src={`data:image/png;base64,${eyeData.eye.png}`.replace('base64,data:', '').replace('base64,i', 'base64,i')} alt="the eye" className="max-w-full max-h-full object-contain" />
                     : <span className="text-[11px] text-white/45 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
                 </div>
+                {/* the INSPECT feed — every documented click, newest first */}
+                {eyeData?.inspect?.on && (
+                  <div className="mt-2 max-h-[30%] overflow-y-auto rounded-xl border border-sky-400/25 bg-black/50 p-2.5 text-[10.5px] leading-relaxed">
+                    {!eyeData.inspect.log?.length && <div className="text-white/45">click anything in the world above — each click is documented for the AI (game input paused).</div>}
+                    {[...(eyeData.inspect.log ?? [])].reverse().map((en, i) => (
+                      <div key={i} className="py-0.5 border-b border-white/5 last:border-0 text-white/75">
+                        <span className="text-sky-200/90">({en.x},{en.y})</span>
+                        {en.color && <span className="ml-2" style={{ color: en.color }}>■ {en.color}</span>}
+                        {en.field && <span className="text-white/55 ml-2">field {en.field}</span>}
+                        {en.visual && <span className="text-emerald-200/80 ml-2">{en.visual}</span>}
+                        {en.entity && <span className="text-amber-200/80 ml-2">entity #{en.entity.id}{en.entity.label ? ` ${en.entity.label}` : ''}</span>}
+                        {en.ui && <span className="text-white/60 ml-2">ui {en.ui.id}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {tool === 'console' && (
@@ -444,7 +518,7 @@ export default function TheGrid() {
                 </div>
               </div>
             )}
-            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
+            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} spaceSlug={eyeData?.config?.spaceSlug ?? null} isOwner={!!eyeData?.config?.isOwner} />}
             {tool === 'config' && (
               <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
             )}
@@ -469,15 +543,27 @@ export default function TheGrid() {
       {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-        <div className="flex-1 flex justify-start pl-3">
+        <div className="flex-1 flex items-center justify-between pl-3 pr-2">
           {/* THE TITLE — leftmost; clicking opens attribution/lineage.
               Not in ENGINE (the dock already names the world). */}
-          {uiSet !== 'engine' && (
+          {uiSet !== 'engine' ? (
           <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
             className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors"
             style={{ margin: '8px 0' }}>
             {selected?.name ?? '—'}
           </button>
+          ) : <span />}
+          {/* ● REC — left of the dockstar, on play + engine: the world in the
+              frame → a video file on your computer (canvas only, no UI). */}
+          {((uiSet === 'games' && phase === 'play') || uiSet === 'engine') && (
+            <button data-grid-rec onClick={() => cmd('rec')}
+              title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
+              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 ${
+                rec.on ? 'bg-red-500/25 border-red-400/60 text-red-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
+              style={{ margin: '8px 0' }}>
+              <span className={`inline-block w-2 h-2 rounded-full bg-red-500 ${rec.on ? 'animate-pulse' : ''}`} />
+              {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
+            </button>
           )}
         </div>
         {/* THE DOCKSTAR — the cup, buffered above AND below */}
@@ -518,10 +604,26 @@ export default function TheGrid() {
 // included). ADVANCED SWAPS the view in-area (no overlay, no two-column —
 // responsive single column): grouped sections with edges; clicking a node
 // opens its CODE full-area; ◂ backs out at every level.
-function NodesView({ graph }: { graph: AiNodeGraph | null }) {
-  const [mode, setMode] = useState<'list' | 'adv'>('list')
+function NodesView({ graph, spaceSlug, isOwner }: { graph: AiNodeGraph | null; spaceSlug: string | null; isOwner: boolean }) {
+  const [mode, setMode] = useState<'list' | 'adv' | 'crew'>('list')
   const [sel, setSel] = useState<ANode | null>(null)
+  const [crewNote, setCrewNote] = useState('')
   const tint: Record<string, string> = { field: 'text-sky-200/90', visual: 'text-amber-200/90', hook: 'text-violet-300/90', module: 'text-emerald-200/90' }
+
+  // ⛭ CO-BUILD — the real NodeDockPanel (holds · per-node history · owner
+  // revert · internals feeds), embedded in the under-area. Spaces only.
+  if (mode === 'crew' && spaceSlug) {
+    return (
+      <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
+          {crewNote && <span className="text-[10.5px] text-amber-200/80 truncate">{crewNote}</span>}
+        </div>
+        <NodeDockPanel spaceSlug={spaceSlug} isOwner={isOwner} onClose={() => setMode('list')}
+          showToast={(m, _t, sub) => { setCrewNote(sub ? `${m} — ${sub}` : m); setTimeout(() => setCrewNote(''), 3500) }} />
+      </div>
+    )
+  }
 
   if (sel) {
     const code = sel.kind === 'hook' ? (sel as { code?: string }).code : (sel as { wgsl?: string }).wgsl
@@ -576,10 +678,19 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
-        <button onClick={() => setMode('adv')} disabled={!graph}
-          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
-          ⬡ ADVANCED
-        </button>
+        <div className="flex gap-1.5">
+          {spaceSlug && (
+            <button onClick={() => setMode('crew')}
+              title="the co-build roster — holds, per-node history, internals feeds"
+              className="px-3 py-1 rounded-lg border border-amber-300/40 text-amber-200/90 text-[10px] tracking-[0.15em] hover:bg-amber-400/10">
+              ⛭ CO-BUILD
+            </button>
+          )}
+          <button onClick={() => setMode('adv')} disabled={!graph}
+            className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
+            ⬡ ADVANCED
+          </button>
+        </div>
       </div>
       {!graph && <div className="text-[11px] text-white/45">reading the world…</div>}
       {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">an empty world — no nodes yet.</div>}
@@ -599,12 +710,13 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
 // title). Space owners get the management overlay (name · visibility · keys);
 // the toggles drive the engine's own writes over cfg: commands.
 function ConfigView({ cfg, sceneIsSpace }: {
-  cfg: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; presenceOff: boolean; policy: string | null } | null
+  cfg: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; designMode?: boolean; ver?: number | null; presenceOff: boolean; policy: string | null } | null
   sceneIsSpace: boolean
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
-  const Row = ({ label, on, k, disabled }: { label: string; on: boolean; k: string; disabled?: boolean }) => (
-    <div className="flex items-center justify-between py-2 border-b border-white/8 text-[12px]">
+  const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
+  const Row = ({ label, on, k, disabled, hint }: { label: string; on: boolean; k: string; disabled?: boolean; hint?: string }) => (
+    <div className="flex items-center justify-between py-2 border-b border-white/8 text-[12px]" title={hint}>
       <span className="text-white/80">{label}</span>
       <button onClick={() => fire(k)} disabled={disabled}
         className={`px-2.5 py-0.5 rounded-full border text-[11px] tracking-[0.15em] transition-colors disabled:opacity-35 ${
@@ -614,12 +726,76 @@ function ConfigView({ cfg, sceneIsSpace }: {
     </div>
   )
   const ownerLaw = !!cfg?.isOwner
+  const slug = cfg?.spaceSlug ?? null
+  const ownedSpace = ownerLaw && !!slug
+
+  // ⏱ VERSIONS — the save-point history (owner: pick → engine hot-swaps in place)
+  const [vers, setVers] = useState<Array<{ version: number; note: string | null; createdAt: string }>>([])
+  const [verBusy, setVerBusy] = useState(false)
+  const [verNote, setVerNote] = useState('')
+  const loadVers = useCallback(async () => {
+    if (!slug) return
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`).then(x => x.json())
+      setVers(Array.isArray(r.versions) ? r.versions.filter((v: { version: number }) => v.version >= 1) : [])
+    } catch { setVers([]) }
+  }, [slug])
+  useEffect(() => { loadVers() }, [loadVers])
+  const savePoint = async () => {
+    if (!slug || verBusy) return
+    setVerBusy(true)
+    try {
+      await fetch(`/api/spaces/${encodeURIComponent(slug)}/versions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(verNote.trim() ? { note: verNote.trim() } : {}),
+      })
+      setVerNote(''); await loadVers()
+    } finally { setVerBusy(false) }
+  }
+
+  // ⚭ INVITE — one-time crew link, minted + copied in one tap
+  const [invite, setInvite] = useState<'idle' | 'busy' | 'copied' | 'failed'>('idle')
+  const mintInvite = async () => {
+    if (!slug || invite === 'busy') return
+    setInvite('busy')
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/invite`, { method: 'POST' })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.joinUrl) { try { await navigator.clipboard.writeText(d.joinUrl) } catch { /* select-all fallback below */ } setInvite('copied'); setTimeout(() => setInvite('idle'), 2500) }
+      else setInvite('failed')
+    } catch { setInvite('failed') }
+  }
+
+  // ◆ MAKE ICON — mint a world token + hand your AI the icon-author prompt
+  const [iconDesc, setIconDesc] = useState('')
+  const [iconTok, setIconTok] = useState<string | null>(null)
+  const [iconCopied, setIconCopied] = useState(false)
+  const copyIconPrompt = async () => {
+    if (!slug) return
+    let tok = iconTok
+    if (!tok) {
+      try {
+        const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
+        })
+        const d = await r.json().catch(() => null)
+        if (r.ok && d?.token) { tok = d.token as string; setIconTok(tok) }
+      } catch { /* below */ }
+    }
+    if (!tok) return
+    const origin = window.location.origin.replace('localhost:3131', 'cartridge.cafe')
+    try { await navigator.clipboard.writeText(iconAuthorPrompt(tok, iconDesc.trim(), origin)); setIconCopied(true); setTimeout(() => setIconCopied(false), 1800) } catch { /* manual */ }
+  }
+
+  // ◲ SPRITES — the real panel, embedded in the under-area (never over the game)
+  const [spritesOpen, setSpritesOpen] = useState(false)
+
   return (
-    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+    <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
       <div className="text-[10.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
-      {cfg?.isOwner && cfg.spaceSlug && cfg.spaceId && (
+      {ownedSpace && cfg?.spaceId && (
         <div className="mb-3 rounded-xl border border-white/12 bg-black/40 overflow-hidden">
-          <SpaceManagementOverlay embedded spaceSlug={cfg.spaceSlug} spaceId={cfg.spaceId} />
+          <SpaceManagementOverlay embedded spaceSlug={slug!} spaceId={cfg.spaceId} />
         </div>
       )}
       <div className="rounded-xl border border-white/12 bg-black/40 px-3.5 py-1 mb-3">
@@ -627,12 +803,81 @@ function ConfigView({ cfg, sceneIsSpace }: {
         {/* player-presence row RETIRED (Aug 28) — pips are gone; multiplayer is co-presence */}
         <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
+        <Row label="✎ design mode — edits author the cartridge" on={!!cfg?.designMode} k="design" disabled={!ownerLaw}
+          hint="ON: your live edits save to the CARTRIDGE for everyone. OFF: you play on your own save like anyone else." />
       </div>
+
+      {/* owner workbench — invite / icon / sprites */}
+      {ownedSpace && (
+        <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px]">
+          <div className="text-[10.5px] tracking-[0.2em] text-white/50 mb-2">THE WORKBENCH</div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={mintInvite}
+              title="mint a ONE-TIME join link — the first signed-in person to open it joins your crew as a builder; the link dies on use"
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors">
+              {invite === 'busy' ? '…' : invite === 'copied' ? '✓ LINK COPIED' : invite === 'failed' ? 'MINT FAILED' : '⚭ INVITE A BUILDER'}
+            </button>
+            <button onClick={() => setSpritesOpen(true)}
+              title="upload pixel art — rip sprite sheets into slots any visual can sample"
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors">
+              ◲ SPRITES
+            </button>
+          </div>
+          <div className="mt-3 flex gap-2 items-center">
+            <input value={iconDesc} onChange={e => setIconDesc(e.target.value)} maxLength={120}
+              placeholder="◆ icon: describe it (optional)…"
+              className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
+            <button onClick={copyIconPrompt}
+              title="your AI writes a tiny shader icon for this world's shelf bubble — copy the prompt, paste it to your AI"
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors shrink-0">
+              {iconCopied ? '✓ COPIED' : '◆ MAKE ICON'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ⏱ VERSIONS — save points; picking one hot-swaps the world in place */}
+      {ownedSpace && (
+        <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10.5px] tracking-[0.2em] text-white/50">⏱ VERSIONS</span>
+            <div className="flex gap-2 items-center">
+              <input value={verNote} onChange={e => setVerNote(e.target.value)} maxLength={200} placeholder="note (optional)"
+                className="w-36 px-2 py-1 rounded-lg bg-black/50 border border-white/15 text-[10.5px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
+              <button onClick={savePoint} disabled={verBusy}
+                className="px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+                {verBusy ? '…' : '⚑ SAVE A POINT'}
+              </button>
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto">
+            <button onClick={() => cmd('ver:live')}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors ${
+                cfg?.ver == null ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
+              LIVE <span className="text-white/40 ml-2">now</span>
+            </button>
+            {[...vers].sort((a, b) => b.version - a.version).map(v => (
+              <button key={v.version} onClick={() => cmd('ver:' + v.version)}
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors ${
+                  cfg?.ver === v.version ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
+                v{v.version}
+                <span className="text-white/40 ml-2">{new Date(v.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                {v.note && <span className="text-amber-200/70 ml-2">{v.note}</span>}
+              </button>
+            ))}
+            {vers.length === 0 && <div className="text-white/40 px-1 py-1">no save points yet — ⚑ makes one from the live world.</div>}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] leading-relaxed text-white/55">
         social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
         {!sceneIsSpace && <div className="mt-1.5 text-white/40">house cartridge — owner controls apply on real worlds.</div>}
         <div className="mt-1.5 text-white/40">THE CARD (kind · tags · blurb) docks here next.</div>
       </div>
+
+      {/* the sprites panel fills THIS area — the under-area, never the game */}
+      {spritesOpen && slug && <SpritesPanel slug={slug} onClose={() => setSpritesOpen(false)} />}
     </div>
   )
 }

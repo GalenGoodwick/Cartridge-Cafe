@@ -1353,6 +1353,26 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     } catch { setHumanShot('err'); showToast('snapshot failed — try again', 'error'); setTimeout(() => setHumanShot('idle'), 2500) }
   }, [spaceId, playScene, spaceSlug])
   sendHumanShotRef.current = sendHumanShot
+  // which space version is on the glass, CLIENT-side — starts at the server
+  // prop, then the ⏱ scrubber hot-swaps it in place (no reload). Because ctx.view
+  // derives from THIS, hot-swapping to an old version flips can(ctx,'editLaw') &c.
+  // to read-only automatically — no separate gating to thread.
+  const [spaceVer, setSpaceVer] = useState<number | undefined>(versionView)
+  // a LIVE versionView prop (the space page's vote-preview) hot-swaps the world:
+  // candidates in THE RECKONING load as you focus them, LIVE returns you home
+  const verPropRef = useRef(versionView)
+  useEffect(() => {
+    if (verPropRef.current === versionView) return
+    verPropRef.current = versionView
+    if (spaceSlug) hotLoadSpaceVersionRef.current?.(versionView)
+  }, [versionView, spaceSlug])
+  const hotLoadSpaceVersionRef = useRef<((v: number | undefined) => Promise<void>) | null>(null)
+
+  // ● REC PUBLISH — the host's bottom-bar record button mirrors this state
+  useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent('cafe:rec', { detail: { on: recording, secs: recSecs } })) } catch { /* ssr */ }
+  }, [recording, recSecs])
+
   // THE EYE PUBLISH — the host's EYE tab renders these (the grid's under-area):
   // ai focus, the latest eye image (AI probe or your shot), and shot status.
   useEffect(() => {
@@ -1362,15 +1382,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       window.dispatchEvent(new CustomEvent('cafe:eye', { detail: {
         focus: aiFocus, eye: aiEye, shot: humanShot,
         graph: nodeGraph,
+        inspect: { on: inspectOn, log: inspectLog.slice(-20) },
         config: {
           isOwner: !!isOwner, spaceId: spaceId ?? null, spaceSlug: spaceSlug ?? null,
           multiplayer: wd?.['multiplayer'] === true,
           rReset: !!wd?.['rResetKey'], forkable: wd?.['forkable'] === true,
+          designMode, ver: spaceVer ?? null,
           presenceOff: presenceOffRef.current, policy: (wd?.['policy'] as { build?: string } | undefined)?.build ?? null,
         },
       } }))
     } catch { /* ssr */ }
-  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot, nodeGraph, isOwner, spaceId, spaceSlug])
+  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot, nodeGraph, inspectOn, inspectLog, designMode, spaceVer, isOwner, spaceId, spaceSlug])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current, simulationRef.current ? allStepHookSnapshots(simulationRef.current) : undefined), [allStepHookSnapshots])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
@@ -1421,20 +1443,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // unlocks the editing sections (same UI, ownership-gated tools)
   const onBranchScene = !spaceId && (lastSceneRef?.current || '').includes(' ⑂ ')
 
-  // which space version is on the glass, CLIENT-side — starts at the server
-  // prop, then the ⏱ scrubber hot-swaps it in place (no reload). Because ctx.view
-  // derives from THIS, hot-swapping to an old version flips can(ctx,'editLaw') &c.
-  // to read-only automatically — no separate gating to thread.
-  const [spaceVer, setSpaceVer] = useState<number | undefined>(versionView)
-  // a LIVE versionView prop (the space page's vote-preview) hot-swaps the world:
-  // candidates in THE RECKONING load as you focus them, LIVE returns you home
-  const verPropRef = useRef(versionView)
-  useEffect(() => {
-    if (verPropRef.current === versionView) return
-    verPropRef.current = versionView
-    if (spaceSlug) hotLoadSpaceVersionRef.current?.(versionView)
-  }, [versionView, spaceSlug])
-  const hotLoadSpaceVersionRef = useRef<((v: number | undefined) => Promise<void>) | null>(null)
+  // (spaceVer + hotLoadSpaceVersionRef moved above THE EYE PUBLISH — the host's
+  // CONFIG versions section reads `ver` from that publish.)
 
   // THE UNIFIED CONTEXT — computed once, read at render (refs are live). Every
   // chrome gate below asks `can(ctx, …)` instead of re-deriving the spaceId /
@@ -1983,10 +1993,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
     else if (cmd === 'eye') { setEyeSolo(true); setAiViewDismissed(false) }     // host EYE watching (idempotent on; closepanels offs)
     else if (cmd === 'snapshot') sendHumanShotRef.current()                     // ◈ the snapshot tool: canvas → the AI's eye slot (bridge)
+    else if (cmd === 'inspect') { setInspectOn(v => { inspectOnRef.current = !v; return !v }); setInspectLog([]) }  // ◎ click-telling for the AI (game paused)
+    else if (cmd === 'rec') { if (recording) stopRecording(); else startRecording() }  // ● canvas → video file, host button
+    else if (cmd.startsWith('ver:')) {                                          // ⏱ VERSIONS — owner hot-swaps in place, no reload
+      const v = cmd.slice(4)
+      if (isOwner) hotLoadSpaceVersionRef.current?.(v === 'live' ? undefined : Math.max(1, parseInt(v, 10) || 1))
+    }
     else if (cmd.startsWith('cfg:')) {                                          // ⚙ CONFIG toggles — the old panel's writes, host-driven
       const sim = simulationRef.current
       const k = cmd.slice(4)
       if (k === 'presence') { const v = !presenceOffRef.current; setPresenceOff(v); presenceOffRef.current = v; try { if (v) localStorage.setItem('cc-presence-off', '1'); else localStorage.removeItem('cc-presence-off') } catch { /* fine */ } }
+      else if (k === 'design' && isOwner) setDesignMode(v => !v)                // ✎ edits author the CARTRIDGE vs your save (ref syncs by effect)
       else if (sim && isOwner) {
         if (k === 'multiplayer') { sim.worldData['multiplayer'] = sim.worldData['multiplayer'] !== true; sim.worldData['singlePlayer'] = sim.worldData['multiplayer'] !== true }
         else if (k === 'rreset') sim.worldData['rResetKey'] = !sim.worldData['rResetKey']
@@ -1998,6 +2015,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true
       setInstrOpen(false); setWorldChatOpen(false); setChromeVisible(false)
       setEyeSolo(false); setNodesOpen(false)
+      setInspectOn(false); inspectOnRef.current = false
     }
   }
   useEffect(() => {
