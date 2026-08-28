@@ -122,7 +122,7 @@ export async function createExperienceCheckout(
     'line_items[0][price_data][currency]': 'usd',
     'line_items[0][price_data][unit_amount]': String(cents),
     'line_items[0][price_data][product_data][name]': (opts.worldName || 'a cartridge.cafe experience').slice(0, 120),
-    'line_items[0][price_data][product_data][description]': 'LIVE · EXPERIMENTAL — access to co-program this world',
+    'line_items[0][price_data][product_data][description]': 'Buy once — this game is yours on your cartridge.cafe account.',
     success_url: `${back}?paid=experience`,
     cancel_url: `${back}?paycancel=experience`,
     'metadata[userId]': opts.userId,

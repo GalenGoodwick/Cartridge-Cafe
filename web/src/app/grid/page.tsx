@@ -20,7 +20,6 @@ import SpritesPanel from '@/app/engine/SpritesPanel'
 import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
-import { signOut } from 'next-auth/react'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
@@ -559,17 +558,15 @@ export default function TheGrid() {
               </button>
             ))}
             {me ? (
-            <div data-grid-account className="col-span-2 rounded-2xl border border-white/12 bg-black/40 p-4 flex items-center gap-3">
+            <a href="/account" data-grid-account
+              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
               <span className="text-[20px] text-emerald-300/80">◐</span>
               <span className="min-w-0 flex-1">
                 <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block truncate">{me.name ?? me.email ?? 'SIGNED IN'}</span>
-                <span className="font-mono text-[10px] text-white/40">your account · membership</span>
+                <span className="font-mono text-[10px] text-white/40">account page — membership · purchases · sign out</span>
               </span>
-              <button data-grid-signout onClick={() => void signOut({ callbackUrl: '/grid' })}
-                className="font-mono text-[10.5px] tracking-[0.15em] px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-colors shrink-0">
-                SIGN OUT
-              </button>
-            </div>
+              <span className="font-mono text-[14px] text-white/40 shrink-0">▸</span>
+            </a>
             ) : (
             <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')} data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">

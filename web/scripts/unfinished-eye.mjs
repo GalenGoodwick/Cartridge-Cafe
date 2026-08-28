@@ -21,9 +21,9 @@ T('⚒ UNFINISHED tab + honest empty', /nothing on the workbench shelf|UNFINISHE
 
 // ── sign-out in the dockstar menu ──
 await p.click('button[aria-label="ui selector"]', { force: true }); await p.waitForTimeout(600)
-T('signed-in ACCOUNT shows name + SIGN OUT', await p.evaluate(() => {
-  const acct = document.querySelector('[data-grid-account]')
-  return !!acct && acct.textContent.includes('Galen') && !!document.querySelector('[data-grid-signout]')
+T('signed-in ACCOUNT → /account page door (name shown)', await p.evaluate(() => {
+  const acct = document.querySelector('a[data-grid-account]')
+  return !!acct && acct.textContent.includes('Galen') && acct.getAttribute('href') === '/account'
 }))
 await p.keyboard.press('Escape'); await p.evaluate(() => document.querySelector('button[aria-label="ui selector"]')?.click())
 
