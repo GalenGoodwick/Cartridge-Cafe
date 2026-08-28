@@ -55,6 +55,16 @@ export default function TheGrid() {
   }, [])
   const inset = useMemo(() => insetFor(preset, win.w, win.h), [preset, win])
 
+  // COVER re-fit: the engine's camera fit listens to window resize; when the
+  // CONTAINER changes (a preset lands) we nudge it after the 0.32s ease so the
+  // world re-covers the new aspect — more or less game shown, never letterbox
+  // (for worlds that DECLARE their rect; contain-style worlds keep letterboxing
+  // by their own declaration — maximally flexible, per world).
+  useEffect(() => {
+    const t = setTimeout(() => { try { window.dispatchEvent(new Event('resize')) } catch { /* ssr */ } }, 360)
+    return () => clearTimeout(t)
+  }, [inset])
+
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
       {/* THE ONE GRID — the reckoning containment: chromeless engine at the inset */}
