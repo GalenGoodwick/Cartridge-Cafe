@@ -41,6 +41,8 @@ export default function TheGrid() {
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [attribOpen, setAttribOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -134,7 +136,7 @@ export default function TheGrid() {
   // set/phase change closes the engine's panels — nothing follows you through.
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false)
+    setConnectOpen(false); setInstrOpen(false); setToolsOpen(false); setAttribOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
@@ -205,6 +207,10 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
+            <button onClick={() => setConnectOpen(true)}
+              className="font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/10 transition-colors mr-2">
+              ⚿ CONNECT AI
+            </button>
             {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
@@ -263,15 +269,15 @@ export default function TheGrid() {
             <div className="text-[13px] tracking-[0.12em] text-white/90 truncate">{selected?.name ?? '—'}</div>
             {selected?.maker && <div className="text-[10px] text-amber-200/60 mt-0.5 truncate">by {selected.maker}</div>}
           </div>
-          <button onClick={() => cmd('builderbox')}
+          <button onClick={() => cmd('chat')}
             className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ⌁ BUILDERBOX
-            <span className="block text-[9.5px] text-white/45 mt-0.5">build log + world chat</span>
+            ◉ CHAT
+            <span className="block text-[9.5px] text-white/45 mt-0.5">the humans in this world</span>
           </button>
-          <button onClick={() => cmd('tools')}
+          <button onClick={() => setToolsOpen(true)}
             className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-amber-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
             ⚙ WORLD TOOLS
-            <span className="block text-[9.5px] text-white/45 mt-0.5">name · visibility · lineage · the card</span>
+            <span className="block text-[9.5px] text-white/45 mt-0.5">attribution · ai logs · lineage</span>
           </button>
           <button onClick={() => setConnectOpen(true)}
             className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
@@ -355,23 +361,75 @@ export default function TheGrid() {
         </div>
       )}
 
+      {/* ATTRIBUTION — the title's popup */}
+      {attribOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
+          onClick={() => setAttribOpen(false)}>
+          <div className="w-full max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[16px] tracking-[0.2em] text-white/95 mb-1">{selected?.name}</div>
+            {selected?.maker && <div className="text-[12px] text-amber-200/85 mb-3">by {selected.maker}</div>}
+            <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1">⑂ LINEAGE</div>
+            <div className="text-[10.5px] text-white/45 leading-relaxed">what it grew from · its forks (wires to the lineage store next)</div>
+          </div>
+        </div>
+      )}
+
+      {/* WORLD TOOLS — a FULL overlay (it's a lot): attribution · AI logs · lineage */}
+      {toolsOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+          onClick={() => setToolsOpen(false)}>
+          <div className="w-full max-w-[640px] max-h-[80%] overflow-y-auto rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[12px] tracking-[0.25em] text-amber-200/80 mb-4">⚙ WORLD TOOLS — {selected?.name}</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/12 bg-black/40 p-3.5">
+                <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">ATTRIBUTION</div>
+                <div className="text-[13px] text-white/90">{selected?.name}</div>
+                {selected?.maker && <div className="text-[11px] text-amber-200/80 mt-0.5">by {selected.maker}</div>}
+                <div className="text-[10px] text-white/40 mt-1">{scene}</div>
+              </div>
+              <div className="rounded-xl border border-white/12 bg-black/40 p-3.5">
+                <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">◈ AI LOGS</div>
+                <div className="text-[10.5px] text-white/45 leading-relaxed">the AI build log docks here — every bridge edit, named and timed. (wiring next: the engine publishes its terminal log to the host)</div>
+              </div>
+              <div className="rounded-xl border border-white/12 bg-black/40 p-3.5">
+                <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">⑂ LINEAGE</div>
+                <div className="text-[10.5px] text-white/45 leading-relaxed">forks of this world + what it grew from</div>
+              </div>
+              <div className="rounded-xl border border-white/12 bg-black/40 p-3.5">
+                <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1.5">SETTINGS</div>
+                <div className="text-[10.5px] text-white/45 leading-relaxed">name · visibility · forkable · dimensions (owner)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-        <div className="flex-1" />
-        {/* THE DOCKSTAR — the cup, with its squeak of buffer */}
-        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false) }} aria-label="ui selector"
+        <div className="flex-1 flex justify-start pl-3">
+          {/* THE TITLE — leftmost; clicking opens attribution/lineage */}
+          <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
+            className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors"
+            style={{ margin: '8px 0' }}>
+            {selected?.name ?? '—'}
+          </button>
+        </div>
+        {/* THE DOCKSTAR — the cup, buffered above AND below */}
+        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false) }} aria-label="ui selector"
           title="the dockstar — choose your UI"
           className={`w-12 h-12 grid place-items-center rounded-2xl border transition-all ${
             selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-          style={{ marginBottom: 8, boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
+          style={{ margin: '8px 0', boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
           <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
         </button>
         <div className="flex-1 flex justify-end gap-2 pr-3">
           <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
             className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-              instrOpen ? 'bg-white/15 border-white/30 text-white' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}
-            style={{ marginBottom: 8 }}>
+              instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
+            style={{ margin: '8px 0' }}>
             ? INSTRUCTIONS
           </button>
           {uiSet === 'games' && phase === 'play' && (
@@ -381,8 +439,8 @@ export default function TheGrid() {
               catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
               if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
             }}
-              className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/50 border-white/12 text-white/55 hover:text-white/85 transition-colors"
-              style={{ marginBottom: 8 }}>
+              className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors"
+              style={{ margin: '8px 0' }}>
               {copied ? '✓ COPIED' : '↗ SHARE'}
             </button>
           )}

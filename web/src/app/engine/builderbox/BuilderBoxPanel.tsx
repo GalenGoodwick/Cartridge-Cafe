@@ -59,45 +59,9 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
               {/* (SUMMON removed from the BuilderBox — Galen, Aug 26. The owner's
                   way to get an AI building is ⚡ CONNECT YOUR AI; chat below just
                   talks to the room.) */}
-              {/* NOT your world (fork paradigm): remixing someone's world
-                  FORKS it — instantly your own world, lineage back here. Only
-                  if its maker enabled forking; otherwise say so honestly. */}
-              {spaceSlug && spaceId && !isOwner && !riding && (
-                <div className="px-3 py-2 border-t border-white/10">
-                  {forkable ? (<>
-                    <div className="font-mono text-[13px] text-white/65 leading-relaxed mb-1.5">
-                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — forking takes <span className="text-emerald-100">your own copy</span>, with lineage back here
-                    </div>
-                    <button
-                      onClick={() => { setBuildConsoleOpen(false); onFork() }}
-                      className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
-                      ⑄ FORK THIS WORLD
-                    </button>
-                  </>) : (
-                    <div className="font-mono text-[13px] text-white/60 leading-relaxed">
-                      this is {spaceOwnerName ? `${spaceOwnerName}'s` : 'another maker’s'} world — its maker hasn&apos;t enabled forking
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* HOUSE world — no space, so no summon/hack above: its BuilderBox
-                  had a chat + log but NO build door ("not all worlds have a
-                  unified builderbox", Galen). House worlds are open ground — you
-                  build one by branching your own copy — so give it the same
-                  ⑂ build footer every other world has. (Branches ride `riding`;
-                  skip so the door only shows on the base.) */}
-              {!spaceId && !isHub && !riding && (
-                <div className="px-3 py-2 border-t border-white/10">
-                  <div className="font-mono text-[13px] text-white/65 leading-relaxed mb-1.5">
-                    a house world — open ground. build it by forking <span className="text-emerald-100">your own copy</span>
-                  </div>
-                  <button
-                    onClick={() => { setBuildConsoleOpen(false); handleBranch() }}
-                    className="w-full px-2 py-1.5 rounded bg-emerald-400/15 border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/25 font-mono text-[14px] tracking-[0.15em] transition-colors">
-                    ⑄ FORK &amp; BUILD
-                  </button>
-                </div>
-              )}
+              {/* (fork/build footers REMOVED — Galen, Aug 28: no fork and
+                  build on builderbox; forking lives in CREATE / the grid) */}
+
             </div>
   )
 }

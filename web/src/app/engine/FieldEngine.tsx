@@ -1954,6 +1954,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'fork') { if (spaceSlug) instantForkSpace(); else handleBranch() }
     else if (cmd === 'builderbox') setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })
     else if (cmd === 'tools') setChromeVisible(v => !v)   // WORLD TOOLS panel (not gated by chromeless mode)
+    else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true
       setInstrOpen(false); setWorldChatOpen(false); setChromeVisible(false)
