@@ -205,6 +205,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const [aiPulse, setAiPulse] = useState(0)
   const [plugOpen, setPlugOpen] = useState(false)
   const [nodesOpen, setNodesOpen] = useState(false)   // ⬢ NODES — the dock panel (co-build rung 4)
+  const [eyeSolo, setEyeSolo] = useState(false)       // ◈ AI VIEW opened standalone by the host (the grid's EYE)
   const [plugToken, setPlugToken] = useState<string | null>(null)
   const [plugBusy, setPlugBusy] = useState(false)
   const [plugBrief, setPlugBrief] = useState('')   // "what should the AI build here?" — embedded in the connect prompt
@@ -1955,9 +1956,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'builderbox') setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })
     else if (cmd === 'tools') setChromeVisible(v => !v)   // WORLD TOOLS panel (not gated by chromeless mode)
     else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
+    else if (cmd === 'eye') { setEyeSolo(v => !v); setAiViewDismissed(false) }   // ◈ AI VIEW standalone (focus + render-probe eye + tabs)
+    else if (cmd === 'nodes') setNodesOpen(v => !v)       // ⬢ NODES — the co-build dock (spaces)
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true
       setInstrOpen(false); setWorldChatOpen(false); setChromeVisible(false)
+      setEyeSolo(false); setNodesOpen(false)
     }
   }
   useEffect(() => {
@@ -7028,7 +7032,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* opens ONLY from human input — the BuilderBox (Galen: the swarm/AI
               view must never auto-open just because a swarm map exists). The
               swarm tab still surfaces INSIDE it once opened. */}
-          {buildConsoleOpen && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+          {(buildConsoleOpen || eyeSolo) && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
             <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} sendHumanShot={sendHumanShot} humanShot={humanShot} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}

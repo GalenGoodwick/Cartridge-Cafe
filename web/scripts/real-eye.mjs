@@ -1,0 +1,11 @@
+import { chromium } from 'playwright'
+const b = await chromium.launch({ args: ['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--enable-unsafe-swiftshader'] })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
+await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override','1') } catch {} })
+const p = await ctx.newPage()
+await p.goto('http://localhost:3131/grid?ui=engine', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('button:has-text("◈ EYE")', { timeout: 20000 }); await p.waitForTimeout(1500)
+await p.click('button:has-text("◈ EYE")'); await p.waitForTimeout(800)
+const eye = await p.evaluate(() => /AI VIEW|FOCUS|ai_focus|what the AI/i.test(document.body.innerText))
+console.log('REAL AiViewPanel opened:', eye ? '✓' : '✗', '·', await p.evaluate(() => document.body.innerText.match(/AI VIEW[^\n]{0,40}/)?.[0] ?? '(no marker)'))
+await b.close()
