@@ -1396,6 +1396,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           blurb: typeof wd?.['blurb'] === 'string' ? wd['blurb'] : '',
           vision: typeof wd?.['vision'] === 'string' ? wd['vision'] : '',
           instructions: typeof wd?.['instructions'] === 'string' ? wd['instructions'] : '',
+          premium: (wd?.['premium'] as { usd?: number } | undefined)?.usd ?? null,
+          device: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['deviceConfig'] as string | undefined) ?? null,
+          gridW: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['gridW'] as number | undefined) ?? null,
+          gridH: ((simulationRef.current?.worldParams as Record<string, unknown> | undefined)?.['gridH'] as number | undefined) ?? null,
           presenceOff: presenceOffRef.current, policy: (wd?.['policy'] as { build?: string } | undefined)?.build ?? null,
         },
       } }))
@@ -1496,7 +1500,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // RETIRED for now (Galen, Aug 28): no pips in worlds — MULTIPLAYER is the
   // co-presence system. Kill switch, not a deletion: the socket never connects,
   // the pip layer never renders, wd.presence never fills. Flip to resurrect.
+  // MAIN EXCEPTION (Galen, Aug 28 pm): the commons hub keeps its live icons —
+  // "a simple multiplayer presence space… little icons people move around."
   const PRESENCE_RETIRED = true
+  const presenceAllowed = !PRESENCE_RETIRED || (!spaceId && playScene === 'CAFE')
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
   // (the cap per viewing instance). Others also land in worldData.presence,
   // so a world's hook or shader can react to visitors without engine changes.
@@ -1532,7 +1539,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // reload re-registers the cartridge's no-op modules.
   const otherGlyphsRef = useRef<{ slots: Map<string, number>; code: Map<string, string> }>({ slots: new Map(), code: new Map() })
   useEffect(() => {
-    if (PRESENCE_RETIRED) return
+    if (!presenceAllowed) return
     if (!presenceIdRef.current) {
       // ONE DOCK PER PLAYER (the Unity Chant law): identity is the person, not
       // the tab. All of a player's tabs share this id, so their signals merge
@@ -2011,7 +2018,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       const sim = simulationRef.current
       if (sim && isOwner) {
         try {
-          const patch = JSON.parse(cmd.slice(5)) as { card?: Record<string, unknown>; blurb?: string; vision?: string; instructions?: string }
+          const patch = JSON.parse(cmd.slice(5)) as { card?: Record<string, unknown>; blurb?: string; vision?: string; instructions?: string; premium?: { usd: number } | null; device?: string | null }
           if (patch.card) {
             const cur = (sim.worldData['card'] && typeof sim.worldData['card'] === 'object' ? sim.worldData['card'] : {}) as Record<string, unknown>
             const next = { ...cur, ...patch.card }
@@ -2019,6 +2026,18 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             sim.worldData['card'] = next
           }
           for (const k of ['blurb', 'vision', 'instructions'] as const) if (typeof patch[k] === 'string') sim.worldData[k] = patch[k]
+          // ✦ PREMIUM — worldData.premium.usd is the shelf's price seat; null clears
+          if ('premium' in patch) {
+            if (patch.premium && typeof patch.premium.usd === 'number' && patch.premium.usd > 0) sim.worldData['premium'] = { usd: Math.round(patch.premium.usd * 100) / 100 }
+            else delete sim.worldData['premium']
+          }
+          // ▦ DEVICE — worldParams.deviceConfig (the fit law: which doors admit phones)
+          if ('device' in patch) {
+            const wp = { ...(sim.worldParams ?? {}) } as Record<string, unknown>
+            if (patch.device === 'mobile' || patch.device === 'desktop') wp['deviceConfig'] = patch.device
+            else delete wp['deviceConfig']
+            sim.setWorldParams(wp)
+          }
           setCfgTick(n => n + 1)
         } catch { /* malformed patch — drop */ }
       }
@@ -2027,13 +2046,20 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       if (isOwner && spaceSlug) {
         const pub = cmd === 'publish:on'
         if (pub) setDesignMode(false)   // Galen: design off = publishes; going live ends the draft
-        void fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
+        const patchPub = () => fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ isPublic: pub }),
         }).then(async r => {
           const d = await r.json().catch(() => null)
           if (r.ok) setSpacePublic(typeof d?.space?.isPublic === 'boolean' ? d.space.isPublic : pub)
         }).catch(() => { /* offline — state untouched */ })
+        // every publish is one click from undoable: ⚑ a pre-publish save point
+        // first (dedupes byte-identical states server-side), then flip the shelf
+        if (pub) void fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/versions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: 'pre-publish' }),
+        }).catch(() => { /* best-effort */ }).then(() => patchPub())
+        else void patchPub()
       }
     }
     else if (cmd.startsWith('cfg:')) {                                          // ⚙ CONFIG toggles — the old panel's writes, host-driven
@@ -6327,7 +6353,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           )}
 
           {/* other players, present as orbs — capped at 25 per viewing instance */}
-          {!PRESENCE_RETIRED && presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {
+          {presenceAllowed && presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {
             const cv = canvasRef.current
             const w = cv.clientWidth || 1, h = cv.clientHeight || 1
             const cam = cameraRef.current

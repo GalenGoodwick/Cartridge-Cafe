@@ -19,6 +19,7 @@ import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
 import { iconAuthorPrompt } from '@/lib/connectPrompt'
+import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
@@ -32,6 +33,7 @@ type GridCfg = {
   designMode?: boolean; ver?: number | null; isPublic?: boolean | null
   card?: { kind?: string; type?: string; tags?: string[] } | null
   blurb?: string; vision?: string; instructions?: string
+  premium?: number | null; device?: string | null; gridW?: number | null; gridH?: number | null
   presenceOff: boolean; policy: string | null
 }
 
@@ -274,12 +276,17 @@ export default function TheGrid() {
       {/* SPACE mount = the real thing (saves/sync/versions/tokens live); house
           cartridges keep the stable hot-swap mount. A space remounts per slug
           (the space path loads once, at birth). While a space resolves (~one
-          fetch) the frame holds dark — the same threshold-black as a world swap. */}
-      {spc
-        ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
-            spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
-            viewport={inset} externalTopbar />
-        : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
+          fetch) the frame holds dark — the same threshold-black as a world swap.
+          MAIN overrides the frame with the commons hub (CAFE — the original
+          main with the bubbles, presence icons live there) WITHOUT losing your
+          game pick: leave MAIN and your world is still in the frame. */}
+      {uiSet === 'main'
+        ? <FieldEngine key="house" playScene="CAFE" hooksTrusted viewport={inset} externalTopbar />
+        : spc
+          ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
+              spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
+              viewport={inset} externalTopbar />
+          : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
 
       {/* THE FRAME */}
       <div className="fixed pointer-events-none z-[110]"
@@ -397,7 +404,17 @@ export default function TheGrid() {
         <div className="fixed z-[126] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setSelOpen(false)}>
-          <div className="grid grid-cols-2 gap-3 p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
+          <div className="p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
+          {/* THE BRAND — the real sign (the cup + the cafe-sign wordmark, same
+              as the masthead) + the line that says what this place IS (Galen) */}
+          <div className="flex flex-col items-center mb-4">
+            <div className="flex items-center justify-center gap-2.5">
+              <img src="/cartridge-cup.svg" alt="" className="w-9 h-9 -mt-0.5" />
+              <h1 className="cafe-sign text-[24px] leading-none">cartridge<span className="not-italic font-mono text-[16px] text-brass">.cafe</span></h1>
+            </div>
+            <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/45 mt-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             {([
               ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
               ['main', '◉', 'MAIN', 'the commons + social space'],
@@ -413,14 +430,15 @@ export default function TheGrid() {
                 <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
-            <button onClick={() => { window.location.href = '/mine' }}
+            <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')} data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
               <span className="text-[20px] text-white/70">◐</span>
               <span>
                 <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block">ACCOUNT</span>
-                <span className="font-mono text-[10px] text-white/40">sign in · my worlds · membership</span>
+                <span className="font-mono text-[10px] text-white/40">sign in · membership</span>
               </span>
-            </button>
+            </a>
+          </div>
           </div>
         </div>
       )}
@@ -488,6 +506,12 @@ export default function TheGrid() {
               ⚿ CONNECT AI
             </button>
           </div>
+          {/* LIVE-EDIT worlds carry the EDITING MEMBERSHIP box (Galen): open
+              building = $10/mo seat; play is always free. The banner shows the
+              subscribe CTA to non-members, a quiet ✓ to members. */}
+          {eyeData?.config?.policy === 'anyone' && (
+            <div className="w-full max-w-[860px] shrink-0"><MembershipBanner /></div>
+          )}
           <div className="w-full max-w-[860px] flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-hidden">
             {tool === 'eye' && (
               <div className="w-full h-full flex flex-col p-4 font-mono">
@@ -582,6 +606,11 @@ export default function TheGrid() {
         </div>
       )}
 
+      {/* ◉ THE COMMONS CHAT — MAIN's room, field-bounded (the bar stays free) */}
+      {chatOpen && uiSet === 'main' && (
+        <GridChat slotKey="world-chat:MAIN" title="THE COMMONS" bounds={inset} onClose={() => setChatOpen(false)} />
+      )}
+
       {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
@@ -617,6 +646,15 @@ export default function TheGrid() {
           <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
         </button>
         <div className="flex-1 flex justify-end gap-2 pr-3">
+          {/* ◉ COMMONS — MAIN's chat door (Galen) */}
+          {uiSet === 'main' && (
+            <button data-grid-commons onClick={() => { setChatOpen(o => !o); setSelOpen(false); setInstrOpen(false) }}
+              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
+                chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
+              style={{ margin: '8px 0' }}>
+              ◉ COMMONS
+            </button>
+          )}
           <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
             className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
               instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
@@ -843,6 +881,27 @@ function ConfigView({ cfg, sceneIsSpace }: {
         <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
         {/* (✎ design moved to the ⬆ PUBLISH tab — draft vs live is a publishing state) */}
+        {/* ▦ DEVICE — the fit law: which doors admit phones */}
+        <div className="flex items-center justify-between py-2 text-[12px]"
+          title="AUTO = desktop by default. MOBILE declares this world phone-fit (phones are admitted); DESKTOP declares it desktop-only.">
+          <span className="text-white/80">device</span>
+          <span className="flex gap-1.5">
+            {(['auto', 'mobile', 'desktop'] as const).map(d => (
+              <button key={d} data-cfg-device={d} disabled={!ownerLaw}
+                onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify({ device: d === 'auto' ? null : d }) })) } catch { /* ssr */ } }}
+                className={`px-2.5 py-0.5 rounded-full border text-[10.5px] tracking-[0.12em] transition-colors disabled:opacity-35 ${
+                  (cfg?.device ?? 'auto') === d ? 'border-sky-300/60 bg-sky-400/15 text-sky-200' : 'border-white/15 text-white/45 hover:text-white'}`}>
+                {d.toUpperCase()}
+              </button>
+            ))}
+          </span>
+        </div>
+        {(cfg?.gridW || cfg?.gridH) && (
+          <div className="flex items-center justify-between py-2 border-t border-white/8 text-[12px]">
+            <span className="text-white/80" title="declared world dimensions — the frame cover-fills to these; undeclared worlds letterbox by design">dimensions</span>
+            <span className="text-white/55 font-mono">{cfg?.gridW ?? '—'} × {cfg?.gridH ?? '—'}</span>
+          </div>
+        )}
       </div>
 
       {/* ▤ THE CARD — what the catalog deals: kind · type · tags · blurb ·
@@ -1104,7 +1163,37 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
           </button>
         )}
       </div>
-      <div className="mt-3 text-[10px] text-white/40 leading-relaxed">tip: ⚑ a save point in ⏱ VERSIONS before big drafts — publishing is instant, versions are your way back.</div>
+      {/* ✦ PREMIUM — the listing's price seat (worldData.premium.usd) */}
+      <div className="mt-3 rounded-xl border border-white/12 bg-black/40 p-3.5">
+        <div className="text-[10.5px] tracking-[0.2em] text-white/50 mb-2">✦ PREMIUM</div>
+        <PremiumSeat current={cfg?.premium ?? null} />
+      </div>
+      <div className="mt-3 text-[10px] text-white/40 leading-relaxed">every publish ⚑ saves a pre-publish version point first — you are always one click from the way back.</div>
+    </div>
+  )
+}
+
+// ✦ the premium price seat — set a $ and the world lists on the PREMIUM tab
+function PremiumSeat({ current }: { current: number | null }) {
+  const [usd, setUsd] = useState(current != null ? String(current) : '')
+  useEffect(() => { setUsd(current != null ? String(current) : '') }, [current])
+  const send = (v: { usd: number } | null) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify({ premium: v }) })) } catch { /* ssr */ } }
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="text-white/55">$</span>
+      <input value={usd} onChange={e => setUsd(e.target.value)} inputMode="decimal" placeholder="0"
+        className="w-20 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-white/85 outline-none focus:border-amber-300/50" />
+      <button onClick={() => { const n = parseFloat(usd); if (Number.isFinite(n) && n > 0) send({ usd: n }) }}
+        className="px-3 py-1.5 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
+        SET PRICE
+      </button>
+      {current != null && (
+        <button onClick={() => send(null)}
+          className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/60 text-[10.5px] tracking-[0.15em] hover:text-white transition-colors">
+          CLEAR
+        </button>
+      )}
+      <span className="text-white/40 ml-1">{current != null ? `listed on ✦ PREMIUM at $${current}` : 'free — set a price to list on ✦ PREMIUM'}</span>
     </div>
   )
 }
@@ -1121,6 +1210,7 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [flowOpen, setFlowOpen] = useState(false)   // the FULL /create flow, embedded (Galen: "all plugged in")
   const nameOk = name.trim().length >= 2
   const fork = async () => {
     if (!baseSlug || !nameOk || busy) return
@@ -1136,6 +1226,19 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
       else setErr(d?.error || 'fork failed.')
     } catch { setErr('fork failed — are you offline?') }
     finally { setBusy(false) }
+  }
+  // the whole /create flow, plugged into the under-area — same origin, no new tab
+  if (flowOpen) {
+    return (
+      <div className="w-full max-w-[980px] h-full flex flex-col font-mono text-[11px]">
+        <div className="flex items-center gap-2 mb-2 shrink-0">
+          <button onClick={() => setFlowOpen(false)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
+          <span className="text-[10.5px] tracking-[0.2em] text-emerald-200/70">✧ THE CREATE FLOW</span>
+        </div>
+        <iframe data-create-flow src={baseSlug ? `/create?base=${encodeURIComponent(baseSlug)}` : '/create'}
+          className="flex-1 min-h-0 w-full rounded-2xl border border-white/12 bg-black/40" />
+      </div>
+    )
   }
   return (
     <div className="w-full max-w-[640px] font-mono text-[11px]">
@@ -1171,10 +1274,10 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
       <div className="rounded-2xl border border-white/12 bg-black/40 p-4">
         <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">✧ BREW FROM NOTHING</div>
         <div className="text-white/55 leading-relaxed mb-2.5">the full create flow: describe a world, your AI builds it live. Blank ground or any open base.</div>
-        <a href={baseSlug ? `/create?base=${encodeURIComponent(baseSlug)}` : '/create'}
+        <button onClick={() => setFlowOpen(true)}
           className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
           ✧ OPEN THE CREATE FLOW
-        </a>
+        </button>
       </div>
     </div>
   )

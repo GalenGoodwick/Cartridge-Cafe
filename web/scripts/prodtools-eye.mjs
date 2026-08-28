@@ -12,7 +12,7 @@ await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override',
 })
 
 // ── mocks: a space I own; playwright matches routes NEWEST-FIRST, catch-all goes first ──
-const SNAP = { snapshot: { fields: [], worldData: { instructions: 'mock world' }, worldParams: {} } }
+const SNAP = { snapshot: { fields: [], worldData: { instructions: 'mock world', policy: { build: 'anyone' } }, worldParams: {} } }
 await ctx.route('**/api/spaces/testy/**', r => r.fulfill({ json: {} }))
 await ctx.route('**/api/spaces/testy', r => r.fulfill({ json: { space: { id: 'sp_1', slug: 'testy', name: 'TESTY', ownerId: 'u_me', owner: { id: 'u_me', name: 'Galen' }, isPublic: true } } }))
 await ctx.route('**/api/auth/session', r => r.fulfill({ json: { user: { id: 'u_me', name: 'Galen', email: 'g@x' } } }))
@@ -148,6 +148,49 @@ T('kind=GAME round-trips (engine publish)', await p.evaluate(() =>
   window.__eyeEvents.some(e => e?.config?.card?.kind === 'game')))
 
 // ═ 5 · ✧ CREATE — contextual base ═
+// membership banner rides live-edit worlds (policy build:anyone in the mock)
+T('EDITING MEMBERSHIP box on live-edit world', /EDITING MEMBER|LIVE EDITING|MEMBERSHIP/i.test(await body()))
+
+// PUBLISH: ✦ PREMIUM seat round-trips
+await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(500)
+T('✦ PREMIUM seat present', /✦ PREMIUM/.test(await body()))
+await p.fill('input[inputmode="decimal"]', '5')
+await p.click('button:has-text("SET PRICE")'); await p.waitForTimeout(800)
+T('premium $5 round-trips', await p.evaluate(() => window.__eyeEvents.some(e => e?.config?.premium === 5)))
+
+// CONFIG: ▦ DEVICE chips round-trip
+await p.click('button:has-text("⚙ CONFIG")'); await p.waitForTimeout(500)
+T('device chips present', await p.locator('[data-cfg-device="mobile"]').count() === 1)
+await p.click('[data-cfg-device="mobile"]'); await p.waitForTimeout(800)
+T('device=mobile round-trips', await p.evaluate(() => window.__eyeEvents.some(e => e?.config?.device === 'mobile')))
+
+// ═ 6 · MAIN — the commons: CAFE in frame, presence room, ◉ COMMONS chat ═
+await p.goto('http://localhost:3131/grid?ui=main&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('[data-grid-commons]', { timeout: 20000 }); await p.waitForTimeout(4000)
+T('MAIN: ◉ COMMONS button on the bar', await p.locator('[data-grid-commons]').count() === 1)
+T('MAIN: presence room armed on CAFE', await p.evaluate(() => window.__ccPresenceDbg?.room === 'cursors:CAFE'))
+await p.click('[data-grid-commons]', { force: true }); await p.waitForTimeout(700)
+const commons = await p.evaluate(() => ({
+  open: /THE COMMONS — THE ROOM|THE COMMONS/.test(document.body.innerText),
+  bar: (() => { const b = document.querySelector('button[aria-label="ui selector"]'); return !!b && b.getBoundingClientRect().height > 0 })(),
+}))
+T('COMMONS chat opens field-bounded (bar free)', commons.open && commons.bar)
+await p.click('[data-grid-commons]', { force: true }); await p.waitForTimeout(300)
+
+// dockstar menu: brand + ACCOUNT → auth
+await p.click('button[aria-label="ui selector"]', { force: true }); await p.waitForTimeout(500)
+T('dockstar menu: cafe-sign brand + cup + tagline', await p.evaluate(() => {
+  const sign = document.querySelector('.cafe-sign')
+  return !!sign && /cartridge/.test(sign.textContent || '') &&
+    document.querySelectorAll('img[src="/cartridge-cup.svg"]').length >= 2 &&   // the dockstar cup + the menu cup
+    document.body.innerText.includes('INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK')
+}))
+T('ACCOUNT is the auth door (anchor → signin)', await p.evaluate(() => {
+  const a = document.querySelector('a[data-grid-account]')
+  return !!a && (a.getAttribute('href') || '').startsWith('/auth/signin')
+}))
+
+// ═ 7 · ✧ CREATE ═
 await p.goto('http://localhost:3131/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('text=✧ CREATE', { timeout: 20000 }); await p.waitForTimeout(1000)
 T('CREATE on house cartridge: brew only', /forks grow from real worlds/.test(await body()) && /OPEN THE CREATE FLOW/.test(await body()))
@@ -158,4 +201,16 @@ await p.click('button:has-text("⑄ FORK IT")'); await p.waitForTimeout(1500)
 const afterFork = await p.evaluate(() => ({ url: location.search, engine: /⚙ CONFIG/.test(document.body.innerText) }))
 T('fork → lands in ENGINE on the new world', afterFork.url.includes('w=space%3Atesty-remix') && afterFork.engine)
 
-await b.close(); console.log('PROD-TOOLS EYE v3 COMPLETE')
+// the embedded create flow (Galen: "all plugged into it")
+await p.goto('http://localhost:3131/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('button:has-text("✧ OPEN THE CREATE FLOW")', { timeout: 20000 })
+await p.click('button:has-text("✧ OPEN THE CREATE FLOW")'); await p.waitForTimeout(2500)
+const embed = await p.evaluate(() => {
+  const f = document.querySelector('iframe[data-create-flow]')
+  return { there: !!f, src: f?.getAttribute('src') ?? '' }
+})
+T('create flow embedded (iframe, base threaded)', embed.there && embed.src.includes('/create?base=testy'))
+await p.click('button:has-text("◂ BACK")'); await p.waitForTimeout(400)
+T('back out of the flow', await p.evaluate(() => !document.querySelector('iframe[data-create-flow]')))
+
+await b.close(); console.log('PROD-TOOLS EYE v4 COMPLETE')
