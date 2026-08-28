@@ -1503,7 +1503,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // MAIN EXCEPTION (Galen, Aug 28 pm): the commons hub keeps its live icons —
   // "a simple multiplayer presence space… little icons people move around."
   const PRESENCE_RETIRED = true
-  const presenceAllowed = !PRESENCE_RETIRED || (!spaceId && playScene === 'CAFE')
+  // presenceKey === 'CAFE' admits the grid's MAIN (any ambient scene, the one
+  // commons room) without waking presence anywhere else.
+  const presenceAllowed = !PRESENCE_RETIRED || (!spaceId && (playScene === 'CAFE' || presenceKey === 'CAFE'))
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
   // (the cap per viewing instance). Others also land in worldData.presence,
   // so a world's hook or shader can react to visitors without engine changes.

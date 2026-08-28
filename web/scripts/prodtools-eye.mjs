@@ -164,11 +164,34 @@ T('device chips present', await p.locator('[data-cfg-device="mobile"]').count() 
 await p.click('[data-cfg-device="mobile"]'); await p.waitForTimeout(800)
 T('device=mobile round-trips', await p.evaluate(() => window.__eyeEvents.some(e => e?.config?.device === 'mobile')))
 
-// ═ 6 · MAIN — the commons: CAFE in frame, presence room, ◉ COMMONS chat ═
+// ═ 6 · MAIN — the commons: starfield in frame (no bubbles), presence room, chat, brew ═
+await ctx.route('**/api/engine/player-icon', r => r.request().method() === 'POST' ? r.fulfill({ json: { token: 'uc_pt_mock' } }) : r.fulfill({ json: { icon: null, signedIn: true } }))
 await p.goto('http://localhost:3131/grid?ui=main&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('[data-grid-commons]', { timeout: 20000 }); await p.waitForTimeout(4000)
 T('MAIN: ◉ COMMONS button on the bar', await p.locator('[data-grid-commons]').count() === 1)
-T('MAIN: presence room armed on CAFE', await p.evaluate(() => window.__ccPresenceDbg?.room === 'cursors:CAFE'))
+T('MAIN bar: Cartridge.Cafe title · commons LEFT · brew RIGHT · no instructions', await p.evaluate(() => {
+  const t = document.querySelector('[data-grid-title]')
+  const cup = document.querySelector('button[aria-label="ui selector"]')
+  const com = document.querySelector('[data-grid-commons]')
+  const brew = document.querySelector('[data-grid-brewicon]')
+  if (!t || !cup || !com || !brew) return false
+  const x = el => el.getBoundingClientRect().left
+  return t.textContent === 'Cartridge.Cafe' && x(com) < x(cup) && x(brew) > x(cup) && !document.body.innerText.includes('? INSTRUCTIONS')
+}))
+T('MAIN: presence room armed on CAFE (starfield frame)', await p.evaluate(() => window.__ccPresenceDbg?.room === 'cursors:CAFE'))
+T('MAIN: no bubble doors (CAFE hub not mounted)', await p.evaluate(() => !/THE SHELF|SUB-MAIN/.test(document.body.innerText)))
+// ◆ BREW ICON
+T('MAIN: ◆ BREW ICON on the bar', await p.locator('[data-grid-brewicon]').count() === 1)
+await p.click('[data-grid-brewicon]', { force: true }); await p.waitForTimeout(700)
+T('brew panel opens (token minted, bar free)', await p.evaluate(() => {
+  const open = /BREW YOUR ICON/.test(document.body.innerText) && /COPY FOR YOUR AI/.test(document.body.innerText)
+  const bar = document.querySelector('button[aria-label="ui selector"]')
+  return open && !!bar && bar.getBoundingClientRect().height > 0
+}))
+await p.fill('textarea[placeholder^="a shy blue jellyfish"]', 'a tiny ember fox')
+await p.click('button:has-text("⧉ COPY FOR YOUR AI")'); await p.waitForTimeout(400)
+T('brew prompt copied', /✓ COPIED/.test(await body()))
+await p.click('[data-grid-brewicon]', { force: true }); await p.waitForTimeout(300)
 await p.click('[data-grid-commons]', { force: true }); await p.waitForTimeout(700)
 const commons = await p.evaluate(() => ({
   open: /THE COMMONS — THE ROOM|THE COMMONS/.test(document.body.innerText),

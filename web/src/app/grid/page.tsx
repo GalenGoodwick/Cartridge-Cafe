@@ -18,7 +18,7 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
-import { iconAuthorPrompt } from '@/lib/connectPrompt'
+import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
@@ -60,6 +60,7 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
@@ -239,7 +240,7 @@ export default function TheGrid() {
   // set/phase change closes the engine's panels — nothing follows you through.
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setChatOpen(false)
+    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setChatOpen(false); setBrewIconOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
@@ -277,11 +278,13 @@ export default function TheGrid() {
           cartridges keep the stable hot-swap mount. A space remounts per slug
           (the space path loads once, at birth). While a space resolves (~one
           fetch) the frame holds dark — the same threshold-black as a world swap.
-          MAIN overrides the frame with the commons hub (CAFE — the original
-          main with the bubbles, presence icons live there) WITHOUT losing your
-          game pick: leave MAIN and your world is still in the frame. */}
+          MAIN overrides the frame with MAIN-COMMONS: the ORIGINAL main's star
+          background + glyph seats (cf_world), with the cafe_door hook stripped
+          — that hook drew the bubbles/sub-main/player-world doors AND froze on
+          click (Galen: out for now). presenceKey keeps the ONE commons room so
+          player icons live. Leaving MAIN restores your game pick. */}
       {uiSet === 'main'
-        ? <FieldEngine key="house" playScene="CAFE" hooksTrusted viewport={inset} externalTopbar />
+        ? <FieldEngine key="house" playScene="MAIN-COMMONS" presenceKey="CAFE" hooksTrusted viewport={inset} externalTopbar />
         : spc
           ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
               spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
@@ -611,19 +614,42 @@ export default function TheGrid() {
         <GridChat slotKey="world-chat:MAIN" title="THE COMMONS" bounds={inset} onClose={() => setChatOpen(false)} />
       )}
 
+      {/* ◆ BREW YOUR ICON — describe it, copy the prompt, your AI authors the
+          avatar (set_player_icon over the bridge; the icon token rides the
+          prompt). Field-bounded like everything else. */}
+      {brewIconOpen && uiSet === 'main' && (
+        <BrewIconPanel bounds={inset} onClose={() => setBrewIconOpen(false)} />
+      )}
+
       {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
         <div className="flex-1 flex items-center justify-between pl-3 pr-2">
-          {/* THE TITLE — leftmost; clicking opens attribution/lineage.
-              Not in ENGINE (the dock already names the world). */}
-          {uiSet !== 'engine' ? (
+          {/* THE TITLE — leftmost; clicking opens attribution/lineage. On MAIN
+              it reads Cartridge.Cafe and opens the dockstar menu (the house's
+              own name, not the parked game's). Not in ENGINE. */}
+          {uiSet === 'main' ? (
+          <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
+            className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors"
+            style={{ margin: '8px 0' }}>
+            Cartridge.Cafe
+          </button>
+          ) : uiSet !== 'engine' ? (
           <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
             className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors"
             style={{ margin: '8px 0' }}>
             {selected?.name ?? '—'}
           </button>
           ) : <span />}
+          {/* ◉ COMMONS — left of the dockstar (Galen) */}
+          {uiSet === 'main' && (
+            <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
+              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
+                chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
+              style={{ margin: '8px 0' }}>
+              ◉ COMMONS
+            </button>
+          )}
           {/* ● REC — left of the dockstar, GAMES-play only (Galen): the world
               in the frame → a video file on your computer (canvas only, no UI). */}
           {uiSet === 'games' && phase === 'play' && (
@@ -645,22 +671,26 @@ export default function TheGrid() {
           style={{ margin: '8px 0', boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
           <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
         </button>
-        <div className="flex-1 flex justify-end gap-2 pr-3">
-          {/* ◉ COMMONS — MAIN's chat door (Galen) */}
+        <div className="flex-1 flex items-center justify-start gap-2 pl-2 pr-3">
+          {/* ◆ BREW ICON — right of the dockstar, MAIN only (Galen) */}
           {uiSet === 'main' && (
-            <button data-grid-commons onClick={() => { setChatOpen(o => !o); setSelOpen(false); setInstrOpen(false) }}
+            <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
               className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-                chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
+                brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
               style={{ margin: '8px 0' }}>
-              ◉ COMMONS
+              ◆ BREW ICON
             </button>
           )}
+          <span className="flex-1" />
+          {/* ? INSTRUCTIONS — not on MAIN (nothing to explain; the commons is the porch) */}
+          {uiSet !== 'main' && (
           <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
             className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
               instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}
             style={{ margin: '8px 0' }}>
             ? INSTRUCTIONS
           </button>
+          )}
           {uiSet === 'games' && phase === 'play' && (
             <button onClick={async () => {
               const url = window.location.href
@@ -1278,6 +1308,43 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
           className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
           ✧ OPEN THE CREATE FLOW
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ◆ BREW YOUR ICON — the same flow as the old shell panel: describe → mint the
+// icon token → COPY FOR YOUR AI; the AI calls set_player_icon and the commons
+// hot-swaps your avatar. One live icon key per player (re-open re-mints).
+function BrewIconPanel({ bounds, onClose }: { bounds: Inset; onClose: () => void }) {
+  const [desc, setDesc] = useState('')
+  const [tok, setTok] = useState('')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    fetch('/api/engine/player-icon', { method: 'POST' }).then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.token) setTok(d.token) })
+      .catch(() => { /* signed out — the copied prompt will say so */ })
+  }, [])
+  return (
+    <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+      style={{ top: bounds.top, right: bounds.right, bottom: bounds.bottom, left: bounds.left, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+      onClick={onClose}>
+      <div className="w-full max-w-[460px] rounded-2xl border border-amber-300/25 bg-[#12100b]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[12px] tracking-[0.25em] text-amber-200/85">◆ BREW YOUR ICON</span>
+          <button onClick={onClose} aria-label="close"
+            className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+        </div>
+        <p className="text-[11px] text-white/55 leading-relaxed mb-3">describe your icon, then hand the prompt to your AI — it authors a safe, gentle avatar and confirms. Your icon walks the commons with you.</p>
+        <textarea value={desc} onChange={e => setDesc(e.target.value)} maxLength={200} rows={3}
+          placeholder="a shy blue jellyfish that drifts…"
+          className="w-full resize-none rounded-xl bg-black/50 border border-white/15 px-3 py-2 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-amber-300/50 mb-2" />
+        <button onClick={async () => { try { await navigator.clipboard.writeText(playerGlyphPrompt(desc.trim(), tok || null)); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* manual */ } }}
+          disabled={desc.trim().length < 3}
+          className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-35 transition-colors">
+          {copied ? '✓ COPIED' : '⧉ COPY FOR YOUR AI'}
+        </button>
+        {!tok && <p className="mt-2 text-[10px] text-white/40">sign in to mint your icon key — the prompt needs it.</p>}
       </div>
     </div>
   )
