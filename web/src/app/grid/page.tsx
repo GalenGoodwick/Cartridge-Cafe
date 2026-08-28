@@ -1,26 +1,28 @@
 'use client'
 
 // ═══ THE GRID (Galen, Aug 28) ═══
-// ONE contained grid (reckoning viewport-inset + blue/gold frame), UI SETS
-// docking around it via the DOCKSTAR — the cafe-cup button, CENTERED in the
-// bottom bar (the one control spot, never covered). No GAMES button anywhere:
-// the dockstar IS the way between sets.
+// ONE contained grid (reckoning viewport-inset + blue/gold frame). UI SETS dock
+// around it via THE DOCKSTAR — the cafe cup, centered in the bottom bar (the
+// one control spot, never covered). The dockstar menu also carries ACCOUNT.
 //
-// GAMES · BROWSE — the frame shrinks to a MINI window at the TOP; the space
-// below is the ICON SHELF: big game tiles (baked icons) + the tab row.
-// Selecting a tile hot-swaps that world INTO the frame, live. CLICKING THE
-// FRAME CONFIRMS → it expands into play. Bottom bar: ? INSTRUCTIONS right,
-// cup-dockstar center.
+// GAMES · BROWSE — mini frame at top; THE ICON SHELF below (tabs: ◉ LIVE
+// EDITING to hook people · FREE GAMES · ✦ PREMIUM · 🔍 search). Tile → world
+// hot-swaps into the frame; CLICK THE FRAME → play.
+// ENGINE — the tools dock in from the RIGHT: ⌁ BuilderBox (real — the engine's
+// build console opens in the frame), ⚿ CONNECT AI (the paste-prompt), world
+// tools seat. Frame yields the strip; the grid stays center.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
+type Tab = 'live' | 'published' | 'premium' | 'search'
 type Entry = { slug: string; name: string; scene: string }
 
 const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out'
-const M = 16, BAR_H = 64
+const M = 16, BAR_H = 64, DOCK_W = 248
+const MIN_W = 180, MIN_H = 120   // the frame can NEVER smash to a line
 const LOCAL: Entry[] = [
   { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL' },
   { slug: 'one-home', name: 'STARFIELD', scene: 'ONE-HOME' },
@@ -30,13 +32,16 @@ export default function TheGrid() {
   const [win, setWin] = useState({ w: 1280, h: 800 })
   const [uiSet, setUiSet] = useState<UiSet>('games')
   const [phase, setPhase] = useState<Phase>('browse')
-  const [tab, setTab] = useState<'published' | 'premium'>('published')
+  const [tab, setTab] = useState<Tab>('published')
+  const [q, setQ] = useState('')
   const [entries, setEntries] = useState<Entry[]>(LOCAL)
   const [icons, setIcons] = useState<Map<string, string>>(new Map())
   const [scene, setScene] = useState<string>(LOCAL[0].scene)
   const [selOpen, setSelOpen] = useState(false)
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
+  const [connectOpen, setConnectOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
@@ -44,9 +49,10 @@ export default function TheGrid() {
     return () => window.removeEventListener('resize', m)
   }, [])
 
-  // catalog + baked icons (prod: real; local: bundled cartridges, letter tiles)
+  // catalog + icons (prod real; local = bundled cartridges)
   useEffect(() => {
-    fetch(`/api/cards?tab=${tab}`).then(r => r.json())
+    const feed = tab === 'search' ? 'published' : tab
+    fetch(`/api/cards?tab=${feed}`).then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string }> }) => {
         if (Array.isArray(d.cards) && d.cards.length)
           setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug })))
@@ -60,8 +66,13 @@ export default function TheGrid() {
         const m = new Map<string, string>()
         for (const it of d.icons ?? []) m.set(it.name.toLowerCase(), `data:image/png;base64,${it.png}`)
         setIcons(m)
-      }).catch(() => { /* letter tiles carry it */ })
+      }).catch(() => { /* letter tiles */ })
   }, [])
+  const shown = useMemo(() =>
+    tab === 'search' && q.trim()
+      ? entries.filter(e => e.name.toLowerCase().includes(q.trim().toLowerCase()))
+      : entries,
+  [entries, tab, q])
 
   // linkable state
   useEffect(() => {
@@ -81,18 +92,25 @@ export default function TheGrid() {
     } catch { /* fine */ }
   }, [scene, uiSet, phase])
 
-  // ── THE INSET — browse: MINI frame at the TOP (the icon shelf gets the room) ──
+  // ── THE INSET — one function, CLAMPED (a window mid-resize can never smash
+  // the frame below MIN_W×MIN_H — it holds shape until there's room) ──
   const browsing = uiSet === 'games' && phase === 'browse'
+  const engineSet = uiSet === 'engine'
   const inset = useMemo<Inset>(() => {
-    const W = win.w, H = win.h
-    if (!browsing) return { top: M, right: M, bottom: BAR_H + 10, left: M }
+    const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
+    const rightPad = engineSet ? M + DOCK_W + 10 : M
+    if (!browsing) {
+      const w = Math.max(W - M - rightPad, MIN_W)
+      return { top: M, right: W - M - w, bottom: BAR_H + 10, left: M }
+    }
     const availH = H - M - BAR_H - 10
     let w = (W - M * 2) * 0.42, h = w / (16 / 10)
     const hMax = availH * 0.4
     if (h > hMax) { h = hMax; w = h * (16 / 10) }
-    const left = (W - w) / 2
-    return { top: M, right: W - left - w, bottom: H - M - h, left }
-  }, [browsing, win])
+    w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
+    const left = Math.max((W - w) / 2, M)
+    return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
+  }, [browsing, engineSet, win])
 
   // unified eased resize — camera re-fits every frame of the ease
   useEffect(() => {
@@ -109,7 +127,7 @@ export default function TheGrid() {
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
 
-  // instructions for the selected world (local cartridge or live space)
+  // instructions for the selected world
   useEffect(() => {
     if (!instrOpen) return
     const load = async () => {
@@ -128,11 +146,16 @@ export default function TheGrid() {
     setInstrText('…'); load()
   }, [instrOpen, scene])
 
-  const shelfTop = win.h - inset.bottom + 12   // just under the frame in browse
+  const connectPrompt = useMemo(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin.replace('localhost:3131', 'cartridge.cafe') : 'https://cartridge.cafe'
+    return `Connect to ${origin} as my builder. Read the guide first: GET ${origin}/api/engine/guide — then open my world "${selected?.name ?? 'my world'}" and build with me. Bridge commands go to POST ${origin}/api/engine/bridge with my world key.`
+  }, [selected])
+
+  const shelfTop = win.h - inset.bottom + 12
+  const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
-      {/* THE ONE GRID */}
       <FieldEngine playScene={scene} hooksTrusted viewport={inset} externalTopbar />
 
       {/* THE FRAME */}
@@ -153,7 +176,7 @@ export default function TheGrid() {
         ))}
       </div>
 
-      {/* CLICK THE FRAME TO PLAY (browse) — the world is the button */}
+      {/* CLICK THE FRAME TO PLAY (games·browse) */}
       {browsing && (
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => setPhase('play')}
           className="fixed z-[115] group cursor-pointer"
@@ -164,24 +187,33 @@ export default function TheGrid() {
         </button>
       )}
 
-      {/* ═ THE ICON SHELF (browse) — the space the mini frame frees up ═ */}
+      {/* ═ THE ICON SHELF (games·browse) ═ */}
       {browsing && (
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
-          {/* tab row — which games deal in */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {([['published', '▶ GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
+          {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
+            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
                 {label}
               </button>
             ))}
+            <button onClick={() => setTab('search')}
+              className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                tab === 'search' ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
+              ⌕ SEARCH
+            </button>
+            {tab === 'search' && (
+              <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="filter games…"
+                className="font-mono text-[11px] px-3 py-1 rounded-lg bg-black/50 border border-sky-300/40 text-white/85 placeholder:text-white/25 outline-none w-44" />
+            )}
           </div>
-          {/* the icons — big tiles, real estate */}
+          {/* the icons */}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
-            {entries.map(e => {
+            {shown.map(e => {
               const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
               const on = scene === e.scene
               return (
@@ -200,11 +232,38 @@ export default function TheGrid() {
                 </button>
               )
             })}
+            {tab === 'search' && q.trim() && shown.length === 0 && (
+              <div className="col-span-full font-mono text-[11px] text-white/30 text-center py-6">nothing matches “{q}”</div>
+            )}
           </div>
         </div>
       )}
 
-      {/* THE UI SELECTOR — overlay over the FIELD only; the bar is never covered */}
+      {/* ═ THE ENGINE DOCK — tools move in from the RIGHT; the grid holds center ═ */}
+      {engineSet && (
+        <div className="fixed z-[118] flex flex-col gap-2 font-mono"
+          style={{ top: M, right: M, bottom: BAR_H + 10, width: DOCK_W, transition: EASE }}>
+          <div className="rounded-2xl border border-amber-300/25 bg-[#12100a]/90 backdrop-blur p-3">
+            <div className="text-[10px] tracking-[0.25em] text-amber-200/70 mb-0.5">⚙ ENGINE</div>
+            <div className="text-[13px] tracking-[0.12em] text-white/90 truncate">{selected?.name ?? '—'}</div>
+          </div>
+          <button onClick={() => cmd('builderbox')}
+            className="text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/80 hover:border-emerald-300/40 hover:text-white transition-colors">
+            ⌁ BUILDERBOX
+            <span className="block text-[9.5px] text-white/35 mt-0.5">build log + world chat, in the frame</span>
+          </button>
+          <button onClick={() => setConnectOpen(true)}
+            className="text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/80 hover:border-emerald-300/40 hover:text-white transition-colors">
+            ⚿ CONNECT AI
+            <span className="block text-[9.5px] text-white/35 mt-0.5">paste the prompt into your working AI</span>
+          </button>
+          <div className="rounded-xl border border-white/8 bg-black/30 px-3.5 py-3 text-[10px] text-white/30 leading-relaxed">
+            ✎ world tools · versions · playable switch dock here next
+          </div>
+        </div>
+      )}
+
+      {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen) */}
       {selOpen && (
         <div className="fixed z-[126] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
@@ -213,8 +272,8 @@ export default function TheGrid() {
             {([
               ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
               ['main', '◉', 'MAIN', 'the commons + social space'],
-              ['engine', '⚙', 'ENGINE', 'world tools · builderbox'],
-              ['create', '✚', 'CREATE', 'new world · fork from grid · paste the prompt to your AI'],
+              ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
+              ['create', '✚', 'CREATE', 'new world · fork from grid'],
             ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
@@ -225,39 +284,64 @@ export default function TheGrid() {
                 <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
+            <button onClick={() => { window.location.href = '/mine' }}
+              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
+              <span className="text-[20px] text-white/70">◐</span>
+              <span>
+                <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block">ACCOUNT</span>
+                <span className="font-mono text-[10px] text-white/40">sign in · my worlds · membership</span>
+              </span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* INSTRUCTIONS — field-bounded overlay (the bar stays live) */}
+      {/* CONNECT AI — field-bounded, copyable prompt */}
+      {connectOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+          onClick={() => setConnectOpen(false)}>
+          <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
+            <p className="text-[11px] text-white/50 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it reads the guide and builds with you. Works on any device.</p>
+            <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all">{connectPrompt}</div>
+            <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+              className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+              {copied ? '✓ COPIED' : '⧉ COPY THE PROMPT'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* INSTRUCTIONS — field-bounded */}
       {instrOpen && (
         <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setInstrOpen(false)}>
-          <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4"
-            onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4" onClick={e => e.stopPropagation()}>
             <div className="font-mono text-[12px] tracking-[0.25em] text-white/50 mb-2">? INSTRUCTIONS — {selected?.name}</div>
             <div className="font-mono text-[13px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
           </div>
         </div>
       )}
 
-      {/* ═ THE BOTTOM BAR — instructions right · CUP DOCKSTAR center ═ */}
+      {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
-        style={{ height: BAR_H, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
         <div className="flex-1" />
-        {/* THE DOCKSTAR — the cafe cup, a real button; the one way between sets */}
-        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false) }} aria-label="ui selector"
+        {/* THE DOCKSTAR — the cup, with its squeak of buffer */}
+        <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false) }} aria-label="ui selector"
           title="the dockstar — choose your UI"
           className={`w-12 h-12 grid place-items-center rounded-2xl border transition-all ${
             selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-          style={{ boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
+          style={{ marginBottom: 8, boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
           <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
         </button>
         <div className="flex-1 flex justify-end pr-3">
-          <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false) }}
+          <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
             className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors ${
-              instrOpen ? 'bg-white/15 border-white/30 text-white' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}>
+              instrOpen ? 'bg-white/15 border-white/30 text-white' : 'bg-black/50 border-white/12 text-white/55 hover:text-white/85'}`}
+            style={{ marginBottom: 8 }}>
             ? INSTRUCTIONS
           </button>
         </div>
