@@ -44,6 +44,8 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [tool, setTool] = useState<'eye' | 'nodes' | 'config' | 'chat' | 'connect'>('eye')   // ENGINE's under-area view
+  const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -101,15 +103,10 @@ export default function TheGrid() {
   const engineSet = uiSet === 'engine'
   const narrow = win.w < 700                      // the dock becomes a BOTTOM SHEET on narrow screens
   const dockBottomH = 168                          // narrow engine dock height
+  const miniTop = browsing || engineSet   // GAMES-browse AND ENGINE share the shrink-to-top layout
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
-    const rightPad = engineSet && !narrow ? M + DOCK_W + 10 : M
-    const bottomPad = engineSet && narrow ? BAR_H + 10 + dockBottomH + 8 : BAR_H + 10
-    if (!browsing) {
-      const w = Math.max(W - M - rightPad, MIN_W)
-      const h = Math.max(H - M - bottomPad, MIN_H)
-      return { top: M, right: W - M - w, bottom: H - M - h, left: M }
-    }
+    if (!miniTop) return { top: M, right: M, bottom: BAR_H + 10, left: M }
     const availH = H - M - BAR_H - 10
     let w = (W - M * 2) * 0.42, h = w / (16 / 10)
     const hMax = availH * 0.4
@@ -117,7 +114,7 @@ export default function TheGrid() {
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [browsing, engineSet, win])
+  }, [miniTop, win])
 
   // unified eased resize — camera re-fits every frame of the ease
   useEffect(() => {
@@ -131,6 +128,14 @@ export default function TheGrid() {
     return () => cancelAnimationFrame(raf)
   }, [inset])
 
+
+  useEffect(() => {
+    const on = (e: Event) => setAiLog(((e as CustomEvent).detail ?? []) as typeof aiLog)
+    window.addEventListener('cafe:ai-log', on)
+    try { window.dispatchEvent(new Event('cafe:ai-log-pull')) } catch { /* ssr */ }
+    return () => window.removeEventListener('cafe:ai-log', on)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
@@ -255,46 +260,6 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* ═ THE ENGINE DOCK — right strip on wide screens; a BOTTOM SHEET above
-          the bar on narrow ones (a sidebar would starve a phone's frame) ═ */}
-      {engineSet && (
-        <div className={`fixed z-[118] font-mono ${narrow ? 'flex flex-row gap-2 overflow-x-auto items-stretch' : 'flex flex-col gap-2'}`}
-          style={narrow
-            ? { left: M, right: M, bottom: BAR_H + 10, height: dockBottomH, transition: EASE }
-            : { top: M, right: M, bottom: BAR_H + 10, width: DOCK_W, transition: EASE }}>
-          <div className={`rounded-2xl border border-amber-300/25 bg-[#12100a]/90 backdrop-blur p-3 ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            <div className="text-[10px] tracking-[0.25em] text-amber-200/70 mb-0.5">⚙ ENGINE</div>
-            <div className="text-[13px] tracking-[0.12em] text-white/90 truncate">{selected?.name ?? '—'}</div>
-            {selected?.maker && <div className="text-[10px] text-amber-200/60 mt-0.5 truncate">by {selected.maker}</div>}
-          </div>
-          <button onClick={() => setChatOpen(true)}
-            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ◉ CHAT
-            <span className="block text-[9.5px] text-white/45 mt-0.5">the humans in this world</span>
-          </button>
-          <button onClick={() => cmd('eye')}
-            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-sky-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ◈ EYE
-            <span className="block text-[9.5px] text-white/45 mt-0.5">what the AI does + sees — focus · probe · tabs</span>
-          </button>
-          <button onClick={() => cmd('nodes')}
-            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-sky-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ⬢ NODES
-            <span className="block text-[9.5px] text-white/45 mt-0.5">who builds what — holds · history · revert</span>
-          </button>
-          <button onClick={() => cmd('tools')}
-            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-amber-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ⚙ WORLD CONFIG
-            <span className="block text-[9.5px] text-white/45 mt-0.5">tokens · reset · visibility — the real panel</span>
-          </button>
-          <button onClick={() => setConnectOpen(true)}
-            className={`text-left rounded-xl border border-emerald-300/60 bg-emerald-400/10 px-3.5 py-3 text-[12px] tracking-[0.12em] text-emerald-100 hover:bg-emerald-400/20 hover:border-emerald-300/80 transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
-            ⚿ CONNECT AI
-            <span className="block text-[9.5px] text-emerald-200/60 mt-0.5">paste the prompt into your AI</span>
-          </button>
-        </div>
-      )}
-
       {/* CLICK THE FRAME → PLAY, in ENGINE too (the world is always the play
           button — the universal law) */}
       {engineSet && (
@@ -383,6 +348,73 @@ export default function TheGrid() {
         </div>
       )}
 
+      {/* ═ THE ENGINE UNDER-AREA — the grid shrinks to the top; the tools live
+          BELOW it (Galen: nothing ever pops over the game). One tab row, one
+          content area — the GAMES-browse pattern, engine-flavored. ═ */}
+      {engineSet && (
+        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
+          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-white/45 mr-1">{selected?.name}{selected?.maker ? ` · by ${selected.maker}` : ''}</span>
+            {([['eye', '◈ EYE'], ['nodes', '⬢ NODES'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setTool(k)}
+                className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                  tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/45 hover:text-white/75'}`}>
+                {label}
+              </button>
+            ))}
+            <button onClick={() => setTool('connect')}
+              className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                tool === 'connect' ? 'bg-emerald-400/20 border-emerald-300/70 text-emerald-100' : 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20'}`}>
+              ⚿ CONNECT AI
+            </button>
+          </div>
+          <div className="w-full max-w-[860px] flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-hidden">
+            {tool === 'eye' && (
+              <div className="w-full h-full flex flex-col p-4 font-mono">
+                <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-2">◈ THE EYE — what the AI does, live</div>
+                <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[11px] leading-relaxed">
+                  {aiLog.length === 0 && <div className="text-white/45">no AI edits this session — connect an AI and every build step lands here, named and timed.</div>}
+                  {aiLog.map((l, i) => (
+                    <div key={i} className="flex gap-2 py-0.5 border-b border-white/5 last:border-0">
+                      <span className="text-white/45 shrink-0">{new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      <span className="text-emerald-200/90 shrink-0">{l.type}</span>
+                      <span className="text-white/85 truncate">{l.summary}</span>
+                      {l.author && <span className="text-amber-200/70 shrink-0 ml-auto">{l.author}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tool === 'nodes' && <NodesView scene={scene} />}
+            {tool === 'config' && (
+              <div className="w-full h-full overflow-y-auto p-4 font-mono">
+                <div className="text-[10.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
+                <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] leading-relaxed text-white/80">
+                  {scene.startsWith('space:')
+                    ? <>the full config (tokens · R-reset · visibility · multiplayer law · forkable) docks here from the classic owner panel. on prod it opens for {selected?.name}.</>
+                    : <>a house cartridge — config lives on real worlds. pick a /space world to configure.</>}
+                </div>
+              </div>
+            )}
+            {tool === 'chat' && (
+              <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
+            )}
+            {tool === 'connect' && (
+              <div className="w-full h-full overflow-y-auto p-4 font-mono">
+                <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
+                <p className="text-[11px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it reads the guide and builds with you. Any device.</p>
+                <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/85 leading-relaxed select-all">{connectPrompt}</div>
+                <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                  className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+                  {copied ? '✓ COPIED' : '⧉ COPY THE PROMPT'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ═ THE BOTTOM BAR ═ */}
       <div className="fixed bottom-0 inset-x-0 z-[135] flex items-center"
         style={{ height: BAR_H, paddingBottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
@@ -426,6 +458,35 @@ export default function TheGrid() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// ⬢ NODES — who builds what. REAL data for spaces (/api/spaces/<slug>/nodes);
+// house cartridges say so honestly.
+function NodesView({ scene }: { scene: string }) {
+  const [nodes, setNodes] = useState<Array<{ id?: string; name?: string; holder?: string | null; status?: string }> | null>(null)
+  const isSpace = scene.startsWith('space:')
+  useEffect(() => {
+    if (!isSpace) { setNodes(null); return }
+    fetch(`/api/spaces/${encodeURIComponent(scene.slice(6))}/nodes`).then(r => r.json())
+      .then(d => setNodes(Array.isArray(d?.nodes) ? d.nodes : Array.isArray(d) ? d : []))
+      .catch(() => setNodes([]))
+  }, [scene, isSpace])
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-2">⬢ NODES — who builds what</div>
+      {!isSpace && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">a house cartridge — nodes live on real worlds.</div>}
+      {isSpace && nodes === null && <div className="text-[11px] text-white/45">…</div>}
+      {isSpace && nodes && nodes.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">no nodes registered yet.</div>}
+      {isSpace && nodes && nodes.length > 0 && nodes.map((n, i) => (
+        <div key={n.id ?? i} className="flex items-center gap-3 py-2 border-b border-white/8 text-[11.5px]">
+          <span className="text-white/90">{n.name ?? n.id}</span>
+          {n.holder && <span className="text-amber-200/80">held by {n.holder}</span>}
+          {n.status && <span className="ml-auto text-white/45">{n.status}</span>}
+        </div>
+      ))}
     </div>
   )
 }

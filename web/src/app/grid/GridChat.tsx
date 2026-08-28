@@ -8,11 +8,13 @@
 import { useEffect, useRef } from 'react'
 import { useWorldChat } from '@/lib/useWorldChat'
 
-export default function GridChat({ slotKey, title, bounds, onClose }: {
+export default function GridChat({ slotKey, title, bounds, onClose, inline }: {
   slotKey: string                       // world-chat:<KEY> — unique per world/main
   title: string
-  bounds: { top: number; right: number; bottom: number; left: number }
-  onClose: () => void
+  bounds?: { top: number; right: number; bottom: number; left: number }
+  onClose?: () => void
+  /** inline: render as a filling panel (the engine's under-area), no overlay */
+  inline?: boolean
 }) {
   const { msgs, who, draft, setDraft, say } = useWorldChat(slotKey, { noStore: true })
   const listRef = useRef<HTMLDivElement>(null)
@@ -24,15 +26,14 @@ export default function GridChat({ slotKey, title, bounds, onClose }: {
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
   }, [msgs])
 
-  return (
-    <div className="fixed z-[127] flex items-end justify-center backdrop-blur-sm"
-      style={{ top: bounds.top, right: bounds.right, bottom: bounds.bottom, left: bounds.left, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
-      onClick={onClose}>
-      <div className="w-full max-w-[640px] h-full flex flex-col p-4" onClick={e => e.stopPropagation()}>
+  const body = (
+      <div className="w-full max-w-[640px] h-full flex flex-col p-4 mx-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
           <span className="font-mono text-[12px] tracking-[0.25em] text-white/85">◉ {title} — THE ROOM</span>
-          <button onClick={onClose} aria-label="close chat"
-            className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+          {!inline && (
+            <button onClick={onClose} aria-label="close chat"
+              className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+          )}
         </div>
 
         {/* the thread */}
@@ -64,6 +65,13 @@ export default function GridChat({ slotKey, title, bounds, onClose }: {
           </button>
         </form>
       </div>
+  )
+  if (inline) return <div className="w-full h-full">{body}</div>
+  return (
+    <div className="fixed z-[127] flex items-end justify-center backdrop-blur-sm"
+      style={{ top: bounds!.top, right: bounds!.right, bottom: bounds!.bottom, left: bounds!.left, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+      onClick={onClose}>
+      {body}
     </div>
   )
 }
