@@ -207,10 +207,6 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            <button onClick={() => setConnectOpen(true)}
-              className="font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border border-emerald-300/40 text-emerald-200 hover:bg-emerald-400/10 transition-colors mr-2">
-              ⚿ CONNECT AI
-            </button>
             {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
@@ -280,9 +276,9 @@ export default function TheGrid() {
             <span className="block text-[9.5px] text-white/45 mt-0.5">attribution · ai logs · lineage</span>
           </button>
           <button onClick={() => setConnectOpen(true)}
-            className={`text-left rounded-xl border border-white/12 bg-black/50 px-3.5 py-3 text-[12px] tracking-[0.12em] text-white/85 hover:border-emerald-300/40 hover:text-white transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
+            className={`text-left rounded-xl border border-emerald-300/60 bg-emerald-400/10 px-3.5 py-3 text-[12px] tracking-[0.12em] text-emerald-100 hover:bg-emerald-400/20 hover:border-emerald-300/80 transition-colors ${narrow ? 'shrink-0 min-w-[150px]' : ''}`}>
             ⚿ CONNECT AI
-            <span className="block text-[9.5px] text-white/45 mt-0.5">paste the prompt into your AI</span>
+            <span className="block text-[9.5px] text-emerald-200/60 mt-0.5">paste the prompt into your AI</span>
           </button>
         </div>
       )}
