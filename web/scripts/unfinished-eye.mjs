@@ -19,6 +19,12 @@ await p.waitForSelector('button:has-text("⚒ UNFINISHED")', { timeout: 30000 })
 await p.click('button:has-text("⚒ UNFINISHED")'); await p.waitForTimeout(1500)
 T('⚒ UNFINISHED tab + honest empty', /nothing on the workbench shelf|UNFINISHED/.test(await p.evaluate(() => document.body.innerText)))
 
+// ── a tab is a context: switching to PREMIUM loads the premium world ──
+await ctx.route('**/api/cards?tab=premium', r => r.fulfill({ json: { cards: [{ slug: 'testy', name: 'TESTY', maker: { name: 'Galen' } }] } }))
+await p.click('button:has-text("FREE GAMES")'); await p.waitForTimeout(1000)
+await p.click('button:has-text("✦ PREMIUM")'); await p.waitForTimeout(1500)
+T('tab switch loads that shelf\'s world (premium → testy)', await p.evaluate(() => new URL(location.href).searchParams.get('w') === 'space:testy'))
+
 // ── sign-out in the dockstar menu ──
 await p.click('button[aria-label="ui selector"]', { force: true }); await p.waitForTimeout(600)
 T('signed-in ACCOUNT → /account page door (name shown)', await p.evaluate(() => {

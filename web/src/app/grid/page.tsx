@@ -53,6 +53,7 @@ export default function TheGrid() {
   const [tab, setTab] = useState<Tab>('published')
   const [q, setQ] = useState('')
   const [entries, setEntries] = useState<Entry[]>(LOCAL)
+  const prevTabRef = useRef<Tab | null>(null)   // tab-switch detection (a tab is a context)
   const [icons, setIcons] = useState<Map<string, string>>(new Map())
   const [scene, setScene] = useState<string>(LOCAL[0].scene)
   const [selOpen, setSelOpen] = useState(false)
@@ -139,11 +140,20 @@ export default function TheGrid() {
     const feed = tab === 'search' ? 'published' : tab
     fetch(`/api/cards?tab=${feed}`).then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
-        if (Array.isArray(d.cards) && d.cards.length)
-          setEntries(d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })))
-        else setEntries(feed === 'mine' || feed === 'premium' || feed === 'unfinished' ? [] : LOCAL)   // empty deed/premium/unfinished is EMPTY, not the house shelf
+        const list = Array.isArray(d.cards) && d.cards.length
+          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined }))
+          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' ? [] : LOCAL)   // empty deed/premium/unfinished is EMPTY, not the house shelf
+        setEntries(list)
+        // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
+        // tab's game — if the frame's world isn't ON this shelf, the shelf's
+        // first world loads. (Never on the FIRST load — deep links keep their w.)
+        if (prevTabRef.current !== null && prevTabRef.current !== tab && list.length > 0 && !list.some(e => e.scene === scene)) {
+          setScene(list[0].scene)
+        }
+        prevTabRef.current = tab
       })
-      .catch(() => setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' ? [] : LOCAL))
+      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' ? [] : LOCAL); prevTabRef.current = tab })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
   useEffect(() => {
     fetch('/api/spaces/icons').then(r => r.json())
