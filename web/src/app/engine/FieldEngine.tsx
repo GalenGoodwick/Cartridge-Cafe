@@ -1358,9 +1358,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   useEffect(() => {
     if (!eyeSolo && !buildConsoleOpen) return
     try {
-      window.dispatchEvent(new CustomEvent('cafe:eye', { detail: { focus: aiFocus, eye: aiEye, shot: humanShot } }))
+      const wd = simulationRef.current?.worldData as Record<string, unknown> | undefined
+      window.dispatchEvent(new CustomEvent('cafe:eye', { detail: {
+        focus: aiFocus, eye: aiEye, shot: humanShot,
+        graph: nodeGraph,
+        config: {
+          isOwner: !!isOwner, spaceId: spaceId ?? null, spaceSlug: spaceSlug ?? null,
+          multiplayer: wd?.['multiplayer'] === true,
+          rReset: !!wd?.['rResetKey'], forkable: wd?.['forkable'] === true,
+          presenceOff: presenceOffRef.current, policy: (wd?.['policy'] as { build?: string } | undefined)?.build ?? null,
+        },
+      } }))
     } catch { /* ssr */ }
-  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot])
+  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot, nodeGraph, isOwner, spaceId, spaceSlug])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current, simulationRef.current ? allStepHookSnapshots(simulationRef.current) : undefined), [allStepHookSnapshots])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
@@ -1968,6 +1978,16 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
     else if (cmd === 'eye') { setEyeSolo(true); setAiViewDismissed(false) }     // host EYE watching (idempotent on; closepanels offs)
     else if (cmd === 'snapshot') sendHumanShotRef.current()                     // ◈ the snapshot tool: canvas → the AI's eye slot (bridge)
+    else if (cmd.startsWith('cfg:')) {                                          // ⚙ CONFIG toggles — the old panel's writes, host-driven
+      const sim = simulationRef.current
+      const k = cmd.slice(4)
+      if (k === 'presence') { const v = !presenceOffRef.current; setPresenceOff(v); presenceOffRef.current = v; try { if (v) localStorage.setItem('cc-presence-off', '1'); else localStorage.removeItem('cc-presence-off') } catch { /* fine */ } }
+      else if (sim && isOwner) {
+        if (k === 'multiplayer') { sim.worldData['multiplayer'] = sim.worldData['multiplayer'] !== true; sim.worldData['singlePlayer'] = sim.worldData['multiplayer'] !== true }
+        else if (k === 'rreset') sim.worldData['rResetKey'] = !sim.worldData['rResetKey']
+        else if (k === 'forkable') sim.worldData['forkable'] = sim.worldData['forkable'] === true ? false : true
+      }
+    }
     else if (cmd === 'nodes') setNodesOpen(v => !v)       // ⬢ NODES — the co-build dock (spaces)
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true

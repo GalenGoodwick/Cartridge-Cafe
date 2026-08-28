@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
+import { NodeGraphOverlay, type AiNodeGraph } from '@/app/engine/ai-view/NodeGraph'
+import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
@@ -45,7 +47,14 @@ export default function TheGrid() {
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'config' | 'chat' | 'connect'>('eye')   // ENGINE's under-area view
-  const [eyeData, setEyeData] = useState<{ focus?: { action?: string; fieldName?: string; at?: number } | null; eye?: { png?: string; at?: number; name?: string } | null; shot?: string } | null>(null)
+  const [eyeData, setEyeData] = useState<{
+    focus?: { action?: string; fieldName?: string; at?: number } | null
+    eye?: { png?: string; at?: number; name?: string } | null
+    shot?: string
+    graph?: AiNodeGraph | null
+    config?: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; presenceOff: boolean; policy: string | null } | null
+  } | null>(null)
+  const [graphOpen, setGraphOpen] = useState(false)   // ⬡ ADVANCED — the real graph + code inspector
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
 
@@ -417,16 +426,9 @@ export default function TheGrid() {
                 </div>
               </div>
             )}
-            {tool === 'nodes' && <NodesView scene={scene} />}
+            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} onAdvanced={() => setGraphOpen(true)} />}
             {tool === 'config' && (
-              <div className="w-full h-full overflow-y-auto p-4 font-mono">
-                <div className="text-[10.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
-                <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] leading-relaxed text-white/80">
-                  {scene.startsWith('space:')
-                    ? <>the full config (tokens · R-reset · visibility · multiplayer law · forkable) docks here from the classic owner panel. on prod it opens for {selected?.name}.</>
-                    : <>a house cartridge — config lives on real worlds. pick a /space world to configure.</>}
-                </div>
-              </div>
+              <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
             )}
             {tool === 'chat' && (
               <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
@@ -443,6 +445,13 @@ export default function TheGrid() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ⬡ ADVANCED — the REAL node graph + code inspector, field-bounded */}
+      {graphOpen && eyeData?.graph && (
+        <div className="fixed z-[128]" style={{ top: M, right: M, bottom: BAR_H + 10, left: M, borderRadius: 10, overflow: 'hidden' }}>
+          <NodeGraphOverlay graph={eyeData.graph} onClose={() => setGraphOpen(false)} />
         </div>
       )}
 
@@ -494,36 +503,80 @@ export default function TheGrid() {
 }
 
 
-// ⬢ NODES — who builds what. REAL data for spaces (/api/spaces/<slug>/nodes);
-// house cartridges say so honestly.
-function NodesView({ scene }: { scene: string }) {
-  const [nodes, setNodes] = useState<Array<{ id?: string; name?: string; holder?: string | null; status?: string }> | null>(null)
-  const isSpace = scene.startsWith('space:')
-  useEffect(() => {
-    if (!isSpace) { setNodes(null); return }
-    fetch(`/api/spaces/${encodeURIComponent(scene.slice(6))}/nodes`).then(r => r.json())
-      .then(d => setNodes(Array.isArray(d?.nodes) ? d.nodes : Array.isArray(d) ? d : []))
-      .catch(() => setNodes([]))
-  }, [scene, isSpace])
+// ⬢ NODES — who builds what, FROM THE GAME: the engine's live node graph
+// (fields · visuals · hooks · modules, code included). ADVANCED opens the real
+// graph + code inspector (NodeGraphOverlay — pure reuse).
+function NodesView({ graph, onAdvanced }: { graph: AiNodeGraph | null; onAdvanced: () => void }) {
+  const rows = graph
+    ? [
+      ...graph.fields.map(n => ({ id: n.id, kind: 'field', title: n.title })),
+      ...graph.visuals.map(n => ({ id: n.id, kind: 'visual', title: n.title })),
+      ...graph.hooks.map(n => ({ id: n.id, kind: 'hook', title: n.title, author: (n as { author?: string }).author })),
+      ...graph.modules.map(n => ({ id: n.id, kind: 'module', title: n.title })),
+    ]
+    : []
+  const tint: Record<string, string> = { field: 'text-sky-200/90', visual: 'text-amber-200/90', hook: 'text-violet-300/90', module: 'text-emerald-200/90' }
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
-        <button className="px-3 py-1 rounded-lg border border-white/20 text-white/60 text-[10px] tracking-[0.15em] hover:text-white/85"
-          title="the full graph + code inspector — docks next">
+        <button onClick={onAdvanced} disabled={!graph}
+          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35"
+          title="the full graph + code inspector">
           ⬡ ADVANCED
         </button>
       </div>
-      {!isSpace && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">a house cartridge — nodes live on real worlds.</div>}
-      {isSpace && nodes === null && <div className="text-[11px] text-white/45">…</div>}
-      {isSpace && nodes && nodes.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">no nodes registered yet.</div>}
-      {isSpace && nodes && nodes.length > 0 && nodes.map((n, i) => (
-        <div key={n.id ?? i} className="flex items-center gap-3 py-2 border-b border-white/8 text-[11.5px]">
-          <span className="text-white/90">{n.name ?? n.id}</span>
-          {n.holder && <span className="text-amber-200/80">held by {n.holder}</span>}
-          {n.status && <span className="ml-auto text-white/45">{n.status}</span>}
+      {!graph && <div className="text-[11px] text-white/45">reading the world…</div>}
+      {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">an empty world — no nodes yet.</div>}
+      {rows.map(n => (
+        <div key={n.id} className="flex items-center gap-3 py-1.5 border-b border-white/8 text-[11.5px]">
+          <span className={`shrink-0 w-14 text-[9.5px] tracking-[0.15em] ${tint[n.kind]}`}>{n.kind.toUpperCase()}</span>
+          <span className="text-white/90 truncate">{n.title}</span>
+          {'author' in n && n.author ? <span className="ml-auto text-amber-200/70 shrink-0">{String(n.author)}</span> : null}
         </div>
       ))}
+    </div>
+  )
+}
+
+// ⚙ CONFIG — the old world tools, for real (minus lineage — that lives on the
+// title). Space owners get the management overlay (name · visibility · keys);
+// the toggles drive the engine's own writes over cfg: commands.
+function ConfigView({ cfg, sceneIsSpace }: {
+  cfg: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; presenceOff: boolean; policy: string | null } | null
+  sceneIsSpace: boolean
+}) {
+  const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
+  const Row = ({ label, on, k, disabled }: { label: string; on: boolean; k: string; disabled?: boolean }) => (
+    <div className="flex items-center justify-between py-2 border-b border-white/8 text-[12px]">
+      <span className="text-white/80">{label}</span>
+      <button onClick={() => fire(k)} disabled={disabled}
+        className={`px-2.5 py-0.5 rounded-full border text-[11px] tracking-[0.15em] transition-colors disabled:opacity-35 ${
+          on ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200' : 'bg-white/5 border-white/15 text-white/45'}`}>
+        {on ? 'ON' : 'OFF'}
+      </button>
+    </div>
+  )
+  const ownerLaw = !!cfg?.isOwner
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[10.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
+      {cfg?.isOwner && cfg.spaceSlug && cfg.spaceId && (
+        <div className="mb-3 rounded-xl border border-white/12 bg-black/40 overflow-hidden">
+          <SpaceManagementOverlay embedded spaceSlug={cfg.spaceSlug} spaceId={cfg.spaceId} />
+        </div>
+      )}
+      <div className="rounded-xl border border-white/12 bg-black/40 px-3.5 py-1 mb-3">
+        <Row label="multiplayer" on={!!cfg?.multiplayer} k="multiplayer" disabled={!ownerLaw} />
+        <Row label="player presence" on={!cfg?.presenceOff} k="presence" />
+        <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
+        <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
+      </div>
+      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] leading-relaxed text-white/55">
+        social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
+        {!sceneIsSpace && <div className="mt-1.5 text-white/40">house cartridge — owner controls apply on real worlds.</div>}
+        <div className="mt-1.5 text-white/40">THE CARD (kind · tags · blurb) docks here next.</div>
+      </div>
     </div>
   )
 }
