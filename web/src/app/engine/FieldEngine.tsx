@@ -5300,6 +5300,22 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // Agent activity panels
   const [dialogLog, setDialogLog] = useState<DialogEntry[]>([])
   const [terminalLog, setTerminalLog] = useState<TerminalEntry[]>([])
+  // THE AI LOG, PUBLISHED (Galen: world tools = the builderbox AI console +
+  // classic tools). The host can't reach terminalLog state, so the engine
+  // broadcasts it: on every append + on request ('cafe:ai-log-pull'), the last
+  // 80 entries go out as 'cafe:ai-log' — plain data, host-renderable.
+  useEffect(() => {
+    const publish = () => {
+      try {
+        window.dispatchEvent(new CustomEvent('cafe:ai-log', {
+          detail: terminalLog.slice(-80).map(e => ({ type: e.type, summary: e.summary, author: e.author ?? null, t: e.timestamp })),
+        }))
+      } catch { /* ssr */ }
+    }
+    publish()
+    window.addEventListener('cafe:ai-log-pull', publish)
+    return () => window.removeEventListener('cafe:ai-log-pull', publish)
+  }, [terminalLog])
   const [agentConnected, setAgentConnected] = useState(false)
 
   // Cafe-wide AI presence: is ANY connected AI live on the commons right now?
