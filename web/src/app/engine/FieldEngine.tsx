@@ -1274,7 +1274,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     // on EVERY visitor tab forever — two /api/engine/save function hits every 1.8s
     // per tab — which spiked prod Function Invocations ~16×. The data is only shown
     // inside the BuilderBox, so there's no reason to fetch it when it's closed.
-    if (!buildConsoleOpen) return
+    if (!buildConsoleOpen && !eyeSolo) return
     const iv = setInterval(async () => {
       // scope key mirrors the bridge (route.ts `aiScope`): spaces key by spaceId,
       // house/scene worlds by 'scene:<base-slug>' so the panel works on house content.
@@ -1310,13 +1310,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       }
     }, 1800)
     return () => clearInterval(iv)
-  }, [buildConsoleOpen, spaceId, spaceSlug, playScene])
+  }, [buildConsoleOpen, eyeSolo, spaceId, spaceSlug, playScene])
   // ── HUMAN SNAPSHOT → the AI's eye. A builder watching a world an AI is editing
   //    can hand the AI THEIR live frame: capture the canvas and POST it to slot
   //    human_shot:<scope> (same scope key + storage the AI's own eye uses). A
   //    docked AI — even a headless one over the bridge — reads it via
   //    GET /api/engine/save?slot=human_shot:<scope>. Universal infra: any world. ──
   const [humanShot, setHumanShot] = useState<'idle' | 'sending' | 'sent' | 'err'>('idle')
+  const sendHumanShotRef = useRef<() => void>(() => {})
   const sendHumanShot = useCallback(async () => {
     const base = (lastSceneRef.current || playScene || spaceSlug || '').split(' ⑂ ')[0]
     const scope = spaceId
@@ -1351,11 +1352,20 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       setTimeout(() => setHumanShot('idle'), 2500)
     } catch { setHumanShot('err'); showToast('snapshot failed — try again', 'error'); setTimeout(() => setHumanShot('idle'), 2500) }
   }, [spaceId, playScene, spaceSlug])
+  sendHumanShotRef.current = sendHumanShot
+  // THE EYE PUBLISH — the host's EYE tab renders these (the grid's under-area):
+  // ai focus, the latest eye image (AI probe or your shot), and shot status.
+  useEffect(() => {
+    if (!eyeSolo && !buildConsoleOpen) return
+    try {
+      window.dispatchEvent(new CustomEvent('cafe:eye', { detail: { focus: aiFocus, eye: aiEye, shot: humanShot } }))
+    } catch { /* ssr */ }
+  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current, simulationRef.current ? allStepHookSnapshots(simulationRef.current) : undefined), [allStepHookSnapshots])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
   useEffect(() => {
-    if (!buildConsoleOpen) return
+    if (!buildConsoleOpen && !eyeSolo) return
     const tick = () => {
       setNodeGraph(snapshotNodeGraph())
       // P0 perf sample: frame ms (existing EMA) + hook ms (sim) + compile (renderer)
@@ -1380,7 +1390,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     tick()
     const iv = setInterval(tick, 1500)
     return () => clearInterval(iv)
-  }, [buildConsoleOpen, snapshotNodeGraph])
+  }, [buildConsoleOpen, eyeSolo, snapshotNodeGraph])
   // WebGPU unavailable or lost — show a human answer, not a black void
   const [gpuFailed, setGpuFailed] = useState(false)
 
@@ -1956,7 +1966,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'builderbox') setBuildConsoleOpen(v => { const nv = !v; buildConsoleClosedRef.current = !nv; return nv })
     else if (cmd === 'tools') setChromeVisible(v => !v)   // WORLD TOOLS panel (not gated by chromeless mode)
     else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
-    else if (cmd === 'eye') { setEyeSolo(v => !v); setAiViewDismissed(false) }   // ◈ AI VIEW standalone (focus + render-probe eye + tabs)
+    else if (cmd === 'eye') { setEyeSolo(true); setAiViewDismissed(false) }     // host EYE watching (idempotent on; closepanels offs)
+    else if (cmd === 'snapshot') sendHumanShotRef.current()                     // ◈ the snapshot tool: canvas → the AI's eye slot (bridge)
     else if (cmd === 'nodes') setNodesOpen(v => !v)       // ⬢ NODES — the co-build dock (spaces)
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true
@@ -7032,7 +7043,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* opens ONLY from human input — the BuilderBox (Galen: the swarm/AI
               view must never auto-open just because a swarm map exists). The
               swarm tab still surfaces INSIDE it once opened. */}
-          {(buildConsoleOpen || eyeSolo) && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
+          {buildConsoleOpen && !aiViewDismissed && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
             <AiViewPanel aiFocus={aiFocus} aiEye={aiEye} aiViewTab={aiViewTab} setAiViewTab={setAiViewTab} nodeGraph={nodeGraph} setNodesExpanded={setNodesExpanded} perf={perf} swarm={swarm} sendHumanShot={sendHumanShot} humanShot={humanShot} onClose={() => setAiViewDismissed(true)} />
           )}
           {/* the full architecture graph (opened from the NODES tab's ⤢ EXPAND) */}

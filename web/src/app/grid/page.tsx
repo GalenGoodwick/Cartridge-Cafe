@@ -44,7 +44,8 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const [tool, setTool] = useState<'eye' | 'nodes' | 'config' | 'chat' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'config' | 'chat' | 'connect'>('eye')   // ENGINE's under-area view
+  const [eyeData, setEyeData] = useState<{ focus?: { action?: string; fieldName?: string; at?: number } | null; eye?: { png?: string; at?: number; name?: string } | null; shot?: string } | null>(null)
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
 
@@ -136,6 +137,18 @@ export default function TheGrid() {
     return () => window.removeEventListener('cafe:ai-log', on)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const on = (e: Event) => setEyeData((e as CustomEvent).detail ?? null)
+    window.addEventListener('cafe:eye', on)
+    return () => window.removeEventListener('cafe:eye', on)
+  }, [])
+  // entering ENGINE arms the engine's eye-watch (after the transition hygiene)
+  useEffect(() => {
+    if (!engineSet) return
+    const t = setTimeout(() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'eye' })) } catch { /* ssr */ } }, 50)
+    return () => clearTimeout(t)
+  }, [engineSet, scene])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
@@ -355,8 +368,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            <span className="font-mono text-[10px] tracking-[0.2em] text-white/45 mr-1">{selected?.name}{selected?.maker ? ` · by ${selected.maker}` : ''}</span>
-            {([['eye', '◈ EYE'], ['nodes', '⬢ NODES'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/45 hover:text-white/75'}`}>
@@ -372,7 +384,26 @@ export default function TheGrid() {
           <div className="w-full max-w-[860px] flex-1 min-h-0 rounded-2xl border border-white/10 bg-black/40 overflow-hidden">
             {tool === 'eye' && (
               <div className="w-full h-full flex flex-col p-4 font-mono">
-                <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-2">◈ THE EYE — what the AI does, live</div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">◈ THE EYE — hand the AI your view</span>
+                  <button onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'snapshot' })) } catch { /* ssr */ } }}
+                    className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
+                    {eyeData?.shot === 'sending' ? '…' : eyeData?.shot === 'sent' ? '✓ SENT TO THE AI' : '📸 SNAPSHOT → AI'}
+                  </button>
+                </div>
+                {eyeData?.focus?.action && (
+                  <div className="text-[10.5px] text-white/60 mb-2">ai focus: <span className="text-emerald-200/90">{eyeData.focus.action}</span>{eyeData.focus.fieldName ? <span className="text-white/45"> · {eyeData.focus.fieldName}</span> : null}</div>
+                )}
+                <div className="flex-1 min-h-0 rounded-xl border border-white/12 bg-black/50 grid place-items-center overflow-hidden">
+                  {eyeData?.eye?.png
+                    ? <img src={`data:image/png;base64,${eyeData.eye.png}`.replace('base64,data:', '').replace('base64,i', 'base64,i')} alt="the eye" className="max-w-full max-h-full object-contain" />
+                    : <span className="text-[11px] text-white/45 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
+                </div>
+              </div>
+            )}
+            {tool === 'console' && (
+              <div className="w-full h-full flex flex-col p-4 font-mono">
+                <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌁ CONSOLE — the AI building, step by step</div>
                 <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[11px] leading-relaxed">
                   {aiLog.length === 0 && <div className="text-white/45">no AI edits this session — connect an AI and every build step lands here, named and timed.</div>}
                   {aiLog.map((l, i) => (
@@ -476,7 +507,13 @@ function NodesView({ scene }: { scene: string }) {
   }, [scene, isSpace])
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-2">⬢ NODES — who builds what</div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
+        <button className="px-3 py-1 rounded-lg border border-white/20 text-white/60 text-[10px] tracking-[0.15em] hover:text-white/85"
+          title="the full graph + code inspector — docks next">
+          ⬡ ADVANCED
+        </button>
+      </div>
       {!isSpace && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">a house cartridge — nodes live on real worlds.</div>}
       {isSpace && nodes === null && <div className="text-[11px] text-white/45">…</div>}
       {isSpace && nodes && nodes.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">no nodes registered yet.</div>}
