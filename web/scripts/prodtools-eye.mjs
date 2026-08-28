@@ -73,8 +73,9 @@ const flow = await body()
 T('ADVANCED shows THE FLOW tree', /⬡ THE FLOW/.test(flow) && /─paints→|▦ FIELDS/.test(flow) && /✎ HOOKS|◆ VISUALS/.test(flow))
 
 // house notes on the space-only tabs
-await p.click('button:has-text("⛭ CO-BUILD")'); await p.waitForTimeout(400)
-T('CO-BUILD tab: house note', /co-build roster lives on real worlds/.test(await body()))
+await ctx.route('**/api/cards?tab=live', r => r.fulfill({ json: { cards: [{ slug: 'testy', name: 'TESTY', maker: { name: 'Galen' } }] } }))
+await p.click('button:has-text("⛭ CO-BUILD")'); await p.waitForTimeout(800)
+T('CO-BUILD = the join door (open builds listed)', /open live-editing worlds, join in/.test(await body()) && await p.locator('[data-crew-join="testy"]').count() === 1)
 await p.click('button:has-text("⏱ VERSIONS")'); await p.waitForTimeout(400)
 T('VERSIONS tab: house note', /versions live on real worlds/.test(await body()))
 await p.click('button:has-text("⌂ MY WORLDS")'); await p.waitForTimeout(800)
@@ -128,17 +129,17 @@ T('VERSIONS tab: list + save + LIVE current', /every save point/.test(verTxt) &&
 T('LIVE marked current', await p.locator('button:has-text("LIVE")').first().evaluate(el => el.className.includes('emerald')))
 await p.click('button:has-text("⚑ SAVE A POINT")'); await p.waitForTimeout(600)
 
-// ⛭ CO-BUILD tab on a space
+// ⛭ CO-BUILD join: picking an open build loads it + opens ⚿ CONNECT
 await p.click('button:has-text("⛭ CO-BUILD")'); await p.waitForTimeout(900)
-T('CO-BUILD tab: NodeDockPanel embedded', /NODES — who builds what/.test(await body()))
+await p.click('[data-crew-join="testy"]').catch(() => {})
+await p.waitForTimeout(800)
+T('CO-BUILD join → world in frame + connect prompt', await p.evaluate(() =>
+  new URL(location.href).searchParams.get('w') === 'space:testy' && /CONNECT YOUR AI/.test(document.body.innerText)))
 
-// ═ 4 · ⬆ PUBLISH — draft⇄live, design rolled in ═
+// ═ 4 · ⬆ PUBLISH — slim check only (the DESTINATIONS flow is unfinished-eye's) ═
 await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(600)
-T('PUBLISH tab: ● LIVE chip (mock isPublic)', await p.locator('[data-pub-state]').innerText().then(t => t.includes('LIVE')))
-await p.click('button:has-text("✎ START A DRAFT")'); await p.waitForTimeout(800)
-T('draft flips the state chip (design ON)', await p.locator('[data-pub-state]').innerText().then(t => t.includes('DRAFTING')))
-await p.click('button:has-text("● PUBLISH — ON THE GAME LIST")'); await p.waitForTimeout(900)
-T('publish ends the draft → ● LIVE', await p.locator('[data-pub-state]').innerText().then(t => t.includes('LIVE')))
+T('PUBLISH tab: state chip + destination buttons', await p.evaluate(() =>
+  !!document.querySelector('[data-pub-state]') && /PUBLISH — GAME LIST/.test(document.body.innerText)))
 
 // ▤ THE CARD in CONFIG — kind chip writes through the seam and reads back
 await p.click('button:has-text("⚙ CONFIG")'); await p.waitForTimeout(700)
@@ -216,9 +217,10 @@ T('dockstar menu: cafe-sign brand + cup + tagline', await p.evaluate(() => {
     document.querySelectorAll('img[src="/cartridge-cup.svg"]').length >= 2 &&   // the dockstar cup + the menu cup
     document.body.innerText.includes('INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK')
 }))
-T('ACCOUNT is the auth door (anchor → signin)', await p.evaluate(() => {
+T('ACCOUNT door: /account signed-in, signin signed-out', await p.evaluate(() => {
   const a = document.querySelector('a[data-grid-account]')
-  return !!a && (a.getAttribute('href') || '').startsWith('/auth/signin')
+  const href = a?.getAttribute('href') || ''
+  return !!a && (href === '/account' || href.startsWith('/auth/signin'))
 }))
 
 // ═ 7 · ✧ CREATE ═

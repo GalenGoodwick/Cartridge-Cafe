@@ -17,7 +17,6 @@ import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
-import { NodeDockPanel } from '@/app/engine/NodeDockPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
@@ -181,21 +180,23 @@ export default function TheGrid() {
   // PUSH (not replace) so the BROWSER BACK BUTTON backs out to the previously
   // viewed thing (Galen) — world→world, browse→play, set→set are all history.
   const firstSyncRef = useRef(true)
+  const giRef = useRef(0)   // how deep the grid's OWN history goes — the ◂ floor
   useEffect(() => {
     try {
       const u = new URL(window.location.href)
       u.searchParams.set('w', scene); u.searchParams.set('ui', uiSet)
       if (phase === 'play') u.searchParams.set('ph', 'play'); else u.searchParams.delete('ph')
       if (u.toString() === window.location.href) return
-      if (firstSyncRef.current) window.history.replaceState(null, '', u.toString())   // normalizing the arrival is not a step
-      else window.history.pushState(null, '', u.toString())
+      if (firstSyncRef.current) window.history.replaceState({ gi: 0 }, '', u.toString())   // normalizing the arrival is not a step
+      else { giRef.current += 1; window.history.pushState({ gi: giRef.current }, '', u.toString()) }
     } catch { /* fine */ }
     finally { firstSyncRef.current = false }
   }, [scene, uiSet, phase])
   // back/forward → restore the viewed thing from the URL
   useEffect(() => {
-    const onPop = () => {
+    const onPop = (e: PopStateEvent) => {
       try {
+        giRef.current = (e.state as { gi?: number } | null)?.gi ?? 0
         const u = new URL(window.location.href)
         const w = u.searchParams.get('w'); if (w) setScene(w)
         const ui = u.searchParams.get('ui') as UiSet | null
@@ -442,7 +443,7 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[10px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
             ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
@@ -516,7 +517,7 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute inset-x-0 bottom-2 mx-auto w-max font-mono text-[10px] tracking-[0.25em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[10px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
             ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
@@ -730,7 +731,7 @@ export default function TheGrid() {
               </div>
             )}
             {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
-            {tool === 'crew' && <CrewView spaceSlug={eyeData?.config?.spaceSlug ?? null} isOwner={!!eyeData?.config?.isOwner} />}
+            {tool === 'crew' && <CrewView icons={icons} current={scene} onJoin={sc => { setScene(sc); setTool('connect') }} />}
             {tool === 'versions' && <VersionsView cfg={eyeData?.config ?? null} />}
             {tool === 'publish' && <PublishView cfg={eyeData?.config ?? null} />}
             {tool === 'mine' && <MyWorldsView icons={icons} current={scene} onPick={s => setScene(s)} />}
@@ -815,7 +816,9 @@ export default function TheGrid() {
           <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
             {/* ◂ BACK — the bar's own back button (walks the same history the
                 browser back walks) */}
-            <button data-grid-back onClick={() => window.history.back()} aria-label="back"
+            <button data-grid-back aria-label="back"
+              onClick={() => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } }}
+              title="back — at the start, opens the dockstar"
               className="font-mono text-[14px] w-9 h-9 grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0">
               ◂
             </button>
@@ -900,18 +903,48 @@ export default function TheGrid() {
 // included). ADVANCED SWAPS the view in-area (no overlay, no two-column —
 // responsive single column): grouped sections with edges; clicking a node
 // opens its CODE full-area; ◂ backs out at every level.
-// ⛭ CO-BUILD — its own tab (Galen): the real NodeDockPanel (holds · per-node
-// history · owner revert · internals feeds), embedded in the under-area.
-function CrewView({ spaceSlug, isOwner }: { spaceSlug: string | null; isOwner: boolean }) {
-  const [note, setNote] = useState('')
-  if (!spaceSlug) {
-    return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — the co-build roster lives on real worlds.</div>
-  }
+// ⛭ CO-BUILD (Galen, Aug 28 do-over): not the node roster — the DOOR into
+// LIVE EDITING worlds. Browse the open builds, JOIN one: it lands in the
+// frame and the ⚿ CONNECT prompt opens so your AI starts building with you.
+function CrewView({ icons, current, onJoin }: {
+  icons: Map<string, string>
+  current: string
+  onJoin: (scene: string) => void
+}) {
+  const [open, setOpen] = useState<Entry[] | null>(null)
+  useEffect(() => {
+    fetch('/api/cards?tab=live').then(r => r.json())
+      .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
+        setOpen(Array.isArray(d.cards) ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })) : [])
+      })
+      .catch(() => setOpen([]))
+  }, [])
   return (
-    <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
-      {note && <div className="text-[10.5px] text-amber-200/80 truncate">{note}</div>}
-      <NodeDockPanel spaceSlug={spaceSlug} isOwner={isOwner} onClose={() => { /* a tab, not a popup — nothing to close */ }}
-        showToast={(m, _t, sub) => { setNote(sub ? `${m} — ${sub}` : m); setTimeout(() => setNote(''), 3500) }} />
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-1">⛭ CO-BUILD — open live-editing worlds, join in</div>
+      <p className="text-[10.5px] text-white/45 mb-3">these worlds build in the open — join one and it loads with the ⚿ connect prompt ready for your AI. Editing membership covers every open world.</p>
+      {open === null && <div className="text-[11px] text-white/45">…</div>}
+      {open?.length === 0 && <div className="text-[11px] text-white/45">no open builds right now — ⬆ PUBLISH can open one of yours (permanently).</div>}
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
+        {(open ?? []).map(e => {
+          const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
+          const on = current === e.scene
+          return (
+            <button key={e.slug} data-crew-join={e.slug} onClick={() => onJoin(e.scene)}
+              className={`rounded-2xl border overflow-hidden text-left transition-colors ${
+                on ? 'border-sky-300/70 bg-sky-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
+              <div className="aspect-square w-full grid place-items-center overflow-hidden bg-black/50">
+                {ic ? <img src={ic} alt="" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
+                  : <span className="text-[20px] text-white/30">{e.name.slice(0, 1)}</span>}
+              </div>
+              <div className="px-2 py-1.5">
+                <div className="text-[10px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
+                <div className="text-[9px] text-sky-200/80 tracking-[0.15em]">◉ JOIN THE BUILD</div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

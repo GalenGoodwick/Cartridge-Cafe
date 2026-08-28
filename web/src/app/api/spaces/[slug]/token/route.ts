@@ -132,21 +132,14 @@ export async function POST(
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
 
-  // Limit to 10 tokens per space — MEMBER keys are exempt (a crew can be big);
-  // instead a member's re-mint retires their own older member rows.
-  if (memberHandle) {
-    await prisma.spaceToken.updateMany({
-      where: { spaceId: owned.spaceId, revokedAt: null, name: `member:${memberHandle}` },
-      data: { revokedAt: new Date() },
-    })
-  } else {
-    const count = await prisma.spaceToken.count({
-      where: { spaceId: owned.spaceId, revokedAt: null, name: { not: { startsWith: 'member:' } } },
-    })
-    if (count >= 10) {
-      return NextResponse.json({ error: 'Maximum 10 tokens per space' }, { status: 400 })
-    }
-  }
+  // NO CAP (Galen, Aug 28: "remove the key cap") — instead ONE LIVE KEY PER
+  // SEAT: re-minting a name (member:<handle>, 'AI agent', …) retires that
+  // seat's older keys, so the roster is one key per user per world, never a
+  // pile of dead duplicates.
+  await prisma.spaceToken.updateMany({
+    where: { spaceId: owned.spaceId, revokedAt: null, name: memberHandle ? `member:${memberHandle}` : name.trim() },
+    data: { revokedAt: new Date() },
+  })
 
   // Generate token: uc_st_ + 32 random hex chars
   const rawToken = `uc_st_${crypto.randomBytes(16).toString('hex')}`

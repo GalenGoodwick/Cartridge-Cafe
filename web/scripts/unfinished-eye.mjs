@@ -41,18 +41,18 @@ await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(800)
 const dest = await p.evaluate(() => document.body.innerText)
 T('destinations: GAME LIST · UNFINISHED · OPEN LIVE EDITING…', /● PUBLISH — GAME LIST/.test(dest) && /⚒ PUBLISH — UNFINISHED/.test(dest) && /◉ OPEN LIVE EDITING…/.test(dest))
 // publish → unfinished round-trips
-await p.click('button:has-text("⚒ PUBLISH — UNFINISHED")', { force: true }); await p.waitForTimeout(1200)
+await p.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.includes('⚒ PUBLISH'))?.click() }); await p.waitForTimeout(1200)
 T('publish:unfinished round-trips (chip ⚒)', await p.evaluate(() => window.__eyeEvents.some(e => e?.config?.unfinished === true)) && /⚒ LIVE — UNFINISHED/.test(await p.locator('[data-pub-state]').innerText()))
 // back to game list clears the flag
-await p.click('button:has-text("● PUBLISH — GAME LIST")', { force: true }); await p.waitForTimeout(1200)
+await p.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.includes('● PUBLISH'))?.click() }); await p.waitForTimeout(1200)
 T('publish:game clears unfinished (chip ●)', /● LIVE — GAME LIST/.test(await p.locator('[data-pub-state]').innerText()))
 // live-edit needs the DISCLAIMER; confirm seals; other destinations BLOCK
-await p.click('button:has-text("◉ OPEN LIVE EDITING…")', { force: true }); await p.waitForTimeout(400)
+await p.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.includes('◉ OPEN LIVE EDITING'))?.click() }); await p.waitForTimeout(400)
 T('disclaimer names the seal (no instant open)', await p.evaluate(() => {
   const c = document.querySelector('[data-live-confirm]')
   return !!c && /CANNOT|cannot be\s*reversed/i.test(c.textContent) && !window.__eyeEvents.some(e => e?.config?.policy === 'anyone')
 }))
-await p.click('[data-live-confirm-go]', { force: true }); await p.waitForTimeout(1500)
+await p.evaluate(() => document.querySelector('[data-live-confirm-go]')?.click()); await p.waitForTimeout(1500)
 const sealed = await p.evaluate(() => window.__eyeEvents.some(e => e?.config?.policy === 'anyone'))
 T('confirm → contract sealed (policy anyone)', sealed)
 T('open world BLOCKS other destinations', await p.evaluate(() => {
