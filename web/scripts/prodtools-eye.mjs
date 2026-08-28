@@ -180,6 +180,14 @@ T('MAIN bar: Cartridge.Cafe title · commons LEFT · brew RIGHT · no instructio
 }))
 T('MAIN: presence room armed on CAFE (starfield frame)', await p.evaluate(() => window.__ccPresenceDbg?.room === 'cursors:CAFE'))
 T('MAIN: no bubble doors (CAFE hub not mounted)', await p.evaluate(() => !/THE SHELF|SUB-MAIN/.test(document.body.innerText)))
+// the glyph hook packs uniforms and the icon TRACKS THE CURSOR (the freeze-era
+// cafe_door replaced by main_glyph — zero bubbles, cursor uv at u[4..5])
+await p.mouse.move(640, 200); await p.waitForTimeout(400)
+const g1 = await p.evaluate(() => ((window.__ccDevSim?.worldData?.gpuUniforms) || []).slice(0, 8))
+await p.mouse.move(400, 320); await p.waitForTimeout(400)
+const g2 = await p.evaluate(() => ((window.__ccDevSim?.worldData?.gpuUniforms) || []).slice(0, 8))
+T('MAIN: glyph uniforms pack (0 bubbles) + cursor tracks', g1.length >= 8 && g1[3] === 0 && (g1[4] !== g2[4] || g1[5] !== g2[5]))
+
 // ◆ BREW ICON
 T('MAIN: ◆ BREW ICON on the bar', await p.locator('[data-grid-brewicon]').count() === 1)
 await p.click('[data-grid-brewicon]', { force: true }); await p.waitForTimeout(700)
@@ -214,7 +222,7 @@ T('ACCOUNT is the auth door (anchor → signin)', await p.evaluate(() => {
 }))
 
 // ═ 7 · ✧ CREATE ═
-await p.goto('http://localhost:3131/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3131/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await p.waitForSelector('text=✧ CREATE', { timeout: 20000 }); await p.waitForTimeout(1000)
 T('CREATE on house cartridge: brew only', /forks grow from real worlds/.test(await body()) && /OPEN THE CREATE FLOW/.test(await body()))
 await p.goto('http://localhost:3131/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })

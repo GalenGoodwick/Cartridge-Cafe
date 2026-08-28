@@ -216,6 +216,29 @@ export default function TheGrid() {
     window.addEventListener('cafe:eye', on)
     return () => window.removeEventListener('cafe:eye', on)
   }, [])
+  // ◆ YOUR ICON on MAIN — the shell used to feed this: fetch the brewed icon,
+  // stash it on window.__cafeIcon, ping 'cafe:icon' so the engine swaps the
+  // glyph module (wd.__glyphOn) and the main_glyph hook packs it at the tail.
+  // Fast poll while the brew panel is open so an AI-set icon lands live.
+  useEffect(() => {
+    if (uiSet !== 'main') return
+    let stop = false
+    const look = () => {
+      if (document.hidden) return
+      fetch('/api/engine/player-icon').then(r => (r.ok ? r.json() : null)).then(d => {
+        if (stop) return
+        const icon = d?.icon && typeof d.icon.fx === 'number'
+          ? { fx: d.icon.fx, hue: d.icon.hue ?? 0.55, size: d.icon.size ?? 1, wgsl: typeof d.icon.wgsl === 'string' ? d.icon.wgsl : undefined }
+          : { fx: 5, hue: 0.55, size: 1 }
+        ;(window as unknown as { __cafeIcon?: typeof icon }).__cafeIcon = icon
+        window.dispatchEvent(new CustomEvent('cafe:icon'))
+      }).catch(() => { /* signed out — default cursor */ })
+    }
+    look()
+    const iv = setInterval(look, brewIconOpen ? 3000 : 20000)
+    return () => { stop = true; clearInterval(iv) }
+  }, [uiSet, brewIconOpen])
+
   // ● REC — the engine mirrors recorder state; the bar button reads it
   useEffect(() => {
     const on = (e: Event) => setRec(((e as CustomEvent).detail ?? { on: false, secs: 0 }) as { on: boolean; secs: number })
