@@ -11,6 +11,7 @@ import type { Card } from '@/app/api/cards/route'
 import { CardTabs, type TabCounts } from './Tabs'
 import { CardGrid } from './Grid'
 import { CatalogSpace } from './Space'
+import ModeToggle from '@/app/ModeToggle'
 import { useCatalogPresence } from './presence'
 import { useCatalogTicker } from './ticker'
 import ConnectPanel from '@/app/ConnectPanel'
@@ -132,6 +133,8 @@ export default function CardsMain() {
           <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 -mt-0.5" />
           <h1 className="cafe-sign text-[22px] leading-none">cartridge<span className="not-italic font-mono text-[15px] text-brass">.cafe</span></h1>
           <span className={`font-mono text-[11px] tracking-[0.14em] hidden sm:inline transition-colors duration-500 ${ticker.live ? 'text-amber-200' : 'text-white/30'}`}>{ticker.text}</span>
+          {/* THE MODE TOGGLE (Galen, Aug 28) — the whole site flips PLAY⇄ENGINE here */}
+          <ModeToggle />
           <input
             value={q} onChange={e => setQ(e.target.value)} placeholder="search name · type · tag · @maker"
             className="ml-auto w-64 max-w-[38vw] max-sm:order-last max-sm:w-full max-sm:max-w-none bg-black/50 border border-white/15 rounded px-2.5 py-1.5 font-mono text-[12px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50"
