@@ -1475,6 +1475,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const isPanning = useRef(false)
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
+  // RETIRED for now (Galen, Aug 28): no pips in worlds — MULTIPLAYER is the
+  // co-presence system. Kill switch, not a deletion: the socket never connects,
+  // the pip layer never renders, wd.presence never fills. Flip to resurrect.
+  const PRESENCE_RETIRED = true
   // Tabs report their cursor ~4×/s; the server answers with up to 25 others
   // (the cap per viewing instance). Others also land in worldData.presence,
   // so a world's hook or shader can react to visitors without engine changes.
@@ -1510,6 +1514,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // reload re-registers the cartridge's no-op modules.
   const otherGlyphsRef = useRef<{ slots: Map<string, number>; code: Map<string, string> }>({ slots: new Map(), code: new Map() })
   useEffect(() => {
+    if (PRESENCE_RETIRED) return
     if (!presenceIdRef.current) {
       // ONE DOCK PER PLAYER (the Unity Chant law): identity is the person, not
       // the tab. All of a player's tabs share this id, so their signals merge
@@ -6266,7 +6271,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           )}
 
           {/* other players, present as orbs — capped at 25 per viewing instance */}
-          {presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {
+          {!PRESENCE_RETIRED && presenceOthers.length > 0 && canvasRef.current && !simulationRef.current?.worldData?.noPresenceCursors && (() => {
             const cv = canvasRef.current
             const w = cv.clientWidth || 1, h = cv.clientHeight || 1
             const cam = cameraRef.current

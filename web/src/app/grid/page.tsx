@@ -624,7 +624,7 @@ function ConfigView({ cfg, sceneIsSpace }: {
       )}
       <div className="rounded-xl border border-white/12 bg-black/40 px-3.5 py-1 mb-3">
         <Row label="multiplayer" on={!!cfg?.multiplayer} k="multiplayer" disabled={!ownerLaw} />
-        <Row label="player presence" on={!cfg?.presenceOff} k="presence" />
+        {/* player-presence row RETIRED (Aug 28) — pips are gone; multiplayer is co-presence */}
         <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
       </div>
