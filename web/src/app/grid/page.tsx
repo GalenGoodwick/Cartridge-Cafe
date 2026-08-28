@@ -55,20 +55,29 @@ export default function TheGrid() {
   }, [])
   const inset = useMemo(() => insetFor(preset, win.w, win.h), [preset, win])
 
-  // COVER re-fit: the engine's camera fit listens to window resize; when the
-  // CONTAINER changes (a preset lands) we nudge it after the 0.32s ease so the
-  // world re-covers the new aspect — more or less game shown, never letterbox
-  // (for worlds that DECLARE their rect; contain-style worlds keep letterboxing
-  // by their own declaration — maximally flexible, per world).
+  // UNIFIED RESIZE (Galen: 'square does an instant snap — is this a unified
+  // function?'): it wasn't — the inset EASED (CSS 0.32s) while the camera
+  // re-fit fired ONCE after, as a snap. Now one source drives both: during the
+  // ease we re-fit EVERY FRAME against the live (animating) container rect, so
+  // the cover-camera glides with the frame. Cover worlds re-cover continuously;
+  // contain worlds keep their own declaration.
   useEffect(() => {
-    const t = setTimeout(() => { try { window.dispatchEvent(new Event('resize')) } catch { /* ssr */ } }, 360)
-    return () => clearTimeout(t)
+    let raf = 0
+    const t0 = performance.now()
+    const tick = () => {
+      try { window.dispatchEvent(new Event('resize')) } catch { /* ssr */ }
+      if (performance.now() - t0 < 460) raf = requestAnimationFrame(tick)   // ease 320ms + settle
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
   }, [inset])
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
-      {/* THE ONE GRID — the reckoning containment: chromeless engine at the inset */}
-      <FieldEngine playScene="CINDERFELL" hooksTrusted viewport={inset} />
+      {/* THE ONE GRID — the reckoning containment: chromeless engine at the
+          inset. externalTopbar: the engine's own ◂/identity strip yields — the
+          world's name lives in OUR top bar, never inside the game. */}
+      <FieldEngine playScene="CINDERFELL" hooksTrusted viewport={inset} externalTopbar />
 
       {/* THE FRAME — blue outline + gold corners, riding the same inset/ease */}
       <div
@@ -90,9 +99,20 @@ export default function TheGrid() {
         ))}
       </div>
 
-      {/* title band — minimal for now; the SELECTOR overlay docks here next */}
-      <div className="fixed top-0 inset-x-0 h-[52px] z-[120] flex items-center justify-center pointer-events-none">
-        <span className="font-mono text-[13px] tracking-[0.3em] text-white/70">CARTRIDGE.CAFE</span>
+      {/* THE TOP BAR — world identity (moved OUT of the game) + site title.
+          The title is the SELECTOR click-target next rung. */}
+      <div className="fixed top-0 inset-x-0 h-[52px] z-[120] flex items-center gap-2 px-3">
+        <button onClick={() => { window.location.href = '/' }} aria-label="back"
+          className="w-9 h-9 grid place-items-center rounded-xl bg-black/50 border border-white/12 text-white/75 text-[15px] hover:bg-black/70">◂</button>
+        <div className="min-w-0">
+          <div className="font-mono text-[12px] tracking-[0.14em] text-white/90 leading-tight truncate">CINDERFELL</div>
+          <div className="font-mono text-[9px] tracking-[0.12em] text-white/35 leading-tight">main · live</div>
+        </div>
+        <button
+          className="absolute left-1/2 -translate-x-1/2 font-mono text-[13px] tracking-[0.3em] text-white/70 hover:text-amber-200 transition-colors"
+          title="the UI selector opens here (next rung)">
+          CARTRIDGE.CAFE ▾
+        </button>
       </div>
 
       {/* THE PROOF — dimension buttons: click → the grid + frame flow together */}
