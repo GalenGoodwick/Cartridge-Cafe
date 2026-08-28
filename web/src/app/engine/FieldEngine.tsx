@@ -1373,6 +1373,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     try { window.dispatchEvent(new CustomEvent('cafe:rec', { detail: { on: recording, secs: recSecs } })) } catch { /* ssr */ }
   }, [recording, recSecs])
 
+  // cfg:/card: cmds mutate worldData directly (not React state) — this tick
+  // makes the publish effect below re-fire so the host reads back what it wrote
+  const [cfgTick, setCfgTick] = useState(0)
+
   // THE EYE PUBLISH — the host's EYE tab renders these (the grid's under-area):
   // ai focus, the latest eye image (AI probe or your shot), and shot status.
   useEffect(() => {
@@ -1387,12 +1391,16 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           isOwner: !!isOwner, spaceId: spaceId ?? null, spaceSlug: spaceSlug ?? null,
           multiplayer: wd?.['multiplayer'] === true,
           rReset: !!wd?.['rResetKey'], forkable: wd?.['forkable'] === true,
-          designMode, ver: spaceVer ?? null,
+          designMode, ver: spaceVer ?? null, isPublic: spacePublic,
+          card: (wd?.['card'] as Record<string, unknown> | undefined) ?? null,
+          blurb: typeof wd?.['blurb'] === 'string' ? wd['blurb'] : '',
+          vision: typeof wd?.['vision'] === 'string' ? wd['vision'] : '',
+          instructions: typeof wd?.['instructions'] === 'string' ? wd['instructions'] : '',
           presenceOff: presenceOffRef.current, policy: (wd?.['policy'] as { build?: string } | undefined)?.build ?? null,
         },
       } }))
     } catch { /* ssr */ }
-  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot, nodeGraph, inspectOn, inspectLog, designMode, spaceVer, isOwner, spaceId, spaceSlug])
+  }, [eyeSolo, buildConsoleOpen, aiFocus, aiEye, humanShot, nodeGraph, inspectOn, inspectLog, designMode, spaceVer, spacePublic, cfgTick, isOwner, spaceId, spaceSlug])
   // Snapshot the live world into a node graph (engine/ai-view/NodeGraph).
   const snapshotNodeGraph = useCallback((): AiNodeGraph => buildNodeGraph(simulationRef.current, rendererRef.current, simulationRef.current ? allStepHookSnapshots(simulationRef.current) : undefined), [allStepHookSnapshots])
   // Keep the graph fresh while the BuilderBox is open (cheap ref reads).
@@ -1999,6 +2007,35 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       const v = cmd.slice(4)
       if (isOwner) hotLoadSpaceVersionRef.current?.(v === 'live' ? undefined : Math.max(1, parseInt(v, 10) || 1))
     }
+    else if (cmd.startsWith('card:')) {                                         // ▤ THE CARD — host-edited kind/tags/blurb/vision/instructions
+      const sim = simulationRef.current
+      if (sim && isOwner) {
+        try {
+          const patch = JSON.parse(cmd.slice(5)) as { card?: Record<string, unknown>; blurb?: string; vision?: string; instructions?: string }
+          if (patch.card) {
+            const cur = (sim.worldData['card'] && typeof sim.worldData['card'] === 'object' ? sim.worldData['card'] : {}) as Record<string, unknown>
+            const next = { ...cur, ...patch.card }
+            for (const k of Object.keys(next)) if (next[k] === undefined || next[k] === null) delete next[k]
+            sim.worldData['card'] = next
+          }
+          for (const k of ['blurb', 'vision', 'instructions'] as const) if (typeof patch[k] === 'string') sim.worldData[k] = patch[k]
+          setCfgTick(n => n + 1)
+        } catch { /* malformed patch — drop */ }
+      }
+    }
+    else if (cmd === 'publish:on' || cmd === 'publish:off') {                   // ⬆ PUBLISH — the shelf switch; publishing also drops DRAFT (design)
+      if (isOwner && spaceSlug) {
+        const pub = cmd === 'publish:on'
+        if (pub) setDesignMode(false)   // Galen: design off = publishes; going live ends the draft
+        void fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isPublic: pub }),
+        }).then(async r => {
+          const d = await r.json().catch(() => null)
+          if (r.ok) setSpacePublic(typeof d?.space?.isPublic === 'boolean' ? d.space.isPublic : pub)
+        }).catch(() => { /* offline — state untouched */ })
+      }
+    }
     else if (cmd.startsWith('cfg:')) {                                          // ⚙ CONFIG toggles — the old panel's writes, host-driven
       const sim = simulationRef.current
       const k = cmd.slice(4)
@@ -2009,6 +2046,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         else if (k === 'rreset') sim.worldData['rResetKey'] = !sim.worldData['rResetKey']
         else if (k === 'forkable') sim.worldData['forkable'] = sim.worldData['forkable'] === true ? false : true
       }
+      setCfgTick(n => n + 1)   // worldData writes aren't React state — re-publish so the host reads back
     }
     else if (cmd === 'nodes') setNodesOpen(v => !v)       // ⬢ NODES — the co-build dock (spaces)
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open

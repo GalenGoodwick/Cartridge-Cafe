@@ -25,6 +25,15 @@ type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
 type Tab = 'live' | 'published' | 'premium' | 'mine' | 'search'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
+// the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
+type GridCfg = {
+  isOwner: boolean; spaceId: string | null; spaceSlug: string | null
+  multiplayer: boolean; rReset: boolean; forkable: boolean
+  designMode?: boolean; ver?: number | null; isPublic?: boolean | null
+  card?: { kind?: string; type?: string; tags?: string[] } | null
+  blurb?: string; vision?: string; instructions?: string
+  presenceOff: boolean; policy: string | null
+}
 
 const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out'
 const M = 16, BAR_H = 64, DOCK_W = 248
@@ -49,14 +58,14 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
     shot?: string
     graph?: AiNodeGraph | null
     inspect?: { on: boolean; log: Array<{ at: number; x: number; y: number; field: string | null; visual: string | null; color: string | null; entity?: { id: number; kind?: number; label?: string } | null; ui?: { id: string; text: string } | null; source?: string | null }> } | null
-    config?: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; designMode?: boolean; ver?: number | null; presenceOff: boolean; policy: string | null } | null
+    config?: GridCfg | null
   } | null>(null)
 
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
@@ -162,9 +171,10 @@ export default function TheGrid() {
   // the frame below MIN_W×MIN_H — it holds shape until there's room) ──
   const browsing = uiSet === 'games' && phase === 'browse'
   const engineSet = uiSet === 'engine'
+  const createSet = uiSet === 'create'
   const narrow = win.w < 700                      // the dock becomes a BOTTOM SHEET on narrow screens
   const dockBottomH = 168                          // narrow engine dock height
-  const miniTop = browsing || engineSet   // GAMES-browse AND ENGINE share the shrink-to-top layout
+  const miniTop = browsing || engineSet || createSet   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
     if (!miniTop) return { top: M, right: M, bottom: BAR_H + 10, left: M }
@@ -209,16 +219,17 @@ export default function TheGrid() {
     window.addEventListener('cafe:rec', on)
     return () => window.removeEventListener('cafe:rec', on)
   }, [])
-  // entering ENGINE arms the engine's eye-watch (after the transition hygiene).
-  // spc is a dep: a space mount arrives LATE (after its fetch resolves) — the
-  // arm must re-fire once the real engine exists, or config never publishes.
+  // entering ENGINE or CREATE arms the engine's eye-watch (after the transition
+  // hygiene) — CREATE needs the config publish too (forkable/owner feed the fork
+  // card). spc is a dep: a space mount arrives LATE (after its fetch resolves) —
+  // the arm must re-fire once the real engine exists, or config never publishes.
   useEffect(() => {
-    if (!engineSet) return
+    if (!engineSet && !createSet) return
     const fire = () => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'eye' })) } catch { /* ssr */ } }
     const t = setTimeout(fire, 50)
     const t2 = setTimeout(fire, 1200)   // belt: survives a slow first mount
     return () => { clearTimeout(t); clearTimeout(t2) }
-  }, [engineSet, scene, spc])
+  }, [engineSet, createSet, scene, spc])
 
   const pick = useCallback((e: Entry) => setScene(e.scene), [])
 
@@ -357,7 +368,7 @@ export default function TheGrid() {
       {/* CLICK THE FRAME → PLAY, in ENGINE too (the world is always the play
           button — the universal law). While ◎ INSPECT is on, the frame yields:
           clicks must reach the canvas to document what's under them. */}
-      {engineSet && !eyeData?.inspect?.on && (
+      {(engineSet || createSet) && !eyeData?.inspect?.on && (
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => { setUiSet('games'); setPhase('play') }}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
@@ -365,6 +376,20 @@ export default function TheGrid() {
             ▶ PLAY {selected?.name ?? ''}
           </span>
         </button>
+      )}
+
+      {/* ═ THE CREATE UNDER-AREA — contextual: the world in the frame is the
+          default BASE (fork it into yours) · or brew from nothing (/create). ═ */}
+      {createSet && (
+        <div className="fixed inset-x-0 z-[112] flex justify-center px-4 overflow-y-auto"
+          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          <CreateView
+            baseName={selected?.name ?? scene}
+            baseSlug={scene.startsWith('space:') ? scene.slice(6) : null}
+            forkable={scene.startsWith('space:') ? (!!eyeData?.config?.forkable || !!eyeData?.config?.isOwner) : true}
+            onForked={slug => { setScene('space:' + slug); setUiSet('engine') }}
+          />
+        </div>
       )}
 
       {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen) */}
@@ -450,7 +475,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/45 hover:text-white/75'}`}>
@@ -534,6 +559,7 @@ export default function TheGrid() {
             {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
             {tool === 'crew' && <CrewView spaceSlug={eyeData?.config?.spaceSlug ?? null} isOwner={!!eyeData?.config?.isOwner} />}
             {tool === 'versions' && <VersionsView cfg={eyeData?.config ?? null} />}
+            {tool === 'publish' && <PublishView cfg={eyeData?.config ?? null} />}
             {tool === 'mine' && <MyWorldsView icons={icons} current={scene} onPick={s => setScene(s)} />}
             {tool === 'config' && (
               <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
@@ -748,7 +774,7 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
 // title). Space owners get the management overlay (name · visibility · keys);
 // the toggles drive the engine's own writes over cfg: commands.
 function ConfigView({ cfg, sceneIsSpace }: {
-  cfg: { isOwner: boolean; spaceId: string | null; spaceSlug: string | null; multiplayer: boolean; rReset: boolean; forkable: boolean; designMode?: boolean; ver?: number | null; presenceOff: boolean; policy: string | null } | null
+  cfg: GridCfg | null
   sceneIsSpace: boolean
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
@@ -816,9 +842,12 @@ function ConfigView({ cfg, sceneIsSpace }: {
         {/* player-presence row RETIRED (Aug 28) — pips are gone; multiplayer is co-presence */}
         <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
-        <Row label="✎ design mode — edits author the cartridge" on={!!cfg?.designMode} k="design" disabled={!ownerLaw}
-          hint="ON: your live edits save to the CARTRIDGE for everyone. OFF: you play on your own save like anyone else." />
+        {/* (✎ design moved to the ⬆ PUBLISH tab — draft vs live is a publishing state) */}
       </div>
+
+      {/* ▤ THE CARD — what the catalog deals: kind · type · tags · blurb ·
+          story · instructions. Writes ride the card: cmd into worldData. */}
+      {ownedSpace && <CardSection cfg={cfg} />}
 
       {/* owner workbench — invite / icon / sprites */}
       {ownedSpace && (
@@ -852,7 +881,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
       <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] leading-relaxed text-white/55">
         social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
         {!sceneIsSpace && <div className="mt-1.5 text-white/40">house cartridge — owner controls apply on real worlds.</div>}
-        <div className="mt-1.5 text-white/40">THE CARD (kind · tags · blurb) docks here next.</div>
       </div>
 
       {/* the sprites panel fills THIS area — the under-area, never the game */}
@@ -963,6 +991,190 @@ function MyWorldsView({ icons, current, onPick }: {
             </button>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// ▤ THE CARD — kind · type · tags · blurb · story · instructions (Galen:
+// "config needs tagging, writing instructions, labeling what it is").
+// Local drafts seed once from the engine's publish; blur → card: cmd.
+function CardSection({ cfg }: { cfg: GridCfg | null }) {
+  const send = (patch: Record<string, unknown>) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify(patch) })) } catch { /* ssr */ } }
+  const [seeded, setSeeded] = useState(false)
+  const [kind, setKind] = useState<string>('auto')
+  const [typ, setTyp] = useState('')
+  const [types, setTypes] = useState<Array<{ id: string; label: string }>>([])
+  const [tags, setTags] = useState('')
+  const [blurb, setBlurb] = useState('')
+  const [vision, setVision] = useState('')
+  const [instr, setInstr] = useState('')
+  useEffect(() => {
+    fetch('/api/cards?types=1').then(r => r.json()).then(d => setTypes(d.types ?? [])).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (seeded || !cfg) return
+    setSeeded(true)
+    setKind(cfg.card?.kind === 'toy' || cfg.card?.kind === 'world' || cfg.card?.kind === 'game' ? cfg.card.kind : 'auto')
+    setTyp(cfg.card?.type ?? '')
+    setTags((cfg.card?.tags ?? []).join(', '))
+    setBlurb(cfg.blurb ?? ''); setVision(cfg.vision ?? ''); setInstr(cfg.instructions ?? '')
+  }, [cfg, seeded])
+  return (
+    <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px] space-y-2">
+      <div className="text-[10.5px] tracking-[0.2em] text-white/50">▤ THE CARD — what the catalog deals</div>
+      <div className="flex items-center gap-1.5">
+        {(['auto', 'toy', 'world', 'game'] as const).map(k => (
+          <button key={k} data-card-kind={k}
+            onClick={() => { setKind(k); send({ card: { kind: k === 'auto' ? null : k } }) }}
+            title={k === 'auto' ? 'the anatomy decides: rules built → game; multiplayer/big grid → world; else toy' : k}
+            className={`px-2.5 py-0.5 rounded-full border text-[10.5px] tracking-[0.12em] transition-colors ${kind === k
+              ? 'border-amber-300/60 bg-amber-400/15 text-amber-200' : 'border-white/20 text-white/50 hover:text-white'}`}>
+            {k.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      <select value={typ} onChange={e => { setTyp(e.target.value); send({ card: { type: e.target.value || null } }) }}
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 outline-none focus:border-amber-300/50">
+        <option value="">type… (the vocabulary)</option>
+        {types.map(t => <option key={t.id} value={t.id}>{t.label ?? t.id}</option>)}
+      </select>
+      <input value={tags} onChange={e => setTags(e.target.value)}
+        onBlur={() => send({ card: { tags: tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) } })}
+        placeholder="tags, comma, separated"
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
+      <input value={blurb} onChange={e => setBlurb(e.target.value)} onBlur={() => send({ blurb: blurb.trim() })}
+        placeholder="the blurb — one line the card shows"
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
+      <textarea value={instr} onChange={e => setInstr(e.target.value)} onBlur={() => send({ instructions: instr.trim() })}
+        placeholder="instructions — how to PLAY it (the ? INSTRUCTIONS panel shows this)"
+        rows={3}
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50 resize-y" />
+      <textarea value={vision} onChange={e => setVision(e.target.value)} onBlur={() => send({ vision: vision.trim() })}
+        placeholder="the story (vision) — what this world IS"
+        rows={2}
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50 resize-y" />
+    </div>
+  )
+}
+
+// ⬆ PUBLISH — the draft⇄live seam (Galen: design rolled in — "design on
+// doesn't update main; design off publishes and updates the game list").
+function PublishView({ cfg }: { cfg: GridCfg | null }) {
+  const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
+  const slug = cfg?.spaceSlug ?? null
+  const owner = !!cfg?.isOwner
+  if (!slug) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — publishing lives on real worlds.</div>
+  if (!owner) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">only the maker publishes this world.</div>
+  const drafting = !!cfg?.designMode
+  const live = cfg?.isPublic === true
+  const state = drafting ? '✎ DRAFTING' : live ? '● LIVE' : '○ UNLISTED'
+  const stateTint = drafting ? 'text-amber-200 border-amber-300/50 bg-amber-400/10' : live ? 'text-emerald-200 border-emerald-300/50 bg-emerald-400/10' : 'text-white/60 border-white/20 bg-black/40'
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono text-[11px]">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="text-[10.5px] tracking-[0.2em] text-white/50">⬆ PUBLISH</span>
+        <span data-pub-state className={`px-3 py-1 rounded-full border text-[10.5px] tracking-[0.18em] ${stateTint}`}>{state}</span>
+      </div>
+      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 leading-relaxed text-white/60">
+        <span className="text-amber-200/90">✎ draft</span>: your edits author the cartridge in the workshop — the live game and the shelf don&apos;t change.<br />
+        <span className="text-emerald-200/90">● publish</span>: ends the draft, puts this world on the game list, and players get what you built.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {!drafting && (
+          <button onClick={() => cmd('cfg:design')}
+            className="px-3.5 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-200 text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
+            ✎ START A DRAFT
+          </button>
+        )}
+        {drafting && (
+          <button onClick={() => cmd('cfg:design')}
+            className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/75 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
+            ✎ END DRAFT (keep unpublished)
+          </button>
+        )}
+        <button onClick={() => cmd('publish:on')}
+          className="px-3.5 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
+          ● PUBLISH — ON THE GAME LIST
+        </button>
+        {live && (
+          <button onClick={() => cmd('publish:off')}
+            className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
+            ○ UNPUBLISH
+          </button>
+        )}
+      </div>
+      <div className="mt-3 text-[10px] text-white/40 leading-relaxed">tip: ⚑ a save point in ⏱ VERSIONS before big drafts — publishing is instant, versions are your way back.</div>
+    </div>
+  )
+}
+
+// ✧ CREATE — contextual (Galen's design): the world in the frame is the
+// default BASE. Fork it under your own name, or brew from nothing via the
+// full /create flow (prompt → your AI builds it).
+function CreateView({ baseName, baseSlug, forkable, onForked }: {
+  baseName: string
+  baseSlug: string | null          // null = house cartridge (no fork API — brew instead)
+  forkable: boolean
+  onForked: (slug: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const nameOk = name.trim().length >= 2
+  const fork = async () => {
+    if (!baseSlug || !nameOk || busy) return
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(baseSlug)}/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.space?.slug) onForked(d.space.slug)
+      else if (r.status === 401) setErr('sign in first — a fork needs a name on its deed.')
+      else setErr(d?.error || 'fork failed.')
+    } catch { setErr('fork failed — are you offline?') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="w-full max-w-[640px] font-mono text-[11px]">
+      <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">✧ CREATE</div>
+
+      {/* fork the world in the frame */}
+      <div className="rounded-2xl border border-white/12 bg-black/40 p-4 mb-3">
+        <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">⑄ FORK {baseName.toUpperCase()}</div>
+        {baseSlug ? (forkable ? (
+          <>
+            <div className="text-white/55 leading-relaxed mb-2.5">a fork is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
+            <div className="flex gap-2">
+              <input value={name} onChange={e => setName(e.target.value)} maxLength={60}
+                onKeyDown={e => { if (e.key === 'Enter' && nameOk) void fork() }}
+                placeholder="name your fork… (e.g. neon-remix)"
+                className="flex-1 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-emerald-300/50" />
+              <button onClick={() => void fork()} disabled={!nameOk || busy}
+                className="px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors shrink-0">
+                {busy ? '…' : '⑄ FORK IT — IT BECOMES YOURS'}
+              </button>
+            </div>
+            {err && <div className="mt-2 text-amber-200/90">{err}</div>}
+            <div className="mt-2 text-[10px] text-white/40">it opens in the ENGINE — connect your AI there and tell it what the fork should become.</div>
+          </>
+        ) : (
+          <div className="text-white/50 leading-relaxed">the maker hasn&apos;t enabled forking on this world — pick another from the shelf, or brew below.</div>
+        )) : (
+          <div className="text-white/50 leading-relaxed">house cartridge — its code is open ground to read, but forks grow from real worlds. Brew below instead.</div>
+        )}
+      </div>
+
+      {/* brew from nothing — the full create flow */}
+      <div className="rounded-2xl border border-white/12 bg-black/40 p-4">
+        <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">✧ BREW FROM NOTHING</div>
+        <div className="text-white/55 leading-relaxed mb-2.5">the full create flow: describe a world, your AI builds it live. Blank ground or any open base.</div>
+        <a href={baseSlug ? `/create?base=${encodeURIComponent(baseSlug)}` : '/create'}
+          className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
+          ✧ OPEN THE CREATE FLOW
+        </a>
       </div>
     </div>
   )

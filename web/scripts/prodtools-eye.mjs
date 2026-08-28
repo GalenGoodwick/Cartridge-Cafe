@@ -24,6 +24,12 @@ await ctx.route('**/api/spaces/testy/invite', r => r.fulfill({ json: { joinUrl: 
 await ctx.route('**/api/spaces/testy/token', r => r.request().method() === 'POST' ? r.fulfill({ json: { token: 'uc_st_mock' } }) : r.fulfill({ json: { tokens: [] } }))
 await ctx.route('**/api/spaces/testy/sprites**', r => r.fulfill({ json: { sprites: [] } }))
 await ctx.route('**/api/spaces/testy/nodes**', r => r.fulfill({ json: { nodes: [] } }))
+await ctx.route('**/api/spaces/testy/fork', r => r.fulfill({ json: { space: { slug: 'testy-remix' } } }))
+// the fresh fork the CREATE flow lands on
+await ctx.route('**/api/spaces/testy-remix/**', r => r.fulfill({ json: {} }))
+await ctx.route('**/api/spaces/testy-remix', r => r.fulfill({ json: { space: { id: 'sp_2', slug: 'testy-remix', name: 'NEON-REMIX', ownerId: 'u_me', owner: { id: 'u_me', name: 'Galen' }, isPublic: false } } }))
+await ctx.route('**/api/spaces/testy-remix/snapshot**', r => r.fulfill({ json: SNAP }))
+await ctx.route('**/api/spaces/testy-remix/versions', r => r.fulfill({ json: { versions: [] } }))
 
 const p = await ctx.newPage()
 p.on('dialog', d => d.dismiss().catch(() => {}))
@@ -74,10 +80,12 @@ T('VERSIONS tab: house note', /versions live on real worlds/.test(await body()))
 await p.click('button:has-text("⌂ MY WORLDS")'); await p.waitForTimeout(800)
 T('MY WORLDS tab renders (empty deed note ok)', /MY WORLDS — pick one|no worlds on your deed/.test(await body()))
 
-// CONFIG baseline: presence gone, design row present, versions moved out
+// CONFIG baseline: presence gone, design moved to PUBLISH, versions moved out
 await p.click('button:has-text("⚙ CONFIG")'); await p.waitForTimeout(500)
 const cfg1 = await body()
-T('design row present · presence gone · versions moved out', /design mode/.test(cfg1) && !/player presence/.test(cfg1) && !/⚑ SAVE A POINT/.test(cfg1))
+T('config slim: no presence · no design (→PUBLISH) · no versions', !/player presence/.test(cfg1) && !/design mode/.test(cfg1) && !/⚑ SAVE A POINT/.test(cfg1))
+await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(400)
+T('PUBLISH tab: house note', /publishing lives on real worlds/.test(await body()))
 
 // ═ 2 · REC on GAMES-play ═
 await p.goto('http://localhost:3131/grid?ui=games&ph=play&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
@@ -124,4 +132,30 @@ await p.click('button:has-text("⚑ SAVE A POINT")'); await p.waitForTimeout(600
 await p.click('button:has-text("⛭ CO-BUILD")'); await p.waitForTimeout(900)
 T('CO-BUILD tab: NodeDockPanel embedded', /NODES — who builds what/.test(await body()))
 
-await b.close(); console.log('PROD-TOOLS EYE v2 COMPLETE')
+// ═ 4 · ⬆ PUBLISH — draft⇄live, design rolled in ═
+await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(600)
+T('PUBLISH tab: ● LIVE chip (mock isPublic)', await p.locator('[data-pub-state]').innerText().then(t => t.includes('LIVE')))
+await p.click('button:has-text("✎ START A DRAFT")'); await p.waitForTimeout(800)
+T('draft flips the state chip (design ON)', await p.locator('[data-pub-state]').innerText().then(t => t.includes('DRAFTING')))
+await p.click('button:has-text("● PUBLISH — ON THE GAME LIST")'); await p.waitForTimeout(900)
+T('publish ends the draft → ● LIVE', await p.locator('[data-pub-state]').innerText().then(t => t.includes('LIVE')))
+
+// ▤ THE CARD in CONFIG — kind chip writes through the seam and reads back
+await p.click('button:has-text("⚙ CONFIG")'); await p.waitForTimeout(700)
+T('THE CARD section present', /▤ THE CARD/.test(await body()))
+await p.click('[data-card-kind="game"]'); await p.waitForTimeout(900)
+T('kind=GAME round-trips (engine publish)', await p.evaluate(() =>
+  window.__eyeEvents.some(e => e?.config?.card?.kind === 'game')))
+
+// ═ 5 · ✧ CREATE — contextual base ═
+await p.goto('http://localhost:3131/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('text=✧ CREATE', { timeout: 20000 }); await p.waitForTimeout(1000)
+T('CREATE on house cartridge: brew only', /forks grow from real worlds/.test(await body()) && /OPEN THE CREATE FLOW/.test(await body()))
+await p.goto('http://localhost:3131/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.waitForSelector('input[placeholder^="name your fork"]', { timeout: 20000 })
+await p.fill('input[placeholder^="name your fork"]', 'neon-remix')
+await p.click('button:has-text("⑄ FORK IT")'); await p.waitForTimeout(1500)
+const afterFork = await p.evaluate(() => ({ url: location.search, engine: /⚙ CONFIG/.test(document.body.innerText) }))
+T('fork → lands in ENGINE on the new world', afterFork.url.includes('w=space%3Atesty-remix') && afterFork.engine)
+
+await b.close(); console.log('PROD-TOOLS EYE v3 COMPLETE')
