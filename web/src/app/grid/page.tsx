@@ -17,7 +17,7 @@ import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
-import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
+import { iconAuthorPrompt, playerGlyphPrompt, worldBriefingPrompt } from '@/lib/connectPrompt'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
@@ -441,10 +441,36 @@ export default function TheGrid() {
     setInstrText('…'); load()
   }, [instrOpen, scene])
 
+  // ⚿ CONNECT — the REAL flow (Galen: 'not what it used to be'): mint a world
+  // BUILD KEY on the space, then bake it into the briefing prompt the old
+  // engine used (worldBriefingPrompt). No key ⇒ the AI has nothing to build
+  // with — the whole point. Minted lazily when the CONNECT surface opens.
+  const [plugToken, setPlugToken] = useState<string | null>(null)
+  const [plugErr, setPlugErr] = useState<string>('')
+  const plugSlugRef = useRef<string>('')
+  const wantConnect = connectOpen || tool === 'connect'
+  useEffect(() => {
+    if (!wantConnect) return
+    const slug = scene.startsWith('space:') ? scene.slice(6) : null
+    if (!slug) { setPlugToken(null); setPlugErr('house cartridge — fork or brew a world of your own to connect an AI to it.'); return }
+    if (plugSlugRef.current === slug && plugToken) return   // already minted for this world
+    plugSlugRef.current = slug
+    setPlugToken(null); setPlugErr('')
+    fetch(`/api/spaces/${encodeURIComponent(slug)}/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
+    }).then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (ok && d?.token) setPlugToken(d.token as string)
+        else setPlugErr(d?.error === 'Unauthorized' || !d ? 'sign in as the owner to mint a build key for this world.' : (d?.error || 'could not mint a build key'))
+      })
+      .catch(() => setPlugErr('could not mint a build key — offline?'))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantConnect, scene])
   const connectPrompt = useMemo(() => {
     const origin = typeof window !== 'undefined' ? window.location.origin.replace('localhost:3131', 'cartridge.cafe') : 'https://cartridge.cafe'
-    return `Connect to ${origin} as my builder. Read the guide first: GET ${origin}/api/engine/guide — then open my world "${selected?.name ?? 'my world'}" and build with me. Bridge commands go to POST ${origin}/api/engine/bridge with my world key.`
-  }, [selected])
+    if (!plugToken) return ''
+    return worldBriefingPrompt({ token: plugToken, worldName: selected?.name ?? 'my world', origin })
+  }, [plugToken, selected])
 
   // cfg with STABLE IDENTITY: even when other eye fields churn (a live world's
   // graph changes every tick), the owner views' props only change when the
@@ -672,12 +698,17 @@ export default function TheGrid() {
           onClick={() => setConnectOpen(false)}>
           <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-            <p className="text-[11px] text-white/50 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it reads the guide and builds with you. Works on any device.</p>
-            <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all">{connectPrompt}</div>
-            <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-              className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
-              {copied ? '✓ COPIED' : '⧉ COPY THE PROMPT'}
-            </button>
+            <p className="text-[11px] text-white/50 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
+            {plugErr && <p className="text-[11px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
+            {!plugErr && !plugToken && <p className="text-[11px] text-white/45 mb-2">minting a build key…</p>}
+            {plugToken && <>
+              <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
+              <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+                {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
+              </button>
+              <p className="text-[10px] text-white/35 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
+            </>}
           </div>
         </div>
       )}
@@ -815,12 +846,17 @@ export default function TheGrid() {
             {tool === 'connect' && (
               <div className="w-full h-full overflow-y-auto p-4 font-mono">
                 <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-                <p className="text-[11px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it reads the guide and builds with you. Any device.</p>
-                <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/85 leading-relaxed select-all">{connectPrompt}</div>
-                <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                  className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
-                  {copied ? '✓ COPIED' : '⧉ COPY THE PROMPT'}
-                </button>
+                <p className="text-[11px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
+                {plugErr && <p className="text-[11px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
+                {!plugErr && !plugToken && <p className="text-[11px] text-white/45 mb-2">minting a build key…</p>}
+                {plugToken && <>
+                  <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                    className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+                    {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
+                  </button>
+                  <p className="text-[10px] text-white/35 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
+                </>}
               </div>
             )}
           </div>
