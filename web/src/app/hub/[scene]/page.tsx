@@ -1,34 +1,11 @@
-import CafeShell from '@/app/CafeShell'
+// OLD UI REMOVED (Galen, Aug 29: "2 old sitewide ui — safe to remove"). The
+// bubble-hub renderer is gone; old /hub/<SCENE> links land in THE GRID. Hub
+// scenes that mattered were ferried to real spaces (slugified names), so the
+// slug guess usually lands the exact world; otherwise the shelf is right there.
+import { redirect } from 'next/navigation'
 
-interface HubPageProps {
-  params: Promise<{ scene: string }>
-}
-
-export async function generateMetadata({ params }: HubPageProps) {
+export default async function HubDoor({ params }: { params: Promise<{ scene: string }> }) {
   const { scene } = await params
-  const name = decodeURIComponent(scene)
-  // the world's own instructions are its best description — first line wins
-  let description: string | undefined
-  try {
-    const { hydrateScene, loadScene } = await import('@/app/api/engine/store')
-    await hydrateScene(name)
-    const wd = (loadScene(name) as { worldData?: { instructions?: string } } | undefined)?.worldData
-    const first = String(wd?.instructions || '').split('\n').find(l => l.trim())
-    if (first) description = first.trim().slice(0, 160)
-  } catch { /* store napping — title still stands */ }
-  const title = name.split(' ⑂ ')[0]
-  return {
-    title,
-    ...(description ? { description } : {}),
-    openGraph: { title: `${title} · cartridge.cafe`, ...(description ? { description } : {}) },
-    twitter: { title: `${title} · cartridge.cafe`, ...(description ? { description } : {}) },
-  }
-}
-
-/** Deep link straight into a cartridge — same shell, so ESC still walks
- *  back to the cafe without a page load. (Formerly /play/[scene]; /play/* now
- *  308-redirects here via next.config, so old links and bookmarks still land.) */
-export default async function HubPage({ params }: HubPageProps) {
-  const { scene } = await params
-  return <CafeShell initialScene={decodeURIComponent(scene)} />
+  const slug = decodeURIComponent(scene).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  redirect(slug ? `/grid?w=space:${encodeURIComponent(slug)}&ui=games&ph=play` : '/grid')
 }

@@ -13,11 +13,11 @@ await ctx.route('**/api/auth/session', r => r.fulfill({ json: { user: { id: 'u_m
 await ctx.route('**/api/premium?slug=prem', r => r.fulfill({ json: { premium: { usd: 5, demoSeconds: 60, coProgram: true }, owned, signedIn: true, buyable: true } }))
 let checkoutHit = false
 await ctx.route('**/api/premium', r => {
-  if (r.request().method() === 'POST') { checkoutHit = true; owned = true; return r.fulfill({ json: { url: 'http://localhost:3131/grid?ui=games&w=space:prem&paid=experience' } }) }
+  if (r.request().method() === 'POST') { checkoutHit = true; owned = true; return r.fulfill({ json: { url: 'http://localhost:3000/grid?ui=games&w=space:prem&paid=experience' } }) }
   return r.fallback()
 })
 const p = await ctx.newPage()
-await p.goto('http://localhost:3131/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded', timeout: 60000 })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await p.waitForSelector('button[aria-label^="play"]', { timeout: 30000 }); await p.waitForTimeout(2500)
 T('premium world PREVIEWS free (no gate in browse)', await p.evaluate(() => !document.body.innerText.includes('✦ PREMIUM WORLD')))
 await p.click('button[aria-label^="play"]'); await p.waitForTimeout(1200)
@@ -32,13 +32,13 @@ T('BUY posts checkout + redirects', checkoutHit)
 await p.waitForFunction(() => new URL(location.href).searchParams.get('ph') === 'play', null, { timeout: 15000 })
 T('checkout return (owned) → world OPENS', true)
 // owned now: direct click opens with no gate
-await p.goto('http://localhost:3131/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button[aria-label^="play"]', { timeout: 30000 }); await p.waitForTimeout(2000)
 await p.click('button[aria-label^="play"]'); await p.waitForTimeout(1500)
 T('owned: click just opens (no gate)', await p.evaluate(() => new URL(location.href).searchParams.get('ph') === 'play' && !document.body.innerText.includes('✦ PREMIUM WORLD')))
 // deep-link belt: unpaid direct ?ph=play gets kicked to the gate
 owned = false
-await p.goto('http://localhost:3131/grid?ui=games&ph=play&w=space:prem', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&ph=play&w=space:prem', { waitUntil: 'domcontentloaded' })
 await p.waitForTimeout(3000)
 T('deep-link belt: unpaid ?ph=play → gate, play revoked', await p.evaluate(() =>
   document.body.innerText.includes('✦ PREMIUM WORLD') && new URL(location.href).searchParams.get('ph') !== 'play'))
@@ -47,7 +47,7 @@ T('deep-link belt: unpaid ?ph=play → gate, play revoked', await p.evaluate(() 
 let signedIn = false
 await ctx.unroute('**/api/premium?slug=prem')
 await ctx.route('**/api/premium?slug=prem', r => r.fulfill({ json: { premium: { usd: 5 }, owned, signedIn, buyable: true } }))
-await p.goto('http://localhost:3131/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:prem', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button[aria-label^="play"]', { timeout: 30000 }); await p.waitForTimeout(2000)
 await p.click('button[aria-label^="play"]'); await p.waitForTimeout(1200)
 const door = await p.evaluate(() => {
@@ -58,7 +58,7 @@ T('signed-out gate = CREATE ACCOUNT door', door.there && /CREATE ACCOUNT/.test(a
 T('door carries the buy intent (callback → &buy=prem)', decodeURIComponent(door.href).includes('&buy=prem'))
 // simulate the sign-in return: account exists now, URL carries ?buy=prem
 signedIn = true
-await p.goto('http://localhost:3131/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
 await p.waitForTimeout(3500)
 const resumed = await p.evaluate(() => ({
   gate: document.body.innerText.includes('✦ PREMIUM WORLD'),
@@ -68,7 +68,7 @@ const resumed = await p.evaluate(() => ({
 T('sign-in return AUTO-REOPENS the gate at BUY (param cleaned)', resumed.gate && resumed.buy && resumed.cleaned)
 // and if they already owned it, the return just opens the world
 owned = true
-await p.goto('http://localhost:3131/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:prem&buy=prem', { waitUntil: 'domcontentloaded' })
 await p.waitForFunction(() => new URL(location.href).searchParams.get('ph') === 'play', null, { timeout: 15000 }).catch(() => {})
 console.log('  · debug:', await p.evaluate(() => ({ url: location.search, gate: document.body.innerText.includes('PREMIUM WORLD') })))
 T('owned on return → just plays', await p.evaluate(() => new URL(location.href).searchParams.get('ph') === 'play'))

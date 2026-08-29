@@ -1,6 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+// ⛨ THE KEEPER'S ROOM — redone in the grid's language (Galen, Aug 29: "redo
+// the admin page to update to modern ui"). Same APIs, same powers, new shape:
+//   · WORLDS (player spaces) lead — the real shelf, searchable.
+//   · THE SCENE LIBRARY (legacy store scenes — bases, tests, the pre-space
+//     era) folds closed: it's a LIBRARY now, not clutter on the shelf.
+//   · VIEW opens THE GRID (the /hub viewer is gone — scenes load by name via
+//     the engine's scene fallback; spaces via ?w=space:<slug>).
+//   · AT A GLANCE · BRIDGE WATCH · FAULTS kept whole, restyled.
+import { useEffect, useMemo, useState } from 'react'
 
 type W = { name: string; private: boolean; timestamp: number; builtBy: string }
 type Branch = { base: string; label: string; versions: number; private: boolean; latest: string }
@@ -26,20 +34,21 @@ type FaultReport = { at: string; phase: string; url?: string; scene?: string; ha
 // the normal per-token build cadence, the shape a runaway loop would take.
 const HOT_TALKER = 800
 
-/** The keeper's shelf — one row per WORLD, branches folded beneath their base,
- *  each toggle covering every version of what it names. */
+const box = 'rounded-2xl border border-white/12 bg-black/40'
+const chip = 'font-mono text-[10px] tracking-[0.18em] px-2.5 py-1 rounded-lg border transition-colors'
+
 export default function AdminPage() {
   const [roots, setRoots] = useState<Root[] | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState('')
   const [openRoot, setOpenRoot] = useState('')
+  const [libOpen, setLibOpen] = useState(false)
+  const [q, setQ] = useState('')
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [faults, setFaults] = useState<FaultReport[] | null>(null)
   const [faultFilter, setFaultFilter] = useState('')
 
-  // fault log — errors gathered from real users' sessions, source-documented
-  // where the engine holds the source (hooks, shaders, GPU loss). Newest first.
   const loadFaults = () => {
     fetch('/api/engine/quarantine').then(r => r.ok ? r.json() : null)
       .then(d => setFaults(Array.isArray(d?.reports) ? [...d.reports].reverse() : []))
@@ -47,8 +56,6 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    // one richer pull: 48h bridge watch + lifetime totals + traffic sources +
-    // who-played-what over the last day (newcomers & playtime).
     fetch('/api/admin/analytics?paths=1&alltime=1&refs=1&hours=24').then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setAnalytics(d) }).catch(() => {})
     fetch('/api/admin/stats').then(r => r.ok ? r.json() : null)
@@ -81,9 +88,8 @@ export default function AdminPage() {
           }, { vn: -1, name: b.versions[0].name })
           root.branches.push({ base: b.base, label: b.base.split(' ⑂ ')[1] ?? b.base, versions: b.versions.length, private: b.versions.every(v => v.private), latest: latest.name })
         }
-        // player spaces sit on the same shelf — their visibility is the isPublic column
         for (const s of (d.spaces ?? []) as { slug: string; name: string; private: boolean; owner: string }[]) {
-          rootMap.set('space:' + s.slug, { name: s.name, private: s.private, builtBy: s.owner ? `space · ${s.owner}` : 'space', branches: [], space: s.slug })
+          rootMap.set('space:' + s.slug, { name: s.name, private: s.private, builtBy: s.owner ?? '', branches: [], space: s.slug })
         }
         setRoots([...rootMap.values()].sort((a, b) => a.name.localeCompare(b.name)))
       })
@@ -111,48 +117,78 @@ export default function AdminPage() {
     setBusy(''); load()
   }
 
-  const Hidden = () => (
-    <span style={{ fontSize: 10, letterSpacing: '0.2em', color: '#ffb0b0', border: '1px solid rgba(255,120,120,0.45)', background: 'rgba(120,30,30,0.25)', borderRadius: 5, padding: '2px 6px' }}>HIDDEN</span>
+  // THE MODERN VIEWERS — the grid is the one renderer now: a space rides
+  // ?w=space:<slug>; a legacy scene loads BY NAME through the engine's scene
+  // fallback. (The old /hub viewer is gone — its links were the "odd bug".)
+  const viewHref = (r: { space?: string; name: string }) =>
+    r.space ? `/grid?w=space:${encodeURIComponent(r.space)}&ui=games&ph=play`
+      : `/grid?w=${encodeURIComponent(r.name)}&ui=games&ph=play`
+
+  const { spaces, scenes } = useMemo(() => {
+    const all = roots ?? []
+    const needle = q.trim().toLowerCase()
+    const hit = (r: Root) => !needle || r.name.toLowerCase().includes(needle) || (r.space ?? '').includes(needle) || r.builtBy.toLowerCase().includes(needle)
+    return {
+      spaces: all.filter(r => r.space && hit(r)),
+      scenes: all.filter(r => !r.space && hit(r)),
+    }
+  }, [roots, q])
+
+  const Row = ({ r, sub }: { r: Root; sub?: boolean }) => (
+    <div className={`${box} flex items-center gap-3 px-3.5 py-2.5 mb-1.5 ${r.private ? 'opacity-60' : ''} ${sub ? 'ml-7' : ''}`}>
+      <div className="flex-1 min-w-0 font-mono">
+        <div className="text-[13px] text-white/90 truncate">{r.name}</div>
+        <div className="text-[10px] text-white/40 truncate">
+          {r.space ? `/space/${r.space}` : 'scene · legacy store'}{r.builtBy ? ` · ${r.builtBy}` : ''}
+        </div>
+      </div>
+      {r.private && <span className={`${chip} border-red-400/40 bg-red-500/10 text-red-200/90`}>HIDDEN</span>}
+      {r.branches.length > 0 && (
+        <button onClick={() => setOpenRoot(openRoot === r.name ? '' : r.name)}
+          className={`${chip} border-white/15 bg-black/40 text-white/60 hover:text-white`}>
+          {openRoot === r.name ? '▾' : '▸'} {r.branches.length} ⑂
+        </button>
+      )}
+      <a href={viewHref(r)} target="_blank" rel="noreferrer"
+        className={`${chip} border-amber-300/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20`}>VIEW</a>
+      {busy === (r.space ?? r.name) ? <span className="font-mono text-[11px] text-white/60">…</span> : <>
+        <button onClick={() => toggle(r.space ? { space: r.space } : { name: r.name }, !r.private)}
+          className={`${chip} ${r.private ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20' : 'border-white/20 bg-white/5 text-white/70 hover:text-white'}`}>
+          {r.private ? 'PUBLISH' : 'HIDE'}
+        </button>
+        <button onClick={() => del(r.space ? { space: r.space } : { name: r.name }, r.name)} title="delete permanently"
+          className={`${chip} border-red-400/40 bg-red-500/10 text-red-200/90 hover:bg-red-500/20`}>✕</button>
+      </>}
+    </div>
   )
 
-  const View = ({ scene, small }: { scene: string; small?: boolean }) => (
-    <a href={scene.startsWith('space:') ? `/space/${scene.slice(6)}` : `/hub/${encodeURIComponent(scene)}`} target="_blank" rel="noreferrer" style={{
-      fontFamily: 'inherit', fontSize: small ? 11 : 12, letterSpacing: '0.15em', textDecoration: 'none',
-      padding: small ? '4px 10px' : '6px 14px', borderRadius: 8, whiteSpace: 'nowrap',
-      border: '1px solid rgba(245,176,76,0.4)', background: 'rgba(185,122,42,0.12)', color: '#ffdba8',
-    }}>VIEW</a>
-  )
-
-  const Btn = ({ priv, onClick, small }: { priv: boolean; onClick: () => void; small?: boolean }) => (
-    <button onClick={onClick} style={{
-      fontFamily: 'inherit', fontSize: small ? 11 : 12, letterSpacing: '0.15em', cursor: 'pointer',
-      padding: small ? '4px 10px' : '6px 14px', borderRadius: 8, whiteSpace: 'nowrap',
-      border: priv ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(120,220,140,0.5)',
-      background: priv ? 'rgba(255,255,255,0.05)' : 'rgba(60,160,90,0.15)',
-      color: priv ? '#c9b896' : '#9be3a8',
-    }}>{priv ? 'PRIVATE — publish?' : 'ON MAIN — hide?'}</button>
-  )
-
-  const Del = ({ onClick, small }: { onClick: () => void; small?: boolean }) => (
-    <button onClick={onClick} title="delete permanently" style={{
-      fontFamily: 'inherit', fontSize: small ? 11 : 12, letterSpacing: '0.15em', cursor: 'pointer',
-      padding: small ? '4px 9px' : '6px 11px', borderRadius: 8, whiteSpace: 'nowrap',
-      border: '1px solid rgba(255,120,120,0.4)', background: 'rgba(120,30,30,0.2)', color: '#ffb0b0',
-    }}>✕ DELETE</button>
+  const BranchRow = ({ b }: { b: Branch }) => (
+    <div className={`${box} flex items-center gap-3 px-3.5 py-2 mb-1.5 ml-7 ${b.private ? 'opacity-60' : ''}`}>
+      <div className="flex-1 min-w-0 font-mono text-[12px] text-white/75 truncate">
+        ⑂ {b.label} <span className="text-white/35 text-[10px]">· {b.versions} version{b.versions > 1 ? 's' : ''}</span>
+      </div>
+      {b.private && <span className={`${chip} border-red-400/40 bg-red-500/10 text-red-200/90`}>HIDDEN</span>}
+      <a href={`/grid?w=${encodeURIComponent(b.latest)}&ui=games&ph=play`} target="_blank" rel="noreferrer"
+        className={`${chip} border-amber-300/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20`}>VIEW</a>
+      {busy === b.base ? <span className="font-mono text-[11px] text-white/60">…</span> : <>
+        <button onClick={() => toggle({ base: b.base }, !b.private)}
+          className={`${chip} ${b.private ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20' : 'border-white/20 bg-white/5 text-white/70 hover:text-white'}`}>
+          {b.private ? 'PUBLISH' : 'HIDE'}
+        </button>
+        <button onClick={() => del({ name: b.base }, b.label)} className={`${chip} border-red-400/40 bg-red-500/10 text-red-200/90 hover:bg-red-500/20`}>✕</button>
+      </>}
+    </div>
   )
 
   const Stat = ({ label, value }: { label: string; value: number }) => (
-    <div style={{ padding: '8px 14px', border: '1px solid rgba(185,122,42,0.25)', borderRadius: 10, background: 'rgba(28,22,14,0.6)', minWidth: 96 }}>
-      <div style={{ fontSize: 22, color: '#ffdba8' }}>{value.toLocaleString()}</div>
-      <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89670' }}>{label}</div>
+    <div className={`${box} px-3.5 py-2 min-w-[96px]`}>
+      <div className="font-mono text-[20px] text-amber-100/95">{value.toLocaleString()}</div>
+      <div className="font-mono text-[9px] tracking-[0.18em] text-white/40">{label}</div>
     </div>
   )
 
   const fmtDur = (s: number) => (s >= 3600 ? (s / 3600).toFixed(1) + 'h' : s >= 60 ? Math.round(s / 60) + 'm' : Math.round(s) + 's')
 
-  // AT A GLANCE — accounts, lifetime reach, where traffic comes from, and which
-  // worlds newcomers played + how long they stayed. Merges worldPaths (visits,
-  // newcomers) with playtime (sessions, median dwell) keyed by the world label.
   const Overview = () => {
     const a = analytics
     if (!stats && !a?.allTime) return null
@@ -162,32 +198,31 @@ export default function AdminPage() {
     for (const p of a?.playtime ?? []) { const k = p.world.toLowerCase(); const e = worlds.get(k) ?? { label: p.world }; e.median = p.medianSeconds; e.total = p.totalSeconds; worlds.set(k, e) }
     const worldRows = [...worlds.values()].sort((x, y) => (y.newcomers ?? 0) - (x.newcomers ?? 0) || (y.total ?? 0) - (x.total ?? 0)).slice(0, 12)
     const win = a?.window?.hours ? `LAST ${a.window.hours}H` : 'RECENT'
-    const refs = (a?.referrers ?? []).filter(r => r.source !== 'cartridge.cafe').slice(0, 8)   // drop internal nav
+    const refs = (a?.referrers ?? []).filter(r => r.source !== 'cartridge.cafe').slice(0, 8)
     return (
-      <div style={{ marginBottom: 30, padding: '16px 18px', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 12, background: 'rgba(20,14,10,0.55)' }}>
-        <div style={{ fontSize: 12, letterSpacing: '0.2em', color: '#ffb25a', marginBottom: 12 }}>AT A GLANCE</div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+      <section className={`${box} p-4 mb-4`}>
+        <div className="font-mono text-[10.5px] tracking-[0.2em] text-amber-200/80 mb-3">AT A GLANCE</div>
+        <div className="flex flex-wrap gap-2 mb-2.5">
           {stats && <Stat label="ACCOUNTS" value={stats.users.rows_nonGuest} />}
-          {stats && <Stat label="GUESTS" value={stats.users.guests} />}
           {stats && <Stat label="WORLDS" value={stats.worlds.total} />}
           {a?.allTime && <Stat label="VIEWS · ALL TIME" value={a.allTime.pages} />}
           {a?.allTime && <Stat label="VISITORS ≤" value={a.allTime.visitorDays} />}
           {a?.allTime && <Stat label="STRANGERS" value={a.allTime.strangerDays} />}
         </div>
         {a?.allTime?.since && (
-          <div style={{ fontSize: 10, color: '#c9b89655', marginBottom: 16 }}>
-            since {new Date(a.allTime.since).toLocaleDateString()} · <b>VISITORS ≤</b> counts distinct daily ids (a returning person once per day) — an upper bound, not a head-count
+          <div className="font-mono text-[9.5px] text-white/35 mb-4">
+            since {new Date(a.allTime.since).toLocaleDateString()} · VISITORS ≤ counts distinct daily ids — an upper bound, not a head-count
           </div>
         )}
         {refs.length > 0 && (
           <>
-            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>WHERE THEY COME FROM · {win}</div>
-            <div style={{ marginBottom: 16 }}>
+            <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/40 mb-1.5">WHERE THEY COME FROM · {win}</div>
+            <div className="mb-4">
               {refs.map(r => (
-                <div key={r.source} style={{ display: 'flex', gap: 10, padding: '4px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
-                  <span style={{ flex: 1, fontSize: 13, color: r.source === '(direct)' ? '#c9b89690' : '#d8cbb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.source}</span>
-                  <span style={{ fontSize: 13, color: '#c9b896', width: 88, textAlign: 'right' }}>{r.visitors.toLocaleString()} visitors</span>
-                  <span style={{ fontSize: 11, color: '#c9b89660', width: 70, textAlign: 'right' }}>{r.hits.toLocaleString()} hits</span>
+                <div key={r.source} className="flex gap-2.5 py-1 border-b border-white/5 font-mono text-[11.5px]">
+                  <span className={`flex-1 truncate ${r.source === '(direct)' ? 'text-white/45' : 'text-white/75'}`}>{r.source}</span>
+                  <span className="text-white/70 w-24 text-right">{r.visitors.toLocaleString()} visitors</span>
+                  <span className="text-white/35 w-16 text-right">{r.hits.toLocaleString()} hits</span>
                 </div>
               ))}
             </div>
@@ -195,20 +230,18 @@ export default function AdminPage() {
         )}
         {worldRows.length > 0 && (
           <>
-            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>WORLDS · {win} · newcomers &amp; how long they stay</div>
-            <div>
-              {worldRows.map(w => (
-                <div key={w.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
-                  <span style={{ flex: 1, fontSize: 13, color: '#ffdba8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.label}</span>
-                  <span style={{ fontSize: 12, color: '#9be3a8', width: 62, textAlign: 'right' }}>{w.newcomers ?? 0} new</span>
-                  <span style={{ fontSize: 12, color: '#c9b896', width: 58, textAlign: 'right' }}>{w.visitors ?? '·'} vis</span>
-                  <span style={{ fontSize: 12, color: '#ffb25a', width: 78, textAlign: 'right' }}>{w.median != null ? fmtDur(w.median) + ' med' : '·'}</span>
-                </div>
-              ))}
-            </div>
+            <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/40 mb-1.5">WORLDS · {win} · newcomers &amp; how long they stay</div>
+            {worldRows.map(w => (
+              <div key={w.label} className="flex items-center gap-2.5 py-1 border-b border-white/5 font-mono text-[11.5px]">
+                <span className="flex-1 truncate text-amber-100/90">{w.label}</span>
+                <span className="text-emerald-300/90 w-16 text-right">{w.newcomers ?? 0} new</span>
+                <span className="text-white/60 w-14 text-right">{w.visitors ?? '·'} vis</span>
+                <span className="text-amber-200/90 w-20 text-right">{w.median != null ? fmtDur(w.median) + ' med' : '·'}</span>
+              </div>
+            ))}
           </>
         )}
-      </div>
+      </section>
     )
   }
 
@@ -217,141 +250,126 @@ export default function AdminPage() {
     const { summary, bridgePerHour, topTalkers } = analytics
     const peak = Math.max(1, ...bridgePerHour.map(h => h.n))
     return (
-      <div style={{ marginBottom: 30, padding: '16px 18px', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 12, background: 'rgba(20,14,10,0.55)' }}>
-        <div style={{ fontSize: 12, letterSpacing: '0.2em', color: '#ffb25a', marginBottom: 12 }}>TRAFFIC &amp; BRIDGE WATCH · LAST 48H</div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+      <section className={`${box} p-4 mb-4`}>
+        <div className="font-mono text-[10.5px] tracking-[0.2em] text-amber-200/80 mb-3">TRAFFIC &amp; BRIDGE WATCH · LAST 48H</div>
+        <div className="flex flex-wrap gap-2 mb-4">
           <Stat label="PAGE VIEWS" value={summary.pages} />
           <Stat label="UNIQUE STRANGERS" value={summary.strangerUniques} />
           <Stat label="AGENT / BRIDGE HITS" value={summary.agents} />
         </div>
-        <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 5 }}>BRIDGE HITS / HOUR (peak {peak.toLocaleString()})</div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 48, marginBottom: 16 }}>
-          {bridgePerHour.length === 0 && <div style={{ fontSize: 12, color: '#c9b89660' }}>no bridge traffic in the window</div>}
+        <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/40 mb-1">BRIDGE HITS / HOUR (peak {peak.toLocaleString()})</div>
+        <div className="flex items-end gap-[2px] h-12 mb-4">
+          {bridgePerHour.length === 0 && <div className="font-mono text-[11px] text-white/40">no bridge traffic in the window</div>}
           {bridgePerHour.map(h => (
             <div key={h.hour} title={`${new Date(h.hour).toLocaleString()} — ${h.n.toLocaleString()} hits`}
-              style={{ flex: 1, minWidth: 2, height: `${Math.max(3, (h.n / peak) * 100)}%`,
-                background: h.n >= peak * 0.9 ? '#ff9a4a' : 'rgba(245,176,76,0.45)', borderRadius: 1 }} />
+              className={`flex-1 min-w-[2px] rounded-sm ${h.n >= peak * 0.9 ? 'bg-amber-400' : 'bg-amber-300/40'}`}
+              style={{ height: `${Math.max(4, (h.n / peak) * 100)}%` }} />
           ))}
         </div>
-        <div style={{ fontSize: 10, letterSpacing: '0.15em', color: '#c9b89660', marginBottom: 6 }}>TOP TALKERS · BY TOKEN · LAST 24H</div>
-        {topTalkers.length === 0 && <div style={{ fontSize: 12, color: '#c9b89660' }}>quiet — no agents in the last 24h</div>}
+        <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/40 mb-1.5">TOP TALKERS · BY TOKEN · LAST 24H</div>
+        {topTalkers.length === 0 && <div className="font-mono text-[11px] text-white/40">quiet — no agents in the last 24h</div>}
         {topTalkers.map(t => {
           const hot = t.hits >= HOT_TALKER && !t.who.startsWith('house')
           return (
-            <div key={t.who} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 4px', borderBottom: '1px solid rgba(185,122,42,0.1)' }}>
-              <span style={{ fontSize: 13, color: hot ? '#ff9a4a' : '#d8cbb2', width: 130 }}>{hot && '⚠ '}{t.who}</span>
-              <span style={{ flex: 1, fontSize: 13, color: hot ? '#ffb25a' : '#c9b896' }}>{t.hits.toLocaleString()} hits</span>
-              <span style={{ fontSize: 11, color: '#c9b89660' }}>last {new Date(t.last).toLocaleTimeString()}</span>
+            <div key={t.who} className="flex items-center gap-2.5 py-1 border-b border-white/5 font-mono text-[11.5px]">
+              <span className={`w-36 truncate ${hot ? 'text-amber-300' : 'text-white/75'}`}>{hot && '⚠ '}{t.who}</span>
+              <span className={`flex-1 ${hot ? 'text-amber-200' : 'text-white/60'}`}>{t.hits.toLocaleString()} hits</span>
+              <span className="text-white/35 text-[10px]">last {new Date(t.last).toLocaleTimeString()}</span>
             </div>
           )
         })}
-        <div style={{ fontSize: 10, color: '#c9b89650', marginTop: 8 }}>
+        <div className="font-mono text-[9px] text-white/30 mt-2">
           tags are type:hash (never the raw token). ⚠ = a non-house token over {HOT_TALKER.toLocaleString()} hits/24h — worth a look.
         </div>
-      </div>
+      </section>
     )
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0b0908', color: '#e7dcc8', fontFamily: 'monospace', padding: '40px 24px' }}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
-        <div style={{ fontSize: 31, fontStyle: 'italic', color: '#ffdba8', marginBottom: 4 }}>the keeper&rsquo;s shelf</div>
-        <div style={{ fontSize: 13, color: '#c9b89680', marginBottom: 28 }}>
-          One row per world. A branch&rsquo;s switch covers all its versions. PRIVATE = unlisted everywhere; the direct /hub link still works.
+    <div className="min-h-screen px-4 py-8" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
+      <div className="max-w-[860px] mx-auto">
+        <div className="flex items-center gap-3 mb-1">
+          <a href="/grid" className="font-mono text-[13px] w-9 h-9 grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white transition-colors">◂</a>
+          <h1 className="font-mono text-[18px] tracking-[0.25em] text-amber-100/95">⛨ THE KEEPER&rsquo;S ROOM</h1>
         </div>
+        <p className="font-mono text-[11px] text-white/40 mb-5 ml-12">every world · visibility · the bridge · faults from the field. HIDDEN = unlisted everywhere.</p>
+
         <Overview />
         <BridgeWatch />
-        {err && <div style={{ color: '#ff8080', fontSize: 16 }}>{err}</div>}
-        {!err && !roots && <div style={{ color: '#c9b896', fontSize: 14 }}>fetching the shelf…</div>}
-        {roots && roots.map(r => (
-          <div key={r.space ? 'space:' + r.space : r.name} style={{ marginBottom: 6 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px',
-              border: '1px solid rgba(185,122,42,0.25)', borderRadius: 10,
-              background: r.private ? 'rgba(20,14,10,0.9)' : 'rgba(28,22,14,0.6)', opacity: r.private ? 0.65 : 1,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
-                {/* show the slug on player-space rows so same-named spaces (the veilfire-3d twins) are distinguishable — the row used to show only the display name */}
-                {r.space && <div style={{ fontSize: 11, color: '#c9b896', opacity: 0.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>/space/{r.space}</div>}
-                {r.builtBy && <div style={{ fontSize: 11, color: '#c9b89660' }}>{r.builtBy}</div>}
-              </div>
-              {r.private && <Hidden />}
-              {r.branches.length > 0 && (
-                <button onClick={() => setOpenRoot(openRoot === r.name ? '' : r.name)} style={{
-                  fontFamily: 'inherit', fontSize: 11, color: '#c9b896', background: 'none',
-                  border: '1px solid rgba(185,122,42,0.3)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer',
-                }}>{openRoot === r.name ? '▾' : '▸'} {r.branches.length} branch{r.branches.length > 1 ? 'es' : ''}</button>
-              )}
-              <View scene={r.space ? 'space:' + r.space : r.name} />
-              {busy === (r.space ?? r.name) ? <span style={{ fontSize: 12 }}>…</span> : <>
-                <Btn priv={r.private} onClick={() => toggle(r.space ? { space: r.space } : { name: r.name }, !r.private)} />
-                <Del onClick={() => del(r.space ? { space: r.space } : { name: r.name }, r.name)} />
-              </>}
+
+        {err && <div className="font-mono text-[13px] text-red-300">{err}</div>}
+        {!err && !roots && <div className="font-mono text-[12px] text-white/50">fetching the shelf…</div>}
+
+        {roots && (
+          <>
+            {/* ── WORLDS — the real shelf (player spaces) ── */}
+            <div className="flex items-center gap-3 mb-2 mt-2">
+              <div className="font-mono text-[10.5px] tracking-[0.2em] text-amber-200/80 shrink-0">WORLDS · {spaces.length}</div>
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="filter worlds, scenes, makers…"
+                className="flex-1 font-mono text-[11.5px] px-3 py-1.5 rounded-lg bg-black/50 border border-white/15 text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
             </div>
-            {openRoot === r.name && r.branches.map(b => (
-              <div key={b.base} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '6px 14px', margin: '4px 0 0 26px',
-                border: '1px solid rgba(185,122,42,0.15)', borderRadius: 8,
-                background: b.private ? 'rgba(20,14,10,0.8)' : 'rgba(24,19,13,0.5)', opacity: b.private ? 0.6 : 0.95,
-              }}>
-                <div style={{ flex: 1, fontSize: 13, color: '#d8cbb2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  ⑂ {b.label} <span style={{ color: '#c9b89650', fontSize: 11 }}>· {b.versions} version{b.versions > 1 ? 's' : ''}</span>
-                </div>
-                {b.private && <Hidden />}
-                <View small scene={b.latest} />
-                {busy === b.base ? <span style={{ fontSize: 12 }}>…</span> : <>
-                  <Btn small priv={b.private} onClick={() => toggle({ base: b.base }, !b.private)} />
-                  <Del small onClick={() => del({ name: b.base }, b.label)} />
-                </>}
+            {spaces.map(r => <Row key={'space:' + r.space} r={r} />)}
+            {spaces.length === 0 && <div className="font-mono text-[11px] text-white/40 mb-3">no worlds match.</div>}
+
+            {/* ── THE SCENE LIBRARY — the legacy store, folded (bases · tests ·
+                the pre-space era). Useful as a LIBRARY; never peers of the
+                shelf. Deleting here is permanent, same as ever. ── */}
+            <button onClick={() => setLibOpen(o => !o)}
+              className={`${box} w-full flex items-center gap-3 px-3.5 py-2.5 mt-5 mb-2 text-left hover:border-white/25 transition-colors`}>
+              <span className="font-mono text-[10.5px] tracking-[0.2em] text-white/60">{libOpen ? '▾' : '▸'} THE SCENE LIBRARY · {scenes.length}</span>
+              <span className="font-mono text-[10px] text-white/35">legacy store scenes — bases, tests, the pre-space era. A library, not the shelf.</span>
+            </button>
+            {libOpen && scenes.map(r => (
+              <div key={r.name}>
+                <Row r={r} />
+                {openRoot === r.name && r.branches.map(b => <BranchRow key={b.base} b={b} />)}
               </div>
             ))}
-          </div>
-        ))}
-        {/* ── fault log: every error gathered from real sessions ────────── */}
+          </>
+        )}
+
+        {/* ── faults from the field ── */}
         {!err && (
-          <div style={{ marginTop: 44 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
-              <div style={{ fontSize: 24, fontStyle: 'italic', color: '#ffb0a8', flex: 1 }}>faults from the field</div>
-              <button onClick={loadFaults} style={{ fontFamily: 'inherit', fontSize: 11, letterSpacing: '0.15em', color: '#c9b896', background: 'none', border: '1px solid rgba(185,122,42,0.3)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>↻ REFRESH</button>
+          <div className="mt-10">
+            <div className="flex items-baseline gap-3 mb-1">
+              <div className="font-mono text-[13px] tracking-[0.2em] text-red-200/90 flex-1">FAULTS FROM THE FIELD</div>
+              <button onClick={loadFaults} className={`${chip} border-white/15 bg-black/40 text-white/60 hover:text-white`}>↻ REFRESH</button>
             </div>
-            <div style={{ fontSize: 13, color: '#c9b89680', marginBottom: 16 }}>
-              Errors reported by real users&rsquo; sessions, newest first — source-documented where the engine holds the source.
-            </div>
+            <p className="font-mono text-[10.5px] text-white/40 mb-3">errors from real sessions, newest first — source-documented where the engine holds the source.</p>
             {faults && faults.length > 0 && (
               <input value={faultFilter} onChange={e => setFaultFilter(e.target.value)} placeholder="filter by scene, phase, hook, message…"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, fontFamily: 'inherit', fontSize: 13, color: '#e7dcc8', background: 'rgba(20,14,10,0.8)', border: '1px solid rgba(185,122,42,0.25)', borderRadius: 8, padding: '8px 12px' }} />
+                className="w-full mb-3 font-mono text-[11.5px] px-3 py-2 rounded-lg bg-black/50 border border-white/15 text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
             )}
-            {!faults && <div style={{ color: '#c9b896', fontSize: 14 }}>reading the log…</div>}
-            {faults && faults.length === 0 && <div style={{ color: '#9be3a8', fontSize: 14 }}>no faults logged — clean skies.</div>}
+            {!faults && <div className="font-mono text-[12px] text-white/50">reading the log…</div>}
+            {faults && faults.length === 0 && <div className="font-mono text-[12px] text-emerald-300/90">no faults logged — clean skies.</div>}
             {faults && faults.filter(f => {
               if (!faultFilter.trim()) return true
-              const q = faultFilter.toLowerCase()
-              return (f.scene ?? '').toLowerCase().includes(q) || (f.phase ?? '').toLowerCase().includes(q) || (f.url ?? '').toLowerCase().includes(q)
-                || f.hazards.some(h => (h.name ?? '').toLowerCase().includes(q) || (h.reason ?? '').toLowerCase().includes(q) || (h.author ?? '').toLowerCase().includes(q))
+              const fq = faultFilter.toLowerCase()
+              return (f.scene ?? '').toLowerCase().includes(fq) || (f.phase ?? '').toLowerCase().includes(fq) || (f.url ?? '').toLowerCase().includes(fq)
+                || f.hazards.some(h => (h.name ?? '').toLowerCase().includes(fq) || (h.reason ?? '').toLowerCase().includes(fq) || (h.author ?? '').toLowerCase().includes(fq))
             }).map((f, i) => {
-              const p = f.phase.replace(/^cc-fault:/, '')   // faults arrive prefixed by the forwarder
-              const phaseColor = p === 'gpu-lost' ? '#ff8a6a' : p === 'hook-error' ? '#ffcf6a' : p === 'window-error' ? '#d98aff' : p === 'owns-violation' ? '#6ad9a0' : p === 'node-benched' ? '#ffa94d' : p.includes('compile') || p === 'gpu-error' ? '#ff6a9a' : '#8ab4ff'
+              const p = f.phase.replace(/^cc-fault:/, '')
+              const tone = p === 'gpu-lost' ? 'bg-orange-400' : p === 'hook-error' ? 'bg-amber-300' : p === 'window-error' ? 'bg-purple-300' : p === 'owns-violation' ? 'bg-emerald-300' : p === 'node-benched' ? 'bg-orange-300' : p.includes('compile') || p === 'gpu-error' ? 'bg-rose-400' : 'bg-sky-300'
               return (
-                <div key={i} style={{ marginBottom: 8, border: '1px solid rgba(185,122,42,0.2)', borderRadius: 10, background: 'rgba(24,16,12,0.7)', padding: '10px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 10, letterSpacing: '0.15em', color: '#1a1109', background: phaseColor, borderRadius: 5, padding: '2px 7px', fontWeight: 700 }}>{p.toUpperCase()}</span>
-                    {f.scene && <span style={{ fontSize: 13, color: '#ffdba8' }}>{f.scene}</span>}
-                    <span style={{ flex: 1 }} />
-                    <span style={{ fontSize: 11, color: '#c9b89670' }}>{new Date(f.at).toLocaleString()}</span>
+                <div key={i} className={`${box} px-3.5 py-2.5 mb-2 font-mono`}>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className={`text-[9px] tracking-[0.15em] text-black font-bold rounded px-1.5 py-0.5 ${tone}`}>{p.toUpperCase()}</span>
+                    {f.scene && <span className="text-[12px] text-amber-100/90">{f.scene}</span>}
+                    <span className="flex-1" />
+                    <span className="text-[10px] text-white/40">{new Date(f.at).toLocaleString()}</span>
                   </div>
-                  {f.url && <div style={{ fontSize: 11, color: '#c9b89660', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.url}</div>}
+                  {f.url && <div className="text-[10px] text-white/35 mt-1 truncate">{f.url}</div>}
                   {f.hazards.map((h, j) => (
-                    <div key={j} style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 13, color: '#ffd0c8' }}>
-                        {h.name && <span style={{ color: '#ffb0a8', fontWeight: 700 }}>{h.name}</span>}
-                        {h.author && <span style={{ color: '#9be3a8', fontSize: 11 }}> · by {h.author}</span>}
-                        {typeof h.line === 'number' && h.line > 0 && <span style={{ color: '#c9b89680', fontSize: 11 }}> · line {h.line}{typeof h.col === 'number' ? ':' + h.col : ''}</span>}
-                        {h.gpuModel && <span style={{ color: '#c9b89680', fontSize: 11 }}> · {h.gpuModel}</span>}
+                    <div key={j} className="mt-2">
+                      <div className="text-[12px] text-red-100/90">
+                        {h.name && <span className="text-red-200 font-bold">{h.name}</span>}
+                        {h.author && <span className="text-emerald-300/90 text-[10px]"> · by {h.author}</span>}
+                        {typeof h.line === 'number' && h.line > 0 && <span className="text-white/45 text-[10px]"> · line {h.line}{typeof h.col === 'number' ? ':' + h.col : ''}</span>}
+                        {h.gpuModel && <span className="text-white/45 text-[10px]"> · {h.gpuModel}</span>}
                       </div>
-                      {h.reason && <div style={{ fontSize: 12, color: '#e7dcc8cc', marginTop: 2, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{h.reason}</div>}
-                      {h.snippet && <pre style={{ fontSize: 12, color: '#d8cbb2', background: 'rgba(10,7,5,0.7)', border: '1px solid rgba(185,122,42,0.15)', borderRadius: 6, padding: '8px 10px', marginTop: 6, overflowX: 'auto', whiteSpace: 'pre' }}>{h.snippet}</pre>}
-                      {!h.snippet && h.stack && <pre style={{ fontSize: 11, color: '#c9b89699', background: 'rgba(10,7,5,0.5)', border: '1px solid rgba(185,122,42,0.1)', borderRadius: 6, padding: '8px 10px', marginTop: 6, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>{h.stack}</pre>}
+                      {h.reason && <div className="text-[11px] text-white/75 mt-0.5 whitespace-pre-wrap break-words">{h.reason}</div>}
+                      {h.snippet && <pre className="text-[11px] text-white/70 bg-black/60 border border-white/10 rounded-lg px-2.5 py-2 mt-1.5 overflow-x-auto">{h.snippet}</pre>}
+                      {!h.snippet && h.stack && <pre className="text-[10px] text-white/45 bg-black/50 border border-white/8 rounded-lg px-2.5 py-2 mt-1.5 overflow-x-auto whitespace-pre-wrap">{h.stack}</pre>}
                     </div>
                   ))}
                 </div>
@@ -359,7 +377,7 @@ export default function AdminPage() {
             })}
           </div>
         )}
-        <div style={{ marginTop: 26, fontSize: 11, letterSpacing: '0.25em', color: 'rgba(245,176,76,0.4)' }}>CARTRIDGE.CAFE · KEEPER ONLY</div>
+        <div className="mt-7 font-mono text-[9.5px] tracking-[0.3em] text-amber-200/30">CARTRIDGE.CAFE · KEEPER ONLY</div>
       </div>
     </div>
   )

@@ -13,14 +13,14 @@ await ctx.route('**/api/premium?slug=vf', r => r.fulfill({ json: { premium: null
 const p = await ctx.newPage()
 p.on('console', m => { if (/pointer/i.test(m.text())) console.log('PAGE:', m.text().slice(0, 120)) })
 // ── engine bar contents (the "screwy lineage button" hunt) ──
-await p.goto('http://localhost:3131/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
+await p.goto('http://localhost:3000/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await p.waitForSelector('button[aria-label="ui selector"]', { timeout: 30000 }); await p.waitForTimeout(2500)
 console.log('ENGINE BAR:', await p.evaluate(() => {
   const bar = document.querySelector('button[aria-label="ui selector"]').closest('div').parentElement
   return [...bar.querySelectorAll('button,a')].map(el => (el.getAttribute('aria-label') || el.textContent.trim()).slice(0, 30))
 }))
 // ── mouse-look click-to-bind in the grid's play phase ──
-await p.goto('http://localhost:3131/grid?ui=games&ph=play&w=space:vf', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&ph=play&w=space:vf', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('canvas', { timeout: 30000 }); await p.waitForTimeout(4500)  // > the 600ms entry gate
 // __* keys are STRIPPED on snapshot import — real veilfire's hook sets this each
 // tick; the dev hatch stands in for the hook here
@@ -39,7 +39,7 @@ console.log('  · direct requestPointerLock:', await p.evaluate(async () => {
 T('click binds the cursor (pointer lock on canvas)', await p.evaluate(() => document.pointerLockElement?.tagName === 'CANVAS'))
 // ── the REAL lineage in attribution ──
 await ctx.route('**/api/engine/lineage/trail?space=vf', r => r.fulfill({ json: { trail: [{ name: 'ROOTLING', slug: 'rootling', kind: 'space' }, { name: 'VF', slug: 'vf', kind: 'space' }], remixes: [{ name: 'VF-REMIX', slug: 'vfr' }] } }))
-await p.goto('http://localhost:3131/grid?ui=games&w=space:vf', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&w=space:vf', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('[data-grid-title]', { timeout: 30000 }); await p.waitForTimeout(1500)
 await p.click('[data-grid-title]', { force: true }); await p.waitForTimeout(1200)
 const lin = await p.evaluate(() => document.querySelector('[data-attrib-lineage]')?.textContent ?? '')

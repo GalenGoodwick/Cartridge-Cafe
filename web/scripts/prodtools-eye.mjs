@@ -5,7 +5,7 @@
 import { chromium } from 'playwright'
 const b = await chromium.launch({ args: ['--enable-unsafe-webgpu','--enable-features=Vulkan','--use-vulkan=swiftshader','--enable-unsafe-swiftshader'] })
 const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 })
-await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3131' })
+await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3000' })
 await ctx.addInitScript(() => { try { sessionStorage.setItem('cc-gate-override','1') } catch {}
   window.__eyeEvents = []
   window.addEventListener('cafe:eye', e => window.__eyeEvents.push(e.detail))
@@ -20,7 +20,7 @@ await ctx.route('**/api/spaces/testy/snapshot**', r => r.fulfill({ json: SNAP })
 await ctx.route('**/api/spaces/testy/versions', r => r.request().method() === 'POST'
   ? r.fulfill({ json: { version: { version: 3, note: 'from eye', createdAt: new Date().toISOString() } } })
   : r.fulfill({ json: { versions: [{ version: 1, note: null, createdAt: '2026-08-01T00:00:00Z' }, { version: 2, note: 'good one', createdAt: '2026-08-20T00:00:00Z' }] } }))
-await ctx.route('**/api/spaces/testy/invite', r => r.fulfill({ json: { joinUrl: 'http://localhost:3131/join/abc' } }))
+await ctx.route('**/api/spaces/testy/invite', r => r.fulfill({ json: { joinUrl: 'http://localhost:3000/join/abc' } }))
 await ctx.route('**/api/spaces/testy/token', r => r.request().method() === 'POST' ? r.fulfill({ json: { token: 'uc_st_mock' } }) : r.fulfill({ json: { tokens: [] } }))
 await ctx.route('**/api/spaces/testy/sprites**', r => r.fulfill({ json: { sprites: [] } }))
 await ctx.route('**/api/spaces/testy/nodes**', r => r.fulfill({ json: { nodes: [] } }))
@@ -37,7 +37,7 @@ const T = (n, ok) => console.log(`${ok ? '✓' : '✗'} ${n}`)
 const body = () => p.evaluate(() => document.body.innerText)
 
 // ═ 1 · house cartridge in ENGINE ═
-await p.goto('http://localhost:3131/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=engine&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button:has-text("◈ EYE")', { timeout: 20000 }); await p.waitForTimeout(3500)
 
 T('REC absent in engine (games-play only)', await p.locator('[data-grid-rec]').count() === 0)
@@ -89,18 +89,18 @@ await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(400)
 T('PUBLISH tab: house note', /publishing lives on real worlds/.test(await body()))
 
 // ═ 2 · REC on GAMES-play ═
-await p.goto('http://localhost:3131/grid?ui=games&ph=play&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=games&ph=play&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('[data-grid-rec]', { timeout: 20000 }); await p.waitForTimeout(3000)
 T('REC on the bar (games-play)', await p.locator('[data-grid-rec]').count() === 1)
 await p.click('[data-grid-rec]'); await p.waitForTimeout(1500)
 const recTxt = await p.locator('[data-grid-rec]').innerText()
 console.log(`  · REC reads ${JSON.stringify(recTxt.trim())} ${/\d+:\d+/.test(recTxt) ? '(recording ✓)' : '(headless captureStream refused — verify in real tab)'}`)
 if (/\d+:\d+/.test(recTxt)) await p.click('[data-grid-rec]').catch(() => {})
-T('MY WORLDS tab on the games shelf', await p.goto('http://localhost:3131/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+T('MY WORLDS tab on the games shelf', await p.goto('http://localhost:3000/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
   .then(() => p.waitForTimeout(1500)).then(() => p.evaluate(() => document.body.innerText.includes('⌂ MY WORLDS'))))
 
 // ═ 3 · the SPACE mount ═
-await p.goto('http://localhost:3131/grid?ui=engine&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=engine&w=space:testy', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button:has-text("⚙ CONFIG")', { timeout: 20000 })
 await p.waitForFunction(() => window.__eyeEvents?.some(e => e?.config?.spaceSlug === 'testy'), null, { timeout: 30000 })
 await p.click('button:has-text("⚙ CONFIG")'); await p.waitForTimeout(1200)
@@ -167,7 +167,7 @@ T('device=mobile round-trips', await p.evaluate(() => window.__eyeEvents.some(e 
 
 // ═ 6 · MAIN — the commons: starfield in frame (no bubbles), presence room, chat, brew ═
 await ctx.route('**/api/engine/player-icon', r => r.request().method() === 'POST' ? r.fulfill({ json: { token: 'uc_pt_mock' } }) : r.fulfill({ json: { icon: null, signedIn: true } }))
-await p.goto('http://localhost:3131/grid?ui=main&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=main&w=CINDERFELL', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('[data-grid-commons]', { timeout: 20000 }); await p.waitForTimeout(4000)
 T('MAIN: ◉ COMMONS button on the bar', await p.locator('[data-grid-commons]').count() === 1)
 T('MAIN bar: Cartridge.Cafe title · commons LEFT · brew RIGHT · no instructions', await p.evaluate(() => {
@@ -224,10 +224,10 @@ T('ACCOUNT door: /account signed-in, signin signed-out', await p.evaluate(() => 
 }))
 
 // ═ 7 · ✧ CREATE ═
-await p.goto('http://localhost:3131/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
+await p.goto('http://localhost:3000/grid?ui=create&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await p.waitForSelector('text=✧ CREATE', { timeout: 20000 }); await p.waitForTimeout(1000)
 T('CREATE on house cartridge: brew only', /forks grow from real worlds/.test(await body()) && /OPEN THE CREATE FLOW/.test(await body()))
-await p.goto('http://localhost:3131/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('input[placeholder^="name your fork"]', { timeout: 20000 })
 await p.fill('input[placeholder^="name your fork"]', 'neon-remix')
 await p.click('button:has-text("⑄ FORK IT")'); await p.waitForTimeout(1500)
@@ -235,14 +235,14 @@ const afterFork = await p.evaluate(() => ({ url: location.search, engine: /⚙ C
 T('fork → lands in ENGINE on the new world', afterFork.url.includes('w=space%3Atesty-remix') && afterFork.engine)
 
 // the embedded create flow (Galen: "all plugged into it")
-await p.goto('http://localhost:3131/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=create&w=space:testy', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button:has-text("✧ OPEN THE CREATE FLOW")', { timeout: 20000 })
 await p.click('button:has-text("✧ OPEN THE CREATE FLOW")'); await p.waitForTimeout(2500)
 const embed = await p.evaluate(() => {
   const f = document.querySelector('iframe[data-create-flow]')
   return { there: !!f, src: f?.getAttribute('src') ?? '' }
 })
-T('create flow embedded (iframe, base threaded)', embed.there && embed.src.includes('/create?base=testy'))
+T('create flow embedded (iframe, brew-from-nothing)', embed.there && embed.src === '/create')   // BASE retired Aug 29
 await p.click('button:has-text("◂ BACK")'); await p.waitForTimeout(400)
 T('back out of the flow', await p.evaluate(() => !document.querySelector('iframe[data-create-flow]')))
 

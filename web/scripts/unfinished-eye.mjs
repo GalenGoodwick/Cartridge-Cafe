@@ -14,7 +14,7 @@ await ctx.route('**/api/spaces/testy/versions', r => r.fulfill({ json: { version
 const p = await ctx.newPage()
 
 // ── shelf: ⚒ UNFINISHED tab present, empty state honest ──
-await p.goto('http://localhost:3131/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
+await p.goto('http://localhost:3000/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded', timeout: 60000 })
 await p.waitForSelector('button:has-text("⚒ UNFINISHED")', { timeout: 30000 }); await p.waitForTimeout(1200)
 await p.click('button:has-text("⚒ UNFINISHED")'); await p.waitForTimeout(1500)
 T('⚒ UNFINISHED tab + honest empty', /nothing on the workbench shelf|UNFINISHED/.test(await p.evaluate(() => document.body.innerText)))
@@ -34,7 +34,7 @@ T('signed-in ACCOUNT → /account page door (name shown)', await p.evaluate(() =
 await p.keyboard.press('Escape'); await p.evaluate(() => document.querySelector('button[aria-label="ui selector"]')?.click())
 
 // ── publish destinations on an owned space ──
-await p.goto('http://localhost:3131/grid?ui=engine&w=space:testy', { waitUntil: 'domcontentloaded' })
+await p.goto('http://localhost:3000/grid?ui=engine&w=space:testy', { waitUntil: 'domcontentloaded' })
 await p.waitForSelector('button:has-text("⬆ PUBLISH")', { timeout: 30000 })
 await p.waitForFunction(() => window.__eyeEvents?.some(e => e?.config?.spaceSlug === 'testy'), null, { timeout: 30000 })
 await p.click('button:has-text("⬆ PUBLISH")'); await p.waitForTimeout(800)
@@ -64,7 +64,7 @@ T('open world BLOCKS other destinations', await p.evaluate(() => {
 }))
 
 // ── back navigation: browser back + the bar ◂ ──
-await p.goto('http://localhost:3131/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500)
+await p.goto('http://localhost:3000/grid?ui=games&w=CINDERFELL', { waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1500)
 await p.click('button:has-text("⚙")', { force: true }).catch(() => {})  // noop safety
 await p.evaluate(() => document.querySelector('button[aria-label="ui selector"]').click()); await p.waitForTimeout(400)
 await p.evaluate(() => { [...document.querySelectorAll('button')].find(x => x.textContent.includes('ENGINE'))?.click() }); await p.waitForTimeout(800)
