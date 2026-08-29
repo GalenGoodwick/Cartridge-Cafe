@@ -21,12 +21,31 @@ export type RenderOpts = {
   trace?: unknown
 }
 
+const LOCAL_RENDER = 'http://localhost:8080'
+let _localUp: boolean | null = null
+async function preferLocal(configured: string | undefined): Promise<string | undefined> {
+  if (configured && configured.includes('localhost')) return configured   // already local (dev env)
+  if (_localUp === null) {
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 700)
+      const r = await fetch(LOCAL_RENDER + '/health', { signal: ctrl.signal }).catch(() => null)
+      clearTimeout(t); _localUp = !!(r && r.ok)
+    } catch { _localUp = false }
+  }
+  return _localUp ? LOCAL_RENDER : configured
+}
+
 export async function renderSnapshot(
   snap: RenderSnapshot,
   opts: RenderOpts,
 ): Promise<Record<string, unknown>> {
-  const base = process.env.RENDER_SERVICE_URL
+  // LOCAL-FIRST (Galen, Aug 29: 'always local, not the railway service'): if the
+  // local Metal render is up (render-service/start-local.sh) it wins — a probe
+  // never leaves the machine. Railway is only the fallback when local is down.
+  // A 700ms health race decides; the result is cached per-process.
+  const configured = process.env.RENDER_SERVICE_URL
   const secret = process.env.RENDER_SECRET
+  const base = await preferLocal(configured)
   if (!base || !secret) {
     return { ok: false, error: 'render service not configured (no eyes over HTTP yet) — use describe_scene / health for structural eyes', configured: false }
   }
