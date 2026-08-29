@@ -183,8 +183,8 @@ export default function AccountClient(p: {
             </div>
             <p className="text-[11.5px] leading-relaxed text-white/35 mt-3">
               download = one JSON file of your profile, worlds, purchases, and community data (world code exports live in each world&rsquo;s cartridge export).
-              deletion cancels billing immediately, erases your sign-in and personal data, and deletes your worlds — except public open-building
-              worlds others have built on, which stay with the commons, no longer linked to you.
+              deletion cancels billing immediately and erases your sign-in and personal data. your worlds are never deleted —
+              they stay with the cafe, no longer linked to you (private ones stay private).
             </p>
           </section>
 
@@ -203,8 +203,8 @@ export default function AccountClient(p: {
           <div className="w-full max-w-md rounded-xl border border-red-400/30 bg-[#100808]/97 p-6 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-red-300/90 tracking-[0.2em] text-[14px] mb-3">✕ DELETE THIS ACCOUNT</div>
             <p className="text-[13px] leading-relaxed text-white/60 mb-2">
-              this cancels your subscription immediately, erases your sign-in and personal data, and deletes your worlds.
-              public open-building worlds that others built on are preserved for their co-builders, unlinked from you.
+              this cancels your subscription immediately and erases your sign-in and personal data. your worlds are NOT
+              deleted — they stay with the cafe, unlinked from you (private ones stay private, unreachable).
             </p>
             <p className="text-[13px] text-white/60 mb-3">there is no undo. type <span className="text-white/90">{p.email}</span> to confirm:</p>
             <input value={delConfirm} onChange={e => setDelConfirm(e.target.value)} placeholder={p.email} autoFocus

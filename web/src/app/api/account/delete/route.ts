@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { findActiveSubscriptions, cancelSubscriptionNow } from '@/lib/stripe'
+import { isAdminUserId } from '@/lib/adminAuth'
 import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +34,13 @@ export async function POST(req: NextRequest) {
     select: { id: true, email: true },
   })
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  // THE HOUSE ACCOUNT CANNOT DELETE ITSELF (Galen, Aug 29): the admin account
+  // holds the cafe's keys — a slip here would orphan the whole shelf. Admins
+  // who truly mean it remove themselves from ADMIN_EMAILS/ADMIN_USER_IDS first.
+  if (await isAdminUserId(user.id)) {
+    return NextResponse.json({ error: 'the house account cannot be deleted — it holds the cafe. Remove it from the admin list first if you truly mean this.' }, { status: 403 })
+  }
 
   const body = (await req.json().catch(() => null)) as { confirm?: string } | null
   if (!body?.confirm || body.confirm.trim().toLowerCase() !== user.email.toLowerCase()) {
