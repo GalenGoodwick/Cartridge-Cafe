@@ -195,6 +195,12 @@ export default function TheGrid() {
       const w = u.searchParams.get('w'); if (w) setScene(w)
       const s = u.searchParams.get('ui') as UiSet | null; if (s && ['games', 'main', 'engine', 'create'].includes(s)) setUiSet(s)
       if (u.searchParams.get('ph') === 'play') setPhase('play')
+      // arrivals like "ask in the commons ↗": MAIN with the window already open
+      if (u.searchParams.get('chat') === '1' && s === 'main') {
+        chatIntentRef.current = Date.now()
+        setChatOpen(true)
+        u.searchParams.delete('chat'); window.history.replaceState(null, '', u.toString())
+      }
     } catch { /* ssr */ }
   }, [])
   // PUSH (not replace) so the BROWSER BACK BUTTON backs out to the previously
@@ -204,7 +210,10 @@ export default function TheGrid() {
   useEffect(() => {
     try {
       const u = new URL(window.location.href)
-      u.searchParams.set('w', scene); u.searchParams.set('ui', uiSet)
+      // MAIN is not a game — its URL names no world (Galen); the parked game
+      // stays in memory and returns with the set.
+      if (uiSet === 'main') u.searchParams.delete('w'); else u.searchParams.set('w', scene)
+      u.searchParams.set('ui', uiSet)
       if (phase === 'play') u.searchParams.set('ph', 'play'); else u.searchParams.delete('ph')
       if (u.toString() === window.location.href) return
       if (firstSyncRef.current) window.history.replaceState({ gi: 0 }, '', u.toString())   // normalizing the arrival is not a step
@@ -390,9 +399,13 @@ export default function TheGrid() {
 
   // TRANSITION HYGIENE (Galen: builderbox stuck open from engine → play): any
   // set/phase change closes the engine's panels — nothing follows you through.
+  // an arrival (?chat=1) opens the commons in the SAME transition this hygiene
+  // would close it — the one-shot intent lets that window through.
+  const chatIntentRef = useRef(0)   // timestamp — survives the mount run AND the arrival's set-change run
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setChatOpen(false); setBrewIconOpen(false)
+    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false)
+    if (Date.now() - chatIntentRef.current > 3000) setChatOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
   const selected = entries.find(e => e.scene === scene) ?? LOCAL.find(e => e.scene === scene)
@@ -561,9 +574,11 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen) */}
+      {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen). z ABOVE
+          the commons window: opening the menu layers over it, closing returns
+          to it (Galen: dockstar must not kill the commons). */}
       {selOpen && (
-        <div className="fixed z-[126] flex items-center justify-center backdrop-blur-sm"
+        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setSelOpen(false)}>
           <div className="p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
@@ -887,7 +902,7 @@ export default function TheGrid() {
             )}
           </div>
           {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
-          <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setChatOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
+          <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
             title="the dockstar — choose your UI"
             className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
               selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}

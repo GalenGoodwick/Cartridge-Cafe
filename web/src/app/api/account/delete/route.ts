@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { policyOf } from '@/lib/world-policy'
 import { findActiveSubscriptions, cancelSubscriptionNow } from '@/lib/stripe'
 import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
 
@@ -15,11 +14,10 @@ export const dynamic = 'force-dynamic'
  *  What happens, in order:
  *  1. Active Stripe subscriptions are CANCELED IMMEDIATELY — a deleted account
  *     is never billed again.
- *  2. Owned worlds: PRIVATE worlds (and public solo worlds) are DELETED.
- *     PUBLIC OPEN-BUILDING worlds are PRESERVED (Galen's delete-protection
- *     ruling): others co-built them, so the commons keeps the work — the world
- *     survives under the anonymized account, carrying no personal data.
- *     Worlds that branches grew from are likewise preserved (roots law).
+ *  2. Owned worlds: ALL PRESERVED (Galen, Aug 29: "deleting an account
+ *     doesn't delete worlds") — every world survives under the anonymized
+ *     account, carrying no personal data. Private worlds stay private
+ *     (unreachable, but the work is never destroyed).
  *  3. Sign-in surface erased: oauth links, sessions, passkeys, push
  *     subscriptions, AI builder registrations.
  *  4. Community + purchase records wiped: follows (both directions),
@@ -45,25 +43,14 @@ export async function POST(req: NextRequest) {
   const subs = await findActiveSubscriptions(user.id)
   for (const s of subs) await cancelSubscriptionNow(s.id)
 
-  // 2 — worlds: preserve public open-building + branched-from; delete the rest
+  // 2 — worlds: ALL preserved (Galen, Aug 29) — the erasure right covers the
+  // PERSON (sign-in, billing, community records, the name on the row), never
+  // the worlds. They ride the anonymized row; private ones stay private.
   const spaces = await prisma.playerSpace.findMany({
-    where: { ownerId: user.id },
-    select: { id: true, slug: true, isPublic: true, snapshot: true, _count: { select: { childSpaces: true } } },
+    where: { ownerId: user.id }, select: { slug: true },
   })
-  const preserved: string[] = []
+  const preserved: string[] = spaces.map(s => s.slug)
   const deleted: string[] = []
-  for (const s of spaces) {
-    const wd = ((s.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-    const openBuilding = s.isPublic && policyOf(wd).build === 'anyone'
-    const hasBranches = s._count.childSpaces > 0
-    if (openBuilding || hasBranches) { preserved.push(s.slug); continue }
-    try {
-      await prisma.playerSpace.delete({ where: { id: s.id } })
-      deleted.push(s.slug)
-    } catch {
-      preserved.push(s.slug)   // FK-held (history elsewhere) — preserve rather than fail the erasure
-    }
-  }
 
   // 2b — the person's MEMBER SEATS on other people's worlds: revoked (the
   // seat is an access credential carrying their handle; their landed WORK —
