@@ -3272,6 +3272,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   //  vote candidate, opening a scene) must never lock the cursor — but the next
   //  deliberate click inside the world must. Time-gate on the last swap.
   const swapAtRef = useRef(0)
+  // pointerId → held key_* flag for click:"key:" ui buttons (declared controls)
+  const uiKeyHeldRef = useRef<Map<number, string>>(new Map())
+  // true when the solved ui declares its own key: controls — the generic
+  // thumb-stick/A/B stand down (the world owns its control layout)
+  const [declaredControls, setDeclaredControls] = useState(false)
+  const declaredControlsRef = useRef(false)
 
   // LOCK BELT + DIAGNOSIS (Galen: "veilfire lost click to bind cursor" in the
   // grid; the primary path is byte-identical to /space where it worked, so a
@@ -3541,6 +3547,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         }
         if (hit) {
           const action = hit.action
+          // PROGRAMMABLE TOUCH CONTROLS (Galen): click:"key:<k>" buttons are
+          // HELD keys, not clicks — down here, up in handlePointerUp. Writes the
+          // same key_* flags + _n pulses the keyboard writes, so hooks are
+          // unchanged. Declaring any key: button stands the generic stick down.
+          if (action.startsWith('key:')) {
+            const key = 'key_' + action.slice(4).replace(/[^a-z0-9_]/gi, '').toLowerCase()
+            const wdK = sim.worldData as Record<string, unknown>
+            if (wdK[key] !== true) wdK[key + '_n'] = ((wdK[key + '_n'] as number) || 0) + 1
+            wdK[key] = true
+            uiKeyHeldRef.current.set(e.pointerId, key)
+            e.preventDefault(); e.stopPropagation()
+            return
+          }
           if (action.startsWith('shell:')) {
             // SHELL actions go to the HOST, never into worldData — and only
             // from nodes the HOST injected. A world tree declaring a shell:
@@ -3815,6 +3834,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     // release must be visible to hooks even without a final move event
     lockSwallow.current = false   // the engaging-lock press ended — later clicks fire
+    // DECLARED CONTROLS release: a ui button with click:"key:<k>" is HELD while
+    // the pointer is down — releasing anywhere lets the key up (per-pointer, so
+    // two thumbs can hold two buttons).
+    {
+      const held = uiKeyHeldRef.current.get(e.pointerId)
+      if (held) {
+        uiKeyHeldRef.current.delete(e.pointerId)
+        const simK = simulationRef.current
+        if (simK) simK.worldData[held] = false
+      }
+    }
     { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
     if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR) simUpR.worldData['mouse_down_right'] = false }
     // PLAY-mode portal: pressed on a door with the chrome closed — travel on a
@@ -5178,6 +5208,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           })
           uiSolvedRef.current = solved
           renderer.setUiSolved(solved)
+          const hasKeys = solved.hits.some(h => typeof h.action === 'string' && h.action.startsWith('key:'))
+          if (hasKeys !== declaredControlsRef.current) { declaredControlsRef.current = hasKeys; setDeclaredControls(hasKeys) }
           // publish the rect table for hooks + AI — the layout is READABLE data.
           // Republish only when the geometry actually changed (cheap fingerprint)
           // so the worker tick payload doesn't carry a fresh clone every frame.
@@ -5220,6 +5252,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           }
         } else if (uiSolvedRef.current) {
           uiSolvedRef.current = null
+          if (declaredControlsRef.current) { declaredControlsRef.current = false; setDeclaredControls(false) }
           renderer.setUiSolved(null)
           uiRectsFpRef.current = -1
           delete sim.worldData['__uiRects']
@@ -7378,7 +7411,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
           {/* Virtual touch controls — writes the same worldData.key_* the keyboard
               does, so every cartridge gains touch support unchanged. Touch-only. */}
-          <TouchControls simRef={simulationRef} frame={viewport ?? undefined} />
+          <TouchControls simRef={simulationRef} frame={viewport ?? undefined} suppressed={declaredControls} />
 
           {/* Space breadcrumb — shown when in a child space */}
           {spaceSlug && <SpaceBreadcrumb spaceSlug={spaceSlug} />}

@@ -1059,7 +1059,7 @@ if (clicked === 'start' && wd.__uiClickT !== S.lastClickT) {
 
 **CHROME-SAFE by construction:** the engine measures the cafe's own chrome (name plate, rail, pills) and clamps your top-level panels into the safe area — your UI can never land under the site's buttons.
 
-**Touch:** buttons in this tree are tap targets on phones automatically — declaring your controls as UI buttons is the portable way to make a world playable on mobile (the generic thumb-stick writes `key_*` too, but declared buttons are yours to place).
+**Touch — PROGRAMMABLE CONTROLS:** a button whose `click` starts with `key:` is a HELD key, not a click: `{ kind: "button", id: "jump", text: "▲", click: "key:space" }` writes `wd.key_space = true` on press (+ the `_n` pulse) and `false` on release — exactly the keyboard contract, per-pointer (two thumbs can hold two buttons). Declaring ANY `key:` button stands the generic thumb-stick/A/B down: the world owns its control layout. Suggested pattern: a bottom `row` panel with `key:left · key:right · key:space` — place them with `vx/vy` so they hug the real screen corners. Ordinary `click` actions still land in `wd.__uiClick` as one-shot presses.
 
 ## Visual Shader Interface <!-- core -->
 

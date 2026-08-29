@@ -10,8 +10,10 @@ import { layoutTouchZones } from './touch-layout'
  *  buttons (A = space, B = enter) writing the same worldData.key_* the keyboard
  *  writes, so every existing cartridge gains touch support unchanged.
  *  Renders only on touch devices; the stick nub is moved via style (no re-renders). */
-export function TouchControls({ simRef, frame }: {
+export function TouchControls({ simRef, frame, suppressed }: {
   simRef: { current: FieldSimulation | null }
+  /** the world declared its OWN key: ui buttons — the generic controls stand down */
+  suppressed?: boolean
   /** the contained frame's inset (the grid's viewport) — controls lay out
    *  INSIDE it instead of the window (Galen: "controls outside the grid").
    *  Absent = legacy full-window layout. NOTE: layout is still the generic
@@ -83,7 +85,7 @@ export function TouchControls({ simRef, frame }: {
     if (wd) flag(wd, key, down)
   }, [simRef, flag])
 
-  if (!isTouch || !zones) return null
+  if (!isTouch || !zones || suppressed) return null
   // a MINI frame (the grid's browse/engine shrink) is not a playfield — the
   // stick/buttons only ride a frame big enough to play in (Galen: "UI controls
   // are showing on mobile" over the shrunk grid)

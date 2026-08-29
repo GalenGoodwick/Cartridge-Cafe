@@ -65,7 +65,6 @@ export default function CreateWorld() {
   }, [gen, refreshGen])
 
   const facets = () => ({
-    base: base.trim() || undefined,
     targets: targets === 'universal' ? undefined : targets,
     access: access === 'solo' ? undefined : access,
   })
@@ -73,6 +72,14 @@ export default function CreateWorld() {
   // ONE CREATION, ONE PRICE (Galen, Aug 27: "birth and generate are the same
   // process — $5 per world created, to prevent clutter/attacks"). No free side
   // door: every world costs a generation credit (the keeper demos free).
+  // EMBEDDED IN THE GRID: the frame mirrors the world's declared shape live,
+  // and a birth is the PARENT's navigation (the iframe must never nest a grid).
+  const embedded = typeof window !== 'undefined' && window.self !== window.top
+  useEffect(() => {
+    if (!embedded) return
+    try { window.parent.postMessage({ cc: 'create-facets', targets }, window.location.origin) } catch { /* fine */ }
+  }, [embedded, targets])
+
   const generate = async () => {
     if (busy) return
     setBusy(true); setErr(''); setNote('')
@@ -92,6 +99,7 @@ export default function CreateWorld() {
       }
       if (!r.ok) { setErr(d.error || 'generation failed'); return }
       localStorage.removeItem(STASH)
+      if (embedded) { try { window.parent.postMessage({ cc: 'create-born', slug: d.slug }, window.location.origin) } catch { /* fine */ }; return }
       window.location.href = `/space/${d.slug}?connect=1`
     } finally { setBusy(false) }
   }
@@ -113,29 +121,10 @@ export default function CreateWorld() {
           placeholder="what should it become? (your AI reads this first — 20+ chars to GENERATE)"
           className="w-full mb-5 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-amber-300/50 resize-none" />
 
-        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">1 · BASE</div>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <button className={`${card} ${!base.trim() ? on : off}`} onClick={() => setBase('')}>
-            <div className="text-[14px] mb-0.5">✦ BLANK</div>
-            <div className="text-[12px] opacity-70">born empty — built from your brief</div>
-          </button>
-          <div className={`${card} ${base.trim() ? on : off}`}>
-            <div className="text-[14px] mb-0.5">⑂ FROM A FORMAT</div>
-            {bases.length > 0 ? (
-              <select value={base} onChange={e => setBase(e.target.value)}
-                className="w-full bg-transparent border-b border-white/20 text-[13px] text-white/85 outline-none focus:border-amber-300/50 [&>option]:bg-[#171009]">
-                <option value="">— pick a base —</option>
-                {bases.map(b => <option key={b.slug} value={b.slug}>{b.name}</option>)}
-              </select>
-            ) : (
-              <input value={base} onChange={e => setBase(e.target.value)} placeholder="world slug, e.g. cinderfell"
-                className="w-full bg-transparent border-b border-white/20 text-[13px] text-white/85 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
-            )}
-          </div>
-        </div>
-        <p className="text-[11px] text-white/30 mb-5">bases + forkable worlds — you start from its live snapshot, lineage recorded; base-hood and build rights never inherit.</p>
-
-        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">2 · DIMENSIONS</div>
+        {/* (1 · BASE removed — Galen, Aug 29: "from a format has no functionality
+            and would basically be forking anyways." Forking lives in the grid's
+            ✧ CREATE set; brew here is always FROM NOTHING.) */}
+        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">1 · DIMENSIONS</div>
         <div className="grid grid-cols-3 gap-2 mb-2">
           {([['desktop', '🖥 DESKTOP', 'wide screen + mouse; phones get an honest door notice'], ['mobile', '▯ MOBILE', 'portrait phone; desktop shows it in a phone frame'], ['universal', '◇ UNIVERSAL', 'recomposes to ANY screen — a claim, not a default']] as const).map(([k, t, d]) => (
             <button key={k} className={`${card} ${targets === k ? on : off}`} onClick={() => setTargets(k)}>
@@ -148,7 +137,7 @@ export default function CreateWorld() {
           ? '⚠ universal means NO warnings on any device — declare it only once the world is verified on phone AND desktop.'
           : 'honest defaults protect players: the declaration drives the catalog badge + the door notice.'}</p>
 
-        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">3 · PEOPLE</div>
+        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">2 · PEOPLE</div>
         <div className="grid grid-cols-3 gap-2 mb-6">
           {([['solo', '● SOLO', 'you and your AI only'], ['invite', '◐ INVITE-ONLY', 'people you invite may build'], ['open', '○ OPEN WORLD', 'any member may build here (live editing) — co-built work becomes protected']] as const).map(([k, t, d]) => (
             <button key={k} className={`${card} ${access === k ? on : off}`} onClick={() => setAccess(k)}>

@@ -89,6 +89,26 @@ export default function TheGrid() {
   // ownership), not a dead snapshot — versions/invite/sprites/config all light
   // up through the engine's own machinery. undefined = resolving; null = not a
   // reachable space (private/404) → snapshot fallback.
+  // ✧ CREATE live-shape: the /create iframe posts its facets — the frame
+  // ACTIVELY morphs to the declared shape (mobile = portrait). A birth posts
+  // create-born and the PARENT navigates (no grid-in-iframe).
+  const [createShape, setCreateShape] = useState<'desktop' | 'mobile' | 'universal'>('desktop')
+  useEffect(() => {
+    const on = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || !e.data || typeof e.data !== 'object') return
+      const d = e.data as { cc?: string; targets?: string; slug?: string }
+      if (d.cc === 'create-facets' && (d.targets === 'desktop' || d.targets === 'mobile' || d.targets === 'universal')) setCreateShape(d.targets)
+      if (d.cc === 'create-born' && typeof d.slug === 'string') { setScene('space:' + d.slug); setUiSet('engine') }
+    }
+    window.addEventListener('message', on)
+    return () => window.removeEventListener('message', on)
+  }, [])
+  // ⛨ ADMIN — the door shows only to admins (the API answers 200 to them alone)
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    fetch('/api/admin/worlds').then(r => setIsAdmin(r.ok)).catch(() => {})
+  }, [])
+
   const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
@@ -220,13 +240,16 @@ export default function TheGrid() {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
     if (!miniTop) return { top: M, right: M, bottom: BAR_H + 10, left: M }
     const availH = H - M - BAR_H - 10
-    let w = (W - M * 2) * 0.42, h = w / (16 / 10)
-    const hMax = availH * 0.4
-    if (h > hMax) { h = hMax; w = h * (16 / 10) }
+    // ✧ CREATE declares a shape: MOBILE brews show a PORTRAIT frame (9:16) so
+    // the maker SEES the world's true shape while writing the brief.
+    const aspect = createSet && createShape === 'mobile' ? 9 / 16 : 16 / 10
+    let w = (W - M * 2) * (aspect < 1 ? 0.18 : 0.42), h = w / aspect
+    const hMax = availH * (aspect < 1 ? 0.52 : 0.4)
+    if (h > hMax) { h = hMax; w = h * aspect }
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [miniTop, win])
+  }, [miniTop, win, createSet, createShape])
 
   // unified eased resize — camera re-fits every frame of the ease
   useEffect(() => {
@@ -533,6 +556,7 @@ export default function TheGrid() {
             baseSlug={scene.startsWith('space:') ? scene.slice(6) : null}
             forkable={scene.startsWith('space:') ? (!!eyeData?.config?.forkable || !!eyeData?.config?.isOwner) : true}
             onForked={slug => { setScene('space:' + slug); setUiSet('engine') }}
+            onBrew={() => setScene('BLANK')}
           />
         </div>
       )}
@@ -568,6 +592,16 @@ export default function TheGrid() {
                 <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
+            {isAdmin && (
+              <a href="/admin" data-grid-admin
+                className="col-span-2 text-left rounded-2xl border border-amber-300/25 bg-black/40 hover:border-amber-300/50 p-4 transition-colors flex items-center gap-3">
+                <span className="text-[20px] text-amber-200/80">⛨</span>
+                <span>
+                  <span className="font-mono text-[13px] tracking-[0.2em] text-amber-100/95 block">ADMIN</span>
+                  <span className="font-mono text-[10px] text-white/40">every world (private too) · visibility · analytics</span>
+                </span>
+              </a>
+            )}
             {me ? (
             <a href="/account" data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
@@ -1487,11 +1521,13 @@ function PremiumSeat({ current }: { current: number | null }) {
 // ✧ CREATE — contextual (Galen's design): the world in the frame is the
 // default BASE. Fork it under your own name, or brew from nothing via the
 // full /create flow (prompt → your AI builds it).
-function CreateView({ baseName, baseSlug, forkable, onForked }: {
+function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
   baseName: string
   baseSlug: string | null          // null = house cartridge (no fork API — brew instead)
   forkable: boolean
   onForked: (slug: string) => void
+  /** brewing from nothing — the parent loads the BLANK world into the frame */
+  onBrew?: () => void
 }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1513,7 +1549,9 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
     } catch { setErr('fork failed — are you offline?') }
     finally { setBusy(false) }
   }
-  // the whole /create flow, plugged into the under-area — same origin, no new tab
+  // the whole /create flow, plugged into the under-area — same origin, no new tab.
+  // Opening it = brewing FROM NOTHING: the parent loads the BLANK world into the
+  // frame (Galen) — the void the brief will fill.
   if (flowOpen) {
     return (
       <div className="w-full max-w-[980px] h-full flex flex-col font-mono text-[11px]">
@@ -1521,7 +1559,7 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
           <button onClick={() => setFlowOpen(false)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
           <span className="text-[10.5px] tracking-[0.2em] text-emerald-200/70">✧ THE CREATE FLOW</span>
         </div>
-        <iframe data-create-flow src={baseSlug ? `/create?base=${encodeURIComponent(baseSlug)}` : '/create'}
+        <iframe data-create-flow src="/create"
           className="flex-1 min-h-0 w-full rounded-2xl border border-white/12 bg-black/40" />
       </div>
     )
@@ -1560,7 +1598,7 @@ function CreateView({ baseName, baseSlug, forkable, onForked }: {
       <div className="rounded-2xl border border-white/12 bg-black/40 p-4">
         <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">✧ BREW FROM NOTHING</div>
         <div className="text-white/55 leading-relaxed mb-2.5">the full create flow: describe a world, your AI builds it live. Blank ground or any open base.</div>
-        <button onClick={() => setFlowOpen(true)}
+        <button onClick={() => { setFlowOpen(true); onBrew?.() }}
           className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
           ✧ OPEN THE CREATE FLOW
         </button>
