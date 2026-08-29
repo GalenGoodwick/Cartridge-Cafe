@@ -68,6 +68,24 @@ async function getDevice() {
  *   respondsToInput verdict — renders-but-ignores-controls becomes detectable.
  * @returns {Promise<{ok:boolean, png:Uint8Array|null, ...struct}>}
  */
+// THE UI SYSTEM REPORTER — the headless PNG has no font, so instead of drawing
+// worldData.ui we REPORT its text nodes + anchors, so render_probe surfaces what
+// in-game UI the world declared (parity with how `hud` is reported).
+function uiReport(ui) {
+  if (!ui || typeof ui !== "object" || !Array.isArray(ui.root)) return null;
+  const out = [];
+  const walk = (n, anchor) => {
+    if (!n || typeof n !== "object") return;
+    const a = n.anchor || anchor;
+    if (n.kind === "text" && typeof n.text === "string") out.push({ text: n.text, ...(a ? { at: a } : {}) });
+    if (n.kind === "button") out.push({ button: n.text ?? n.id ?? "?", click: n.click ?? null, ...(a ? { at: a } : {}) });
+    if (n.kind === "meter") out.push({ meter: n.id ?? n.label ?? "?", value: n.value ?? null });
+    if (Array.isArray(n.children)) for (const k of n.children) walk(k, a);
+  };
+  for (const n of ui.root) walk(n, n.anchor);
+  return { rev: ui.rev ?? null, nodes: out.slice(0, 40) };
+}
+
 export async function renderProbe(state, opts = {}) {
   const S = parseInt(opts.size ?? 400);
   const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
@@ -530,6 +548,7 @@ ${fieldChain}
     quadrantLum: last.quadrantLum, dominantColors: last.dominantColors,
     motion, inputReport, png,
     hud: Array.isArray(worldData.hud) ? worldData.hud : null,   // the DOM UI LAYER (wd.hud) — the probe PNG is CANVAS-ONLY; without this the eye is blind to all HUD text/buttons
+    ui: uiReport(worldData.ui),   // THE UI SYSTEM (wd.ui) — the PNG can't draw it (no font here), so report the DECLARED tree's text + anchors so the eye SEES in-game UI content
     frameCost,     // the frame-rate test: hookMs (CPU) + renderMs (relative GPU) + entity/hook counts
     stateTrace: traceOn ? samples.map(s => ({ tick: s.tick, ...(s.state || {}) })) : undefined,   // PLAYTHROUGH — the __vf game state at each sampled tick
     audioEvents,   // frame-stamped __play_sound/__play_music for offline-audio
