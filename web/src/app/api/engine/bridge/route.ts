@@ -6,6 +6,7 @@ import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionR
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
 import { placeholderSeedCommands } from '@/app/engine/placeholder-nodes'
+import { solveUi, type UiTree, type UiNode } from '@/app/engine/ui-solver'
 import { resetWorld, worldStores, setOriginal } from '@/lib/worldSave'
 import { validateSceneToken } from '../scene-token'
 import { bumpWorldRev, spaceKey, sceneKey } from '../world-rev'
@@ -330,6 +331,35 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
     return { name: f.name, id: f.id, visualType: vt, skinned, x, y, onScreen }
   })
   if (!fields.length) warnings.push('no fields yet — the world is empty (a blank/black screen until you create + skin fields)')
+  // WORLD UI validation (the guide's ?section=world ui) — run the REAL solver so a
+  // malformed tree comes back as words instead of rendering as nothing.
+  const uiTree = wd['ui'] as UiTree | undefined
+  if (uiTree != null) {
+    if (typeof uiTree !== 'object' || !Array.isArray(uiTree.root)) {
+      warnings.push('worldData.ui is not a { root: [...] } tree — it renders as NOTHING (schema: guide ?section=world ui)')
+    } else {
+      try {
+        const solved = solveUi({ ui: uiTree })
+        if (solved.boxes.length + solved.runs.length + solved.meters.length === 0) {
+          warnings.push('worldData.ui solved to ZERO panels/text — check kinds (panel·col·row·text·meter·button·spacer·slot) and that panels have children')
+        }
+        const KINDS = new Set(['panel', 'col', 'row', 'text', 'meter', 'button', 'spacer', 'slot'])
+        const uiWalk = (nodes: UiNode[] | undefined): void => {
+          for (const nd of nodes ?? []) {
+            if (nd && typeof nd === 'object') {
+              if (!KINDS.has(nd.kind as string)) warnings.push(`ui node kind "${String(nd.kind)}" is unknown — it renders as NOTHING (kinds: panel·col·row·text·meter·button·spacer·slot)`)
+              if (nd.kind === 'button' && !nd.click) warnings.push(`ui button "${nd.id ?? nd.text ?? '?'}" has no click action — presses go nowhere (add click: "<action>", read wd.__uiClick in a hook)`)
+              if ((nd.kind === 'button' || nd.kind === 'meter' || nd.kind === 'slot') && !nd.id) warnings.push(`ui ${nd.kind} ("${nd.text ?? nd.label ?? '?'}") has no id — it can't be tracked in __uiRects or overridden`)
+              uiWalk(nd.children)
+            }
+          }
+        }
+        uiWalk(uiTree.root)
+      } catch (e) {
+        warnings.push('worldData.ui failed to solve: ' + (e as Error).message + ' (schema: guide ?section=world ui)')
+      }
+    }
+  }
   const broken = visuals.filter(v => v.name && !renderable.has(v.name)).map(v => v.name)
   if (broken.length) warnings.push(`visual(s) with no "fn visual_" body (won't render): ${broken.join(', ')}`)
 

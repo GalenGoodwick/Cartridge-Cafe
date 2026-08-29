@@ -390,6 +390,10 @@ Send a single command or an array:
 - `?fieldId=xxx` — single field snapshot
 - `?name=Foo` — field lookup by name
 
+**In-game UI**: `set_world_data {"ui": {...}}` gives your world real HUD panels,
+meters and buttons rendered as engine pixels — full schema + a worked example in
+the **WORLD UI** section (`?section=world ui`). Health warns on malformed trees.
+
 ---
 
 ## Command Reference
@@ -1010,7 +1014,7 @@ Presence (seeing each other's cursors) is automatic. SHARED STATE — one world,
 
 ## WORLD UI — the UI SYSTEM (chrome-safe HUD)
 
-Write `worldData.ui` — a declarative tree the engine SOLVES and renders as real engine pixels (probes and recordings see it; legacy DOM `wd.hud` still works but can collide with site chrome — prefer this):
+Write `worldData.ui` — a declarative tree the engine SOLVES (deterministically, on the main thread) and renders as **real engine pixels**: SDF glass panels + monospace text, no DOM. Probes, recordings and the REC button all see the true UI. Prefer this over the legacy DOM `wd.hud` (still works, but can collide with site chrome).
 
 ```js
 wd.ui = { rev: 1, root: [
@@ -1023,10 +1027,39 @@ wd.ui = { rev: 1, root: [
 ] }
 ```
 
-- Kinds: `panel · col · row · text · meter · button · spacer · slot`. Anchors are design units on the 512 square (`gx/gy` + `align: tl|tc|tr|cl|c|cr|bl|bc|br`), or `{entity}` / `{below}`.
-- **CHROME-SAFE by construction:** the engine measures the cafe's own chrome (name plate, rail, pills) and clamps your panels into the safe area — your UI can never land under the site's buttons.
-- Button presses land in `wd.__uiClick` (consume with `sim.trigger`/`sim.edge`). The solved layout is READABLE at `wd.__uiRects` — and a human's UI-EDIT drags persist as `wd.__uiOverrides` you can bake back into your tree.
-- A `slot` node punches a hole in its panel's glass — seat a shader portrait THROUGH the UI via `__uiRects`.
+**The schema** (`kind: panel · col · row · text · meter · button · spacer · slot`):
+- **panel** — a top-level glass box (only top-level panels get glass). `glass: true` or `{ bg, border, radius, glow }`; `theme` on the tree sets the default style.
+- **col / row** — flow containers (`dir`, `gap`, `pad`, `flex`).
+- **text** — `text`, `fontSize` (design px), `color`, `wrap: true` (+ `textAlign`). Text metrics are EXACT (monospace: advance = 0.62 × fontSize) — the solver pre-wraps, the renderer just emits quads.
+- **meter** — `value` (0..1 fill), `label`, `hue`.
+- **button** — `text`, `click: "<action>"`, and an `id`. Presses land in `wd.__uiClick` (+ `wd.__uiClickT`) and are SWALLOWED from gameplay — a UI tap never fires a game shot.
+- **spacer** — `flex` or fixed `w`/`h`. **slot** — punches a hole in its panel's glass so a shader can draw THROUGH the UI (read the hole's rect from `__uiRects`).
+- Sizing: design units, `"<n>%"` of the square, or `"auto"`.
+
+**Units — one space.** Coordinates are the 512-grid of the resting letterboxed square (origin top-left, **y DOWN** — same space as `worldData.__entities` sx/sy). UI never follows the camera. Anchors:
+- `gx/gy` + `align` (`tl|tc|tr|cl|c|cr|bl|bc|br`) — a point on the 512 square.
+- `vx/vy` (0..1) — the RESPONSIVE band layer: anchor to the FULL VIEWPORT's edges (0 = left/top, 1 = right/bottom, 0.5 = center) so corner HUDs reach the true screen corners at any aspect. Use `vx/vy` for edge chrome, `gx/gy` for world-square placement.
+- `{ entity: "<label>" }` — pin to a live entity's screen position; `{ below: "<id>", gap }` — stack under another panel. `dx/dy` nudges.
+
+**Consume a button press in your hook** (state, not events — see Triggers Are State):
+
+```js
+const clicked = wd.__uiClick
+if (clicked === 'start' && wd.__uiClickT !== S.lastClickT) {
+  S.lastClickT = wd.__uiClickT
+  S.running = true
+}
+```
+
+**Read-back + iteration:**
+- `wd.__uiRects` — HOST-OWNED solved layout `{ rev, rects: {id: {x,y,w,h}}, hits }`. Read it (e.g. to aim a shader at a slot's hole); never write it.
+- A human's drag/resize edits persist in `wd.__uiOverrides` — bake them into your tree when you like the result.
+- Bump `rev` when you replace the tree, and give every interactive node an `id` — unnamed buttons can't be tracked or overridden.
+- The bridge HEALTH block validates your tree with the REAL solver on every call: a malformed tree, a zero-output solve, or a button without `click` comes back as a warning instead of rendering as nothing.
+
+**CHROME-SAFE by construction:** the engine measures the cafe's own chrome (name plate, rail, pills) and clamps your top-level panels into the safe area — your UI can never land under the site's buttons.
+
+**Touch:** buttons in this tree are tap targets on phones automatically — declaring your controls as UI buttons is the portable way to make a world playable on mobile (the generic thumb-stick writes `key_*` too, but declared buttons are yours to place).
 
 ## Visual Shader Interface <!-- core -->
 
