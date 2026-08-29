@@ -3274,6 +3274,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const swapAtRef = useRef(0)
   // pointerId → held key_* flag for click:"key:" ui buttons (declared controls)
   const uiKeyHeldRef = useRef<Map<number, string>>(new Map())
+  // pointerId → active ui SLIDER drag (id + its solved value rect, design units)
+  const uiSliderDragRef = useRef<Map<number, { id: string; rect: { x: number; y: number; w: number; h: number } }>>(new Map())
   // true when the solved ui declares its own key: controls — the generic
   // thumb-stick/A/B stand down (the world owns its control layout)
   const [declaredControls, setDeclaredControls] = useState(false)
@@ -3551,6 +3553,22 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           // HELD keys, not clicks — down here, up in handlePointerUp. Writes the
           // same key_* flags + _n pulses the keyboard writes, so hooks are
           // unchanged. Declaring any key: button stands the generic stick down.
+          if (action.startsWith('slider:')) {
+            // THE SLIDER PRIMITIVE: press = set value from x, then DRAG until
+            // release (handlePointerMove continues it; pointerup ends it).
+            // Value rides wd.__ui_slider_<id> (0..1) + wd.__uiSlider beacon.
+            const sid = action.slice(7)
+            const vr = uiSolvedRef.current?.rects?.[sid]
+            if (vr && vr.w > 0) {
+              const v = Math.max(0, Math.min(1, (gx - vr.x) / vr.w))
+              const wdS = sim.worldData as Record<string, unknown>
+              wdS['__ui_slider_' + sid] = v
+              wdS['__uiSlider'] = { id: sid, value: v, at: performance.now() }
+              uiSliderDragRef.current.set(e.pointerId, { id: sid, rect: vr })
+            }
+            e.preventDefault(); e.stopPropagation()
+            return
+          }
           if (action.startsWith('key:')) {
             const key = 'key_' + action.slice(4).replace(/[^a-z0-9_]/gi, '').toLowerCase()
             const wdK = sim.worldData as Record<string, unknown>
@@ -3742,6 +3760,24 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     const input = inputRef.current
     const canvas = canvasRef.current
     if (!input || !canvas) return
+    // SLIDER DRAG continues here: same design-unit mapping as the click router
+    // (letterboxed square), value clamped over the slider's own rect.
+    {
+      const drag = uiSliderDragRef.current.get(e.pointerId)
+      if (drag) {
+        const simS = simulationRef.current
+        const rectU = canvas.getBoundingClientRect()
+        const sideU = Math.min(rectU.width, rectU.height)
+        if (simS && sideU > 0) {
+          const gx = (e.clientX - rectU.left - (rectU.width - sideU) / 2) * (512 / sideU)
+          const v = Math.max(0, Math.min(1, (gx - drag.rect.x) / drag.rect.w))
+          const wdS = simS.worldData as Record<string, unknown>
+          wdS['__ui_slider_' + drag.id] = v
+          wdS['__uiSlider'] = { id: drag.id, value: v, at: performance.now() }
+        }
+        return   // a slider drag never doubles as a world drag
+      }
+    }
 
     const rect = canvas.getBoundingClientRect()
     const camera = cameraRef.current
@@ -3844,6 +3880,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         const simK = simulationRef.current
         if (simK) simK.worldData[held] = false
       }
+      uiSliderDragRef.current.delete(e.pointerId)   // slider drags end on release
     }
     { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
     if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR) simUpR.worldData['mouse_down_right'] = false }

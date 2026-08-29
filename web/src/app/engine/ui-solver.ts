@@ -46,7 +46,7 @@ export interface GlassStyle {
 
 export interface UiNode {
   id?: string
-  kind: 'panel' | 'col' | 'row' | 'text' | 'meter' | 'button' | 'spacer' | 'slot'
+  kind: 'panel' | 'col' | 'row' | 'text' | 'meter' | 'button' | 'spacer' | 'slot' | 'slider'
   hidden?: boolean
   // top-level panel placement. vx/vy (0..1) anchor to the FULL VIEWPORT's
   // edges — the responsive band layer (Galen's fit law, Aug 23): UI reaches
@@ -193,6 +193,8 @@ function naturalW(node: UiNode): number {
     }
     case 'meter':
       return typeof node.w === 'number' ? node.w : 96
+    case 'slider':
+      return typeof node.w === 'number' ? node.w : 120
     case 'slot':
       return units(node.w, 48)
     case 'spacer':
@@ -274,6 +276,23 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
       }
       ctx.out.rects[id] = { x, y, w, h }
       return sized(w, h)
+    }
+    case 'slider': {
+      // THE SLIDER — a BASE PRIMITIVE (Galen, Aug 29: worlds were hand-rolling
+      // shader sliders in a second coordinate space; one authority now). It
+      // COMPOSES existing machinery — track = a meter, knob = a tiny full-fill
+      // meter pill riding the value, hit = a generous drag band the engine
+      // routes as 'slider:<id>' (press+drag writes wd.__ui_slider_<id> 0..1).
+      const w = Math.min(units(node.w, availW), availW)
+      const h = units(node.h, 10)
+      const v = Math.max(0, Math.min(1, node.value ?? 0))
+      ctx.out.meters.push({ id: `${id}:track`, x, y, w, h, fill: v, hue: node.hue ?? '#4fd8ff', label: '', fs, color })
+      const kw = Math.max(6, h * 0.7)
+      const kx = x + Math.max(0, Math.min(w - kw, v * w - kw / 2))
+      ctx.out.meters.push({ id: `${id}:knob`, x: kx, y: y - 2, w: kw, h: h + 4, fill: 1, hue: '#f2f6ff', label: '', fs, color })
+      ctx.out.hits.push({ id, action: node.click ?? `slider:${id}`, x: x - 4, y: y - 6, w: w + 8, h: h + 12 })
+      ctx.out.rects[id] = { x, y, w, h }   // the VALUE rect — the engine maps drag-x over THIS
+      return { w, h }
     }
     case 'button': {
       const label = String(node.text ?? '')

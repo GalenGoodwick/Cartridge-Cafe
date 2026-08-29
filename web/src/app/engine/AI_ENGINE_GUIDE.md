@@ -1027,12 +1027,13 @@ wd.ui = { rev: 1, root: [
 ] }
 ```
 
-**The schema** (`kind: panel · col · row · text · meter · button · spacer · slot`):
+**The schema** (`kind: panel · col · row · text · meter · button · spacer · slot · slider`):
 - **panel** — a top-level glass box (only top-level panels get glass). `glass: true` or `{ bg, border, radius, glow }`; `theme` on the tree sets the default style.
 - **col / row** — flow containers (`dir`, `gap`, `pad`, `flex`).
 - **text** — `text`, `fontSize` (design px), `color`, `wrap: true` (+ `textAlign`). Text metrics are EXACT (monospace: advance = 0.62 × fontSize) — the solver pre-wraps, the renderer just emits quads.
 - **meter** — `value` (0..1 fill), `label`, `hue`.
 - **button** — `text`, `click: "<action>"`, and an `id`. Presses land in `wd.__uiClick` (+ `wd.__uiClickT`) and are SWALLOWED from gameplay — a UI tap never fires a game shot.
+- **slider** — a DRAGGABLE value control, the base primitive (never hand-roll shader sliders): `{ kind: "slider", id: "size", value: 0.5, w: 160, hue: "#8cd8ff" }`. The engine routes press+drag: the live value (0..1) lands in `wd.__ui_slider_<id>` every frame of the drag (+ a `wd.__uiSlider {id,value,at}` beacon). Your hook reads it back and re-declares the tree with the new `value` — state, not events. Track + knob render through the meter machinery; put it in a `row` beside its label text and everything aligns by construction.
 - **spacer** — `flex` or fixed `w`/`h`. **slot** — punches a hole in its panel's glass so a shader can draw THROUGH the UI (read the hole's rect from `__uiRects`).
 - Sizing: design units, `"<n>%"` of the square, or `"auto"`.
 

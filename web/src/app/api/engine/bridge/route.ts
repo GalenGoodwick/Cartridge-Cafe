@@ -343,11 +343,11 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
         if (solved.boxes.length + solved.runs.length + solved.meters.length === 0) {
           warnings.push('worldData.ui solved to ZERO panels/text — check kinds (panel·col·row·text·meter·button·spacer·slot) and that panels have children')
         }
-        const KINDS = new Set(['panel', 'col', 'row', 'text', 'meter', 'button', 'spacer', 'slot'])
+        const KINDS = new Set(['panel', 'col', 'row', 'text', 'meter', 'button', 'spacer', 'slot', 'slider'])
         const uiWalk = (nodes: UiNode[] | undefined): void => {
           for (const nd of nodes ?? []) {
             if (nd && typeof nd === 'object') {
-              if (!KINDS.has(nd.kind as string)) warnings.push(`ui node kind "${String(nd.kind)}" is unknown — it renders as NOTHING (kinds: panel·col·row·text·meter·button·spacer·slot)`)
+              if (!KINDS.has(nd.kind as string)) warnings.push(`ui node kind "${String(nd.kind)}" is unknown — it renders as NOTHING (kinds: panel·col·row·text·meter·button·spacer·slot·slider)`)
               if (nd.kind === 'button' && !nd.click) warnings.push(`ui button "${nd.id ?? nd.text ?? '?'}" has no click action — presses go nowhere (add click: "<action>", read wd.__uiClick in a hook)`)
               if ((nd.kind === 'button' || nd.kind === 'meter' || nd.kind === 'slot') && !nd.id) warnings.push(`ui ${nd.kind} ("${nd.text ?? nd.label ?? '?'}") has no id — it can't be tracked in __uiRects or overridden`)
               uiWalk(nd.children)
