@@ -11,7 +11,7 @@
 // ENGINE — the tools dock in from the RIGHT: ⌁ BuilderBox (real — the engine's
 // build console opens in the frame), ⚿ CONNECT AI (the paste-prompt), world
 // tools seat. Frame yields the strip; the grid stays center.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
@@ -281,8 +281,20 @@ export default function TheGrid() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const lastEyeRef = useRef('')
   useEffect(() => {
-    const on = (e: Event) => setEyeData((e as CustomEvent).detail ?? null)
+    // DEDUPED: the engine publishes on a steady beat even when nothing changed;
+    // setting fresh-but-identical objects re-rendered the whole under-area at
+    // publish rate — the PUBLISH buttons never held still long enough for a
+    // human press+release to land on the same node (Galen: 'not clickable').
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail ?? null
+      let sig = ''
+      try { sig = JSON.stringify(d) } catch { sig = String(Math.random()) }
+      if (sig === lastEyeRef.current) return
+      lastEyeRef.current = sig
+      setEyeData(d)
+    }
     window.addEventListener('cafe:eye', on)
     return () => window.removeEventListener('cafe:eye', on)
   }, [])
@@ -433,6 +445,17 @@ export default function TheGrid() {
     const origin = typeof window !== 'undefined' ? window.location.origin.replace('localhost:3131', 'cartridge.cafe') : 'https://cartridge.cafe'
     return `Connect to ${origin} as my builder. Read the guide first: GET ${origin}/api/engine/guide — then open my world "${selected?.name ?? 'my world'}" and build with me. Bridge commands go to POST ${origin}/api/engine/bridge with my world key.`
   }, [selected])
+
+  // cfg with STABLE IDENTITY: even when other eye fields churn (a live world's
+  // graph changes every tick), the owner views' props only change when the
+  // CONFIG content does — with React.memo below, their DOM holds still.
+  const cfgKey = useMemo(() => { try { return JSON.stringify(eyeData?.config ?? null) } catch { return '' } }, [eyeData])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cfgStable = useMemo(() => eyeData?.config ?? null, [cfgKey])
+
+  const sceneIsSpace = scene.startsWith('space:')
+  const crewJoin = useCallback((sc: string) => { setScene(sc); setTool('connect') }, [])
+  const pickScene = useCallback((sc: string) => setScene(sc), [])
 
   const shelfTop = win.h - inset.bottom + 12
   const cmd = (c: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: c })) } catch { /* ssr */ } }
@@ -778,13 +801,13 @@ export default function TheGrid() {
                 </div>
               </div>
             )}
-            {tool === 'nodes' && <NodesView graph={eyeData?.graph ?? null} />}
-            {tool === 'crew' && <CrewView icons={icons} current={scene} onJoin={sc => { setScene(sc); setTool('connect') }} />}
-            {tool === 'versions' && <VersionsView cfg={eyeData?.config ?? null} />}
-            {tool === 'publish' && <PublishView cfg={eyeData?.config ?? null} />}
-            {tool === 'mine' && <MyWorldsView icons={icons} current={scene} onPick={s => setScene(s)} />}
+            {tool === 'nodes' && <NodesViewM graph={eyeData?.graph ?? null} />}
+            {tool === 'crew' && <CrewViewM icons={icons} current={scene} onJoin={crewJoin} />}
+            {tool === 'versions' && <VersionsViewM cfg={cfgStable} />}
+            {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
+            {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
             {tool === 'config' && (
-              <ConfigView cfg={eyeData?.config ?? null} sceneIsSpace={scene.startsWith('space:')} />
+              <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} />
             )}
             {tool === 'chat' && (
               <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
@@ -1698,3 +1721,14 @@ function AttribLineage({ scene }: { scene: string }) {
     </div>
   )
 }
+
+
+// MEMOIZED under-area views (the publish-click fix, half two): stable props ⇒
+// these skip the parent's eye-churn renders entirely ⇒ their buttons hold
+// still under a human press. Plain memo — props are content-stable by cfgKey.
+const PublishViewM = memo(PublishView)
+const ConfigViewM = memo(ConfigView)
+const VersionsViewM = memo(VersionsView)
+const CrewViewM = memo(CrewView)
+const NodesViewM = memo(NodesView)
+const MyWorldsViewM = memo(MyWorldsView)
