@@ -157,6 +157,18 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+  /* No highlight on click-and-drag anywhere in the site chrome / grid (Galen).
+     A drag over a button, label, or the game frame must never select text or
+     paint the blue highlight. Real text surfaces opt back in below. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* …but anything you actually READ or EDIT stays selectable: inputs, text
+   areas, code, chat/commons messages, and anything marked [data-selectable]. */
+input, textarea, [contenteditable], pre, code, [data-selectable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 next-route-announcer {
