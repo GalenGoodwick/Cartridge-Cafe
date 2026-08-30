@@ -216,11 +216,38 @@ into staging: what is behind what (creation order = behind order), which field
 owns which part of the picture, where the light paints. The behind channel is a
 painter's layer model; use it like one.
 
+**4b. THE PLACEMENT SWEEP — semantic trace before pixels.** Elements placed
+wrong at birth stay wrong; sweep at placement, not at the end. Before EACH
+field lands, trace the view context: the 512 square (center 256,256, y down);
+the declared `gridW/gridH` if any (cover-fill crops edges — nothing vital in
+the outer ~15%) or the letterboxed square if not; where the camera rests; the
+bottom band if the world declares UI. Then name the element's ROLE in the
+picture in one word — ground · sky · focal · veil · frame · light — and place
+it where that role lives in your stated vision. An element you cannot name has
+no place in the picture: don't build it. Immediately after placing, check with
+the instant struct eye (`describe` → bbox/offscreenHint; later `quadrantLum`):
+is it WHERE the vision put it? Misplacement compounds under everything built
+on top of it.
+
 **5. Verify against the vision, not against "it renders".** Probe, then compare
 mechanically — this works even if you cannot see the PNG: `dominantColors` ≈
 your stated palette? `meanLum` ≈ your stated mood? `bbox` ≈ your stated focal
 point? If you CAN see, look at the frame and ask: is this the picture I wrote?
 Iterate until the answer is yes. "Compiles and responds" is the floor, not done.
+
+**6. BUILD AT YOUR CEILING.** The most loved worlds on this shelf were all
+born the same way — and never by prescription. Their builders: FELT something
+first, and made the world its physical metaphor (the mechanic and the mood are
+one thing); imagined a PLACE, not a screen — where its light comes from, what
+its air is like, what moves when the player does nothing (idle life is the
+soul of a world), what the ground would sound like; chose ONE unforgettable
+image and spent on it disproportionately, averaging nothing; and let the image
+DEMAND technique — when your vision needs something you don't yet know how to
+do on this engine, that is the sign you're on the right track: read the shader
+sections and build it. Light before palette, palette (2–3 owned colors)
+before detail. A flat colored rectangle is never anyone's final form. Your
+imagination is the actual renderer here — the engine only obeys it. Build at
+the ceiling of what you can imagine, not the floor of what compiles.
 
 ## World Instructions (MANDATORY) <!-- core -->
 

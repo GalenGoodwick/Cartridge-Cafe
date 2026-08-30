@@ -85,6 +85,14 @@ export async function renderSnapshot(
     if (!r.ok) return { ok: false, error: `render service ${r.status}: ${(await r.text()).slice(0, 200)}` }
     const out = await r.json()
     // hint the caller how to READ the render, since it's raw pixel-stats not prose
+    // THE NOTHING ERROR (Galen, Aug 29: 'rendering as nothing should throw a
+    // nothing error over the bridge') — a blank render is a first-class ERROR
+    // the AI cannot miss, not a stat it might skip. ok stays true (the render
+    // itself worked); `error` carries the verdict loudly.
+    if (out.ok && typeof out.coveragePct === 'number' && (out.coveragePct as number) < 1) {
+      out.nothing = true
+      out.error = `NOTHING RENDERED — the world drew ~${out.coveragePct}% of the frame. Almost always: a field with NO visualType (renders as nothing), a WGSL shader that failed to compile (check errors[]), or content built off the 0..512 grid (check offscreenHint). Fix, then re-probe — do not trust this build.`
+    }
     if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.' +
       (out.inputReport
         ? ` inputReport.respondsToInput=${out.inputReport.respondsToInput}: ${out.inputReport.note}`
