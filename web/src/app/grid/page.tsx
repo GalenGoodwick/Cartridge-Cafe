@@ -1003,8 +1003,12 @@ export default function TheGrid() {
 
       {/* ✦ THE PREMIUM GATE — field-bounded; buy once, it's on your account */}
       {premGate && (
+        // buying is a SITE action, not a world-frame one — anchor to the full
+        // overlay area (like the selector), NOT the world-frame inset. On a
+        // mobile world that inset is a narrow portrait strip, so the buy dialog
+        // spilled off-screen (Galen: "buy to play pop up outside viewport").
         <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
-          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.9)', borderRadius: 10 }}
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.9)', borderRadius: 10 }}
           onClick={() => setPremGate(null)}>
           <div className="w-full max-w-[440px] rounded-2xl border border-amber-300/30 bg-[#14100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
