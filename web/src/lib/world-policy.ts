@@ -3,6 +3,8 @@
 // forever after ("that isn't fair to people"). Policy decides who gets keys
 // and who gets through doors — enforcement is key-minting + gates, not vibes.
 
+import { forkGate } from '@/lib/fork-policy'
+
 export interface WorldPolicy {
   build: 'anyone' | 'invited' | 'owner'       // who may ADD to the world
   play: 'everyone' | 'invited' | 'builders'   // who may ENTER and play
@@ -70,19 +72,15 @@ export function canPlay(policy: WorldPolicy, who: { isOwner: boolean; isMember: 
   return who.isMember   // 'invited' and 'builders' both resolve to the roster
 }
 
-/** THE FORK GATE (Galen, Aug 27 "no forking except bases"; Aug 30 "no forking
- *  live edit worlds"): a world forks iff it is a BASE (the house's __base mark)
- *  or its maker flipped `forkable` — EXCEPT live-edit worlds (build: anyone),
- *  which are ONE communal world by contract and never fork. Bases stay exempt:
- *  they exist to be copied. */
-export function canForkWorld(wd: Record<string, unknown> | null | undefined):
-  { ok: true } | { ok: false; error: string } {
-  if (wd?.__base === true) return { ok: true }
-  if (policyOf(wd).build === 'anyone') {
-    return { ok: false, error: 'this is a live-edit world — everyone builds the ONE world together; it cannot be forked' }
-  }
-  if (wd?.forkable !== true) {
-    return { ok: false, error: 'only base worlds can be forked — this one is not a base' }
-  }
-  return { ok: true }
+/** THE FORK GATE — FORK OFF BY DEFAULT (Galen, Aug 30, superseding the Aug 27
+ *  bases-only rule): every world forks EXCEPT premium, proprietary, and
+ *  open live-edit (build: anyone) worlds, or a maker who opted out; bases
+ *  always fork. The decision + reasons live in fork-policy.forkGate (one truth,
+ *  shared with the boolean canFork used by the feed/payload) — this delegates.
+ *  Pass the owner's IP-control standing to catch proprietary-by-entitlement. */
+export function canForkWorld(
+  wd: Record<string, unknown> | null | undefined,
+  ownerHasIpControl = false,
+): { ok: true } | { ok: false; error: string } {
+  return forkGate(wd, ownerHasIpControl)
 }

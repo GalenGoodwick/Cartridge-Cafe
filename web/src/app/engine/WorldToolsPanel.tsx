@@ -9,11 +9,15 @@ import { can, type WorldContext } from '@/lib/worldContext'
 import type { FieldSimulation } from './simulation'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 
-export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
+export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, forkableDefault, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
   simulationRef: MutableRefObject<FieldSimulation | null>
   spaceId?: string
   spaceSlug?: string
   isOwner?: boolean
+  /** the server's default-on forkability for this world (fork-policy.canFork
+   *  with worldData.forkable UNSET) — the baseline the toggle reads when the
+   *  maker hasn't made an explicit choice. Fork off by default (Galen). */
+  forkableDefault?: boolean
   lastSceneRef: MutableRefObject<string>
   setChromeVisible: Dispatch<SetStateAction<boolean>>
   ctx: WorldContext
@@ -94,20 +98,28 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     })}
                   </div>
                   )}
-                  {canEditLaw && (
-                  <div className="flex items-center justify-between text-[16px]">
-                    <span>allow forking</span>
-                    {toggleBtn(wd?.['forkable'] === true, () => {
-                      const sim = simulationRef.current
-                      if (!sim) return
-                      // FORKABILITY IS OPT-IN (Galen): no fork button, no fork
-                      // route, unless the maker enables it here. Off by default.
-                      sim.worldData['forkable'] = sim.worldData['forkable'] === true ? false : true
-                      persistBranchRules()
-                      setToolsTick(n => n + 1)
-                    })}
-                  </div>
-                  )}
+                  {canEditLaw && (() => {
+                    // FORK OFF BY DEFAULT (Galen, Aug 30): forking is ON unless
+                    // the world is premium/proprietary/live-edit (the server's
+                    // forkableDefault already folds those in) or the maker turns
+                    // it OFF here. Explicit choice (worldData.forkable) wins;
+                    // absent it, the server default shows. Toggling writes an
+                    // EXPLICIT boolean — the opt-out the fork gate reads.
+                    const f = wd?.['forkable']
+                    const on = f === true ? true : f === false ? false : (forkableDefault ?? true)
+                    return (
+                    <div className="flex items-center justify-between text-[16px]">
+                      <span>allow forking</span>
+                      {toggleBtn(on, () => {
+                        const sim = simulationRef.current
+                        if (!sim) return
+                        sim.worldData['forkable'] = !on
+                        persistBranchRules()
+                        setToolsTick(n => n + 1)
+                      })}
+                    </div>
+                    )
+                  })()}
                   {/* THE SOCIAL CONTRACT (world-policy): declared ONCE, then
                       immutable — changing the deal on people mid-world isn't
                       fair (Galen). Undeclared worlds run the default (owner

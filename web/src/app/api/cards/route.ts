@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { handleOf } from '@/lib/notify'
 import { composeIcon, dominantHue, type IconField, type IconVisual } from '@/lib/icon-compose'
 import { rootBaseOf, orderGrid } from '@/lib/cards'
+import { worldIsForkable } from '@/lib/fork-policy'
 import { cached } from '@/lib/ttl-cache'
 
 export const dynamic = 'force-dynamic'
@@ -122,6 +123,10 @@ export async function GET(req: Request) {
   // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
+  // ⑄ FORKS (Galen, Aug 30): the games-shelf lineage tab — every PUBLIC world
+  // that is a remix of another (forkOfId set). Public-only by construction
+  // (fetchRows filters isPublic), so private fork drafts never leak here.
+  if (tab === 'forked') return NextResponse.json(serve(feedForked(rows).cards, url))
   // ALTERABLE/UNALTERABLE RETIRED (Galen, Aug 26): alterable ≡ live editing
   // (both were build:'anyone'), and nobody browses for "can't edit". Old links
   // alias to the surviving truths instead of 404ing.
@@ -195,6 +200,20 @@ export function feedForkable(rows: FeedRow[]): { cards: Card[] } {
   const bases = pool.filter(r => r.isBase).sort((a, b) => b.updatedAt - a.updatedAt)
   const rest = pool.filter(r => !r.isBase).sort((a, b) => b.updatedAt - a.updatedAt)
   return { cards: [...bases, ...rest].map(toCard) }
+}
+
+/** ⑄ FORKS — the lineage shelf: every public world that is a remix of another
+ *  (forkOfId set), most recent first. Public-only (fetchRows), so no drafts. */
+export function feedForked(rows: FeedRow[]): { cards: Card[] } {
+  const roots = rootRows(rows)
+  const slugOf = new Map(rows.map(r => [r.id, r.slug]))
+  const toCard = (r: FeedRow) => cardFromRow(
+    { ...r, forkOf: r.forkOfId ? slugOf.get(r.forkOfId) ?? null : null, base: roots.get(r.id) ? slugOf.get(roots.get(r.id)!) ?? null : null },
+    { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
+    true,
+    { iconWgsl: r.iconWgsl, hue: r.hue },
+  )
+  return { cards: rows.filter(r => r.forkOfId !== null).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
 }
 
 /** PUBLISHED: every playable card, one grid, recency order. */
@@ -309,7 +328,12 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       iconWgsl,
       hue,
       isPublic: (rest as { isPublic?: boolean }).isPublic !== false,
-      forkable: wd.forkable === true,
+      // FORK OFF BY DEFAULT (Galen, Aug 30): the denylist truth over the facts
+      // worldData carries. The feed can't do a per-owner IP-control lookup
+      // without N queries, so proprietary-by-entitlement is left to the
+      // authoritative gate (the fork route); premium/live-edit/opt-out/base all
+      // resolve here. One rule (fork-policy.canFork), no second copy.
+      forkable: worldIsForkable(wd, false),
       kind,
       buildMode: (() => { const p = wd.policy as { build?: string } | undefined
         return p?.build === 'anyone' ? 'anyone' : p?.build === 'invited' ? 'invited' : 'owner' })(),

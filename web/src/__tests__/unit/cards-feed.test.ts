@@ -13,7 +13,7 @@ vi.mock('@/lib/ttl-cache', () => ({
 }))
 
 import { prisma } from '@/lib/prisma'
-import { GET, feedTabs, feedTab, rootRows, OPEN_GROUND, type FeedRow } from '@/app/api/cards/route'
+import { GET, feedTabs, feedTab, feedForked, rootRows, OPEN_GROUND, type FeedRow } from '@/app/api/cards/route'
 
 const findMany = prisma.playerSpace.findMany as unknown as { mockResolvedValue: (v: unknown) => void; mock: { calls: unknown[][] } }
 
@@ -55,6 +55,18 @@ const fixture = (): FeedRow[] => [
   row('c1', 'loop-a', { forkOfId: 'c2', updatedAt: 10 }),            // forkOf cycle —
   row('c2', 'loop-b', { forkOfId: 'c1', updatedAt: 20 }),            //   never roots
 ]
+
+describe('feedForked — the ⑄ FORKS lineage shelf', () => {
+  it('keeps only worlds with a forkOf parent, most-recent first, drops non-forks', () => {
+    const slugs = feedForked(fixture()).cards.map(c => c.slug)
+    // every forkOf-bearing row, updatedAt desc: mossy-run(500), neo(300), orphan(60), loop-b(20), loop-a(10)
+    expect(slugs).toEqual(['mossy-run', 'mossy-run-neo', 'orphan', 'loop-b', 'loop-a'])
+    // bases and lineage-less toys never appear
+    expect(slugs).not.toContain('platformer-2d-base')
+    expect(slugs).not.toContain('arena-base')
+    expect(slugs).not.toContain('lone-toy')
+  })
+})
 
 describe('rootRows', () => {
   it('roots forks through multi-hop chains, bases at themselves, strays/cycles at null', () => {

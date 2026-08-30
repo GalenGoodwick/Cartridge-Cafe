@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
 import { canForkWorld, normalizePolicy } from '@/lib/world-policy'
-import { GEN_PRICE_USD, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { GEN_PRICE_USD, hasIpControl, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
 import { isAdminUserId } from '@/lib/adminAuth'
 import type { Prisma } from '@prisma/client'
 
@@ -35,12 +35,14 @@ export async function POST(
   if (!source || (!source.isPublic && source.ownerId !== user.id)) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
-  // THE FORK GATE (world-policy.canForkWorld): bases fork; opt-in forkable
-  // worlds fork; live-edit worlds (build: anyone) NEVER fork — one communal
-  // world by contract (Galen, Aug 30).
+  // THE FORK GATE (world-policy.canForkWorld) — FORK OFF BY DEFAULT (Galen,
+  // Aug 30): every world forks EXCEPT premium, proprietary, and open live-edit
+  // worlds, or a maker who opted out; bases always fork. Proprietary needs the
+  // owner's IP-control standing (an account entitlement worldData can't carry),
+  // so we look it up and pass it into the one gate.
   {
     const wd = (source.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
-    const forkGate = canForkWorld(wd)
+    const forkGate = canForkWorld(wd, await hasIpControl(source.ownerId))
     if (!forkGate.ok) return NextResponse.json({ error: forkGate.error }, { status: 403 })
   }
 
@@ -87,8 +89,9 @@ export async function POST(
     // a fork is NEVER a base — __base is the house's declaration, not heritage
     // (inheriting it gave every fork of a base its own catalog tab)
     delete snapObj.worldData.__base
-    // forkability is OPT-IN per world, never inherited: a fork of a forkable
-    // world is born unforkable until ITS maker flips the World Tools toggle
+    // forkability is never INHERITED as an explicit flag: drop the source's
+    // forkable choice so the fork starts at the platform default (fork off by
+    // default) — its own maker may opt out later in World Tools
     delete snapObj.worldData.forkable
     // GRID DIMENSIONS SET AT FORK (Galen's ruling, task #20): the forker may
     // declare their world's coordinate space; otherwise the source's carries

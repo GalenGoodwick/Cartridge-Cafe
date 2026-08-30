@@ -58,6 +58,10 @@ interface FieldEngineProps {
   spaceOwnerId?: string | null
   spaceOwnerHandle?: string | null
   isOwner?: boolean
+  /** AUTHORITATIVE forkability (server-computed, fork-policy.canFork) — fork off
+   *  by default; false only for premium/proprietary/live-edit/opted-out worlds.
+   *  The non-owner FORK button trusts this over raw worldData. */
+  forkable?: boolean
   /** View a historical save point instead of the live world (read-only demo mode) */
   versionView?: number
   /** Load this saved scene on mount and just play it — local sim, no server state, no chrome */
@@ -154,7 +158,7 @@ function sanitizeHudHtml(html: string): string {
   return tmpl.innerHTML
 }
 
-export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, shellUi, mobilePlay, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
+export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp, spaceName, spaceOwnerName, spaceOwnerId, spaceOwnerHandle, isOwner, forkable: forkableProp, versionView, playScene, hooksTrusted, viewport, frame, externalTopbar, shellUi, mobilePlay, onDockRect, onBuilding, presenceKey }: FieldEngineProps = {}) {
   useEffect(() => { console.log(`[engine] build ${ENGINE_BUILD}`) }, [])
   const { showToast } = useToast()
 
@@ -1390,7 +1394,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         config: {
           isOwner: !!isOwner, spaceId: spaceId ?? null, spaceSlug: spaceSlug ?? null,
           multiplayer: wd?.['multiplayer'] === true,
-          rReset: !!wd?.['rResetKey'], forkable: wd?.['forkable'] === true,
+          rReset: !!wd?.['rResetKey'],
+          // EFFECTIVE forkability (fork off by default): a live owner toggle
+          // (worldData.forkable) wins for instant feedback; absent it, the
+          // server's authoritative default-on truth (forkableProp) shows.
+          forkable: wd?.['forkable'] === true ? true : wd?.['forkable'] === false ? false : (forkableProp ?? true),
           designMode, ver: spaceVer ?? null, isPublic: spacePublic,
           card: (wd?.['card'] as Record<string, unknown> | undefined) ?? null,
           blurb: typeof wd?.['blurb'] === 'string' ? wd['blurb'] : '',
@@ -6539,7 +6547,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           {/* WORLD TOOLS — one panel, every tier. Viewers see presence + contents;
               the owner (space) or branch-holder additionally gets law + keys + mgmt. */}
           {can(ctx, 'toolsPanel') && chromeVisible && (
-            <WorldToolsPanel simulationRef={simulationRef} spaceId={spaceId} spaceSlug={spaceSlug} isOwner={isOwner} lastSceneRef={lastSceneRef} setChromeVisible={setChromeVisible} ctx={ctx} presenceOff={presenceOff} setPresenceOff={setPresenceOff} presenceOffRef={presenceOffRef} setToolsTick={setToolsTick} lineageBase={lineageBase} loadLineage={loadLineage} lineageBusy={lineageBusy} lineageTrail={lineageTrail} lineageRemixes={lineageRemixes} />
+            <WorldToolsPanel simulationRef={simulationRef} spaceId={spaceId} spaceSlug={spaceSlug} isOwner={isOwner} forkableDefault={forkableProp ?? true} lastSceneRef={lastSceneRef} setChromeVisible={setChromeVisible} ctx={ctx} presenceOff={presenceOff} setPresenceOff={setPresenceOff} presenceOffRef={presenceOffRef} setToolsTick={setToolsTick} lineageBase={lineageBase} loadLineage={loadLineage} lineageBusy={lineageBusy} lineageTrail={lineageTrail} lineageRemixes={lineageRemixes} />
           )}
 
           {gpuFailed && (
@@ -6769,11 +6777,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 create action. Under it, the ◂/▸ browse row steps the family
                 (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
-              {/* FORKABILITY IS OPT-IN (Galen): a player's world shows NO fork
-                  button unless its maker enabled forking in WORLD TOOLS — and
-                  NEVER to its own owner (it's already yours). House scenes
-                  (open ground) remain forkable by nature. */}
-              {(spaceId ? (!isOwner && simulationRef.current?.worldData?.['forkable'] === true) : true) && <button
+              {/* FORK OFF BY DEFAULT (Galen, Aug 30): a player's world shows the
+                  fork button to non-owners UNLESS it's premium/proprietary/
+                  live-edit or the maker opted out — the server already decided
+                  (forkableProp = fork-policy.canFork). NEVER to its own owner
+                  (it's already yours). House scenes remain forkable by nature. */}
+              {(spaceId ? (!isOwner && forkableProp === true) : true) && <button
                 onClick={() => { if (spaceSlug) instantForkSpace(); else handleBranch() }}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
                 title={me ? 'fork this world — instantly yours; your AI does the rest' : 'sign in to fork this world'}
@@ -7341,7 +7350,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               entry here also pings the network (commons + builderbox:queue) as an
               invitation — watching AIs choose whether to come. */}
           {buildConsoleOpen && !isHub && playScene !== 'CAFE' && playScene !== 'SUB-MAIN' && (
-            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} onFork={instantForkSpace} forkable={simulationRef.current?.worldData?.['forkable'] === true} setWorldChatOpen={setWorldChatOpen} sendHumanShot={sendHumanShot} humanShot={humanShot} />
+            <BuilderBoxPanel terminalLog={terminalLog} setBuildConsoleOpen={setBuildConsoleOpen} buildConsoleClosedRef={buildConsoleClosedRef} buildConsoleRef={buildConsoleRef} lastSceneRef={lastSceneRef} playScene={playScene} spaceId={spaceId} spaceName={spaceName} spaceSlug={spaceSlug} spaceOwnerName={spaceOwnerName} isOwner={isOwner} isHub={isHub} riding={riding} me={me} handleBranch={handleBranch} onFork={instantForkSpace} forkable={(() => { const f = simulationRef.current?.worldData?.['forkable']; return f === true ? true : f === false ? false : (forkableProp ?? true) })()} setWorldChatOpen={setWorldChatOpen} sendHumanShot={sendHumanShot} humanShot={humanShot} />
           )}
           {/* EDIT COACH — shown once, the first time the ✎ EDIT dock is opened,
               so a new builder knows what each control does. ✕ / GOT IT dismiss. */}

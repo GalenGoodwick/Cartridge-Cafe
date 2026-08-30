@@ -9,28 +9,40 @@ vi.mock('@/app/api/engine/store', () => ({
 import { canForkWorld } from '@/lib/world-policy'
 import { grantGenCredits, readGenCredits, worldgenPriceUsd, GEN_BUNDLES } from '@/lib/stripe'
 
-describe('canForkWorld — bases fork, opt-in forks, live-edit never', () => {
+describe('canForkWorld — FORK OFF BY DEFAULT (Galen, Aug 30)', () => {
   it('a base forks, even an open-building base', () => {
     expect(canForkWorld({ __base: true }).ok).toBe(true)
     expect(canForkWorld({ __base: true, policy: { build: 'anyone', play: 'everyone' } }).ok).toBe(true)
   })
 
-  it('a maker-flagged forkable world forks', () => {
-    expect(canForkWorld({ forkable: true }).ok).toBe(true)
-    expect(canForkWorld({ forkable: true, policy: { build: 'invited', play: 'everyone' } }).ok).toBe(true)
+  it('an UNMARKED world now forks (the default flipped from opt-in to on)', () => {
+    expect(canForkWorld({}).ok).toBe(true)
+    expect(canForkWorld(undefined).ok).toBe(true)
+    expect(canForkWorld({ policy: { build: 'owner', play: 'everyone' } }).ok).toBe(true)
   })
 
-  it('a live-edit world (build: anyone) NEVER forks — even flagged forkable', () => {
+  it('a live-edit world (build: anyone) does NOT fork — even flagged forkable', () => {
     const r = canForkWorld({ forkable: true, policy: { build: 'anyone', play: 'everyone' } })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toMatch(/live-edit/)
   })
 
-  it('an unmarked world does not fork', () => {
-    const r = canForkWorld({})
+  it('a premium world does NOT fork', () => {
+    const r = canForkWorld({ premium: { usd: 5 } })
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.error).toMatch(/base/)
-    expect(canForkWorld(undefined).ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/premium/)
+  })
+
+  it('a proprietary world (owner holds IP control) does NOT fork', () => {
+    const r = canForkWorld({}, true)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/proprietary/)
+  })
+
+  it('a maker who opted out (forkable: false) does NOT fork', () => {
+    const r = canForkWorld({ forkable: false })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/turned forking off/)
   })
 })
 

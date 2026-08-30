@@ -23,7 +23,7 @@ import { MembershipBanner } from '@/app/cards/MembershipBanner'
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'mine' | 'search'
+type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'search'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
@@ -136,7 +136,7 @@ export default function TheGrid() {
     setBuying('')
   }
 
-  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; device?: string | null } | null | undefined>(undefined)
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
     const slug = scene.slice(6)
@@ -145,12 +145,12 @@ export default function TheGrid() {
     Promise.all([
       fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; deviceConfig?: string | null } } | null, { user?: { id?: string } } | null]) => {
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null } } | null, { user?: { id?: string } } | null]) => {
       if (dead) return
       const sp = d?.space
       if (!sp?.id) { setSpaceInfo(null); return }
       const meId = s?.user?.id ?? null
-      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, device: sp.deviceConfig ?? null })
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null })
     }).catch(() => { if (!dead) setSpaceInfo(null) })
     return () => { dead = true }
   }, [scene])
@@ -188,7 +188,7 @@ export default function TheGrid() {
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         const list = Array.isArray(d.cards) && d.cards.length
           ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined }))
-          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' ? [] : LOCAL)   // empty deed/premium/unfinished is EMPTY, not the house shelf
+          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
         // tab's game — if the frame's world isn't ON this shelf, the shelf's
@@ -198,7 +198,7 @@ export default function TheGrid() {
         }
         prevTabRef.current = tab
       })
-      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' ? [] : LOCAL); prevTabRef.current = tab })
+      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' || tab === 'forked' ? [] : LOCAL); prevTabRef.current = tab })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
   useEffect(() => {
@@ -384,6 +384,10 @@ export default function TheGrid() {
   // the account via the experience entitlement) — once owned, the same click
   // just opens it. Server truth: /api/premium (price read server-side).
   const [premGate, setPremGate] = useState<null | { slug: string; usd: number; signedIn: boolean; buyable: boolean; busy?: boolean; err?: string }>(null)
+  // ▭ THE BIG-SCREEN NOTICE (Galen, Aug 30): a desktop-built game opened on a
+  // small screen warns "come back on desktop" — with a play-anyway escape.
+  // Acked per-slug so it shows once per world, not every remount.
+  const [bigScreenAck, setBigScreenAck] = useState<string | null>(null)
   const tryPlay = useCallback(async () => {
     if (scene.startsWith('space:')) {
       const slug = scene.slice(6)
@@ -538,7 +542,7 @@ export default function TheGrid() {
         ? <FieldEngine key="house" playScene="MAIN-COMMONS" presenceKey="CAFE" hooksTrusted viewport={inset} externalTopbar />
         : spc
           ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
-              spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
+              spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner} forkable={spc.forkable}
               viewport={inset} externalTopbar />
           : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
 
@@ -577,7 +581,7 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['forked', '⑄ FORKS'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
@@ -603,6 +607,9 @@ export default function TheGrid() {
           )}
           {tab === 'unfinished' && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">nothing on the workbench shelf.</div>
+          )}
+          {tab === 'forked' && shown.length === 0 && (
+            <div className="font-mono text-[11px] text-white/45 py-6 text-center">no forked worlds published yet — fork a world and publish it to land it here.</div>
           )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
@@ -1017,6 +1024,31 @@ export default function TheGrid() {
                 CREATE ACCOUNT / SIGN IN — THEN BUY ${premGate.usd}
               </a>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ▭ THE BIGGER-SCREEN NOTICE — a desktop-built game (deviceConfig ≠
+          mobile) opened on a small/phone screen (narrow) warns the player to
+          come back on desktop, with a play-anyway escape. Shows once per world
+          (bigScreenAck). Mobile-declared worlds never see it. */}
+      {phase === 'play' && narrow && spc && spc.device !== 'mobile' && bigScreenAck !== spc.slug && (
+        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.92)', borderRadius: 10 }}>
+          <div className="w-full max-w-[400px] rounded-2xl border border-sky-300/30 bg-[#0a0e16]/97 p-5 m-4 font-mono">
+            <div className="text-[12px] tracking-[0.25em] text-sky-200/90 mb-2">▭ BIGGER SCREEN</div>
+            <div className="text-[15px] tracking-[0.15em] text-white/95 mb-1">{spc.name}</div>
+            <p className="text-[11px] text-white/55 leading-relaxed mb-4">this game is built for desktop — it needs a bigger screen, a keyboard, and room to see. Come back on a computer for the real thing.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setPhase('browse') }}
+                className="flex-1 py-2.5 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[11px] tracking-[0.15em] hover:text-white hover:bg-white/5 transition-colors">
+                ◂ BACK TO GAMES
+              </button>
+              <button onClick={() => setBigScreenAck(spc.slug)}
+                className="flex-1 py-2.5 rounded-xl border border-sky-300/50 bg-sky-400/15 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/25 transition-colors">
+                PLAY ANYWAY
+              </button>
+            </div>
           </div>
         </div>
       )}
