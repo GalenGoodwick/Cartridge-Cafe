@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
 
 const box = 'rounded-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-5'
@@ -22,12 +22,23 @@ export default function AccountClient(p: {
   ipControl: boolean
   ipBuyable: boolean
   worldCount: number
+  isAdmin: boolean
+  memberUntil: number | null
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [delOpen, setDelOpen] = useState(false)
   const [delConfirm, setDelConfirm] = useState('')
   const [delResult, setDelResult] = useState<{ deletedWorlds: string[]; preservedWorlds: string[] } | null>(null)
+  const [promoInput, setPromoInput] = useState('')
+  const [promoNote, setPromoNote] = useState('')
+  const [minted, setMinted] = useState<string | null>(null)
+  const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number }>>([])
+  useEffect(() => {
+    if (!p.isAdmin) return
+    fetch('/api/promo').then(r => (r.ok ? r.json() : null))
+      .then(d => setCodes(Array.isArray(d?.codes) ? d.codes : [])).catch(() => {})
+  }, [p.isAdmin, minted])
 
   const post = async (path: string, body?: unknown) => {
     const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
@@ -52,6 +63,20 @@ export default function AccountClient(p: {
     const { ok, data } = await post('/api/membership')
     if (ok && data.url) { window.location.href = data.url; return }
     setNote(data.error || 'could not start the membership'); setBusy(null)
+  }
+  const redeem = async () => {
+    setBusy('redeem'); setPromoNote('')
+    const { ok, data } = await post('/api/promo/redeem', { code: promoInput })
+    if (ok) { window.location.reload(); return }
+    setPromoNote(data.error || 'could not redeem that code'); setBusy(null)
+  }
+  const mint = async () => {
+    setBusy('mint'); setPromoNote('')
+    const r = await fetch('/api/promo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    const d = await r.json().catch(() => ({})) as { code?: string; error?: string }
+    if (r.ok && d.code) setMinted(d.code)
+    else setPromoNote(d.error || 'could not mint a code')
+    setBusy(null)
   }
   const doDelete = async () => {
     setBusy('delete'); setNote('')
@@ -120,7 +145,11 @@ export default function AccountClient(p: {
                     )}
                   </div>
                 ) : (
-                  <div className="text-[12px] text-white/40 mt-3">your seat is granted (no billing on this account)</div>
+                  <div className="text-[12px] text-white/40 mt-3">
+                    {p.memberUntil
+                      ? <>promo seat — live editing until {fmt(p.memberUntil)} (no billing; your credits and worlds are yours forever)</>
+                      : <>your seat is granted (no billing on this account)</>}
+                  </div>
                 )}
                 <p className="text-[11.5px] leading-relaxed text-white/35 mt-3">
                   cancel membership stops billing in one click — your seat lasts until the period ends, and your worlds and
@@ -161,6 +190,53 @@ export default function AccountClient(p: {
                 </p>
               )}
             </div>
+          </section>
+
+          {/* PROMO CODES — redeem for everyone; mint + roster for the keeper */}
+          <section className={box} id="promo">
+            <h2 className={h2}>PROMO CODE</h2>
+            <div className="flex flex-wrap gap-2">
+              <input value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())}
+                placeholder="CAFE-XXXX-XXXX" spellCheck={false}
+                className="flex-1 min-w-[190px] bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[14px] tracking-[0.08em] text-white/85 outline-none focus:border-amber-300/50" />
+              <button onClick={redeem} disabled={busy !== null || promoInput.trim().length < 6}
+                className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
+                {busy === 'redeem' ? '…' : 'REDEEM'}
+              </button>
+            </div>
+            <p className="text-[11.5px] leading-relaxed text-white/35 mt-2">
+              a promo code lands its build credits on your account for keeps and starts its included stretch of live
+              editing on the spot. one redemption per code per account.
+            </p>
+            {promoNote && <div className="text-[13px] text-amber-200/90 mt-2">{promoNote}</div>}
+            {p.isAdmin && (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-[12px] text-white/50">keeper: mint a code — 2 build credits + 30 days live edit per redeemer, unlimited redeemers</div>
+                  <button onClick={mint} disabled={busy !== null}
+                    className={`${btn} border-emerald-300/50 text-emerald-100 hover:bg-emerald-400/15 disabled:opacity-40`}>
+                    {busy === 'mint' ? '…' : '✚ GENERATE CODE'}
+                  </button>
+                </div>
+                {minted && (
+                  <button onClick={() => navigator.clipboard?.writeText(minted).catch(() => {})}
+                    className="mt-3 w-full text-left rounded-lg border border-emerald-300/40 bg-emerald-400/10 px-3 py-2.5 text-[16px] tracking-[0.12em] text-emerald-100 select-all"
+                    title="click to copy">
+                    {minted} <span className="text-[10px] text-white/40 float-right mt-1">click to copy</span>
+                  </button>
+                )}
+                {codes.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-1">
+                    {codes.map(c => (
+                      <div key={c.code} className="flex items-center justify-between text-[12px] text-white/55">
+                        <span className="tracking-[0.1em] select-all">{c.code}</span>
+                        <span className="text-white/35">{c.credits} credits · {c.memberDays}d edit · used {c.used}{c.maxUses != null ? `/${c.maxUses}` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* DATA RIGHTS */}
