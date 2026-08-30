@@ -77,13 +77,21 @@ export async function birthWorld(opts: {
   description?: string | null
   isPublic?: boolean                      // default FALSE — worlds are born private
   worldData?: Record<string, unknown>     // e.g. creation_brief — the first thing a connecting AI reads
+  worldParams?: Record<string, unknown>   // grid shape at birth (gridW/gridH/gridSize) — merged under any snapshot's own params
   snapshot?: Prisma.InputJsonValue        // full snapshot override (brew-with-cartridge / generate-flow BASE); wins over worldData
   forkOfId?: string                       // generate-flow BASE: lineage back to the picked world
 }): Promise<{ space: { id: string; slug: string; name: string; description: string | null; isPublic: boolean; createdAt: Date }; token: string }> {
-  const snapshot = opts.snapshot
+  let snapshot = opts.snapshot
     ?? (opts.worldData && Object.keys(opts.worldData).length
       ? ({ fields: [], worldData: opts.worldData } as Prisma.InputJsonValue)
       : undefined)
+  // birth-time grid shape (a mobile world is born PORTRAIT, not squeezed into
+  // the default square) — the snapshot's own params win if it declares any
+  if (opts.worldParams && Object.keys(opts.worldParams).length) {
+    const snap = ((snapshot && typeof snapshot === 'object') ? snapshot : { fields: [] }) as Record<string, unknown>
+    const existing = (snap.worldParams as Record<string, unknown> | undefined) ?? {}
+    snapshot = { ...snap, worldParams: { ...opts.worldParams, ...existing } } as Prisma.InputJsonValue
+  }
   const space = await createSpaceUniqueSlug(opts.baseSlug, (slug) => ({
     name: opts.name,
     slug,
@@ -196,6 +204,7 @@ export async function forkSnapshotToSpace(opts: {
  *  Throws { status, error } on a bad base. */
 export async function resolveBirthExtras(userId: string, body: Record<string, unknown>): Promise<{
   birthData: Record<string, unknown>
+  birthParams: Record<string, unknown>
   baseSnapshot?: Prisma.InputJsonValue
   forkOfId?: string
 }> {
@@ -206,8 +215,14 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
     ...(access ? { access } : {}),
     ...(access === 'open' ? { build: 'anyone' } : {}),   // open world = live editing for members
   }
+  // MOBILE = PORTRAIT AT BIRTH (Galen, Aug 29: "mobile was selected but the
+  // viewport was not auto-sized"): fit:'mobile' frames the PAGE, but a square
+  // 512 grid letterboxes again inside the phone frame. A mobile world is born
+  // with a portrait playable rect (base-mobile's proven 576×1024) so its canvas
+  // FILLS the frame from the first field.
+  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridW: 576, gridH: 1024 } : {}
   const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
-  if (!baseWorld) return { birthData }
+  if (!baseWorld) return { birthData, birthParams }
   const src = await prisma.playerSpace.findUnique({
     where: { slug: baseWorld }, select: { id: true, ownerId: true, isPublic: true, snapshot: true },
   })
@@ -225,9 +240,13 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   const seedWd = { ...(snap.worldData as Record<string, unknown> ?? {}) }
   delete seedWd.__base; delete seedWd.forkable; delete seedWd.policy
   delete seedWd.access; delete seedWd.build; delete seedWd.fit   // seed's own facets never leak either
+  // portrait grid lays over the seed too — unless the seed declares its own rect
+  const seedParams = (snap.worldParams as Record<string, unknown> | undefined) ?? {}
+  const mergedParams = { ...birthParams, ...seedParams }
   return {
     birthData,
-    baseSnapshot: { ...snap, worldData: { ...seedWd, ...birthData } } as Prisma.InputJsonValue,
+    birthParams,
+    baseSnapshot: { ...snap, worldData: { ...seedWd, ...birthData }, ...(Object.keys(mergedParams).length ? { worldParams: mergedParams } : {}) } as Prisma.InputJsonValue,
     forkOfId: src.id,
   }
 }

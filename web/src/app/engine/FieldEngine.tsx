@@ -7347,10 +7347,21 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             const tok = plugToken || (plugBusy ? '…minting…' : '(no key — see below)')
             const cur = lastSceneRef.current || ''
             const bm = cur.match(/^(.+?) ⑂ (.+?) · v(\d+)$/)   // BASE ⑂ author · vN
+            // the world's declared facets ride the prompt (Galen, Aug 29):
+            // the AI must KNOW it is building a mobile/portrait/open world
+            const wdF = (simulationRef.current?.worldData ?? {}) as Record<string, unknown>
+            const wpF = (simulationRef.current?.worldParams ?? {}) as Record<string, unknown>
             const briefing = worldBriefingPrompt({
               token: tok, worldName: cur || spaceSlug || '',
               branch: bm ? { base: bm[1], by: bm[2], version: bm[3] } : null,
               brief: plugBrief, origin,
+              facets: {
+                fit: typeof wdF.fit === 'string' ? wdF.fit : undefined,
+                access: typeof wdF.access === 'string' ? wdF.access : undefined,
+                gridW: typeof wpF.gridW === 'number' ? wpF.gridW : undefined,
+                gridH: typeof wpF.gridH === 'number' ? wpF.gridH : undefined,
+                gridSize: typeof wpF.gridSize === 'number' ? wpF.gridSize : undefined,
+              },
             })
             return (
               <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>

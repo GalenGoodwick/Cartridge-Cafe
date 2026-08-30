@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { space, token: rawToken } = await birthWorld({
+      worldParams: extras.birthParams,
       ownerId: user.id,
       name: name.trim(),
       baseSlug,

@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
       ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
       : undefined
     const { space } = await birthWorld({
+      worldParams: extras.birthParams,
       ownerId: user.id,
       name,
       baseSlug,
