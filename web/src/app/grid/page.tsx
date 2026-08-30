@@ -132,7 +132,7 @@ export default function TheGrid() {
     setBuying('')
   }
 
-  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean } | null | undefined>(undefined)
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; device?: string | null } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
     const slug = scene.slice(6)
@@ -141,12 +141,12 @@ export default function TheGrid() {
     Promise.all([
       fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null } } | null, { user?: { id?: string } } | null]) => {
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; deviceConfig?: string | null } } | null, { user?: { id?: string } } | null]) => {
       if (dead) return
       const sp = d?.space
       if (!sp?.id) { setSpaceInfo(null); return }
       const meId = s?.user?.id ?? null
-      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId })
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, device: sp.deviceConfig ?? null })
     }).catch(() => { if (!dead) setSpaceInfo(null) })
     return () => { dead = true }
   }, [scene])
@@ -270,18 +270,28 @@ export default function TheGrid() {
   const miniTop = browsing || engineSet || createSet   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
-    if (!miniTop) return { top: M, right: M, bottom: BAR_H + 10, left: M }
+    // MOBILE IS MOBILE (Galen): a mobile-declared world wears a PHONE-SHAPED
+    // frame on desktop too — full-frame play AND the mini frame. CREATE's
+    // ▯ MOBILE facet declares the same shape while brewing.
+    const mobileWorld = (createSet && createShape === 'mobile') || spc?.device === 'mobile'
     const availH = H - M - BAR_H - 10
-    // ✧ CREATE declares a shape: MOBILE brews show a PORTRAIT frame (9:16) so
-    // the maker SEES the world's true shape while writing the brief.
-    const aspect = createSet && createShape === 'mobile' ? 9 / 16 : 16 / 10
+    if (!miniTop) {
+      if (mobileWorld) {
+        // full-frame play, portrait: full height, 9:16, centered
+        const w = Math.max(MIN_W, Math.min(availH * (9 / 16), W - M * 2))
+        const left = Math.max((W - w) / 2, M)
+        return { top: M, right: Math.max(W - left - w, M), bottom: BAR_H + 10, left }
+      }
+      return { top: M, right: M, bottom: BAR_H + 10, left: M }
+    }
+    const aspect = mobileWorld ? 9 / 16 : 16 / 10
     let w = (W - M * 2) * (aspect < 1 ? 0.18 : 0.42), h = w / aspect
     const hMax = availH * (aspect < 1 ? 0.52 : 0.4)
     if (h > hMax) { h = hMax; w = h * aspect }
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [miniTop, win, createSet, createShape])
+  }, [miniTop, win, createSet, createShape, spc])
 
   // unified eased resize — camera re-fits every frame of the ease
   useEffect(() => {
