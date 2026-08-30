@@ -62,7 +62,7 @@ export default function TheGrid() {
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect' | 'fork'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -875,6 +875,16 @@ export default function TheGrid() {
                 tool === 'connect' ? 'bg-emerald-400/20 border-emerald-300/70 text-emerald-100' : 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20'}`}>
               ⚿ CONNECT AI
             </button>
+            {/* ⑄ FORK — an ENGINE tab (Galen): fork the world in the frame with a
+                prompt for what it should become. Shown for a real space that
+                isn't explicitly non-forkable; the tab's view carries the entry. */}
+            {spc && eyeData?.config?.forkable !== false && (
+              <button onClick={() => setTool('fork')}
+                className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                  tool === 'fork' ? 'bg-emerald-400/20 border-emerald-300/70 text-emerald-100' : 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20'}`}>
+                ⑄ FORK
+              </button>
+            )}
           </div>
           {/* LIVE-EDIT worlds carry the EDITING MEMBERSHIP box (Galen): open
               building = $10/mo seat; play is always free. The banner shows the
@@ -976,6 +986,10 @@ export default function TheGrid() {
                   <p className="text-[11px] text-white/45 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
                 </>}
               </div>
+            )}
+            {tool === 'fork' && spc && (
+              <ForkView slug={spc.slug} name={spc.name}
+                onForked={(newSlug) => { setScene('space:' + newSlug); setTool('connect') }} />
             )}
           </div>
         </div>
@@ -1139,18 +1153,6 @@ export default function TheGrid() {
               }}
                 className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
                 {copied ? '✓ COPIED' : '↗ SHARE'}
-              </button>
-            )}
-            {/* ⑄ FORK — the visible fork control in the play bar (Galen: "just a
-                button in the engine"). The engine dock's fork lives in a hidden
-                (chromeHidden) frame, so surface it here for any forkable space
-                world; cmd('fork') runs the engine's own fork (instantForkSpace →
-                the credit-gated API). forkable comes from fork-policy via config. */}
-            {uiSet === 'games' && phase === 'play' && scene.startsWith('space:') && eyeData?.config?.forkable !== false && (
-              <button onClick={() => { cmd('fork'); setSelOpen(false); setConnectOpen(false) }}
-                title="fork this world — a new world you own, with lineage back here"
-                className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-emerald-500/15 border-emerald-300/45 text-emerald-100 hover:bg-emerald-500/25 hover:text-white transition-colors shrink-0">
-                ⑄ FORK
               </button>
             )}
           </div>
@@ -1743,6 +1745,72 @@ function PremiumSeat({ current }: { current: number | null }) {
         </button>
       )}
       <span className="text-white/50 ml-1">{current != null ? `listed on ✦ PREMIUM at $${current}` : 'free — set a price to list on ✦ PREMIUM'}</span>
+    </div>
+  )
+}
+
+// ⑄ FORK — the ENGINE fork tab (Galen, Aug 30: "should be an engine tab. and
+// requires prompt entry"): name the fork + say what it should become, then fork
+// the world in the frame. The brief lands as the fork's creation_brief so the
+// AI you connect next reads the intent. Credit-gated by the API (keeper free).
+function ForkView({ slug, name, onForked }: {
+  slug: string
+  name: string
+  onForked: (slug: string) => void
+}) {
+  const [forkName, setForkName] = useState(name ? name + ' fork' : '')
+  const [brief, setBrief] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [needPay, setNeedPay] = useState<{ priceUsd: number } | null>(null)
+  const ok = forkName.trim().length >= 2 && brief.trim().length >= 8
+  const doFork = async () => {
+    if (!ok || busy) return
+    setBusy(true); setErr(''); setNeedPay(null)
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/fork`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: forkName.trim(), brief: brief.trim() }),
+      })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d?.space?.slug) { onForked(d.space.slug); return }
+      if (r.status === 401) setErr('sign in first — a fork needs an owner.')
+      else if (r.status === 402) setNeedPay({ priceUsd: d?.priceUsd ?? 5 })
+      else setErr(d?.error || 'fork failed.')
+    } catch { setErr('fork failed — are you offline?') }
+    finally { setBusy(false) }
+  }
+  const buyCredit = async () => {
+    try {
+      const r = await fetch('/api/generate/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const d = await r.json().catch(() => null)
+      if (d?.url) window.location.href = d.url
+    } catch { /* ignore */ }
+  }
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/80 mb-1">⑄ FORK {(name || 'THIS WORLD').toUpperCase()}</div>
+      <p className="text-[12px] text-white/60 leading-relaxed mb-3">A fork is your own copy — a new world you own, with lineage back to this one. Name it and say what it should become; your connected AI builds that.</p>
+      <label className="block text-[10.5px] tracking-[0.18em] text-white/45 mb-1">NAME</label>
+      <input value={forkName} onChange={e => setForkName(e.target.value)} maxLength={60}
+        placeholder="name your fork…"
+        className="w-full mb-3 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[12.5px] text-white/90 placeholder:text-white/30 outline-none focus:border-emerald-300/50" />
+      <label className="block text-[10.5px] tracking-[0.18em] text-white/45 mb-1">WHAT SHOULD IT BECOME?</label>
+      <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4} maxLength={600}
+        placeholder="describe the world this fork should grow into — your AI reads this and builds it."
+        className="w-full mb-3 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[12.5px] text-white/90 placeholder:text-white/30 outline-none focus:border-emerald-300/50 resize-none" />
+      {err && <div className="mb-2 text-[12px] text-amber-200/90">{err}</div>}
+      {needPay && (
+        <div className="mb-2 text-[12px] text-amber-200/90 flex items-center gap-2 flex-wrap">
+          <span>forking costs one build credit.</span>
+          <button onClick={() => void buyCredit()} className="px-3 py-1 rounded-lg border border-amber-300/50 bg-amber-400/15 text-amber-100 hover:bg-amber-400/25">BUY 1 · ${needPay.priceUsd}</button>
+        </div>
+      )}
+      <button onClick={() => void doFork()} disabled={!ok || busy}
+        className="w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12.5px] tracking-[0.18em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors">
+        {busy ? 'FORKING…' : '⑄ FORK IT — IT BECOMES YOURS'}
+      </button>
+      <p className="mt-2 text-[10.5px] text-white/40">it opens in CONNECT — paste the prompt to your AI and it builds what you described.</p>
     </div>
   )
 }
