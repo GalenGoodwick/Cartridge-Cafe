@@ -1,0 +1,59 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const kv = new Map<string, Record<string, unknown>>()
+vi.mock('@/app/api/engine/store', () => ({
+  loadGameSlot: async (k: string) => kv.get(k),
+  saveGameSlot: async (k: string, v: Record<string, unknown>) => { kv.set(k, v) },
+}))
+
+import { canForkWorld } from '@/lib/world-policy'
+import { grantGenCredits, readGenCredits } from '@/lib/stripe'
+
+describe('canForkWorld — bases fork, opt-in forks, live-edit never', () => {
+  it('a base forks, even an open-building base', () => {
+    expect(canForkWorld({ __base: true }).ok).toBe(true)
+    expect(canForkWorld({ __base: true, policy: { build: 'anyone', play: 'everyone' } }).ok).toBe(true)
+  })
+
+  it('a maker-flagged forkable world forks', () => {
+    expect(canForkWorld({ forkable: true }).ok).toBe(true)
+    expect(canForkWorld({ forkable: true, policy: { build: 'invited', play: 'everyone' } }).ok).toBe(true)
+  })
+
+  it('a live-edit world (build: anyone) NEVER forks — even flagged forkable', () => {
+    const r = canForkWorld({ forkable: true, policy: { build: 'anyone', play: 'everyone' } })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/live-edit/)
+  })
+
+  it('an unmarked world does not fork', () => {
+    const r = canForkWorld({})
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/base/)
+    expect(canForkWorld(undefined).ok).toBe(false)
+  })
+})
+
+describe('grantGenCredits with quantity (buy more than one)', () => {
+  beforeEach(() => kv.clear())
+
+  it('grants qty credits in one purchase', async () => {
+    expect(await grantGenCredits('u1', 'cs_1', 5)).toBe(5)
+    expect(await readGenCredits('u1')).toBe(5)
+  })
+
+  it('webhook retry with the same session grants nothing extra', async () => {
+    await grantGenCredits('u1', 'cs_1', 3)
+    expect(await grantGenCredits('u1', 'cs_1', 3)).toBe(3)
+    expect(await readGenCredits('u1')).toBe(3)
+  })
+
+  it('clamps absurd quantities and floors fractions', async () => {
+    expect(await grantGenCredits('u1', 'cs_big', 500)).toBe(20)
+    expect(await grantGenCredits('u1', 'cs_frac', 2.9)).toBe(22)
+  })
+
+  it('defaults to one credit when qty is absent (legacy sessions)', async () => {
+    expect(await grantGenCredits('u1', 'cs_old')).toBe(1)
+  })
+})

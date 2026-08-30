@@ -3,7 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canCreateWorld, forkSnapshotToSpace } from '@/lib/world-create'
-import { normalizePolicy } from '@/lib/world-policy'
+import { normalizePolicy, policyOf } from '@/lib/world-policy'
+import { GEN_PRICE_USD, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { isAdminUserId } from '@/lib/adminAuth'
 import { hydrateScene, loadScene } from '../../store'
 import type { Prisma } from '@prisma/client'
 
@@ -29,20 +31,47 @@ export async function POST(req: NextRequest) {
   const scene = loadScene(name)
   if (!scene) return NextResponse.json({ error: `no world named "${name}"` }, { status: 404 })
 
+  // NO FORKING LIVE-EDIT WORLDS (Galen, Aug 30): a communal open-building
+  // world is ONE world by contract — house scenes are the catalog (fork-able
+  // stock), but an open-ground scene never forks. Bases stay exempt.
+  {
+    const wd = (scene as { worldData?: Record<string, unknown> }).worldData
+    if (policyOf(wd).build === 'anyone' && wd?.__base !== true) {
+      return NextResponse.json({ error: 'this is a live-edit world — everyone builds the ONE world together; it cannot be forked' }, { status: 403 })
+    }
+  }
+
   const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
+  // A FORK COSTS A BUILD CREDIT (Galen, Aug 30) — same coin as a generation;
+  // the keeper forks free. Spent after every refusal, refunded if the copy fails.
+  const isKeeper = await isAdminUserId(user.id)
+  if (!isKeeper) {
+    const spent = await spendGenCredit(user.id)
+    if (spent === null) {
+      return NextResponse.json(
+        { error: 'forking a world costs one build credit', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
+        { status: 402 })
+    }
+  }
 
   const label = typeof body?.label === 'string' ? body.label : undefined
   const policy = normalizePolicy((body as { policy?: unknown })?.policy)
   // fork from the BASE display name (a fork of someone's branch credits the base line)
   const baseName = name.split(' ⑂ ')[0]
-  const space = await forkSnapshotToSpace({
-    userId: user.id, baseName, label,
-    snapshot: scene as unknown as Prisma.InputJsonValue,
-    policy: policy ?? undefined,
-  })
-  return NextResponse.json({
-    ok: true, forked: true, slug: space.slug, name: space.name,
-    next: `your fork lives at /space/${space.slug} — private until you publish it`,
-  }, { status: 201 })
+  try {
+    const space = await forkSnapshotToSpace({
+      userId: user.id, baseName, label,
+      snapshot: scene as unknown as Prisma.InputJsonValue,
+      policy: policy ?? undefined,
+    })
+    return NextResponse.json({
+      ok: true, forked: true, slug: space.slug, name: space.name,
+      next: `your fork lives at /space/${space.slug} — private until you publish it`,
+    }, { status: 201 })
+  } catch (e) {
+    if (!isKeeper) await refundGenCredit(user.id).catch(() => {})
+    throw e
+  }
 }

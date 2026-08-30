@@ -4,7 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
-import { normalizePolicy } from '@/lib/world-policy'
+import { canForkWorld, normalizePolicy } from '@/lib/world-policy'
+import { GEN_PRICE_USD, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { isAdminUserId } from '@/lib/adminAuth'
 import type { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -33,22 +35,31 @@ export async function POST(
   if (!source || (!source.isPublic && source.ownerId !== user.id)) {
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
-  // FORKABILITY IS OPT-IN (Galen): the maker enables forking in WORLD TOOLS
-  // (worldData.forkable) — without it, nobody but the owner may copy the world.
+  // THE FORK GATE (world-policy.canForkWorld): bases fork; opt-in forkable
+  // worlds fork; live-edit worlds (build: anyone) NEVER fork — one communal
+  // world by contract (Galen, Aug 30).
   {
     const wd = (source.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
-    // BASES ONLY (Galen, Aug 27: "we don't want forking except for base
-    // versions"): a world forks iff it is a BASE — the house's __base mark or
-    // the maker's forkable switch. Ownership grants no bypass; an owner who
-    // wants a copy flips the switch in WORLD TOOLS first.
-    if (wd?.forkable !== true && wd?.__base !== true) {
-      return NextResponse.json({ error: 'only base worlds can be forked — this one is not a base' }, { status: 403 })
-    }
+    const forkGate = canForkWorld(wd)
+    if (!forkGate.ok) return NextResponse.json({ error: forkGate.error }, { status: 403 })
   }
 
   // one gate for every create path — fork must not skip the world cap
   const gate = await canCreateWorld(user.id)
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status })
+
+  // A FORK COSTS A BUILD CREDIT (Galen, Aug 30) — the same coin as a fresh
+  // generation; the keeper forks free. Spent AFTER every refusal above so no
+  // one pays for a fork that gets refused; refunded below if the copy fails.
+  const isKeeper = await isAdminUserId(user.id)
+  if (!isKeeper) {
+    const spent = await spendGenCredit(user.id)
+    if (spent === null) {
+      return NextResponse.json(
+        { error: 'forking a world costs one build credit', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
+        { status: 402 })
+    }
+  }
 
   // The copied snapshot must NOT inherit house-AI consent: __house_requested is
   // the source owner's explicit "have the house AI build it" — carried into a
@@ -91,29 +102,34 @@ export async function POST(
   // race-safe unique slug (the old findUnique-then-create raced on the final
   // insert). A fork is born UNPUBLISHED (Galen's ruling): it reaches the shelf
   // only when its maker publishes it — never by inheritance from the source.
-  const fork = await createSpaceUniqueSlug(slugify(name), (newSlug) => ({
-    name,
-    slug: newSlug,
-    ownerId: user.id,
-    forkOfId: source.id,
-    isPublic: false,
-    description: `Remix of ${source.name}`,
-    ...(source.snapshot ? { snapshot: source.snapshot as Prisma.InputJsonValue } : {}),
-  }))
+  try {
+    const fork = await createSpaceUniqueSlug(slugify(name), (newSlug) => ({
+      name,
+      slug: newSlug,
+      ownerId: user.id,
+      forkOfId: source.id,
+      isPublic: false,
+      description: `Remix of ${source.name}`,
+      ...(source.snapshot ? { snapshot: source.snapshot as Prisma.InputJsonValue } : {}),
+    }))
 
-  // the remix starts with its lineage recorded: version 1 = what was copied
-  if (source.snapshot) {
-    await prisma.spaceVersion.create({
-      data: {
-        spaceId: fork.id,
-        version: 1,
-        snapshot: source.snapshot as Prisma.InputJsonValue,
-        authorId: user.id,
-        note: `Remixed from ${slug}`,
-      },
-    })
+    // the remix starts with its lineage recorded: version 1 = what was copied
+    if (source.snapshot) {
+      await prisma.spaceVersion.create({
+        data: {
+          spaceId: fork.id,
+          version: 1,
+          snapshot: source.snapshot as Prisma.InputJsonValue,
+          authorId: user.id,
+          note: `Remixed from ${slug}`,
+        },
+      })
+    }
+
+    // shape the response (the create returns the full row — don't leak snapshot)
+    return NextResponse.json({ space: { id: fork.id, slug: fork.slug, name: fork.name, createdAt: fork.createdAt } }, { status: 201 })
+  } catch (e) {
+    if (!isKeeper) await refundGenCredit(user.id).catch(() => {})
+    throw e
   }
-
-  // shape the response (the create returns the full row — don't leak snapshot)
-  return NextResponse.json({ space: { id: fork.id, slug: fork.slug, name: fork.name, createdAt: fork.createdAt } }, { status: 201 })
 }

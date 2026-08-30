@@ -143,21 +143,23 @@ export async function createExperienceCheckout(
  *  (no pre-created price id; only STRIPE_SECRET_KEY). The webhook credits the
  *  gencredits ledger; the buyer lands back on /cards to spend it on a brief. */
 export async function createWorldgenCheckout(
-  userId: string, origin: string,
+  userId: string, origin: string, qty = 1,
 ): Promise<{ url: string } | { error: string; status: number }> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const n = Math.max(1, Math.min(20, Math.floor(qty)))
   const form = new URLSearchParams({
     mode: 'payment',
-    'line_items[0][quantity]': '1',
+    'line_items[0][quantity]': String(n),
     'line_items[0][price_data][currency]': 'usd',
     'line_items[0][price_data][unit_amount]': String(GEN_PRICE_USD * 100),
-    'line_items[0][price_data][product_data][name]': 'generate a world',
-    'line_items[0][price_data][product_data][description]': 'one world generation — born with your brief; connect your AI and it builds it live',
+    'line_items[0][price_data][product_data][name]': n === 1 ? 'generate a world' : `${n} world builds`,
+    'line_items[0][price_data][product_data][description]': 'world build credits — each births a world from your brief (forking a world spends one too); credits never expire',
     success_url: `${origin}/create?paid=worldgen`,   // the generate flow lives at /create now
     cancel_url: `${origin}/create?paycancel=worldgen`,
     'metadata[userId]': userId,
     'metadata[product]': 'worldgen',
+    'metadata[qty]': String(n),
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
@@ -404,13 +406,13 @@ export async function readGenCredits(userId: string): Promise<number> {
   return typeof doc?.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
 }
 
-/** Webhook-side: +N credits, idempotent per checkout sessionId. */
-export async function grantGenCredits(userId: string, sessionId: string | undefined): Promise<number> {
+/** Webhook-side: +qty credits, idempotent per checkout sessionId. */
+export async function grantGenCredits(userId: string, sessionId: string | undefined, qty = GEN_CREDITS_PER_PURCHASE): Promise<number> {
   const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
   const grants = Array.isArray(doc.grants) ? doc.grants : []
   const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
   if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
-  const next = n + GEN_CREDITS_PER_PURCHASE
+  const next = n + Math.max(1, Math.min(20, Math.floor(qty)))
   await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })
   return next
 }

@@ -112,6 +112,7 @@ export default function TheGrid() {
   // the dockstar opens (Galen: buy credits anytime, membership on the menu)
   const [wallet, setWallet] = useState<{ credits: number; genUsd: number; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
   const [buying, setBuying] = useState<'' | 'credit' | 'member'>('')
+  const [buyQty, setBuyQty] = useState(1)
   useEffect(() => {
     if (!selOpen) return
     Promise.all([
@@ -125,7 +126,10 @@ export default function TheGrid() {
   const startCheckout = async (kind: 'credit' | 'member') => {
     setBuying(kind)
     try {
-      const r = await fetch(kind === 'credit' ? '/api/generate/buy' : '/api/membership', { method: 'POST' })
+      const r = await fetch(kind === 'credit' ? '/api/generate/buy' : '/api/membership', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: kind === 'credit' ? JSON.stringify({ qty: buyQty }) : '{}',
+      })
       const d = await r.json().catch(() => null)
       if (d?.url) { window.location.href = d.url; return }
     } catch { /* fall through */ }
@@ -710,10 +714,21 @@ export default function TheGrid() {
                 </div>
               </div>
               {me ? (wallet?.buyable && !wallet.free && (
-                <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
-                  className="mt-3 w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
-                  {buying === 'credit' ? 'OPENING…' : `BUY 1 · $${wallet.genUsd}`}
-                </button>
+                <div className="mt-3">
+                  <div className="flex gap-1 mb-2">
+                    {[1, 3, 5, 10].map(q => (
+                      <button key={q} onClick={() => setBuyQty(q)}
+                        className={`flex-1 py-1 rounded-lg border font-mono text-[10px] tabular-nums transition-colors ${
+                          buyQty === q ? 'border-amber-300/60 bg-amber-400/15 text-amber-100' : 'border-white/10 text-white/45 hover:border-white/25'}`}>
+                        ×{q}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
+                    className="w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
+                    {buying === 'credit' ? 'OPENING…' : `BUY ${buyQty} · $${wallet.genUsd * buyQty}`}
+                  </button>
+                </div>
               )) : (
                 <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
                   className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[11px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">

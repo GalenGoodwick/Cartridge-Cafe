@@ -69,3 +69,20 @@ export function canPlay(policy: WorldPolicy, who: { isOwner: boolean; isMember: 
   if (policy.play === 'everyone') return true
   return who.isMember   // 'invited' and 'builders' both resolve to the roster
 }
+
+/** THE FORK GATE (Galen, Aug 27 "no forking except bases"; Aug 30 "no forking
+ *  live edit worlds"): a world forks iff it is a BASE (the house's __base mark)
+ *  or its maker flipped `forkable` — EXCEPT live-edit worlds (build: anyone),
+ *  which are ONE communal world by contract and never fork. Bases stay exempt:
+ *  they exist to be copied. */
+export function canForkWorld(wd: Record<string, unknown> | null | undefined):
+  { ok: true } | { ok: false; error: string } {
+  if (wd?.__base === true) return { ok: true }
+  if (policyOf(wd).build === 'anyone') {
+    return { ok: false, error: 'this is a live-edit world — everyone builds the ONE world together; it cannot be forked' }
+  }
+  if (wd?.forkable !== true) {
+    return { ok: false, error: 'only base worlds can be forked — this one is not a base' }
+  }
+  return { ok: true }
+}
