@@ -137,7 +137,7 @@ export default function TheGrid() {
     setBuying('')
   }
 
-  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null } | null | undefined>(undefined)
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null; rReset?: boolean } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
     const slug = scene.slice(6)
@@ -146,12 +146,12 @@ export default function TheGrid() {
     Promise.all([
       fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null } } | null, { user?: { id?: string } } | null]) => {
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null; rReset?: boolean } } | null, { user?: { id?: string } } | null]) => {
       if (dead) return
       const sp = d?.space
       if (!sp?.id) { setSpaceInfo(null); return }
       const meId = s?.user?.id ?? null
-      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null })
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null, rReset: !!sp.rReset })
     }).catch(() => { if (!dead) setSpaceInfo(null) })
     return () => { dead = true }
   }, [scene])
@@ -1140,7 +1140,7 @@ export default function TheGrid() {
             {/* ⟲ RESET — only for worlds that declare R-reset; sits left of the
                 dockstar and always confirms first (Galen). Fires the same 'r'
                 the keyboard path handles. */}
-            {uiSet === 'games' && phase === 'play' && cfgStable?.rReset && (
+            {uiSet === 'games' && phase === 'play' && (cfgStable?.rReset || spc?.rReset) && (
               <button data-grid-reset onClick={() => setResetConfirm(true)}
                 title="restart this world"
                 className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5">

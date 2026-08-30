@@ -60,10 +60,12 @@ export async function GET(
   // learns the AUTHORITATIVE forkability (fork off by default — Galen, Aug 30).
   let deviceConfig: string | null = null
   let forkable = true
+  let rReset = false
   try {
     const rows = await prisma.$queryRaw<Array<{
       d: string | null; premium_usd: string | null; build: string | null
       forkable: string | null; base: string | null; proprietary: string | null; closed: string | null
+      r_reset: string | null
     }>>`
       SELECT snapshot->'worldParams'->>'deviceConfig'            AS d,
              snapshot->'worldData'->'premium'->>'usd'           AS premium_usd,
@@ -71,10 +73,12 @@ export async function GET(
              snapshot->'worldData'->>'forkable'                 AS forkable,
              snapshot->'worldData'->>'__base'                   AS base,
              snapshot->'worldData'->>'proprietary'              AS proprietary,
-             snapshot->'worldData'->>'closed'                   AS closed
+             snapshot->'worldData'->>'closed'                   AS closed,
+             snapshot->'worldData'->>'rResetKey'                AS r_reset
       FROM "PlayerSpace" WHERE id = ${space.id}`
     const r = rows[0]
     deviceConfig = r?.d === 'mobile' ? 'mobile' : r?.d === 'desktop' ? 'desktop' : null
+    rReset = r?.r_reset === 'true'   // ⟲ RESET button gate — the grid reads this in play mode (eye cfg is engine-only)
     // rebuild a minimal worldData so the ONE truth (canFork) reads it, not a
     // second copy of the rule living here
     const wd: Record<string, unknown> = {
@@ -88,7 +92,7 @@ export async function GET(
     forkable = worldIsForkable(wd, await hasIpControl(space.ownerId))
   } catch { /* absent = desktop default, forkable stays true (the default) */ }
 
-  return NextResponse.json({ space: { ...space, deviceConfig, forkable } })
+  return NextResponse.json({ space: { ...space, deviceConfig, forkable, rReset } })
 }
 
 /** PATCH /api/spaces/:slug — Update space metadata (owner only) */
