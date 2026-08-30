@@ -240,6 +240,26 @@ export async function DELETE(
 
   invalidateSpaceCache(space.id)
 
+  // CANCEL BUILD = CREDIT BACK (Galen, Aug 29: no $5 refunds — the credit
+  // returns instead): deleting a PAID creation that never got built (has a
+  // creation_brief, brief never done, no fields) puts ONE generation credit
+  // back on the account. A world that was actually built earns no credit on
+  // delete; the keeper creates free so gets none either.
+  let creditGranted = false
+  {
+    const snap = space.snapshot as { fields?: unknown[]; worldData?: Record<string, unknown> } | null
+    const wd = snap?.worldData ?? {}
+    const unbuilt = !!wd['creation_brief'] && wd['brief_done'] !== true && !(Array.isArray(snap?.fields) && snap!.fields!.length > 0)
+    if (unbuilt) {
+      const { isAdminUserId } = await import('@/lib/adminAuth')
+      if (!(await isAdminUserId(user.id))) {
+        const { refundGenCredit } = await import('@/lib/stripe')
+        await refundGenCredit(user.id)
+        creditGranted = true
+      }
+    }
+  }
+
   await prisma.playerSpace.delete({ where: { id: space.id } })
 
   // LIVE-STATE HYGIENE — a deleted world leaves WITH its state. Its direct
@@ -263,5 +283,5 @@ export async function DELETE(
     }
   } catch { /* hygiene is best-effort */ }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, creditGranted })
 }

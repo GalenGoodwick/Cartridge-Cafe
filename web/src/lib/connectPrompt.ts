@@ -162,6 +162,10 @@ export function worldBriefingPrompt(p: {
   branch?: { base: string; by: string; version: string } | null
   brief?: string
   origin?: string
+  /** the world's DECLARED facets at mint (Galen, Aug 29: settings go into the
+   *  prompt, with direction on what parameters exist) — the AI must know it is
+   *  building a mobile portrait world, and what dials it has. */
+  facets?: { fit?: string; access?: string; gridW?: number; gridH?: number; gridSize?: number }
 }) {
   const origin = p.origin ?? cafeOrigin()
   const bm = p.branch
@@ -174,13 +178,29 @@ export function worldBriefingPrompt(p: {
   const ask = p.brief?.trim()
     ? 'BUILD THIS: ' + p.brief.trim()
     : 'Ask me what to build, or read the world state and continue it.'
+  // THE WORLD'S DECLARED SETTINGS — what the creator chose, so the AI builds
+  // FOR them (a mobile world built square is the bug this block kills) — plus
+  // the dials it may adjust and where their contracts live.
+  const f = p.facets ?? {}
+  const declared: string[] = []
+  if (f.fit === 'mobile') declared.push('MOBILE (portrait phone — desktop shows it in a phone frame)')
+  else if (f.fit === 'desktop') declared.push('DESKTOP (wide screen + mouse)')
+  if (f.gridW && f.gridH) declared.push(`playable rect ${f.gridW}×${f.gridH} (build to FILL it — content and camera use the whole rect)`)
+  else if (f.gridSize) declared.push(`grid ${f.gridSize}×${f.gridSize}`)
+  if (f.access === 'open') declared.push('OPEN BUILDING (others may build here too — build in NODES)')
+  const settings = declared.length
+    ? `SETTINGS (declared at creation — honor them): ${declared.join(' · ')}.
+DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect; a mobile world wants portrait, e.g. 576×1024) · worldData.fit ('mobile' frames it on desktop) · wd.__camera {x,y,zoom|follow} (frame your world) — contracts in the guide's THE GRID section.`
+    : `DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect) · worldData.fit ('mobile' = portrait phone world, framed on desktop) · wd.__camera — contracts in the guide's THE GRID section.`
   return `Connect to my cartridge.cafe ${bm ? `world "${bm.base}" · branch "${bm.by}" · v${bm.version}` : `world "${p.worldName}"`}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${p.token}
 ${looking}
 1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
 2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
+${settings}
 ${ask}
+USE THE EYE — after every build burst: POST {"type":"render_probe"} (pixels + exact WGSL error lines; add "input":"auto" to prove it responds to controls). Headless you are blind without it — a failed shader renders as NOTHING with no error. Never set brief_done until the eye shows what was asked.
 ${scope}`
 }
 
