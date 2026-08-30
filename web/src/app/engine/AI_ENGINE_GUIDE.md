@@ -1014,7 +1014,7 @@ Presence (seeing each other's cursors) is automatic. SHARED STATE — one world,
 
 ## WORLD UI — the UI SYSTEM (chrome-safe HUD)
 
-Write `worldData.ui` — a declarative tree the engine SOLVES (deterministically, on the main thread) and renders as **real engine pixels**: SDF glass panels + monospace text, no DOM. Probes, recordings and the REC button all see the true UI. Prefer this over the legacy DOM `wd.hud` (still works, but can collide with site chrome).
+**THE LAW: every screen-space UI goes through `worldData.ui`.** It is the ONE layout authority — a declarative tree the engine SOLVES (deterministically, on the main thread) and renders as **real engine pixels**: SDF glass panels + monospace text, no DOM. Probes, recordings and the REC button all see the true UI. Never draw UI inside your world shader (labels, sliders, buttons in WGSL live in a different coordinate space and misalign at any non-square window), and never use the legacy DOM `wd.hud` (DEPRECATED — it still renders but collides with site chrome and the bridge warns on it).
 
 ```js
 wd.ui = { rev: 1, root: [

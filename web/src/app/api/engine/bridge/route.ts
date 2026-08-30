@@ -333,6 +333,11 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   if (!fields.length) warnings.push('no fields yet — the world is empty (a blank/black screen until you create + skin fields)')
   // WORLD UI validation (the guide's ?section=world ui) — run the REAL solver so a
   // malformed tree comes back as words instead of rendering as nothing.
+  // hud is DEPRECATED (Galen, Aug 29: the ui-solver is THE way): nudge every
+  // world still on the DOM layer toward the one authority.
+  if (Array.isArray(wd['hud']) && (wd['hud'] as unknown[]).length > 0 && wd['ui'] == null) {
+    warnings.push('worldData.hud is the DEPRECATED DOM layer — use worldData.ui (THE UI SYSTEM: solved, engine-pixel, aligned; guide ?section=world ui)')
+  }
   const uiTree = wd['ui'] as UiTree | undefined
   if (uiTree != null) {
     if (typeof uiTree !== 'object' || !Array.isArray(uiTree.root)) {
