@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, birthWorld, sweepAbandonedDrafts, resolveBirthExtras } from '@/lib/world-create'
-import { GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { GEN_BUNDLES, GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -41,6 +41,7 @@ export async function GET() {
   return NextResponse.json({
     buyable: stripeConfigured(),   // ad-hoc priced — no per-product price id needed
     priceUsd: GEN_PRICE_USD,
+    bundles: GEN_BUNDLES,          // {qty: totalUsd} — the discount table (one truth)
     credits: user ? await readGenCredits(user.id) : 0,
     free: user ? await isAdminUserId(user.id) : false,   // the keeper demos without credits
     signedIn: !!user,

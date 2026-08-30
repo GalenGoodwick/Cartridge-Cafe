@@ -110,7 +110,7 @@ export default function TheGrid() {
   }, [])
   // ✚/⚡ COMMERCE — build credits + live-edit membership, read fresh each time
   // the dockstar opens (Galen: buy credits anytime, membership on the menu)
-  const [wallet, setWallet] = useState<{ credits: number; genUsd: number; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
+  const [wallet, setWallet] = useState<{ credits: number; genUsd: number; bundles: Record<number, number>; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
   const [buying, setBuying] = useState<'' | 'credit' | 'member'>('')
   const [buyQty, setBuyQty] = useState(1)
   useEffect(() => {
@@ -119,8 +119,8 @@ export default function TheGrid() {
       fetch('/api/generate').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/membership').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]).then(([g, m]) => setWallet({
-      credits: g?.credits ?? 0, genUsd: g?.priceUsd ?? 5, free: !!g?.free,
-      member: !!m?.member, memUsd: m?.usd ?? 10, buyable: !!(g?.buyable || m?.buyable),
+      credits: g?.credits ?? 0, genUsd: g?.priceUsd ?? 5, bundles: g?.bundles ?? { 1: 5, 3: 12, 5: 18, 10: 30 },
+      free: !!g?.free, member: !!m?.member, memUsd: m?.usd ?? 10, buyable: !!(g?.buyable || m?.buyable),
     }))
   }, [selOpen])
   const startCheckout = async (kind: 'credit' | 'member') => {
@@ -724,10 +724,19 @@ export default function TheGrid() {
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
-                    className="w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
-                    {buying === 'credit' ? 'OPENING…' : `BUY ${buyQty} · $${wallet.genUsd * buyQty}`}
-                  </button>
+                  {(() => {
+                    const total = wallet.bundles[buyQty] ?? wallet.genUsd * buyQty
+                    const saved = wallet.genUsd * buyQty - total
+                    return (
+                      <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
+                        className="w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
+                        {buying === 'credit' ? 'OPENING…' : (
+                          <>BUY {buyQty} · ${total}{saved > 0 && <span className="text-emerald-200/90 tracking-normal"> · save ${saved}</span>}</>
+                        )}
+                      </button>
+                    )
+                  })()}
+                  <div className="font-mono text-[9px] text-white/35 mt-1.5 text-center">bring your own AI to build · credits never expire</div>
                 </div>
               )) : (
                 <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
@@ -751,10 +760,13 @@ export default function TheGrid() {
                   MANAGE
                 </a>
               ) : me ? (wallet?.buyable && (
-                <button onClick={() => startCheckout('member')} disabled={buying !== ''}
-                  className="mt-3 w-full py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors disabled:opacity-50">
-                  {buying === 'member' ? 'OPENING…' : `JOIN · $${wallet.memUsd}/mo`}
-                </button>
+                <div className="mt-3">
+                  <button onClick={() => startCheckout('member')} disabled={buying !== ''}
+                    className="w-full py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors disabled:opacity-50">
+                    {buying === 'member' ? 'OPENING…' : `JOIN · $${wallet.memUsd}/mo`}
+                  </button>
+                  <div className="font-mono text-[9px] text-white/35 mt-1.5 text-center">bring your own AI to build</div>
+                </div>
               )) : (
                 <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
                   className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[11px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">

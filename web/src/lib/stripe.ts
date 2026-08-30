@@ -148,11 +148,15 @@ export async function createWorldgenCheckout(
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
   const n = Math.max(1, Math.min(20, Math.floor(qty)))
+  // ONE line charged at the BUNDLE total (quantity 1) so the discount is real;
+  // the credit COUNT rides metadata[qty], which the webhook grants from — the
+  // Stripe line quantity is deliberately decoupled from the credits.
+  const totalCents = worldgenPriceUsd(n) * 100
   const form = new URLSearchParams({
     mode: 'payment',
-    'line_items[0][quantity]': String(n),
+    'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'usd',
-    'line_items[0][price_data][unit_amount]': String(GEN_PRICE_USD * 100),
+    'line_items[0][price_data][unit_amount]': String(totalCents),
     'line_items[0][price_data][product_data][name]': n === 1 ? 'generate a world' : `${n} world builds`,
     'line_items[0][price_data][product_data][description]': 'world build credits — each births a world from your brief (forking a world spends one too); credits never expire',
     success_url: `${origin}/create?paid=worldgen`,   // the generate flow lives at /create now
@@ -398,6 +402,22 @@ export async function revokeEntitlement(userId: string, product: string, slug?: 
 // Galen (Aug 24): "generate a world costs $5" — one purchase = one generation.
 export const GEN_PRICE_USD = 5
 export const GEN_CREDITS_PER_PURCHASE = 1
+
+// BUNDLE DISCOUNT (Galen, Aug 30): buy more, pay less per credit. This table
+// is THE one truth — the checkout amount and every buy button read it, so a
+// price only ever lives in one place. Anything not listed falls back to the
+// linear $5/credit rate (rounded up), so odd quantities still charge fairly.
+//   1 → $5    ($5.00/ea)
+//   3 → $12   ($4.00/ea · save $3)
+//   5 → $18   ($3.60/ea · save $7)
+//  10 → $30   ($3.00/ea · save $20)
+export const GEN_BUNDLES: Record<number, number> = { 1: 5, 3: 12, 5: 18, 10: 30 }
+
+/** Total price in whole USD for `qty` build credits (bundle rate if listed). */
+export function worldgenPriceUsd(qty: number): number {
+  const n = Math.max(1, Math.min(20, Math.floor(qty)))
+  return GEN_BUNDLES[n] ?? n * GEN_PRICE_USD
+}
 
 const genSlot = (userId: string) => 'gencredits:' + userId
 

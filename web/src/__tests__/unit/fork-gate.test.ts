@@ -7,7 +7,7 @@ vi.mock('@/app/api/engine/store', () => ({
 }))
 
 import { canForkWorld } from '@/lib/world-policy'
-import { grantGenCredits, readGenCredits } from '@/lib/stripe'
+import { grantGenCredits, readGenCredits, worldgenPriceUsd, GEN_BUNDLES } from '@/lib/stripe'
 
 describe('canForkWorld — bases fork, opt-in forks, live-edit never', () => {
   it('a base forks, even an open-building base', () => {
@@ -55,5 +55,35 @@ describe('grantGenCredits with quantity (buy more than one)', () => {
 
   it('defaults to one credit when qty is absent (legacy sessions)', async () => {
     expect(await grantGenCredits('u1', 'cs_old')).toBe(1)
+  })
+})
+
+describe('bundle discount pricing (buy more, pay less)', () => {
+  it('charges the bundle rate at listed tiers', () => {
+    expect(worldgenPriceUsd(1)).toBe(5)
+    expect(worldgenPriceUsd(3)).toBe(12)
+    expect(worldgenPriceUsd(5)).toBe(18)
+    expect(worldgenPriceUsd(10)).toBe(30)
+  })
+
+  it('every bundle beats the linear rate, and deeper is cheaper per credit', () => {
+    for (const q of Object.keys(GEN_BUNDLES).map(Number)) {
+      expect(worldgenPriceUsd(q)).toBeLessThanOrEqual(q * 5)
+    }
+    expect(worldgenPriceUsd(10) / 10).toBeLessThan(worldgenPriceUsd(5) / 5)
+    expect(worldgenPriceUsd(5) / 5).toBeLessThan(worldgenPriceUsd(3) / 3)
+  })
+
+  it('unlisted quantities fall back to the linear $5 rate', () => {
+    expect(worldgenPriceUsd(2)).toBe(10)
+    expect(worldgenPriceUsd(4)).toBe(20)
+    expect(worldgenPriceUsd(7)).toBe(35)
+  })
+
+  it('clamps to [1,20] and floors fractions', () => {
+    expect(worldgenPriceUsd(0)).toBe(5)
+    expect(worldgenPriceUsd(-3)).toBe(5)
+    expect(worldgenPriceUsd(999)).toBe(100)
+    expect(worldgenPriceUsd(3.9)).toBe(12)
   })
 })
