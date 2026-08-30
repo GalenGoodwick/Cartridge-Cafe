@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { hasEditingMembership, hasIpControl, readEntitlements, readGenCredits, findActiveSubscriptions, stripeConfigured, isProductConfigured, EDITOR_PRICE_USD } from '@/lib/stripe'
+import { hasEditingMembership, hasIpControl, membershipUntil, readEntitlements, readGenCredits, findActiveSubscriptions, stripeConfigured, isProductConfigured, EDITOR_PRICE_USD } from '@/lib/stripe'
+import { isAdminUserId } from '@/lib/adminAuth'
 import AccountClient from './AccountClient'
 
 export const metadata: Metadata = {
@@ -24,13 +25,15 @@ export default async function AccountPage() {
   })
   if (!user) redirect('/auth/signin')
 
-  const [member, ipControl, ents, credits, subs, worlds] = await Promise.all([
+  const [member, ipControl, ents, credits, subs, worlds, admin, seatUntil] = await Promise.all([
     hasEditingMembership(user.id),
     hasIpControl(user.id),
     readEntitlements(user.id),
     readGenCredits(user.id),
     stripeConfigured() ? findActiveSubscriptions(user.id) : Promise.resolve([]),
     prisma.playerSpace.count({ where: { ownerId: user.id } }),
+    isAdminUserId(user.id),
+    membershipUntil(user.id),
   ])
 
   return (
@@ -49,6 +52,8 @@ export default async function AccountPage() {
       ipControl={ipControl}
       ipBuyable={isProductConfigured('ip')}
       worldCount={worlds}
+      isAdmin={admin}
+      memberUntil={seatUntil}
     />
   )
 }

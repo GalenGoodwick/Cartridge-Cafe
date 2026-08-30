@@ -223,7 +223,13 @@ export interface Entitlement {
   at: number
   sessionId?: string
   slug?: string           // product scoped to one world (protect)
+  until?: number          // timed grant (promo codes) — absent = lasts until revoked
   active: boolean
+}
+
+/** Is a grant good RIGHT NOW — active and, if timed, unexpired. */
+export function entitlementLive(e: Entitlement): boolean {
+  return e.active && (!e.until || e.until > Date.now())
 }
 
 const entSlot = (userId: string) => 'entitlements:' + userId
@@ -265,7 +271,15 @@ export async function hasEditingMembership(userId: string): Promise<boolean> {
   const { isAdminUserId } = await import('@/lib/adminAuth')
   if (await isAdminUserId(userId)) return true
   const ents = await readEntitlements(userId)
-  return ents.some((e) => e.active && (e.product === 'editor' || e.product === 'editor_pro'))
+  return ents.some((e) => entitlementLive(e) && (e.product === 'editor' || e.product === 'editor_pro'))
+}
+
+/** When a TIMED membership (promo grant) runs out, or null if the seat is
+ *  untimed (paid subscription / granted). For the account page's date line. */
+export async function membershipUntil(userId: string): Promise<number | null> {
+  const ents = await readEntitlements(userId)
+  const e = ents.find((e) => entitlementLive(e) && (e.product === 'editor' || e.product === 'editor_pro'))
+  return e?.until ?? null
 }
 
 /** Start the monthly editing-membership subscription — AD-HOC recurring price
@@ -398,6 +412,18 @@ export async function grantGenCredits(userId: string, sessionId: string | undefi
   if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
   const next = n + GEN_CREDITS_PER_PURCHASE
   await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })
+  return next
+}
+
+/** Grant N credits under an idempotency id (promo redemptions, comps). The
+ *  credits are ordinary build credits — they never expire. */
+export async function addGenCredits(userId: string, n: number, grantId: string): Promise<number> {
+  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
+  const grants = Array.isArray(doc.grants) ? doc.grants : []
+  const cur = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+  if (grants.includes(grantId)) return cur
+  const next = cur + Math.max(0, Math.floor(n))
+  await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, grantId].slice(-50) })
   return next
 }
 
