@@ -6471,7 +6471,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
-            style={{ cursor: 'grab' }}
+            // touchAction:none — a drag on the canvas is GAMEPLAY, not a page
+            // scroll/pinch (Galen: "click and drag on mobile is scrolling window/
+            // highlighting grid"). userSelect/touchCallout off kills the text-
+            // selection + long-press callout that a drag would otherwise trigger.
+            style={{ cursor: 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
