@@ -28,7 +28,7 @@ import { handleCardTypes, handleProposeCardType, handleSetCard } from '../cards-
 import { validateWorldDoc, worldDocFacets, type WorldDoc } from '@/app/engine/world-config'   // unified world: pure schema
 import { worldSolve, planRects } from '@/app/engine/world-solve'                              // unified world: pure solve
 
-export const maxDuration = 30
+export const maxDuration = 120   // render probes ride this route — lavapipe needs ~25-60s (see render-service.ts)
 
 /** A stable, non-reversible tag for the caller's token — its TYPE plus an 8-char
  *  hash of the token itself. Lets the admin bridge-watch see per-token volume
