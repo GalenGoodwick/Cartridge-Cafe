@@ -154,7 +154,13 @@ export default function TheGrid() {
   const spaceResolving = scene.startsWith('space:') && spaceInfo === undefined
 
   useEffect(() => {
-    const m = () => setWin({ w: window.innerWidth, h: window.innerHeight })
+    // BAIL when the window size hasn't actually changed. The eased-resize effect
+    // below fires synthetic 'resize' events (to re-fit the engine camera against
+    // the animating frame); without this guard each one built a NEW {w,h} object,
+    // re-rendered, produced a new `inset`, re-ran the ease effect → a self-feeding
+    // loop that jittered the frame mid-resize. Returning `prev` makes React skip.
+    const m = () => setWin(prev => (prev.w === window.innerWidth && prev.h === window.innerHeight)
+      ? prev : { w: window.innerWidth, h: window.innerHeight })
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
   }, [])
@@ -293,17 +299,11 @@ export default function TheGrid() {
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
   }, [miniTop, win, createSet, createShape, spc])
 
-  // unified eased resize — camera re-fits every frame of the ease
-  useEffect(() => {
-    let raf = 0
-    const t0 = performance.now()
-    const tick = () => {
-      try { window.dispatchEvent(new Event('resize')) } catch { /* ssr */ }
-      if (performance.now() - t0 < 460) raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [inset])
+  // (the synthetic-resize ease loop is GONE — Galen: "why do we need a sizing
+  // loop at all?" The engine now re-fits itself through a persistent
+  // ResizeObserver on its canvas, which fires on every real layout change —
+  // including this frame's 0.32s CSS ease. Dispatching ~60 fake resize events
+  // a second from here was the site-wide jitter.)
 
 
   useEffect(() => {

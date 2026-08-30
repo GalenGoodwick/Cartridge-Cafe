@@ -2532,7 +2532,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
   useEffect(() => {
     if (!playScene && !spaceId) return
-    const fit = () => {
+    // GEOMETRY, NOT EVENTS (Galen: "why do we need a sizing loop at all?"):
+    // the camera re-fits ONLY when the canvas's real size changes — game
+    // entry, window resize, and the host frame's CSS ease all land here
+    // through ONE persistent ResizeObserver. No synthetic-resize loops, no
+    // 3s settle windows. lastSize dedupes: a resize event (or RO callback)
+    // that reports the SAME box never yanks the camera — this is what let a
+    // host page's event spam jitter every world (the ESPER shakes).
+    let lastW = 0, lastH = 0
+    const fit = (force?: boolean) => {
+      const cnv = canvasRef.current
+      const w = cnv?.clientWidth ?? 0, h = cnv?.clientHeight ?? 0
+      if (!force && w === lastW && h === lastH) return   // same box — nothing to fit
+      lastW = w; lastH = h
       cameraRef.current.x = gridSize / 2
       cameraRef.current.y = gridSize / 2
       // A BIG GRID IS TERRITORY, NOT A SHRUNKEN MAP (Galen, task #20): the
@@ -2543,22 +2555,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // worldData.__camera, AIs via set_camera).
       cameraRef.current.zoom = restingZoom()
     }
-    fit()
-    const t = setTimeout(fit, 300)   // after the canvas settles
-    window.addEventListener('resize', fit)
-    // THE FIT RACE (mobile track): the phone-frame insets land through a 0.32s
-    // CSS transition with NO window resize event — the 300ms retry can fire on
-    // either side of it, so the resting zoom kept whichever canvas aspect it
-    // happened to measure (the nondeterministic 235px letterbox). Observe the
-    // canvas ITSELF through a settle window, then disconnect — later panel
-    // toggles must never yank a camera the player has taken.
+    fit(true)
+    const onWinResize = () => fit()
+    window.addEventListener('resize', onWinResize)
     let ro: ResizeObserver | null = null
     if (typeof ResizeObserver !== 'undefined' && canvasRef.current) {
-      ro = new ResizeObserver(fit)
+      ro = new ResizeObserver(() => fit())
       ro.observe(canvasRef.current)
     }
-    const tRo = setTimeout(() => { ro?.disconnect(); ro = null }, 3000)
-    return () => { clearTimeout(t); clearTimeout(tRo); ro?.disconnect(); window.removeEventListener('resize', fit) }
+    return () => { ro?.disconnect(); window.removeEventListener('resize', onWinResize) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playScene, spaceId])
 
