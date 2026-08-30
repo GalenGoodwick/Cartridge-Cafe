@@ -220,7 +220,7 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   // 512 grid letterboxes again inside the phone frame. A mobile world is born
   // with a portrait playable rect (base-mobile's proven 576×1024) so its canvas
   // FILLS the frame from the first field.
-  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridW: 576, gridH: 1024 } : {}
+  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridW: 576, gridH: 1024, deviceConfig: 'mobile' } : {}
   const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
   if (!baseWorld) return { birthData, birthParams }
   const src = await prisma.playerSpace.findUnique({

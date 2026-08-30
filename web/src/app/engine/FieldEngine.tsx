@@ -6403,9 +6403,44 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     }
   }
 
+  // THE PHONE FRAME, ENGINE-OWNED (Galen, Aug 29: "viewport on desktop MUST
+  // be set to mobile if the game setting is mobile" — the conversion retired
+  // SpaceStage and its frame, so mobile worlds sprawled to the window's
+  // aspect: squished windows showed the scene, maxed windows over-zoomed).
+  // A world declaring mobile (worldParams.deviceConfig OR worldData.fit)
+  // letterboxes THIS root into a centered portrait column on wide viewports;
+  // narrow/real-phone screens run full-bleed. The camera then fits the
+  // portrait canvas — the intended view at every window size.
+  const [selfFrame, setSelfFrame] = useState<{ top: number; right: number; bottom: number; left: number } | null>(null)
+  useEffect(() => {
+    const compute = () => {
+      const sim = simulationRef.current
+      const mobile = (((sim?.worldParams ?? {}) as Record<string, unknown>).deviceConfig === 'mobile')
+        || (sim?.worldData?.['fit'] === 'mobile')
+      if (!mobile) { setSelfFrame(f => f ? null : f); return }
+      const W = window.innerWidth, H = window.innerHeight
+      const frameW = Math.min(W, Math.round(H * 9 / 19.5), 480)
+      if (W - frameW < 80) { setSelfFrame(f => f ? null : f); return }
+      const side = Math.round((W - frameW) / 2)
+      setSelfFrame(f => (f && f.left === side) ? f : { top: 0, right: side, bottom: 0, left: side })
+    }
+    compute()
+    const iv = setInterval(compute, 1000)   // worldData.fit lands with the async snapshot
+    window.addEventListener('resize', compute)
+    return () => { clearInterval(iv); window.removeEventListener('resize', compute) }
+  }, [])
+  // the frame lands through a CSS transition with no resize event — refit the
+  // camera once it settles (the fit-race lesson, applied to the self-frame)
+  useEffect(() => {
+    if (selfFrame === null) return
+    const t = setTimeout(() => window.dispatchEvent(new Event('resize')), 380)
+    return () => clearTimeout(t)
+  }, [selfFrame])
+
+  const activeFrame = viewport ?? frame ?? selfFrame
   return (
     <div className={`fixed inset-0 overflow-hidden flex ${playScene ? "bg-[#060404]" : "bg-background"}`}
-      style={(viewport ?? frame) ? { top: (viewport ?? frame)!.top, right: (viewport ?? frame)!.right, bottom: (viewport ?? frame)!.bottom, left: (viewport ?? frame)!.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
+      style={activeFrame ? { top: activeFrame.top, right: activeFrame.right, bottom: activeFrame.bottom, left: activeFrame.left, transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out', ...(selfFrame && !viewport && !frame ? { borderLeft: '1px solid rgba(185,122,42,0.25)', borderRight: '1px solid rgba(185,122,42,0.25)' } : {}) } : { transition: 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, left 0.32s ease-out' }}>
       {/* Canvas + fields panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* THE WORLD CONTAINER (spec v1, step 1) — this element IS the world.
@@ -7240,13 +7275,23 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 {/* the build console itself is now a standalone, closable overlay
                     (below, gated on buildConsoleOpen) — it auto-opens here while a
                     build runs and can be reopened anytime from the EDIT menu. */}
-                {/* a stuck or unwanted build can be cancelled here — deletes the
-                    world so it can't sit blank-and-building forever. Owner only. */}
-                {building && (isOwner || !spaceId) && (
+                {/* CANCEL BUILD (Galen, Aug 29): removes the stuck blank build and
+                    the CREATE CREDIT COMES BACK (no cash refund) — the server
+                    grants it only for a paid, never-built world. Self-contained:
+                    the old cafe:delete-world listener died with SpaceStage. */}
+                {building && (isOwner || !spaceId) && spaceSlug && (
                   <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('cafe:delete-world'))}
+                    onClick={async () => {
+                      if (!window.confirm('Cancel this build? The world is removed and your create credit comes back to spend on a new one (no cash refund).')) return
+                      try {
+                        const r = await fetch('/api/spaces/' + encodeURIComponent(spaceSlug), { method: 'DELETE' })
+                        const d = await r.json().catch(() => null) as { creditGranted?: boolean; error?: string } | null
+                        if (r.ok) { window.location.href = d?.creditGranted ? '/create' : '/'; return }
+                        showToast(d?.error || 'could not cancel the build', 'error')
+                      } catch { showToast('could not cancel the build', 'error') }
+                    }}
                     className="pointer-events-auto px-3 py-1.5 rounded-lg font-mono text-[14px] tracking-[0.15em] border border-red-400/40 text-red-300/80 hover:text-red-200 hover:bg-red-500/10 transition-colors">
-                    ✕ CANCEL BUILD
+                    ✕ CANCEL BUILD — credit returns
                   </button>
                 )}
               </div>
