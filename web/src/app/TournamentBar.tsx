@@ -689,7 +689,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
     return (
       <div className={rail ? 'fixed right-3 z-40' : 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50'}
         style={rail ? { top: railTop ?? 205 } : undefined}>
-        <div className={`${pill} rounded-full px-4 py-2 border border-white/15 bg-void/60 text-white/40 backdrop-blur`}>
+        <div className={`${pill} rounded-full px-4 py-2 border border-white/15 bg-void/60 text-white/50 backdrop-blur`}>
           {hint}
         </div>
       </div>
@@ -717,7 +717,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
         <div className={`pointer-events-auto flex items-center justify-between px-4 py-2 bg-[#0d0906]/90 backdrop-blur-sm border-b border-brass/20 transition-transform duration-[320ms] ease-out ${mounted ? 'translate-y-0' : '-translate-y-full'}`}>
           <div className="flex items-center gap-2">
             <div className={`${pill} text-amber-200/70`}>
-              ⚔ THE RECKONING{focus && <span className="text-white/45"> · {focus.toLowerCase()}</span>}
+              ⚔ THE RECKONING{focus && <span className="text-white/55"> · {focus.toLowerCase()}</span>}
             </div>
             {/* where you stand: tier depth, your cell, its voices — and how the
                 whole tier is breathing (every cell's quorum), since no cell
@@ -728,13 +728,13 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
               const voters = Object.keys(cell.votes)
               return (
                 <div className="flex items-center gap-2">
-                  <span className={`${pill} text-white/50`}>
+                  <span className={`${pill} text-white/60`}>
                     TIER {doc.tier}/{tiers} · CELL {seated ? mci + 1 : '—'}/{doc.cells.length} · VOICES {voices}/{cellQuorum(cell)}
                   </span>
                   {voters.length > 0 && (
                     <div className="flex -space-x-1.5" title={'voted: ' + voters.join(', ')}>
                       {voters.slice(0, 7).map((v, i) => (
-                        <span key={i} className="rounded-full border border-[#0d0906] flex items-center justify-center text-[13px] font-bold text-black"
+                        <span key={i} className="rounded-full border border-[#0d0906] flex items-center justify-center text-[14px] font-bold text-black"
                           style={{ width: '16px', height: '16px', background: `hsl(${hash(v) % 360},50%,58%)` }}>{v[0]?.toUpperCase()}</span>
                       ))}
                     </div>
@@ -744,7 +744,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
                       const cv = new Set(Object.keys(c.votes)).size
                       const cq = cellQuorum(c)
                       return (
-                        <span key={i} className={`text-[14px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/35'}`}>
+                        <span key={i} className={`text-[14px] font-mono px-1 rounded ${i === mci ? 'text-amber-200 border border-amber-300/40' : 'text-white/45'}`}>
                           {cv >= cq ? '●' : `${cv}/${cq}`}
                         </span>
                       )
@@ -756,10 +756,10 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
             {/* who else is in this cell right now */}
             {viewers.length > 0 && (
               <div className="flex items-center gap-1" title={viewers.map(v => v.who).join(', ')}>
-                <span className="text-white/35 text-[14px] font-mono">👁 {viewers.length}</span>
+                <span className="text-white/45 text-[14px] font-mono">👁 {viewers.length}</span>
                 <div className="flex -space-x-1.5">
                   {viewers.slice(0, 7).map((v, i) => (
-                    <span key={i} className="w-4.5 h-4.5 rounded-full border border-[#0d0906] flex items-center justify-center text-[13px] font-bold text-black"
+                    <span key={i} className="w-4.5 h-4.5 rounded-full border border-[#0d0906] flex items-center justify-center text-[14px] font-bold text-black"
                       style={{ width: '18px', height: '18px', background: `hsl(${hash(v.who) % 360},55%,62%)` }}>{v.who[0]?.toUpperCase()}</span>
                   ))}
                 </div>
@@ -767,7 +767,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
             )}
           </div>
           <button onClick={leaveReckoning} title="leave the reckoning"
-            className={`${pill} px-2.5 py-1 rounded border border-white/15 text-white/60 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
+            className={`${pill} px-2.5 py-1 rounded border border-white/15 text-white/70 hover:text-white hover:border-white/40`}>✕ CLOSE</button>
         </div>
 
         {/* the stage — the ENGINE reflows the constellation (or a hovered world)
@@ -776,7 +776,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
           <div ref={stageRef} className="relative flex-1 min-h-0">
             {!focus && (
               <div className="absolute inset-x-0 top-3 flex justify-center pointer-events-none">
-                <div className={`${pill} text-white/45 bg-black/40 rounded-full px-3 py-1`}>hover a candidate below to load it — or vote from the constellation</div>
+                <div className={`${pill} text-white/55 bg-black/40 rounded-full px-3 py-1`}>hover a candidate below to load it — or vote from the constellation</div>
               </div>
             )}
           </div>
@@ -784,15 +784,15 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
           {/* GLOBAL PER-WORLD talk — one pool, every cell/tier/round shares it */}
           <div className={`pointer-events-auto w-[300px] max-w-[34vw] bg-[#0d0906]/90 backdrop-blur-sm border-l border-brass/20 flex flex-col transition-transform duration-[320ms] ease-out ${mounted ? 'translate-x-0' : 'translate-x-full'}`}>
             <div className={`${pill} px-3 py-2 border-b border-white/10 text-brass`}>
-              💬 {focus ? chatBase(focus).toLowerCase() : '—'} <span className="text-white/30">· the talk on this world</span>
+              💬 {focus ? chatBase(focus).toLowerCase() : '—'} <span className="text-white/40">· the talk on this world</span>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
-              {focus && msgs.length === 0 && <div className={`${pill} text-white/30`}>no one has spoken on this one yet</div>}
-              {!focus && <div className={`${pill} text-white/30`}>load a world to hear its talk</div>}
+              {focus && msgs.length === 0 && <div className={`${pill} text-white/40`}>no one has spoken on this one yet</div>}
+              {!focus && <div className={`${pill} text-white/40`}>load a world to hear its talk</div>}
               {msgs.map((m, k) => (
                 <div key={k} className={`${pill} text-white/70 leading-relaxed`}>
                   <span className="text-brass/80">{m.who}</span>
-                  {m.from && <span className="text-white/30"> · {m.from}</span>} — {m.text}
+                  {m.from && <span className="text-white/40"> · {m.from}</span>} — {m.text}
                 </div>
               ))}
             </div>
@@ -805,7 +805,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
                       placeholder="speak…" maxLength={280}
                       className={`${pill} flex-1 bg-black/40 border border-white/15 rounded px-2 py-1.5 text-white/80 outline-none focus:border-amber-400/40`} />
                     <button onClick={() => postChat(focus, draft)}
-                      className={`${pill} px-2.5 py-1.5 rounded border border-white/15 text-white/60 hover:text-white`}>SAY</button>
+                      className={`${pill} px-2.5 py-1.5 rounded border border-white/15 text-white/70 hover:text-white`}>SAY</button>
                   </div>
                 ) : (
                   <div className={`${pill} text-flame/70`}>sign in to speak — reading is free</div>
@@ -822,11 +822,11 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
               (-top-3 used to sink it ~16px INTO the 5th tile, covering that
               tile's + vote box — the tab must never touch the tiles.) */}
           <button onClick={() => setShowInstr(v => !v)} title="how the reckoning works"
-            className={`${pill} absolute bottom-full right-0 z-10 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/50 hover:text-amber-200/80'}`}>
+            className={`${pill} absolute bottom-full right-0 z-10 px-2.5 py-1 rounded-t-md border border-b-0 backdrop-blur-sm transition-colors ${showInstr ? 'border-brass/50 bg-[#0d0906] text-amber-200/90' : 'border-brass/25 bg-[#0d0906]/90 text-white/60 hover:text-amber-200/80'}`}>
             ? INSTRUCTIONS
           </button>
           {showInstr && (
-            <div className={`${pill} absolute bottom-full right-0 mb-9 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/60 shadow-xl z-20`}>
+            <div className={`${pill} absolute bottom-full right-0 mb-9 w-[340px] max-w-[80vw] rounded-lg border border-brass/30 bg-[#0d0906] p-3 leading-relaxed text-white/70 shadow-xl z-20`}>
               <div className="text-amber-200/80 mb-1.5">HOW THE RECKONING WORKS</div>
               <>hover or click a world to load it live in the stage · read &amp; add to its talk in the rail · once you&apos;ve
               witnessed every world in your cell, the <span className="text-amber-300">+</span> in a tile&apos;s corner unlocks — tap it to cast
@@ -849,7 +849,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
                     isFocus ? 'border-flame/80' : voted ? 'border-amber-400' : isSeen ? 'border-emerald-400/45' : 'border-white/12 hover:border-white/25'
                   }`}>
                   <div className="relative h-[72px] bg-gradient-to-br from-[#3a2410] to-[#120a04]">
-                    <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/60">{w[0]?.toUpperCase()}</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-lg font-mono text-white/70">{w[0]?.toUpperCase()}</div>
                     {/* WITNESS TIMER, top-left: seconds left to watch (accumulates
                         across visits) → ✓ at 3s. Amber while it's the one on stage. */}
                     {seated && (() => {
@@ -875,7 +875,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
                           className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-md border-2 flex items-center justify-center font-mono font-bold transition-all ${
                             voted ? 'bg-amber-400 border-amber-200 text-black shadow-[0_0_14px_rgba(212,160,60,0.75)]'
                                   : armed ? 'bg-black/75 border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black hover:scale-110'
-                                          : 'bg-black/60 border-white/15 text-white/25 cursor-not-allowed'
+                                          : 'bg-black/60 border-white/15 text-white/35 cursor-not-allowed'
                           }`}>
                           {locked && !voted
                             ? <span className="text-[16px]">🔒</span>
@@ -894,7 +894,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
           </div>
           </div>
           <div className={`${pill} text-center mt-2 ${
-            !seated ? 'text-white/40' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/40'
+            !seated ? 'text-white/50' : myVote ? 'text-amber-200/80' : seenAll ? 'text-emerald-300/80' : 'text-white/50'
           }`}>
             {!seated ? 'taking your seat…'   // everyone seats now (spectators get an IP handle) — this is just the resolve beat
               : myVote ? (() => {
@@ -920,7 +920,7 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
                   title={chosen ? `finalize on ${chosen.toLowerCase()} and leave the cell` : 'witness every world, pick one, then finalize to leave'}
                   className={`${pill} px-4 py-1.5 rounded-full border-2 font-bold tracking-wide transition-all ${
                     chosen ? 'bg-emerald-500/90 border-emerald-300 text-black hover:scale-105 shadow-[0_0_16px_rgba(16,185,129,0.5)]'
-                           : 'bg-black/50 border-white/15 text-white/30 cursor-not-allowed'}`}>
+                           : 'bg-black/50 border-white/15 text-white/40 cursor-not-allowed'}`}>
                   ✔ FINALIZE {chosen ? `· ${chosen.toLowerCase()}` : ''} & LEAVE
                 </button>
               </div>
@@ -947,10 +947,10 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
               <p><span className="text-amber-200">The work survives you.</span> Any world that won, or that even one person enjoyed, stays — even if its maker moves on.</p>
             </div>
             <div className="flex items-center justify-between gap-3 mt-6">
-              <button onClick={() => setGate(false)} className="text-[16px] tracking-[0.18em] text-white/40 hover:text-white/70 px-2 py-1.5">NOT YET</button>
+              <button onClick={() => setGate(false)} className="text-[16px] tracking-[0.18em] text-white/50 hover:text-white/70 px-2 py-1.5">NOT YET</button>
               <button onClick={acceptGate} className="text-[16px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER THE VOTE</button>
             </div>
-            <p className="text-white/30 text-[14px] tracking-[0.15em] mt-3 text-center">Play fair — give every game in your cell a real look.</p>
+            <p className="text-white/40 text-[14px] tracking-[0.15em] mt-3 text-center">Play fair — give every game in your cell a real look.</p>
           </div>
         </div>
       )}
@@ -959,9 +959,9 @@ export default function TournamentBar({ slot, worlds, visible, emptyHint, sceneK
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setConfirm(false)}>
           <div className="w-[360px] max-w-[92vw] rounded-lg border border-brass/35 bg-[#0e0b07] p-6 font-mono text-[18px] leading-relaxed text-white/85 text-center" onClick={e => e.stopPropagation()}>
             <div className="text-amber-200/80 tracking-[0.2em] text-[17px] mb-2">⚔ ENTER THE VOTE?</div>
-            <p className="text-white/60 text-[17px] mb-5">Review this cell&rsquo;s games and cast (or move) your voice. Leaving without voting is free.</p>
+            <p className="text-white/70 text-[17px] mb-5">Review this cell&rsquo;s games and cast (or move) your voice. Leaving without voting is free.</p>
             <div className="flex items-center justify-center gap-3">
-              <button onClick={() => setConfirm(false)} className="text-[16px] tracking-[0.18em] px-4 py-2 rounded border border-white/15 text-white/50 hover:text-white/80 hover:border-white/30 transition-colors">EXIT</button>
+              <button onClick={() => setConfirm(false)} className="text-[16px] tracking-[0.18em] px-4 py-2 rounded border border-white/15 text-white/60 hover:text-white/80 hover:border-white/30 transition-colors">EXIT</button>
               <button onClick={enterVote} className="text-[16px] tracking-[0.2em] px-5 py-2 rounded border border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 transition-colors">ENTER</button>
             </div>
           </div>

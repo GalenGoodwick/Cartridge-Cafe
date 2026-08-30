@@ -51,44 +51,44 @@ export default function Story() {
     <main className="min-h-screen text-[#f0e6d2] overflow-x-hidden">
       {/* HERO — the thesis */}
       <section className="min-h-[92svh] flex flex-col items-center justify-center px-6 text-center relative">
-        <div className="font-mono text-[11px] tracking-[0.4em] text-amber-200/50 mb-5">CARTRIDGE.CAFE</div>
+        <div className="font-mono text-[12px] tracking-[0.4em] text-amber-200/50 mb-5">CARTRIDGE.CAFE</div>
         <h1 className="cafe-sign text-[34px] sm:text-5xl leading-[1.15] max-w-[22ch]">
           cooperative, narrative&#8209;driven AI world building
         </h1>
-        <p className="mt-6 font-mono text-[13px] leading-relaxed text-white/55 max-w-[38ch]">
+        <p className="mt-6 font-mono text-[14px] leading-relaxed text-white/65 max-w-[38ch]">
           speak a world into being · an AI builds it live · everyone plays free ·
           members co&#8209;program the games as they run
         </p>
         <div className="mt-9 flex flex-col sm:flex-row gap-3 w-full max-w-xs sm:max-w-none sm:w-auto sm:justify-center">
           <Link href="/cards?gen=1"
-            className="font-mono text-[13px] tracking-[0.15em] px-5 py-3 rounded-lg border border-amber-300/60 text-amber-200 hover:bg-amber-400/15 transition-colors">
+            className="font-mono text-[14px] tracking-[0.15em] px-5 py-3 rounded-lg border border-amber-300/60 text-amber-200 hover:bg-amber-400/15 transition-colors">
             ✦ GENERATE A WORLD · $5
           </Link>
           <Link href="/cards"
-            className="font-mono text-[13px] tracking-[0.15em] px-5 py-3 rounded-lg border border-white/20 text-white/70 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
+            className="font-mono text-[14px] tracking-[0.15em] px-5 py-3 rounded-lg border border-white/20 text-white/70 hover:text-amber-200 hover:border-amber-300/40 transition-colors">
             BROWSE THE CATALOG
           </Link>
         </div>
-        <div className="absolute bottom-6 font-mono text-[10px] tracking-[0.3em] text-white/25">SCROLL ↓</div>
+        <div className="absolute bottom-6 font-mono text-[11px] tracking-[0.3em] text-white/35">SCROLL ↓</div>
       </section>
 
       {/* THE SIX MOVES */}
       <div className="max-w-xl mx-auto px-6 pb-10">
         {SECTIONS.map(s => (
           <section key={s.k} className="py-10 border-t border-white/10">
-            <div className={`font-mono text-[10.5px] tracking-[0.35em] mb-2.5 ${
+            <div className={`font-mono text-[11.5px] tracking-[0.35em] mb-2.5 ${
               s.accent === 'cyan' ? 'text-cyan-200/70' : s.accent === 'amber' ? 'text-yellow-200/70' : 'text-amber-200/45'}`}>
               {s.k}
             </div>
             <h2 className="cafe-sign text-[24px] leading-snug mb-3">{s.title}</h2>
-            <p className="font-mono text-[13px] leading-[1.75] text-white/60">{s.body}</p>
+            <p className="font-mono text-[14px] leading-[1.75] text-white/70">{s.body}</p>
           </section>
         ))}
 
         {/* THE OFFERS — plain and honest */}
         <section className="py-10 border-t border-white/10">
-          <div className="font-mono text-[10.5px] tracking-[0.35em] text-amber-200/45 mb-4">WHAT IT COSTS</div>
-          <div className="flex flex-col gap-2.5 font-mono text-[13px]">
+          <div className="font-mono text-[11.5px] tracking-[0.35em] text-amber-200/45 mb-4">WHAT IT COSTS</div>
+          <div className="flex flex-col gap-2.5 font-mono text-[14px]">
             {[
               ['play anything', 'free, forever'],
               ['generate a world — the house AI builds your brief', '$5'],
@@ -100,7 +100,7 @@ export default function Story() {
               </div>
             ))}
           </div>
-          <p className="mt-4 font-mono text-[11px] leading-relaxed text-white/35">
+          <p className="mt-4 font-mono text-[12px] leading-relaxed text-white/45">
             every paid world is announced LIVE · EXPERIMENTAL — you are buying into
             a thing being built in the open, and buying in means you can help build it.
             cancel anytime; what you contributed stays credited to you forever.
@@ -112,19 +112,19 @@ export default function Story() {
           <h2 className="cafe-sign text-[26px] mb-6">the door is open</h2>
           <div className="flex flex-col gap-3 max-w-xs mx-auto">
             <Link href="/cards?gen=1"
-              className="font-mono text-[13px] tracking-[0.15em] px-5 py-3 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-black transition-colors">
+              className="font-mono text-[14px] tracking-[0.15em] px-5 py-3 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-black transition-colors">
               ✦ SPEAK YOUR FIRST WORLD
             </Link>
             <Link href="/cards?tab=live"
-              className="font-mono text-[13px] tracking-[0.15em] px-5 py-3 rounded-lg border border-cyan-300/40 text-cyan-100 hover:bg-cyan-400/10 transition-colors">
+              className="font-mono text-[14px] tracking-[0.15em] px-5 py-3 rounded-lg border border-cyan-300/40 text-cyan-100 hover:bg-cyan-400/10 transition-colors">
               ◉ SEE WHAT'S BEING BUILT LIVE
             </Link>
             <Link href="/cards"
-              className="font-mono text-[12px] tracking-[0.15em] px-5 py-2.5 text-white/45 hover:text-amber-200 transition-colors">
+              className="font-mono text-[13px] tracking-[0.15em] px-5 py-2.5 text-white/55 hover:text-amber-200 transition-colors">
               or just come play →
             </Link>
           </div>
-          <div className="mt-12 font-mono text-[10px] tracking-[0.3em] text-white/25">CARTRIDGE.CAFE · OPEN ALL NIGHT</div>
+          <div className="mt-12 font-mono text-[11px] tracking-[0.3em] text-white/35">CARTRIDGE.CAFE · OPEN ALL NIGHT</div>
         </section>
       </div>
     </main>

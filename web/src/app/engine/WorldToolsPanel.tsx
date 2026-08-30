@@ -9,11 +9,15 @@ import { can, type WorldContext } from '@/lib/worldContext'
 import type { FieldSimulation } from './simulation'
 import SpaceManagementOverlay from './SpaceManagementOverlay'
 
-export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
+export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, forkableDefault, lastSceneRef, setChromeVisible, ctx, presenceOff, setPresenceOff, presenceOffRef, setToolsTick, lineageBase, loadLineage, lineageBusy, lineageTrail, lineageRemixes }: {
   simulationRef: MutableRefObject<FieldSimulation | null>
   spaceId?: string
   spaceSlug?: string
   isOwner?: boolean
+  /** the server's default-on forkability for this world (fork-policy.canFork
+   *  with worldData.forkable UNSET) — the baseline the toggle reads when the
+   *  maker hasn't made an explicit choice. Fork off by default (Galen). */
+  forkableDefault?: boolean
   lastSceneRef: MutableRefObject<string>
   setChromeVisible: Dispatch<SetStateAction<boolean>>
   ctx: WorldContext
@@ -42,15 +46,15 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
               <button onClick={onClick}
                 className={`px-2 py-0.5 rounded-full border text-[14px] tracking-[0.15em] transition-colors ${on
                   ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200'
-                  : 'bg-white/5 border-white/15 text-white/40'}`}>
+                  : 'bg-white/5 border-white/15 text-white/50'}`}>
                 {on ? 'ON' : 'OFF'}
               </button>
             )
             return (
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 max-h-[82vh] overflow-y-auto rounded-xl bg-black/80 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[14px] tracking-[0.25em] text-white/50">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[14px] tracking-[0.25em] text-white/60">
                   <span>WORLD TOOLS</span>
-                  <button onClick={() => setChromeVisible(false)} aria-label="close" className="text-white/40 hover:text-white text-sm leading-none px-1">×</button>
+                  <button onClick={() => setChromeVisible(false)} aria-label="close" className="text-white/50 hover:text-white text-sm leading-none px-1">×</button>
                 </div>
                 {/* one toolbox: name/visibility/share/tokens live here too */}
                 {isOwner && spaceSlug && spaceId && (
@@ -94,20 +98,28 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     })}
                   </div>
                   )}
-                  {canEditLaw && (
-                  <div className="flex items-center justify-between text-[16px]">
-                    <span>allow forking</span>
-                    {toggleBtn(wd?.['forkable'] === true, () => {
-                      const sim = simulationRef.current
-                      if (!sim) return
-                      // FORKABILITY IS OPT-IN (Galen): no fork button, no fork
-                      // route, unless the maker enables it here. Off by default.
-                      sim.worldData['forkable'] = sim.worldData['forkable'] === true ? false : true
-                      persistBranchRules()
-                      setToolsTick(n => n + 1)
-                    })}
-                  </div>
-                  )}
+                  {canEditLaw && (() => {
+                    // FORK OFF BY DEFAULT (Galen, Aug 30): forking is ON unless
+                    // the world is premium/proprietary/live-edit (the server's
+                    // forkableDefault already folds those in) or the maker turns
+                    // it OFF here. Explicit choice (worldData.forkable) wins;
+                    // absent it, the server default shows. Toggling writes an
+                    // EXPLICIT boolean — the opt-out the fork gate reads.
+                    const f = wd?.['forkable']
+                    const on = f === true ? true : f === false ? false : (forkableDefault ?? true)
+                    return (
+                    <div className="flex items-center justify-between text-[16px]">
+                      <span>allow forking</span>
+                      {toggleBtn(on, () => {
+                        const sim = simulationRef.current
+                        if (!sim) return
+                        sim.worldData['forkable'] = !on
+                        persistBranchRules()
+                        setToolsTick(n => n + 1)
+                      })}
+                    </div>
+                    )
+                  })()}
                   {/* THE SOCIAL CONTRACT (world-policy): declared ONCE, then
                       immutable — changing the deal on people mid-world isn't
                       fair (Galen). Undeclared worlds run the default (owner
@@ -120,7 +132,7 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                     if (declared) return (
                       <div className="flex items-center justify-between text-[16px]">
                         <span>social contract</span>
-                        <span className="px-2 py-0.5 rounded-full border border-white/15 text-[13px] tracking-[0.1em] text-white/50"
+                        <span className="px-2 py-0.5 rounded-full border border-white/15 text-[14px] tracking-[0.1em] text-white/60"
                           title="declared once at the start — immutable, so the deal never changes on the people already building here">
                           build: {pol.build} · play: {pol.play ?? 'everyone'} · sealed
                         </span>
@@ -131,9 +143,9 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-[16px]">
                           <span>social contract</span>
-                          <span className="text-[13px] text-white/35">undeclared · default</span>
+                          <span className="text-[14px] text-white/45">undeclared · default</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[13px]">
+                        <div className="flex items-center gap-1.5 text-[14px]">
                           {(['owner', 'invited', 'anyone'] as const).map(b => (
                             <button key={b}
                               onClick={() => {
@@ -142,12 +154,12 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                                 sim.worldData['policy'] = { build: b, play: 'everyone' }
                                 setToolsTick(n => n + 1)
                               }}
-                              className="px-2 py-0.5 rounded-full border border-white/20 text-white/55 hover:border-emerald-300/50 hover:text-emerald-200 transition-colors">
+                              className="px-2 py-0.5 rounded-full border border-white/20 text-white/65 hover:border-emerald-300/50 hover:text-emerald-200 transition-colors">
                               build: {b}
                             </button>
                           ))}
                         </div>
-                        <div className="text-[13px] text-white/30 leading-snug">
+                        <div className="text-[14px] text-white/40 leading-snug">
                           who may build here — declared ONCE, then sealed. owner = just you (+ anyone you invite); invited = your crew; anyone = open ground.
                         </div>
                       </div>
@@ -162,7 +174,7 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                   {/* winner-takes-main RETIRED with the podium (branch→fork
                       transition): world votes no longer exist, so no challenger
                       can win — or take — anything. Your main is simply yours. */}
-                  <div className="text-[14px] text-white/35 leading-relaxed">
+                  <div className="text-[14px] text-white/45 leading-relaxed">
                     {canEditLaw
                       ? "multiplayer is the world's law — saved with it. presence is your own eyes: off means invisible both ways. restart lets any player press R to send the world back to its start. allow forking puts the FORK button on your world — anyone may take their own copy (off = your world cannot be forked)."
                       : 'presence is your own eyes: off means invisible both ways. the rest of the panel belongs to the owner.'}
@@ -171,7 +183,7 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                 {/* LINEAGE — where this world came from. Anyone can see it; credit follows the work. */}
                 <div className="px-3 py-2.5 border-b border-white/10 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-[14px] tracking-[0.2em] text-white/40">LINEAGE</div>
+                    <div className="text-[14px] tracking-[0.2em] text-white/50">LINEAGE</div>
                     <button
                       onClick={loadLineage} disabled={lineageBusy}
                       title="trace this world back to the original it grew from"
@@ -181,19 +193,19 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                   </div>
                   {lineageTrail && (
                     lineageTrail.length <= 1 ? (
-                      <div className="text-[14px] text-white/35 leading-relaxed">an original — nothing upstream of it.</div>
+                      <div className="text-[14px] text-white/45 leading-relaxed">an original — nothing upstream of it.</div>
                     ) : (
                       <div className="space-y-0.5">
                         {lineageTrail.map((n, i) => {
                           const here = i === lineageTrail.length - 1
                           const label = n.kind === 'root' ? n.name : (n.by ? `⑂ ${n.by}` : n.name)
                           return (
-                            <div key={i} className={`text-[14px] leading-snug ${here ? 'text-amber-200/90' : 'text-white/55'}`}>
-                              <span className="text-white/25">{i === 0 ? '● ' : '↳ '}</span>
+                            <div key={i} className={`text-[14px] leading-snug ${here ? 'text-amber-200/90' : 'text-white/65'}`}>
+                              <span className="text-white/35">{i === 0 ? '● ' : '↳ '}</span>
                               {n.slug ? (
                                 <a href={`/space/${n.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{label}</a>
                               ) : label}
-                              {here && <span className="text-white/35"> · here</span>}
+                              {here && <span className="text-white/45"> · here</span>}
                             </div>
                           )
                         })}
@@ -202,10 +214,10 @@ export function WorldToolsPanel({ simulationRef, spaceId, spaceSlug, isOwner, la
                   )}
                   {lineageTrail && lineageRemixes.length > 0 && (
                     <div className="pt-1 space-y-0.5">
-                      <div className="text-[14px] text-white/30">{lineageRemixes.length} remix{lineageRemixes.length === 1 ? '' : 'es'} grew from this →</div>
+                      <div className="text-[14px] text-white/40">{lineageRemixes.length} remix{lineageRemixes.length === 1 ? '' : 'es'} grew from this →</div>
                       {lineageRemixes.map(rx => (
-                        <div key={rx.slug} className="text-[14px] leading-snug text-white/55">
-                          <span className="text-white/25">↳ </span>
+                        <div key={rx.slug} className="text-[14px] leading-snug text-white/65">
+                          <span className="text-white/35">↳ </span>
                           <a href={`/space/${rx.slug}`} className="underline decoration-white/20 hover:decoration-emerald-300">{rx.name}</a>
                         </div>
                       ))}
@@ -251,15 +263,15 @@ function CardConfig({ simulationRef, setToolsTick }: {
   const kindNow = card.kind === 'toy' || card.kind === 'world' || card.kind === 'game' ? card.kind : 'auto'
   return (
     <div className="space-y-2 pt-1">
-      <div className="text-[14px] tracking-[0.2em] text-white/40">THE CARD</div>
-      <div className="flex items-center gap-1.5 text-[13px]">
+      <div className="text-[14px] tracking-[0.2em] text-white/50">THE CARD</div>
+      <div className="flex items-center gap-1.5 text-[14px]">
         {(['auto', 'toy', 'world', 'game'] as const).map(k => (
           <button key={k}
             onClick={() => writeCard({ kind: k === 'auto' ? undefined : k })}
             title={k === 'auto' ? 'the anatomy decides: rules built → game; multiplayer/big grid → world; else toy' : k}
             className={`px-2 py-0.5 rounded-full border transition-colors ${kindNow === k
               ? 'border-amber-300/60 bg-amber-400/15 text-amber-200'
-              : 'border-white/20 text-white/50 hover:text-white'}`}>
+              : 'border-white/20 text-white/60 hover:text-white'}`}>
             {k.toUpperCase()}
           </button>
         ))}
@@ -273,17 +285,17 @@ function CardConfig({ simulationRef, setToolsTick }: {
       <input value={tagsDraft} onChange={e => setTagsDraft(e.target.value)}
         onBlur={() => writeCard({ tags: tagsDraft.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) })}
         placeholder="tags, comma, separated"
-        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/35 outline-none focus:border-amber-300/50" />
       <input value={blurbDraft} onChange={e => setBlurbDraft(e.target.value)}
         onBlur={() => { const s2 = simulationRef.current; if (s2) { s2.worldData['blurb'] = blurbDraft.trim(); setToolsTick(n => n + 1) } }}
         placeholder="the blurb — one line the card shows"
-        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] text-white/80 placeholder:text-white/35 outline-none focus:border-amber-300/50" />
       <textarea value={storyDraft} onChange={e => setStoryDraft(e.target.value)}
         onBlur={() => { const s2 = simulationRef.current; if (s2) { s2.worldData['vision'] = storyDraft.trim(); setToolsTick(n => n + 1) } }}
         placeholder="the story (vision) — what this world IS; the desc falls back to its first line"
         rows={3}
-        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[13px] leading-snug text-white/80 placeholder:text-white/25 outline-none focus:border-amber-300/50 resize-y" />
-      <div className="text-[12px] text-white/30 leading-snug">
+        className="w-full bg-black/50 border border-white/15 rounded px-2 py-1.5 text-[14px] leading-snug text-white/80 placeholder:text-white/35 outline-none focus:border-amber-300/50 resize-y" />
+      <div className="text-[13px] text-white/40 leading-snug">
         instructions have their own door — the ? INSTRUCTIONS panel. Everything here lands on the card the catalog deals.
       </div>
     </div>

@@ -34,7 +34,7 @@ export default async function PagesHub() {
   return (
     <div className="min-h-dvh bg-[#0A0D13] text-[#E9EFF7]">
       <header className="border-b border-[#1c2941] px-4 py-10 text-center">
-        <p className="font-mono text-[11px] tracking-[0.3em] text-[#55677E] uppercase">cartridge.cafe</p>
+        <p className="font-mono text-[12px] tracking-[0.3em] text-[#55677E] uppercase">cartridge.cafe</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
           <span className="text-[#FFB25A]">✦</span> Pages
         </h1>
@@ -84,7 +84,7 @@ export default async function PagesHub() {
       </main>
 
       <footer className="mx-auto w-full max-w-5xl px-4 pb-10 text-center">
-        <Link href="/" className="font-mono text-[11px] text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
+        <Link href="/" className="font-mono text-[12px] text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
           ← back to the cafe
         </Link>
       </footer>

@@ -18,7 +18,7 @@ import Link from 'next/link'
 const STASH = 'cc-gen-brief'   // brief survives the checkout round-trip (same key as the old sheet)
 const card = 'rounded-xl border px-4 py-3 text-left transition-colors cursor-pointer'
 const on = 'border-amber-300/60 bg-amber-400/10 text-[#ffdba8]'
-const off = 'border-white/12 bg-black/40 text-white/60 hover:border-white/25 hover:text-white/80'
+const off = 'border-white/12 bg-black/40 text-white/70 hover:border-white/25 hover:text-white/80'
 
 export default function CreateWorld() {
   const [name, setName] = useState('')
@@ -110,51 +110,51 @@ export default function CreateWorld() {
     <div className="min-h-screen px-4 py-8 font-mono" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)', color: '#e7dcc8' }}>
       <div className="max-w-[560px] mx-auto">
         <div className="flex items-baseline gap-3 mb-1">
-          <Link href="/" className="text-white/40 hover:text-white text-[14px]">◂</Link>
+          <Link href="/" className="text-white/50 hover:text-white text-[14px]">◂</Link>
           <h1 className="text-[22px] tracking-[0.2em] text-[#ffdba8]">NEW WORLD</h1>
         </div>
-        <p className="text-white/40 text-[13px] mb-6">three questions — then your AI builds it, or a generation credit does.</p>
+        <p className="text-white/50 text-[14px] mb-6">three questions — then your AI builds it, or a generation credit does.</p>
 
         <input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={40} placeholder="name your world…"
-          className="w-full mb-2 px-3 py-2.5 rounded-xl bg-black/50 border border-white/15 text-[16px] text-white/90 placeholder:text-white/25 outline-none focus:border-amber-300/50" />
+          className="w-full mb-2 px-3 py-2.5 rounded-xl bg-black/50 border border-white/15 text-[16px] text-white/90 placeholder:text-white/35 outline-none focus:border-amber-300/50" />
         <textarea value={brief} onChange={e => setBrief(e.target.value)} maxLength={2000} rows={2}
           placeholder="what should it become? (your AI reads this first — 20+ chars to GENERATE)"
-          className="w-full mb-5 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-amber-300/50 resize-none" />
+          className="w-full mb-5 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/35 outline-none focus:border-amber-300/50 resize-none" />
 
         {/* (1 · BASE removed — Galen, Aug 29: "from a format has no functionality
             and would basically be forking anyways." Forking lives in the grid's
             ✧ CREATE set; brew here is always FROM NOTHING.) */}
-        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">1 · DIMENSIONS</div>
+        <div className="text-[13px] tracking-[0.25em] text-white/55 mb-2">1 · DIMENSIONS</div>
         <div className="grid grid-cols-3 gap-2 mb-2">
           {([['desktop', '🖥 DESKTOP', 'wide screen + mouse; phones get an honest door notice'], ['mobile', '▯ MOBILE', 'portrait phone; desktop shows it in a phone frame'], ['universal', '◇ UNIVERSAL', 'recomposes to ANY screen — a claim, not a default']] as const).map(([k, t, d]) => (
             <button key={k} className={`${card} ${targets === k ? on : off}`} onClick={() => setTargets(k)}>
-              <div className="text-[13px] mb-0.5">{t}</div>
-              <div className="text-[11px] opacity-70 leading-snug">{d}</div>
+              <div className="text-[14px] mb-0.5">{t}</div>
+              <div className="text-[12px] opacity-70 leading-snug">{d}</div>
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-white/30 mb-5">{targets === 'universal'
+        <p className="text-[12px] text-white/40 mb-5">{targets === 'universal'
           ? '⚠ universal means NO warnings on any device — declare it only once the world is verified on phone AND desktop.'
           : 'honest defaults protect players: the declaration drives the catalog badge + the door notice.'}</p>
 
-        <div className="text-[12px] tracking-[0.25em] text-white/45 mb-2">2 · PEOPLE</div>
+        <div className="text-[13px] tracking-[0.25em] text-white/55 mb-2">2 · PEOPLE</div>
         <div className="grid grid-cols-3 gap-2 mb-6">
           {([['solo', '● SOLO', 'you and your AI only'], ['invite', '◐ INVITE-ONLY', 'people you invite may build'], ['open', '○ OPEN WORLD', 'any member may build here (live editing) — co-built work becomes protected']] as const).map(([k, t, d]) => (
             <button key={k} className={`${card} ${access === k ? on : off}`} onClick={() => setAccess(k)}>
-              <div className="text-[13px] mb-0.5">{t}</div>
-              <div className="text-[11px] opacity-70 leading-snug">{d}</div>
+              <div className="text-[14px] mb-0.5">{t}</div>
+              <div className="text-[12px] opacity-70 leading-snug">{d}</div>
             </button>
           ))}
         </div>
 
-        {err && <p className="text-red-400 text-[13px] mb-3">{err}</p>}
-        {note && <p className="text-amber-200/80 text-[13px] mb-3">{note}</p>}
+        {err && <p className="text-red-400 text-[14px] mb-3">{err}</p>}
+        {note && <p className="text-amber-200/80 text-[14px] mb-3">{note}</p>}
         <button disabled={!briefOk || busy || !gen || (!gen.buyable && gen.credits === 0 && !gen.free)} onClick={generate}
           className="w-full px-4 py-3 rounded-xl border border-amber-300/50 bg-amber-400/10 text-amber-200 text-[15px] tracking-[0.2em] hover:bg-amber-400/20 disabled:opacity-35 transition-colors"
           title="one price per world — born with your facets + its first AI build key; connect your AI to build">
           {busy ? '…' : genLabel}
         </button>
-        <p className="text-[11px] text-white/30 mt-2 text-center">${gen?.priceUsd ?? 5} per world keeps the shelf real. born with these facets + its first AI build key — no house AI, your AI builds it.</p>
+        <p className="text-[12px] text-white/40 mt-2 text-center">${gen?.priceUsd ?? 5} per world keeps the shelf real. born with these facets + its first AI build key — no house AI, your AI builds it.</p>
       </div>
     </div>
   )

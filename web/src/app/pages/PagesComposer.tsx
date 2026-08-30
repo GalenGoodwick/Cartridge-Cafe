@@ -270,7 +270,7 @@ export default function PagesComposer() {
             ))}
           </div>
           <Palette onAdd={addBlock} />
-          <p className="mt-6 text-center text-[11px] font-mono text-[#3f4f63]">
+          <p className="mt-6 text-center text-[12px] font-mono text-[#3f4f63]">
             {!signedIn
               ? 'saved to this browser · sign in and it goes live instantly'
               : doc.slug
@@ -303,10 +303,10 @@ function EditBlock({ block: b, onUpdate, onRemove, onMove, onImagine }: {
       <div className={`relative overflow-hidden rounded-lg border border-[#1c2941] bg-black ${b.span === 2 ? 'col-span-2' : 'col-span-1'} ${ASPECT_CLASS[b.aspect]}`}>
         <ShaderFrame wgsl={b.wgsl} className="absolute inset-0" onCompile={setErr} />
         {b.awaiting && (
-          <div className="absolute inset-x-0 top-0 z-10 bg-[#12203a]/90 px-2 py-1 text-[10px] font-mono text-[#8fb2e0] animate-pulse">awaiting your AI…</div>
+          <div className="absolute inset-x-0 top-0 z-10 bg-[#12203a]/90 px-2 py-1 text-[11px] font-mono text-[#8fb2e0] animate-pulse">awaiting your AI…</div>
         )}
         {err && !b.awaiting && (
-          <div className="absolute inset-x-0 top-0 z-10 bg-[#2a0f0f]/90 px-2 py-1 text-[10px] font-mono text-[#ff9b7a] line-clamp-2">{err}</div>
+          <div className="absolute inset-x-0 top-0 z-10 bg-[#2a0f0f]/90 px-2 py-1 text-[11px] font-mono text-[#ff9b7a] line-clamp-2">{err}</div>
         )}
         <div className="absolute right-2 top-2 z-10 flex gap-1">
           <IconBtn label={b.span === 2 ? 'span 2' : 'span 1'} onClick={() => onUpdate({ span: b.span === 1 ? 2 : 1 } as Partial<Block>)} />
@@ -317,7 +317,7 @@ function EditBlock({ block: b, onUpdate, onRemove, onMove, onImagine }: {
         </div>
         <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent p-2">
           <div className="flex items-center gap-1.5 rounded-md border border-white/10 bg-black/50 backdrop-blur px-2 py-1.5">
-            <span className="font-mono text-[11px] text-[#FF6A2B] shrink-0">imagine›</span>
+            <span className="font-mono text-[12px] text-[#FF6A2B] shrink-0">imagine›</span>
             <input
               value={b.prompt}
               onChange={(e) => onUpdate({ prompt: e.target.value } as Partial<Block>)}
@@ -326,7 +326,7 @@ function EditBlock({ block: b, onUpdate, onRemove, onMove, onImagine }: {
               className="min-w-0 flex-1 bg-transparent text-xs text-[#E9EFF7] placeholder:text-[#55677E] outline-none"
             />
             <button onClick={() => onImagine(b.prompt)} disabled={b.awaiting}
-              className="shrink-0 rounded bg-[#FF6A2B] px-2 py-1 text-[11px] font-semibold text-[#140a04] disabled:opacity-50">
+              className="shrink-0 rounded bg-[#FF6A2B] px-2 py-1 text-[12px] font-semibold text-[#140a04] disabled:opacity-50">
               {b.awaiting ? '…' : '→'}
             </button>
           </div>
@@ -348,7 +348,7 @@ function EditBlock({ block: b, onUpdate, onRemove, onMove, onImagine }: {
       {b.kind === 'heading' && (
         <div className="flex items-center gap-2 pr-24">
           <select value={b.level} onChange={(e) => onUpdate({ level: Number(e.target.value) as 1 | 2 | 3 } as Partial<Block>)}
-            className="rounded bg-black/40 border border-[#26364e] px-1 py-0.5 text-[11px] font-mono text-[#7E93AC]">
+            className="rounded bg-black/40 border border-[#26364e] px-1 py-0.5 text-[12px] font-mono text-[#7E93AC]">
             <option value={1}>H1</option><option value={2}>H2</option><option value={3}>H3</option>
           </select>
           <input value={b.text} onChange={(e) => onUpdate({ text: e.target.value } as Partial<Block>)}
@@ -456,7 +456,7 @@ function PublishModal({ doc, signedIn, paidPending, onClose, onPublished }: {
         <div className="space-y-3 text-center">
           <p className="text-sm text-[#c7d3e0]">Payment received — anchoring your address…</p>
           <p className="text-xs font-mono text-[#55677E] animate-pulse">done in a moment</p>
-          <p className="text-[11px] text-[#55677E]">Taking long? Your payment is recorded — refresh in a minute and it will be claimed.</p>
+          <p className="text-[12px] text-[#55677E]">Taking long? Your payment is recorded — refresh in a minute and it will be claimed.</p>
         </div>
       ) : claimedUrl && !renaming ? (
         <div className="space-y-3">
@@ -560,7 +560,7 @@ Each shader block needs self-contained WGSL:
           <p className="text-xs text-[#ff9b7a]">Shown once — copy it now.</p>
           <textarea readOnly value={snippet} rows={12}
             onFocus={(e) => e.currentTarget.select()}
-            className="w-full resize-none rounded bg-black/50 border border-[#26364e] p-2 font-mono text-[11px] text-[#c7d3e0] outline-none" />
+            className="w-full resize-none rounded bg-black/50 border border-[#26364e] p-2 font-mono text-[12px] text-[#c7d3e0] outline-none" />
           <button onClick={() => navigator.clipboard?.writeText(snippet)} className={btnGhost}>copy</button>
         </div>
       )}
@@ -576,17 +576,17 @@ const btnAccent = 'shrink-0 rounded-md bg-[#FF6A2B] px-3 py-1.5 text-xs font-sem
 function IconBtn({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
     <button onClick={onClick}
-      className={`rounded border px-1.5 py-0.5 text-[10px] font-mono backdrop-blur transition-colors ${
+      className={`rounded border px-1.5 py-0.5 text-[11px] font-mono backdrop-blur transition-colors ${
         danger ? 'border-[#5a2020] bg-black/40 text-[#ff9b7a] hover:bg-[#3a1010]' : 'border-white/10 bg-black/40 text-[#c7d3e0] hover:bg-black/70'
       }`}>{label}</button>
   )
 }
 
 function SaveBadge({ state, signedIn }: { state: 'idle' | 'saving' | 'saved' | 'error'; signedIn: boolean }) {
-  if (!signedIn) return <span className="text-[10px] font-mono text-[#55677E]">local</span>
+  if (!signedIn) return <span className="text-[11px] font-mono text-[#55677E]">local</span>
   const map = { idle: '', saving: 'saving…', saved: 'saved', error: 'save failed' } as const
   const col = state === 'error' ? 'text-[#ff9b7a]' : 'text-[#55677E]'
-  return <span className={`text-[10px] font-mono ${col}`}>{map[state]}</span>
+  return <span className={`text-[11px] font-mono ${col}`}>{map[state]}</span>
 }
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {

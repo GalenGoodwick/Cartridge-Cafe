@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const obj = (event.data?.object ?? {}) as {
     id?: string
     amount_total?: number
-    metadata?: { userId?: string; product?: string; slug?: string; pageId?: string }
+    metadata?: { userId?: string; product?: string; slug?: string; pageId?: string; qty?: string }
   }
   const meta = obj.metadata ?? {}
 
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     // (idempotent per sessionId; Stripe retries must not double-credit)
     if (meta.product === 'worldgen') {
       const { grantGenCredits } = await import('@/lib/stripe')
-      await grantGenCredits(meta.userId, obj.id)
+      const qty = Number(meta.qty)
+      await grantGenCredits(meta.userId, obj.id, Number.isFinite(qty) && qty >= 1 ? qty : 1)
     }
     // a PAID EXPERIENCE grants a seat at the workbench — mint the buyer a
     // co-program membership in the world they bought (idempotent)

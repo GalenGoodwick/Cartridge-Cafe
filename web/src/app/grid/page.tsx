@@ -23,7 +23,7 @@ import { MembershipBanner } from '@/app/cards/MembershipBanner'
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'mine' | 'search'
+type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
@@ -110,29 +110,33 @@ export default function TheGrid() {
   }, [])
   // ✚/⚡ COMMERCE — build credits + live-edit membership, read fresh each time
   // the dockstar opens (Galen: buy credits anytime, membership on the menu)
-  const [wallet, setWallet] = useState<{ credits: number; genUsd: number; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
+  const [wallet, setWallet] = useState<{ credits: number; genUsd: number; bundles: Record<number, number>; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
   const [buying, setBuying] = useState<'' | 'credit' | 'member'>('')
+  const [buyQty, setBuyQty] = useState(1)
   useEffect(() => {
     if (!selOpen) return
     Promise.all([
       fetch('/api/generate').then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/membership').then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]).then(([g, m]) => setWallet({
-      credits: g?.credits ?? 0, genUsd: g?.priceUsd ?? 5, free: !!g?.free,
-      member: !!m?.member, memUsd: m?.usd ?? 10, buyable: !!(g?.buyable || m?.buyable),
+      credits: g?.credits ?? 0, genUsd: g?.priceUsd ?? 5, bundles: g?.bundles ?? { 1: 5, 3: 12, 5: 18, 10: 30 },
+      free: !!g?.free, member: !!m?.member, memUsd: m?.usd ?? 10, buyable: !!(g?.buyable || m?.buyable),
     }))
   }, [selOpen])
   const startCheckout = async (kind: 'credit' | 'member') => {
     setBuying(kind)
     try {
-      const r = await fetch(kind === 'credit' ? '/api/generate/buy' : '/api/membership', { method: 'POST' })
+      const r = await fetch(kind === 'credit' ? '/api/generate/buy' : '/api/membership', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: kind === 'credit' ? JSON.stringify({ qty: buyQty }) : '{}',
+      })
       const d = await r.json().catch(() => null)
       if (d?.url) { window.location.href = d.url; return }
     } catch { /* fall through */ }
     setBuying('')
   }
 
-  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; device?: string | null } | null | undefined>(undefined)
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
     const slug = scene.slice(6)
@@ -141,12 +145,12 @@ export default function TheGrid() {
     Promise.all([
       fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; deviceConfig?: string | null } } | null, { user?: { id?: string } } | null]) => {
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null } } | null, { user?: { id?: string } } | null]) => {
       if (dead) return
       const sp = d?.space
       if (!sp?.id) { setSpaceInfo(null); return }
       const meId = s?.user?.id ?? null
-      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, device: sp.deviceConfig ?? null })
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null })
     }).catch(() => { if (!dead) setSpaceInfo(null) })
     return () => { dead = true }
   }, [scene])
@@ -185,12 +189,12 @@ export default function TheGrid() {
 
   // catalog + icons (prod real; local = bundled cartridges)
   useEffect(() => {
-    const feed = tab === 'search' ? 'published' : tab
+    const feed = tab
     fetch(`/api/cards?tab=${feed}`).then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         const list = Array.isArray(d.cards) && d.cards.length
           ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined }))
-          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' ? [] : LOCAL)   // empty deed/premium/unfinished is EMPTY, not the house shelf
+          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
         // tab's game — if the frame's world isn't ON this shelf, the shelf's
@@ -200,7 +204,7 @@ export default function TheGrid() {
         }
         prevTabRef.current = tab
       })
-      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' ? [] : LOCAL); prevTabRef.current = tab })
+      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' || tab === 'forked' ? [] : LOCAL); prevTabRef.current = tab })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
   useEffect(() => {
@@ -211,11 +215,12 @@ export default function TheGrid() {
         setIcons(m)
       }).catch(() => { /* letter tiles */ })
   }, [])
+  // SEARCH is a persistent filter over the ACTIVE tab (Galen), not its own tab
   const shown = useMemo(() =>
-    tab === 'search' && q.trim()
+    q.trim()
       ? entries.filter(e => e.name.toLowerCase().includes(q.trim().toLowerCase()))
       : entries,
-  [entries, tab, q])
+  [entries, q])
 
   // linkable state
   useEffect(() => {
@@ -380,6 +385,10 @@ export default function TheGrid() {
   // the account via the experience entitlement) — once owned, the same click
   // just opens it. Server truth: /api/premium (price read server-side).
   const [premGate, setPremGate] = useState<null | { slug: string; usd: number; signedIn: boolean; buyable: boolean; busy?: boolean; err?: string }>(null)
+  // ▭ THE BIG-SCREEN NOTICE (Galen, Aug 30): a desktop-built game opened on a
+  // small screen warns "come back on desktop" — with a play-anyway escape.
+  // Acked per-slug so it shows once per world, not every remount.
+  const [bigScreenAck, setBigScreenAck] = useState<string | null>(null)
   const tryPlay = useCallback(async () => {
     if (scene.startsWith('space:')) {
       const slug = scene.slice(6)
@@ -534,7 +543,7 @@ export default function TheGrid() {
         ? <FieldEngine key="house" playScene="MAIN-COMMONS" presenceKey="CAFE" hooksTrusted viewport={inset} externalTopbar />
         : spc
           ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
-              spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner}
+              spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner} forkable={spc.forkable}
               viewport={inset} externalTopbar />
           : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
 
@@ -561,7 +570,7 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[10px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
             ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
@@ -571,34 +580,39 @@ export default function TheGrid() {
       {browsing && (
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
-          {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
+          {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['forked', '⑄ FORKS'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
-                className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                  tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
+                className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                  tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/50 hover:text-white/70'}`}>
                 {label}
               </button>
             ))}
-            <button onClick={() => setTab('search')}
-              className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                tab === 'search' ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
-              ⌕ SEARCH
-            </button>
-            {tab === 'search' && (
-              <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="filter games…"
-                className="font-mono text-[11px] px-3 py-1 rounded-lg bg-black/50 border border-sky-300/40 text-white/85 placeholder:text-white/25 outline-none w-44" />
+          </div>
+          {/* SEARCH — always visible under the tabs (Galen); filters the active tab */}
+          <div className="relative shrink-0 w-full max-w-[320px]">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-white/45">⌕</span>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="search games…"
+              className="font-mono text-[12px] w-full pl-8 pr-8 py-1.5 rounded-lg bg-black/50 border border-white/12 text-white/85 placeholder:text-white/35 outline-none focus:border-sky-300/50 transition-colors" />
+            {q && (
+              <button onClick={() => setQ('')} aria-label="clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 grid place-items-center rounded text-white/50 hover:text-white hover:bg-white/10 text-[13px]">✕</button>
             )}
           </div>
-          {/* the icons */}
-          {tab === 'mine' && shown.length === 0 && (
-            <div className="font-mono text-[11px] text-white/45 py-6 text-center">no worlds on your deed yet — sign in, or brew one at /create.</div>
+          {/* the icons — contextual empties show only when NOT searching (a
+              search miss shows the "nothing matches" line below instead) */}
+          {tab === 'mine' && !q.trim() && shown.length === 0 && (
+            <div className="font-mono text-[12px] text-white/55 py-6 text-center">no worlds on your deed yet — sign in, or brew one at /create.</div>
           )}
-          {tab === 'premium' && shown.length === 0 && (
-            <div className="font-mono text-[11px] text-white/45 py-6 text-center">no premium worlds yet.</div>
+          {tab === 'premium' && !q.trim() && shown.length === 0 && (
+            <div className="font-mono text-[12px] text-white/55 py-6 text-center">no premium worlds yet.</div>
           )}
-          {tab === 'unfinished' && shown.length === 0 && (
-            <div className="font-mono text-[11px] text-white/45 py-6 text-center">nothing on the workbench shelf.</div>
+          {tab === 'unfinished' && !q.trim() && shown.length === 0 && (
+            <div className="font-mono text-[12px] text-white/55 py-6 text-center">nothing on the workbench shelf.</div>
+          )}
+          {tab === 'forked' && !q.trim() && shown.length === 0 && (
+            <div className="font-mono text-[12px] text-white/55 py-6 text-center">no forked worlds published yet — fork a world and publish it to land it here.</div>
           )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
@@ -613,16 +627,16 @@ export default function TheGrid() {
                     style={{ background: 'linear-gradient(160deg, #141224, #0a0913)' }}>
                     {ic
                       ? <img src={ic} alt="" className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform" />
-                      : <span className="font-mono text-[34px] text-white/25">{e.name[0]}</span>}
+                      : <span className="font-mono text-[34px] text-white/35">{e.name[0]}</span>}
                   </div>
-                  <div className={`font-mono text-[10.5px] tracking-[0.1em] px-2.5 py-2 truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
+                  <div className={`font-mono text-[11.5px] tracking-[0.1em] px-2.5 py-2 truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
                     {e.name}
                   </div>
                 </button>
               )
             })}
-            {tab === 'search' && q.trim() && shown.length === 0 && (
-              <div className="col-span-full font-mono text-[11px] text-white/30 text-center py-6">nothing matches “{q}”</div>
+            {q.trim() && shown.length === 0 && (
+              <div className="col-span-full font-mono text-[12px] text-white/40 text-center py-6">nothing matches “{q}”</div>
             )}
           </div>
         </div>
@@ -635,7 +649,7 @@ export default function TheGrid() {
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[10px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
             ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
           </span>
         </button>
@@ -671,7 +685,7 @@ export default function TheGrid() {
               <img src="/cartridge-cup.svg" alt="" className="w-9 h-9 -mt-0.5" />
               <h1 className="cafe-sign text-[24px] leading-none">cartridge<span className="not-italic font-mono text-[16px] text-brass">.cafe</span></h1>
             </div>
-            <div className="font-mono text-[9.5px] tracking-[0.18em] text-white/45 mt-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
+            <div className="font-mono text-[10.5px] tracking-[0.18em] text-white/55 mt-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {([
@@ -686,7 +700,7 @@ export default function TheGrid() {
                   uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
                 <div className={`text-[22px] mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
                 <div className={`font-mono text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
-                <div className="font-mono text-[10px] text-white/40 mt-1 leading-relaxed">{sub}</div>
+                <div className="font-mono text-[11px] text-white/50 mt-1 leading-relaxed">{sub}</div>
               </button>
             ))}
             {isAdmin && (
@@ -694,8 +708,8 @@ export default function TheGrid() {
                 className="col-span-2 text-left rounded-2xl border border-amber-300/25 bg-black/40 hover:border-amber-300/50 p-4 transition-colors flex items-center gap-3">
                 <span className="text-[20px] text-amber-200/80">⛨</span>
                 <span>
-                  <span className="font-mono text-[13px] tracking-[0.2em] text-amber-100/95 block">ADMIN</span>
-                  <span className="font-mono text-[10px] text-white/40">every world (private too) · visibility · analytics</span>
+                  <span className="font-mono text-[14px] tracking-[0.2em] text-amber-100/95 block">ADMIN</span>
+                  <span className="font-mono text-[11px] text-white/50">every world (private too) · visibility · analytics</span>
                 </span>
               </a>
             )}
@@ -703,20 +717,40 @@ export default function TheGrid() {
             <div data-grid-credits
               className="text-left rounded-2xl border border-white/12 bg-black/40 p-4 flex flex-col justify-between">
               <div>
-                <div className="font-mono text-[11px] tracking-[0.2em] text-white/60">✚ BUILD CREDITS</div>
+                <div className="font-mono text-[12px] tracking-[0.2em] text-white/70">✚ BUILD CREDITS</div>
                 <div className="font-mono text-[20px] text-amber-100 mt-1 tabular-nums">
                   {wallet ? (wallet.free ? '∞' : wallet.credits) : '·'}
-                  <span className="text-[10px] text-white/40 ml-1.5">{wallet?.free ? 'keeper' : 'world births'}</span>
+                  <span className="text-[11px] text-white/50 ml-1.5">{wallet?.free ? 'keeper' : 'world births'}</span>
                 </div>
               </div>
               {me ? (wallet?.buyable && !wallet.free && (
-                <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
-                  className="mt-3 w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[11px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
-                  {buying === 'credit' ? 'OPENING…' : `BUY 1 · $${wallet.genUsd}`}
-                </button>
+                <div className="mt-3">
+                  <div className="flex gap-1 mb-2">
+                    {[1, 3, 5, 10].map(q => (
+                      <button key={q} onClick={() => setBuyQty(q)}
+                        className={`flex-1 py-1 rounded-lg border font-mono text-[11px] tabular-nums transition-colors ${
+                          buyQty === q ? 'border-amber-300/60 bg-amber-400/15 text-amber-100' : 'border-white/10 text-white/55 hover:border-white/25'}`}>
+                        ×{q}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const total = wallet.bundles[buyQty] ?? wallet.genUsd * buyQty
+                    const saved = wallet.genUsd * buyQty - total
+                    return (
+                      <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
+                        className="w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[12px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
+                        {buying === 'credit' ? 'OPENING…' : (
+                          <>BUY {buyQty} · ${total}{saved > 0 && <span className="text-emerald-200/90 tracking-normal"> · save ${saved}</span>}</>
+                        )}
+                      </button>
+                    )
+                  })()}
+                  <div className="font-mono text-[10px] text-white/45 mt-1.5 text-center">bring your own AI to build · credits never expire</div>
+                </div>
               )) : (
                 <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
-                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[11px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
+                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
                   SIGN IN TO BUY
                 </a>
               )}
@@ -725,24 +759,27 @@ export default function TheGrid() {
             <div data-grid-membership
               className="text-left rounded-2xl border border-white/12 bg-black/40 p-4 flex flex-col justify-between">
               <div>
-                <div className="font-mono text-[11px] tracking-[0.2em] text-white/60">⚡ LIVE EDIT</div>
-                <div className={`font-mono text-[13px] mt-1.5 ${wallet?.member ? 'text-emerald-200' : 'text-white/80'}`}>
+                <div className="font-mono text-[12px] tracking-[0.2em] text-white/70">⚡ LIVE EDIT</div>
+                <div className={`font-mono text-[14px] mt-1.5 ${wallet?.member ? 'text-emerald-200' : 'text-white/80'}`}>
                   {wallet ? (wallet.member ? '✓ MEMBER' : 'build on open worlds') : '·'}
                 </div>
               </div>
               {wallet?.member ? (
                 <a href="/account"
-                  className="mt-3 w-full py-2 rounded-xl border border-emerald-300/40 bg-emerald-400/10 text-emerald-100 font-mono text-[11px] tracking-[0.15em] text-center hover:bg-emerald-400/20 transition-colors">
+                  className="mt-3 w-full py-2 rounded-xl border border-emerald-300/40 bg-emerald-400/10 text-emerald-100 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-emerald-400/20 transition-colors">
                   MANAGE
                 </a>
               ) : me ? (wallet?.buyable && (
-                <button onClick={() => startCheckout('member')} disabled={buying !== ''}
-                  className="mt-3 w-full py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors disabled:opacity-50">
-                  {buying === 'member' ? 'OPENING…' : `JOIN · $${wallet.memUsd}/mo`}
-                </button>
+                <div className="mt-3">
+                  <button onClick={() => startCheckout('member')} disabled={buying !== ''}
+                    className="w-full py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors disabled:opacity-50">
+                    {buying === 'member' ? 'OPENING…' : `JOIN · $${wallet.memUsd}/mo`}
+                  </button>
+                  <div className="font-mono text-[10px] text-white/45 mt-1.5 text-center">bring your own AI to build</div>
+                </div>
               )) : (
                 <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
-                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[11px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
+                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
                   SIGN IN TO JOIN
                 </a>
               )}
@@ -752,18 +789,18 @@ export default function TheGrid() {
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
               <span className="text-[20px] text-emerald-300/80">◐</span>
               <span className="min-w-0 flex-1">
-                <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block truncate">{me.name ?? me.email ?? 'SIGNED IN'}</span>
-                <span className="font-mono text-[10px] text-white/40">account page — membership · purchases · sign out</span>
+                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block truncate">{me.name ?? me.email ?? 'SIGNED IN'}</span>
+                <span className="font-mono text-[11px] text-white/50">account page — membership · purchases · sign out</span>
               </span>
-              <span className="font-mono text-[14px] text-white/40 shrink-0">▸</span>
+              <span className="font-mono text-[14px] text-white/50 shrink-0">▸</span>
             </a>
             ) : (
             <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')} data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
               <span className="text-[20px] text-white/70">◐</span>
               <span>
-                <span className="font-mono text-[13px] tracking-[0.2em] text-white/90 block">ACCOUNT</span>
-                <span className="font-mono text-[10px] text-white/40">sign in · membership</span>
+                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block">ACCOUNT</span>
+                <span className="font-mono text-[11px] text-white/50">sign in · membership</span>
               </span>
             </a>
             )}
@@ -778,17 +815,17 @@ export default function TheGrid() {
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setConnectOpen(false)}>
           <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="text-[12px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-            <p className="text-[11px] text-white/50 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
-            {plugErr && <p className="text-[11px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
-            {!plugErr && !plugToken && <p className="text-[11px] text-white/45 mb-2">minting a build key…</p>}
+            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
+            <p className="text-[12px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
+            {plugErr && <p className="text-[12px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
+            {!plugErr && !plugToken && <p className="text-[12px] text-white/55 mb-2">minting a build key…</p>}
             {plugToken && <>
-              <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
+              <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
               <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+                className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[13px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
                 {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
               </button>
-              <p className="text-[10px] text-white/35 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
+              <p className="text-[11px] text-white/45 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
             </>}
           </div>
         </div>
@@ -800,8 +837,8 @@ export default function TheGrid() {
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setInstrOpen(false)}>
           <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4" onClick={e => e.stopPropagation()}>
-            <div className="font-mono text-[12px] tracking-[0.25em] text-white/50 mb-2">? INSTRUCTIONS — {selected?.name}</div>
-            <div className="font-mono text-[13px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
+            <div className="font-mono text-[13px] tracking-[0.25em] text-white/60 mb-2">? INSTRUCTIONS — {selected?.name}</div>
+            <div className="font-mono text-[14px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
           </div>
         </div>
       )}
@@ -813,7 +850,7 @@ export default function TheGrid() {
           onClick={() => setAttribOpen(false)}>
           <div className="w-full max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[16px] tracking-[0.2em] text-white/95 mb-1">{selected?.name}</div>
-            {selected?.maker && <div className="text-[12px] text-amber-200/85 mb-3">by {selected.maker}</div>}
+            {selected?.maker && <div className="text-[13px] text-amber-200/85 mb-3">by {selected.maker}</div>}
             <AttribLineage scene={scene} />
           </div>
         </div>
@@ -828,13 +865,13 @@ export default function TheGrid() {
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
-                className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                  tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/45 hover:text-white/75'}`}>
+                className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                  tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
                 {label}
               </button>
             ))}
             <button onClick={() => setTool('connect')}
-              className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+              className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                 tool === 'connect' ? 'bg-emerald-400/20 border-emerald-300/70 text-emerald-100' : 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20'}`}>
               ⚿ CONNECT AI
             </button>
@@ -849,23 +886,23 @@ export default function TheGrid() {
             {tool === 'eye' && (
               <div className="w-full h-full flex flex-col p-4 font-mono">
                 <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                  <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">◈ THE EYE — hand the AI your view</span>
+                  <span className="text-[11.5px] tracking-[0.2em] text-sky-200/70">◈ THE EYE — hand the AI your view</span>
                   <div className="flex items-center gap-2">
                     {/* ◎ INSPECT — click-telling: while ON, canvas clicks document
                         what's under them (wd.__clicks) for the AI; game input paused */}
                     <button onClick={() => cmd('inspect')}
-                      className={`px-3 py-1.5 rounded-lg border text-[11px] tracking-[0.15em] transition-colors ${
-                        eyeData?.inspect?.on ? 'bg-sky-500/25 border-sky-400/60 text-sky-100' : 'border-white/15 bg-black/40 text-white/60 hover:text-white'}`}>
+                      className={`px-3 py-1.5 rounded-lg border text-[12px] tracking-[0.15em] transition-colors ${
+                        eyeData?.inspect?.on ? 'bg-sky-500/25 border-sky-400/60 text-sky-100' : 'border-white/15 bg-black/40 text-white/70 hover:text-white'}`}>
                       {eyeData?.inspect?.on ? '◉ INSPECT ON' : '◎ INSPECT'}
                     </button>
                     <button onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'snapshot' })) } catch { /* ssr */ } }}
-                      className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
+                      className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[12px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
                       {eyeData?.shot === 'sending' ? '…' : eyeData?.shot === 'sent' ? '✓ SENT TO THE AI' : '📸 SNAPSHOT → AI'}
                     </button>
                   </div>
                 </div>
                 {eyeData?.focus?.action && (
-                  <div className="text-[10.5px] text-white/60 mb-2">ai focus: <span className="text-emerald-200/90">{eyeData.focus.action}</span>{eyeData.focus.fieldName ? <span className="text-white/45"> · {eyeData.focus.fieldName}</span> : null}</div>
+                  <div className="text-[11.5px] text-white/70 mb-2">ai focus: <span className="text-emerald-200/90">{eyeData.focus.action}</span>{eyeData.focus.fieldName ? <span className="text-white/55"> · {eyeData.focus.fieldName}</span> : null}</div>
                 )}
                 <div className="relative flex-1 min-h-0 rounded-xl border border-white/12 bg-black/50 grid place-items-center overflow-hidden">
                   {eyeData?.eye?.png && (eyeData.eye.at ?? 1) > eyeCleared ? (
@@ -873,24 +910,24 @@ export default function TheGrid() {
                       <img src={`data:image/png;base64,${eyeData.eye.png}`.replace('base64,data:', '').replace('base64,i', 'base64,i')} alt="the eye" className="max-w-full max-h-full object-contain" />
                       <button data-eye-clear onClick={() => setEyeCleared(eyeData?.eye?.at ?? Date.now())}
                         title="clear this snapshot — the next probe or 📸 reappears on its own"
-                        className="absolute top-2 right-2 px-2.5 py-1 rounded-lg border border-white/25 bg-black/70 text-white/75 text-[10.5px] tracking-[0.15em] hover:text-white hover:bg-black/85 transition-colors">
+                        className="absolute top-2 right-2 px-2.5 py-1 rounded-lg border border-white/25 bg-black/70 text-white/75 text-[11.5px] tracking-[0.15em] hover:text-white hover:bg-black/85 transition-colors">
                         ✕ CLEAR
                       </button>
                     </>
-                  ) : <span className="text-[11px] text-white/45 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
+                  ) : <span className="text-[12px] text-white/55 p-6 text-center">no image yet — 📸 sends your live frame to the connected AI over the bridge; its probes land here too.</span>}
                 </div>
                 {/* the INSPECT feed — every documented click, newest first */}
                 {eyeData?.inspect?.on && (
-                  <div className="mt-2 max-h-[30%] overflow-y-auto rounded-xl border border-sky-400/25 bg-black/50 p-2.5 text-[10.5px] leading-relaxed">
-                    {!eyeData.inspect.log?.length && <div className="text-white/45">click anything in the world above — each click is documented for the AI (game input paused).</div>}
+                  <div className="mt-2 max-h-[30%] overflow-y-auto rounded-xl border border-sky-400/25 bg-black/50 p-2.5 text-[11.5px] leading-relaxed">
+                    {!eyeData.inspect.log?.length && <div className="text-white/55">click anything in the world above — each click is documented for the AI (game input paused).</div>}
                     {[...(eyeData.inspect.log ?? [])].reverse().map((en, i) => (
                       <div key={i} className="py-0.5 border-b border-white/5 last:border-0 text-white/75">
                         <span className="text-sky-200/90">({en.x},{en.y})</span>
                         {en.color && <span className="ml-2" style={{ color: en.color }}>■ {en.color}</span>}
-                        {en.field && <span className="text-white/55 ml-2">field {en.field}</span>}
+                        {en.field && <span className="text-white/65 ml-2">field {en.field}</span>}
                         {en.visual && <span className="text-emerald-200/80 ml-2">{en.visual}</span>}
                         {en.entity && <span className="text-amber-200/80 ml-2">entity #{en.entity.id}{en.entity.label ? ` ${en.entity.label}` : ''}</span>}
-                        {en.ui && <span className="text-white/60 ml-2">ui {en.ui.id}</span>}
+                        {en.ui && <span className="text-white/70 ml-2">ui {en.ui.id}</span>}
                       </div>
                     ))}
                   </div>
@@ -899,12 +936,12 @@ export default function TheGrid() {
             )}
             {tool === 'console' && (
               <div className="w-full h-full flex flex-col p-4 font-mono">
-                <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌁ CONSOLE — the AI building, step by step</div>
-                <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[11px] leading-relaxed">
-                  {aiLog.length === 0 && <div className="text-white/45">no AI edits this session — connect an AI and every build step lands here, named and timed.</div>}
+                <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌁ CONSOLE — the AI building, step by step</div>
+                <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 text-[12px] leading-relaxed">
+                  {aiLog.length === 0 && <div className="text-white/55">no AI edits this session — connect an AI and every build step lands here, named and timed.</div>}
                   {aiLog.map((l, i) => (
                     <div key={i} className="flex gap-2 py-0.5 border-b border-white/5 last:border-0">
-                      <span className="text-white/45 shrink-0">{new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      <span className="text-white/55 shrink-0">{new Date(l.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                       <span className="text-emerald-200/90 shrink-0">{l.type}</span>
                       <span className="text-white/85 truncate">{l.summary}</span>
                       {l.author && <span className="text-amber-200/70 shrink-0 ml-auto">{l.author}</span>}
@@ -926,17 +963,17 @@ export default function TheGrid() {
             )}
             {tool === 'connect' && (
               <div className="w-full h-full overflow-y-auto p-4 font-mono">
-                <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-                <p className="text-[11px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
-                {plugErr && <p className="text-[11px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
-                {!plugErr && !plugToken && <p className="text-[11px] text-white/45 mb-2">minting a build key…</p>}
+                <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
+                <p className="text-[12px] text-white/70 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
+                {plugErr && <p className="text-[12px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
+                {!plugErr && !plugToken && <p className="text-[12px] text-white/55 mb-2">minting a build key…</p>}
                 {plugToken && <>
-                  <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[11.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
+                  <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
                   <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                    className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
+                    className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[13px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
                     {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
                   </button>
-                  <p className="text-[10px] text-white/35 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
+                  <p className="text-[11px] text-white/45 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
                 </>}
               </div>
             )}
@@ -963,13 +1000,13 @@ export default function TheGrid() {
           onClick={() => setPremGate(null)}>
           <div className="w-full max-w-[440px] rounded-2xl border border-amber-300/30 bg-[#14100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[12px] tracking-[0.25em] text-amber-200/90">✦ PREMIUM WORLD</span>
+              <span className="text-[13px] tracking-[0.25em] text-amber-200/90">✦ PREMIUM WORLD</span>
               <button onClick={() => setPremGate(null)} aria-label="close"
-                className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+                className="w-8 h-8 grid place-items-center rounded-lg text-white/70 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
             </div>
             <div className="text-[15px] tracking-[0.15em] text-white/95 mb-1">{selected?.name ?? premGate.slug.toUpperCase()}</div>
-            <p className="text-[11px] text-white/55 leading-relaxed mb-3">buy it once — it saves to your account and this world opens for you forever (plus co-program access).</p>
-            {premGate.err && <p className="text-[11px] text-amber-200/90 mb-2">{premGate.err}</p>}
+            <p className="text-[12px] text-white/65 leading-relaxed mb-3">buy it once — it saves to your account and this world opens for you forever (plus co-program access).</p>
+            {premGate.err && <p className="text-[12px] text-amber-200/90 mb-2">{premGate.err}</p>}
             {premGate.signedIn ? (
               <button data-prem-buy disabled={!premGate.buyable || premGate.busy}
                 onClick={async () => {
@@ -981,15 +1018,40 @@ export default function TheGrid() {
                     setPremGate(g => g && { ...g, busy: false, err: d?.error || 'checkout failed' })
                   } catch { setPremGate(g => g && { ...g, busy: false, err: 'checkout failed — are you offline?' }) }
                 }}
-                className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+                className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[13px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
                 {premGate.busy ? '…' : premGate.buyable ? `✦ BUY & PLAY — $${premGate.usd}` : 'payments not configured yet'}
               </button>
             ) : (
               <a data-prem-signin href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid?w=space:' + premGate.slug + '&buy=' + premGate.slug)}
-                className="block text-center w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 transition-colors">
+                className="block text-center w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[13px] tracking-[0.18em] hover:bg-amber-400/25 transition-colors">
                 CREATE ACCOUNT / SIGN IN — THEN BUY ${premGate.usd}
               </a>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ▭ THE BIGGER-SCREEN NOTICE — a desktop-built game (deviceConfig ≠
+          mobile) opened on a small/phone screen (narrow) warns the player to
+          come back on desktop, with a play-anyway escape. Shows once per world
+          (bigScreenAck). Mobile-declared worlds never see it. */}
+      {phase === 'play' && narrow && spc && spc.device !== 'mobile' && bigScreenAck !== spc.slug && (
+        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'rgba(5,6,12,0.92)', borderRadius: 10 }}>
+          <div className="w-full max-w-[400px] rounded-2xl border border-sky-300/30 bg-[#0a0e16]/97 p-5 m-4 font-mono">
+            <div className="text-[13px] tracking-[0.25em] text-sky-200/90 mb-2">▭ BIGGER SCREEN</div>
+            <div className="text-[15px] tracking-[0.15em] text-white/95 mb-1">{spc.name}</div>
+            <p className="text-[12px] text-white/65 leading-relaxed mb-4">this game is built for desktop — it needs a bigger screen, a keyboard, and room to see. Come back on a computer for the real thing.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setPhase('browse') }}
+                className="flex-1 py-2.5 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[12px] tracking-[0.15em] hover:text-white hover:bg-white/5 transition-colors">
+                ◂ BACK TO GAMES
+              </button>
+              <button onClick={() => setBigScreenAck(spc.slug)}
+                className="flex-1 py-2.5 rounded-xl border border-sky-300/50 bg-sky-400/15 text-sky-100 text-[12px] tracking-[0.15em] hover:bg-sky-400/25 transition-colors">
+                PLAY ANYWAY
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1012,12 +1074,12 @@ export default function TheGrid() {
             </button>
             {!narrow && (uiSet === 'main' ? (
             <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
-              className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
+              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
               Cartridge.Cafe
             </button>
             ) : uiSet !== 'engine' ? (
             <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
-              className="font-mono text-[12px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-full truncate">
+              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-full truncate">
               {selected?.name ?? '—'}
             </button>
             ) : null)}
@@ -1025,7 +1087,7 @@ export default function TheGrid() {
             {/* ◉ COMMONS — immediately left of the dockstar (MAIN) */}
             {uiSet === 'main' && (
               <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                   chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 ◉ COMMONS
               </button>
@@ -1034,7 +1096,7 @@ export default function TheGrid() {
             {!narrow && uiSet === 'games' && phase === 'play' && (
               <button data-grid-rec onClick={() => cmd('rec')}
                 title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
-                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 shrink-0 ${
+                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 shrink-0 ${
                   rec.on ? 'bg-red-500/25 border-red-400/60 text-red-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 <span className={`inline-block w-2 h-2 rounded-full bg-red-500 ${rec.on ? 'animate-pulse' : ''}`} />
                 {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
@@ -1054,7 +1116,7 @@ export default function TheGrid() {
             {/* ◆ BREW ICON — immediately right of the dockstar (MAIN) */}
             {uiSet === 'main' && (
               <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                   brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 ◆ BREW ICON
               </button>
@@ -1063,7 +1125,7 @@ export default function TheGrid() {
             {/* ? INSTRUCTIONS — GAMES only (not MAIN, not ENGINE, not CREATE) */}
             {uiSet === 'games' && (
             <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
-              className={`font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+              className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                 instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
               ? INSTRUCTIONS
             </button>
@@ -1075,8 +1137,20 @@ export default function TheGrid() {
                 catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
                 if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
               }}
-                className="font-mono text-[11px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
+                className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
                 {copied ? '✓ COPIED' : '↗ SHARE'}
+              </button>
+            )}
+            {/* ⑄ FORK — the visible fork control in the play bar (Galen: "just a
+                button in the engine"). The engine dock's fork lives in a hidden
+                (chromeHidden) frame, so surface it here for any forkable space
+                world; cmd('fork') runs the engine's own fork (instantForkSpace →
+                the credit-gated API). forkable comes from fork-policy via config. */}
+            {uiSet === 'games' && phase === 'play' && scene.startsWith('space:') && eyeData?.config?.forkable !== false && (
+              <button onClick={() => { cmd('fork'); setSelOpen(false); setConnectOpen(false) }}
+                title="fork this world — a new world you own, with lineage back here"
+                className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-emerald-500/15 border-emerald-300/45 text-emerald-100 hover:bg-emerald-500/25 hover:text-white transition-colors shrink-0">
+                ⑄ FORK
               </button>
             )}
           </div>
@@ -1109,10 +1183,10 @@ function CrewView({ icons, current, onJoin }: {
   }, [])
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[10.5px] tracking-[0.2em] text-sky-200/70 mb-1">⛭ CO-BUILD — open live-editing worlds, join in</div>
-      <p className="text-[10.5px] text-white/45 mb-3">these worlds build in the open — join one and it loads with the ⚿ connect prompt ready for your AI. Editing membership covers every open world.</p>
-      {open === null && <div className="text-[11px] text-white/45">…</div>}
-      {open?.length === 0 && <div className="text-[11px] text-white/45">no open builds right now — ⬆ PUBLISH can open one of yours (permanently).</div>}
+      <div className="text-[11.5px] tracking-[0.2em] text-sky-200/70 mb-1">⛭ CO-BUILD — open live-editing worlds, join in</div>
+      <p className="text-[11.5px] text-white/55 mb-3">these worlds build in the open — join one and it loads with the ⚿ connect prompt ready for your AI. Editing membership covers every open world.</p>
+      {open === null && <div className="text-[12px] text-white/55">…</div>}
+      {open?.length === 0 && <div className="text-[12px] text-white/55">no open builds right now — ⬆ PUBLISH can open one of yours (permanently).</div>}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(132px, 1fr))' }}>
         {(open ?? []).map(e => {
           const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
@@ -1123,11 +1197,11 @@ function CrewView({ icons, current, onJoin }: {
                 on ? 'border-sky-300/70 bg-sky-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
               <div className="aspect-square w-full grid place-items-center overflow-hidden bg-black/50">
                 {ic ? <img src={ic} alt="" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
-                  : <span className="text-[20px] text-white/30">{e.name.slice(0, 1)}</span>}
+                  : <span className="text-[20px] text-white/40">{e.name.slice(0, 1)}</span>}
               </div>
               <div className="px-2 py-1.5">
-                <div className="text-[10px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
-                <div className="text-[9px] text-sky-200/80 tracking-[0.15em]">◉ JOIN THE BUILD</div>
+                <div className="text-[11px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
+                <div className="text-[10px] text-sky-200/80 tracking-[0.15em]">◉ JOIN THE BUILD</div>
               </div>
             </button>
           )
@@ -1147,12 +1221,12 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
     return (
       <div className="w-full h-full flex flex-col p-4 font-mono">
         <div className="flex items-center gap-2 mb-2">
-          <button onClick={() => setSel(null)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
-          <span className={`text-[10px] tracking-[0.15em] ${tint[sel.kind]}`}>{sel.kind.toUpperCase()}</span>
-          <span className="text-[12px] text-white/90 truncate">{sel.title}</span>
-          {'author' in sel && (sel as { author?: string }).author ? <span className="ml-auto text-[10px] text-amber-200/70">{(sel as { author?: string }).author}</span> : null}
+          <button onClick={() => setSel(null)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[12px] hover:bg-white/5">◂ BACK</button>
+          <span className={`text-[11px] tracking-[0.15em] ${tint[sel.kind]}`}>{sel.kind.toUpperCase()}</span>
+          <span className="text-[13px] text-white/90 truncate">{sel.title}</span>
+          {'author' in sel && (sel as { author?: string }).author ? <span className="ml-auto text-[11px] text-amber-200/70">{(sel as { author?: string }).author}</span> : null}
         </div>
-        <pre className="flex-1 min-h-0 overflow-auto rounded-xl border border-white/12 bg-black/60 p-3 text-[10.5px] leading-relaxed text-white/85 whitespace-pre-wrap break-words">
+        <pre className="flex-1 min-h-0 overflow-auto rounded-xl border border-white/12 bg-black/60 p-3 text-[11.5px] leading-relaxed text-white/85 whitespace-pre-wrap break-words">
           {code || '(no code on this node — a field/registry entry)'}
         </pre>
       </div>
@@ -1173,29 +1247,29 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
     const orphanFields = fields.filter(f => !paintedIds.has(f.id))
     const NodeBtn = ({ n, pre }: { n: ANode; pre: string }) => (
       <button onClick={() => setSel(n)}
-        className="w-full text-left flex items-center py-1 px-1 rounded hover:bg-white/5 text-[11.5px] leading-snug">
-        <span className="shrink-0 text-white/25 whitespace-pre">{pre}</span>
+        className="w-full text-left flex items-center py-1 px-1 rounded hover:bg-white/5 text-[12.5px] leading-snug">
+        <span className="shrink-0 text-white/35 whitespace-pre">{pre}</span>
         <span className={`shrink-0 mr-2 ${tint[n.kind]}`}>●</span>
         <span className="text-white/90 truncate">{n.title}</span>
       </button>
     )
     const Stage = ({ label }: { label: string }) => (
-      <div className="flex items-center gap-2 my-1.5 text-[9.5px] tracking-[0.25em] text-white/40">
+      <div className="flex items-center gap-2 my-1.5 text-[10.5px] tracking-[0.25em] text-white/50">
         <span className="text-sky-300/60">↓</span>{label}
       </div>
     )
     return (
       <div className="w-full h-full overflow-y-auto p-4 font-mono">
         <div className="flex items-center gap-2 mb-3">
-          <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
-          <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬡ THE FLOW — tap any node for its code</span>
+          <button onClick={() => setMode('list')} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[12px] hover:bg-white/5">◂ BACK</button>
+          <span className="text-[11.5px] tracking-[0.2em] text-sky-200/70">⬡ THE FLOW — tap any node for its code</span>
         </div>
         {hooks.length > 0 && <>
-          <div className="text-[9.5px] tracking-[0.25em] text-violet-300/70">✎ HOOKS — run every tick, drive the world</div>
+          <div className="text-[10.5px] tracking-[0.25em] text-violet-300/70">✎ HOOKS — run every tick, drive the world</div>
           {hooks.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === hooks.length - 1 ? ' └─ ' : ' ├─ '} />)}
           <Stage label="DRIVE THE VISUALS" />
         </>}
-        <div className="text-[9.5px] tracking-[0.25em] text-amber-200/70">◆ VISUALS ─paint→ ▦ FIELDS</div>
+        <div className="text-[10.5px] tracking-[0.25em] text-amber-200/70">◆ VISUALS ─paint→ ▦ FIELDS</div>
         {visuals.map((v, i) => {
           const kids = (paintedBy.get(v.id) ?? []).map(id => fieldById.get(id)).filter(Boolean) as ANode[]
           const last = i === visuals.length - 1 && orphanFields.length === 0
@@ -1207,12 +1281,12 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
           )
         })}
         {orphanFields.length > 0 && <>
-          <div className="mt-1 text-[9.5px] tracking-[0.25em] text-sky-200/60">▦ FIELDS with no visual (data only — render as nothing)</div>
+          <div className="mt-1 text-[10.5px] tracking-[0.25em] text-sky-200/60">▦ FIELDS with no visual (data only — render as nothing)</div>
           {orphanFields.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === orphanFields.length - 1 ? ' └─ ' : ' ├─ '} />)}
         </>}
         {modules.length > 0 && <>
           <Stage label="COMPOSED FROM" />
-          <div className="text-[9.5px] tracking-[0.25em] text-emerald-200/70">⚙ MODULES — the shader library under every visual</div>
+          <div className="text-[10.5px] tracking-[0.25em] text-emerald-200/70">⚙ MODULES — the shader library under every visual</div>
           {modules.map((n, i) => <NodeBtn key={n.id} n={n} pre={i === modules.length - 1 ? ' └─ ' : ' ├─ '} />)}
         </>}
       </div>
@@ -1225,18 +1299,18 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
+        <span className="text-[11.5px] tracking-[0.2em] text-sky-200/70">⬢ NODES — who builds what</span>
         <button onClick={() => setMode('adv')} disabled={!graph}
-          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[10px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
+          className="px-3 py-1 rounded-lg border border-sky-300/40 text-sky-200/90 text-[11px] tracking-[0.15em] hover:bg-sky-400/10 disabled:opacity-35">
           ⬡ ADVANCED
         </button>
       </div>
-      {!graph && <div className="text-[11px] text-white/45">reading the world…</div>}
-      {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[11.5px] text-white/60">an empty world — no nodes yet.</div>}
+      {!graph && <div className="text-[12px] text-white/55">reading the world…</div>}
+      {graph && rows.length === 0 && <div className="rounded-xl border border-white/12 bg-black/50 p-3.5 text-[12.5px] text-white/70">an empty world — no nodes yet.</div>}
       {rows.map(n => (
         <button key={n.id} onClick={() => { setSel(n) }}
-          className="w-full text-left flex items-center gap-3 py-1.5 border-b border-white/8 text-[11.5px] hover:bg-white/5">
-          <span className={`shrink-0 w-14 text-[9.5px] tracking-[0.15em] ${tint[n.kind]}`}>{n.kind.toUpperCase()}</span>
+          className="w-full text-left flex items-center gap-3 py-1.5 border-b border-white/8 text-[12.5px] hover:bg-white/5">
+          <span className={`shrink-0 w-14 text-[10.5px] tracking-[0.15em] ${tint[n.kind]}`}>{n.kind.toUpperCase()}</span>
           <span className="text-white/90 truncate">{n.title}</span>
           {'author' in n && (n as { author?: string }).author ? <span className="ml-auto text-amber-200/70 shrink-0">{(n as { author?: string }).author}</span> : null}
         </button>
@@ -1254,11 +1328,11 @@ function ConfigView({ cfg, sceneIsSpace }: {
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
   const Row = ({ label, on, k, disabled, hint }: { label: string; on: boolean; k: string; disabled?: boolean; hint?: string }) => (
-    <div className="flex items-center justify-between py-2 border-b border-white/8 text-[12px]" title={hint}>
+    <div className="flex items-center justify-between py-2 border-b border-white/8 text-[13px]" title={hint}>
       <span className="text-white/80">{label}</span>
       <button onClick={() => fire(k)} disabled={disabled}
-        className={`px-2.5 py-0.5 rounded-full border text-[11px] tracking-[0.15em] transition-colors disabled:opacity-35 ${
-          on ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200' : 'bg-white/5 border-white/15 text-white/45'}`}>
+        className={`px-2.5 py-0.5 rounded-full border text-[12px] tracking-[0.15em] transition-colors disabled:opacity-35 ${
+          on ? 'bg-emerald-400/20 border-emerald-300/50 text-emerald-200' : 'bg-white/5 border-white/15 text-white/55'}`}>
         {on ? 'ON' : 'OFF'}
       </button>
     </div>
@@ -1306,7 +1380,7 @@ function ConfigView({ cfg, sceneIsSpace }: {
 
   return (
     <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[10.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
+      <div className="text-[11.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
       {ownedSpace && cfg?.spaceId && (
         <div className="mb-3 rounded-xl border border-white/12 bg-black/40 overflow-hidden">
           <SpaceManagementOverlay embedded spaceSlug={slug!} spaceId={cfg.spaceId} />
@@ -1319,24 +1393,24 @@ function ConfigView({ cfg, sceneIsSpace }: {
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
         {/* (✎ design moved to the ⬆ PUBLISH tab — draft vs live is a publishing state) */}
         {/* ▦ DEVICE — the fit law: which doors admit phones */}
-        <div className="flex items-center justify-between py-2 text-[12px]"
+        <div className="flex items-center justify-between py-2 text-[13px]"
           title="AUTO = desktop by default. MOBILE declares this world phone-fit (phones are admitted); DESKTOP declares it desktop-only.">
           <span className="text-white/80">device</span>
           <span className="flex gap-1.5">
             {(['auto', 'mobile', 'desktop'] as const).map(d => (
               <button key={d} data-cfg-device={d} disabled={!ownerLaw}
                 onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify({ device: d === 'auto' ? null : d }) })) } catch { /* ssr */ } }}
-                className={`px-2.5 py-0.5 rounded-full border text-[10.5px] tracking-[0.12em] transition-colors disabled:opacity-35 ${
-                  (cfg?.device ?? 'auto') === d ? 'border-sky-300/60 bg-sky-400/15 text-sky-200' : 'border-white/15 text-white/45 hover:text-white'}`}>
+                className={`px-2.5 py-0.5 rounded-full border text-[11.5px] tracking-[0.12em] transition-colors disabled:opacity-35 ${
+                  (cfg?.device ?? 'auto') === d ? 'border-sky-300/60 bg-sky-400/15 text-sky-200' : 'border-white/15 text-white/55 hover:text-white'}`}>
                 {d.toUpperCase()}
               </button>
             ))}
           </span>
         </div>
         {(cfg?.gridW || cfg?.gridH) && (
-          <div className="flex items-center justify-between py-2 border-t border-white/8 text-[12px]">
+          <div className="flex items-center justify-between py-2 border-t border-white/8 text-[13px]">
             <span className="text-white/80" title="declared world dimensions — the frame cover-fills to these; undeclared worlds letterbox by design">dimensions</span>
-            <span className="text-white/55 font-mono">{cfg?.gridW ?? '—'} × {cfg?.gridH ?? '—'}</span>
+            <span className="text-white/65 font-mono">{cfg?.gridW ?? '—'} × {cfg?.gridH ?? '—'}</span>
           </div>
         )}
       </div>
@@ -1347,36 +1421,36 @@ function ConfigView({ cfg, sceneIsSpace }: {
 
       {/* owner workbench — invite / icon / sprites */}
       {ownedSpace && (
-        <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px]">
-          <div className="text-[10.5px] tracking-[0.2em] text-white/50 mb-2">THE WORKBENCH</div>
+        <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[12px]">
+          <div className="text-[11.5px] tracking-[0.2em] text-white/60 mb-2">THE WORKBENCH</div>
           <div className="flex flex-wrap gap-2">
             <button onClick={mintInvite}
               title="mint a ONE-TIME join link — the first signed-in person to open it joins your crew as a builder; the link dies on use"
-              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors">
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
               {invite === 'busy' ? '…' : invite === 'copied' ? '✓ LINK COPIED' : invite === 'failed' ? 'MINT FAILED' : '⚭ INVITE A BUILDER'}
             </button>
             <button onClick={() => setSpritesOpen(true)}
               title="upload pixel art — rip sprite sheets into slots any visual can sample"
-              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors">
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
               ◲ SPRITES
             </button>
           </div>
           <div className="mt-3 flex gap-2 items-center">
             <input value={iconDesc} onChange={e => setIconDesc(e.target.value)} maxLength={120}
               placeholder="◆ icon: describe it (optional)…"
-              className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
+              className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-[12px] text-white/85 placeholder:text-white/40 outline-none focus:border-white/35" />
             <button onClick={copyIconPrompt}
               title="your AI writes a tiny shader icon for this world's shelf bubble — copy the prompt, paste it to your AI"
-              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[11px] tracking-[0.15em] transition-colors shrink-0">
+              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors shrink-0">
               {iconCopied ? '✓ COPIED' : '◆ MAKE ICON'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[11px] leading-relaxed text-white/55">
+      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 text-[12px] leading-relaxed text-white/65">
         social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
-        {!sceneIsSpace && <div className="mt-1.5 text-white/40">house cartridge — owner controls apply on real worlds.</div>}
+        {!sceneIsSpace && <div className="mt-1.5 text-white/50">house cartridge — owner controls apply on real worlds.</div>}
       </div>
 
       {/* the sprites panel fills THIS area — the under-area, never the game */}
@@ -1414,39 +1488,39 @@ function VersionsView({ cfg }: { cfg: { isOwner: boolean; spaceSlug: string | nu
     } finally { setVerBusy(false) }
   }
   if (!slug) {
-    return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — versions live on real worlds.</div>
+    return <div className="w-full h-full grid place-items-center p-6 font-mono text-[12px] text-white/55 text-center">house cartridge — versions live on real worlds.</div>
   }
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <span className="text-[10.5px] tracking-[0.2em] text-amber-200/70">⏱ VERSIONS — every save point of this world</span>
+        <span className="text-[11.5px] tracking-[0.2em] text-amber-200/70">⏱ VERSIONS — every save point of this world</span>
         {owner && (
           <div className="flex gap-2 items-center">
             <input value={verNote} onChange={e => setVerNote(e.target.value)} maxLength={200} placeholder="note (optional)"
-              className="w-36 px-2 py-1 rounded-lg bg-black/50 border border-white/15 text-[10.5px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/35" />
+              className="w-36 px-2 py-1 rounded-lg bg-black/50 border border-white/15 text-[11.5px] text-white/85 placeholder:text-white/40 outline-none focus:border-white/35" />
             <button onClick={savePoint} disabled={verBusy}
-              className="px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+              className="px-2.5 py-1 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[11.5px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
               {verBusy ? '…' : '⚑ SAVE A POINT'}
             </button>
           </div>
         )}
       </div>
       <button onClick={() => owner && cmd('ver:live')} disabled={!owner}
-        className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors disabled:cursor-default ${
+        className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[12px] transition-colors disabled:cursor-default ${
           cfg?.ver == null ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
-        LIVE <span className="text-white/40 ml-2">now</span>
+        LIVE <span className="text-white/50 ml-2">now</span>
       </button>
       {[...vers].sort((a, b) => b.version - a.version).map(v => (
         <button key={v.version} onClick={() => owner && cmd('ver:' + v.version)} disabled={!owner}
-          className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[11px] transition-colors disabled:cursor-default ${
+          className={`w-full text-left px-2.5 py-1.5 rounded-lg mb-1 border text-[12px] transition-colors disabled:cursor-default ${
             cfg?.ver === v.version ? 'border-emerald-300/50 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-black/30 text-white/65 hover:text-white'}`}>
           v{v.version}
-          <span className="text-white/40 ml-2">{new Date(v.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="text-white/50 ml-2">{new Date(v.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
           {v.note && <span className="text-amber-200/70 ml-2">{v.note}</span>}
         </button>
       ))}
-      {vers.length === 0 && <div className="text-white/40 px-1 py-1">no save points yet{owner ? ' — ⚑ makes one from the live world.' : '.'}</div>}
-      {!owner && <div className="mt-2 text-[10px] text-white/40">only the maker restores versions.</div>}
+      {vers.length === 0 && <div className="text-white/50 px-1 py-1">no save points yet{owner ? ' — ⚑ makes one from the live world.' : '.'}</div>}
+      {!owner && <div className="mt-2 text-[11px] text-white/50">only the maker restores versions.</div>}
     </div>
   )
 }
@@ -1468,9 +1542,9 @@ function MyWorldsView({ icons, current, onPick }: {
   }, [])
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌂ MY WORLDS — pick one into the frame</div>
-      {mine === null && <div className="text-[11px] text-white/45">…</div>}
-      {mine?.length === 0 && <div className="text-[11px] text-white/45">no worlds on your deed yet — sign in, or brew one at /create.</div>}
+      <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌂ MY WORLDS — pick one into the frame</div>
+      {mine === null && <div className="text-[12px] text-white/55">…</div>}
+      {mine?.length === 0 && <div className="text-[12px] text-white/55">no worlds on your deed yet — sign in, or brew one at /create.</div>}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
         {(mine ?? []).map(e => {
           const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
@@ -1481,9 +1555,9 @@ function MyWorldsView({ icons, current, onPick }: {
                 on ? 'border-emerald-300/70 bg-emerald-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
               <div className="aspect-square w-full grid place-items-center overflow-hidden bg-black/50">
                 {ic ? <img src={ic} alt="" className="w-full h-full object-cover" style={{ imageRendering: 'pixelated' }} />
-                  : <span className="text-[20px] text-white/30">{e.name.slice(0, 1)}</span>}
+                  : <span className="text-[20px] text-white/40">{e.name.slice(0, 1)}</span>}
               </div>
-              <div className="px-2 py-1.5 text-[10px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
+              <div className="px-2 py-1.5 text-[11px] tracking-[0.12em] text-white/85 truncate">{e.name}</div>
             </button>
           )
         })}
@@ -1517,39 +1591,39 @@ function CardSection({ cfg }: { cfg: GridCfg | null }) {
     setBlurb(cfg.blurb ?? ''); setVision(cfg.vision ?? ''); setInstr(cfg.instructions ?? '')
   }, [cfg, seeded])
   return (
-    <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[11px] space-y-2">
-      <div className="text-[10.5px] tracking-[0.2em] text-white/50">▤ THE CARD — what the catalog deals</div>
+    <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[12px] space-y-2">
+      <div className="text-[11.5px] tracking-[0.2em] text-white/60">▤ THE CARD — what the catalog deals</div>
       <div className="flex items-center gap-1.5">
         {(['auto', 'toy', 'world', 'game'] as const).map(k => (
           <button key={k} data-card-kind={k}
             onClick={() => { setKind(k); send({ card: { kind: k === 'auto' ? null : k } }) }}
             title={k === 'auto' ? 'the anatomy decides: rules built → game; multiplayer/big grid → world; else toy' : k}
-            className={`px-2.5 py-0.5 rounded-full border text-[10.5px] tracking-[0.12em] transition-colors ${kind === k
-              ? 'border-amber-300/60 bg-amber-400/15 text-amber-200' : 'border-white/20 text-white/50 hover:text-white'}`}>
+            className={`px-2.5 py-0.5 rounded-full border text-[11.5px] tracking-[0.12em] transition-colors ${kind === k
+              ? 'border-amber-300/60 bg-amber-400/15 text-amber-200' : 'border-white/20 text-white/60 hover:text-white'}`}>
             {k.toUpperCase()}
           </button>
         ))}
       </div>
       <select value={typ} onChange={e => { setTyp(e.target.value); send({ card: { type: e.target.value || null } }) }}
-        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 outline-none focus:border-amber-300/50">
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] text-white/85 outline-none focus:border-amber-300/50">
         <option value="">type… (the vocabulary)</option>
         {types.map(t => <option key={t.id} value={t.id}>{t.label ?? t.id}</option>)}
       </select>
       <input value={tags} onChange={e => setTags(e.target.value)}
         onBlur={() => send({ card: { tags: tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) } })}
         placeholder="tags, comma, separated"
-        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] text-white/85 placeholder:text-white/40 outline-none focus:border-amber-300/50" />
       <input value={blurb} onChange={e => setBlurb(e.target.value)} onBlur={() => send({ blurb: blurb.trim() })}
         placeholder="the blurb — one line the card shows"
-        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50" />
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] text-white/85 placeholder:text-white/40 outline-none focus:border-amber-300/50" />
       <textarea value={instr} onChange={e => setInstr(e.target.value)} onBlur={() => send({ instructions: instr.trim() })}
         placeholder="instructions — how to PLAY it (the ? INSTRUCTIONS panel shows this)"
         rows={3}
-        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50 resize-y" />
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] leading-snug text-white/85 placeholder:text-white/40 outline-none focus:border-amber-300/50 resize-y" />
       <textarea value={vision} onChange={e => setVision(e.target.value)} onBlur={() => send({ vision: vision.trim() })}
         placeholder="the story (vision) — what this world IS"
         rows={2}
-        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug text-white/85 placeholder:text-white/30 outline-none focus:border-amber-300/50 resize-y" />
+        className="w-full bg-black/50 border border-white/15 rounded-lg px-2.5 py-1.5 text-[12px] leading-snug text-white/85 placeholder:text-white/40 outline-none focus:border-amber-300/50 resize-y" />
     </div>
   )
 }
@@ -1564,8 +1638,8 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
   const [confirmLive, setConfirmLive] = useState(false)
   const slug = cfg?.spaceSlug ?? null
   const owner = !!cfg?.isOwner
-  if (!slug) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">house cartridge — publishing lives on real worlds.</div>
-  if (!owner) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[11px] text-white/45 text-center">only the maker publishes this world.</div>
+  if (!slug) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[12px] text-white/55 text-center">house cartridge — publishing lives on real worlds.</div>
+  if (!owner) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[12px] text-white/55 text-center">only the maker publishes this world.</div>
   const drafting = !!cfg?.designMode
   const live = cfg?.isPublic === true
   const openBuild = cfg?.policy === 'anyone'
@@ -1577,20 +1651,20 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
   const stateTint = drafting ? 'text-amber-200 border-amber-300/50 bg-amber-400/10'
     : openBuild ? 'text-sky-200 border-sky-300/50 bg-sky-400/10'
     : live ? 'text-emerald-200 border-emerald-300/50 bg-emerald-400/10'
-    : 'text-white/60 border-white/20 bg-black/40'
+    : 'text-white/70 border-white/20 bg-black/40'
   const Btn = ({ label, onClick, tone, disabled, hint }: { label: string; onClick: () => void; tone: string; disabled?: boolean; hint?: string }) => (
     <button onClick={onClick} disabled={disabled} title={hint}
-      className={`px-3.5 py-2 rounded-xl border text-[11px] tracking-[0.15em] transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${tone}`}>
+      className={`px-3.5 py-2 rounded-xl border text-[12px] tracking-[0.15em] transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${tone}`}>
       {label}
     </button>
   )
   return (
-    <div className="w-full h-full overflow-y-auto p-4 font-mono text-[11px]">
+    <div className="w-full h-full overflow-y-auto p-4 font-mono text-[12px]">
       <div className="flex items-center gap-3 mb-3">
-        <span className="text-[10.5px] tracking-[0.2em] text-white/50">⬆ PUBLISH</span>
-        <span data-pub-state className={`px-3 py-1 rounded-full border text-[10.5px] tracking-[0.18em] ${stateTint}`}>{state}</span>
+        <span className="text-[11.5px] tracking-[0.2em] text-white/60">⬆ PUBLISH</span>
+        <span data-pub-state className={`px-3 py-1 rounded-full border text-[11.5px] tracking-[0.18em] ${stateTint}`}>{state}</span>
       </div>
-      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 leading-relaxed text-white/60">
+      <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 leading-relaxed text-white/70">
         <span className="text-amber-200/90">✎ draft</span>: edits author the cartridge in the workshop — nothing public changes.<br />
         <span className="text-emerald-200/90">● game list</span>: a finished, playable game.  <span className="text-white/85">⚒ unfinished</span>: public, honestly in-progress.<br />
         <span className="text-sky-200/90">◉ open live editing</span>: anyone with a membership builds on it — <span className="text-white/85">permanent</span>.
@@ -1620,7 +1694,7 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
           something you can take back… disclaimer pop up to confirm") */}
       {confirmLive && (
         <div data-live-confirm className="mt-3 rounded-xl border border-sky-300/40 bg-sky-950/40 p-4">
-          <div className="text-[11px] tracking-[0.2em] text-sky-200 mb-2">◉ OPEN LIVE EDITING — READ THIS FIRST</div>
+          <div className="text-[12px] tracking-[0.2em] text-sky-200 mb-2">◉ OPEN LIVE EDITING — READ THIS FIRST</div>
           <p className="text-white/75 leading-relaxed mb-3">
             This declares the world&apos;s social contract as <span className="text-sky-200">build: anyone</span> — every member can
             edit it live, forever. <span className="text-amber-200">The contract SEALS on declaration: it cannot be
@@ -1628,11 +1702,11 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
           </p>
           <div className="flex gap-2">
             <button data-live-confirm-go onClick={() => { cmd('publish:live'); setConfirmLive(false) }}
-              className="px-3.5 py-2 rounded-xl border border-sky-300/60 bg-sky-400/20 text-sky-100 text-[11px] tracking-[0.15em] hover:bg-sky-400/30 transition-colors">
+              className="px-3.5 py-2 rounded-xl border border-sky-300/60 bg-sky-400/20 text-sky-100 text-[12px] tracking-[0.15em] hover:bg-sky-400/30 transition-colors">
               I UNDERSTAND — OPEN IT PERMANENTLY
             </button>
             <button onClick={() => setConfirmLive(false)}
-              className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[11px] tracking-[0.15em] hover:text-white transition-colors">
+              className="px-3.5 py-2 rounded-xl border border-white/20 bg-black/50 text-white/70 text-[12px] tracking-[0.15em] hover:text-white transition-colors">
               cancel
             </button>
           </div>
@@ -1640,10 +1714,10 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
       )}
       {/* ✦ PREMIUM — the listing's price seat (worldData.premium.usd) */}
       <div className="mt-3 rounded-xl border border-white/12 bg-black/40 p-3.5">
-        <div className="text-[10.5px] tracking-[0.2em] text-white/50 mb-2">✦ PREMIUM</div>
+        <div className="text-[11.5px] tracking-[0.2em] text-white/60 mb-2">✦ PREMIUM</div>
         <PremiumSeat current={cfg?.premium ?? null} />
       </div>
-      <div className="mt-3 text-[10px] text-white/40 leading-relaxed">every publish ⚑ saves a pre-publish version point first — you are always one click from the way back.</div>
+      <div className="mt-3 text-[11px] text-white/50 leading-relaxed">every publish ⚑ saves a pre-publish version point first — you are always one click from the way back.</div>
     </div>
   )
 }
@@ -1654,21 +1728,21 @@ function PremiumSeat({ current }: { current: number | null }) {
   useEffect(() => { setUsd(current != null ? String(current) : '') }, [current])
   const send = (v: { usd: number } | null) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify({ premium: v }) })) } catch { /* ssr */ } }
   return (
-    <div className="flex items-center gap-2 text-[11px]">
-      <span className="text-white/55">$</span>
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className="text-white/65">$</span>
       <input value={usd} onChange={e => setUsd(e.target.value)} inputMode="decimal" placeholder="0"
         className="w-20 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-white/85 outline-none focus:border-amber-300/50" />
       <button onClick={() => { const n = parseFloat(usd); if (Number.isFinite(n) && n > 0) send({ usd: n }) }}
-        className="px-3 py-1.5 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[10.5px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
+        className="px-3 py-1.5 rounded-lg border border-amber-300/40 bg-amber-400/15 text-amber-200 text-[11.5px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
         SET PRICE
       </button>
       {current != null && (
         <button onClick={() => send(null)}
-          className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/60 text-[10.5px] tracking-[0.15em] hover:text-white transition-colors">
+          className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/70 text-[11.5px] tracking-[0.15em] hover:text-white transition-colors">
           CLEAR
         </button>
       )}
-      <span className="text-white/40 ml-1">{current != null ? `listed on ✦ PREMIUM at $${current}` : 'free — set a price to list on ✦ PREMIUM'}</span>
+      <span className="text-white/50 ml-1">{current != null ? `listed on ✦ PREMIUM at $${current}` : 'free — set a price to list on ✦ PREMIUM'}</span>
     </div>
   )
 }
@@ -1709,10 +1783,10 @@ function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
   // frame (Galen) — the void the brief will fill.
   if (flowOpen) {
     return (
-      <div className="w-full max-w-[980px] h-full flex flex-col font-mono text-[11px]">
+      <div className="w-full max-w-[980px] h-full flex flex-col font-mono text-[12px]">
         <div className="flex items-center gap-2 mb-2 shrink-0">
-          <button onClick={() => setFlowOpen(false)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[11px] hover:bg-white/5">◂ BACK</button>
-          <span className="text-[10.5px] tracking-[0.2em] text-emerald-200/70">✧ THE CREATE FLOW</span>
+          <button onClick={() => setFlowOpen(false)} className="px-2.5 py-1 rounded-lg border border-white/20 text-white/75 text-[12px] hover:bg-white/5">◂ BACK</button>
+          <span className="text-[11.5px] tracking-[0.2em] text-emerald-200/70">✧ THE CREATE FLOW</span>
         </div>
         <iframe data-create-flow src="/create"
           className="flex-1 min-h-0 w-full rounded-2xl border border-white/12 bg-black/40" />
@@ -1720,41 +1794,41 @@ function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
     )
   }
   return (
-    <div className="w-full max-w-[640px] font-mono text-[11px]">
-      <div className="text-[10.5px] tracking-[0.2em] text-emerald-200/70 mb-2">✧ CREATE</div>
+    <div className="w-full max-w-[640px] font-mono text-[12px]">
+      <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">✧ CREATE</div>
 
       {/* fork the world in the frame */}
       <div className="rounded-2xl border border-white/12 bg-black/40 p-4 mb-3">
-        <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">⑄ FORK {baseName.toUpperCase()}</div>
+        <div className="text-[13px] tracking-[0.18em] text-white/90 mb-1">⑄ FORK {baseName.toUpperCase()}</div>
         {baseSlug ? (forkable ? (
           <>
-            <div className="text-white/55 leading-relaxed mb-2.5">a fork is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
+            <div className="text-white/65 leading-relaxed mb-2.5">a fork is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
             <div className="flex gap-2">
               <input value={name} onChange={e => setName(e.target.value)} maxLength={60}
                 onKeyDown={e => { if (e.key === 'Enter' && nameOk) void fork() }}
                 placeholder="name your fork… (e.g. neon-remix)"
-                className="flex-1 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-emerald-300/50" />
+                className="flex-1 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[13px] text-white/90 placeholder:text-white/40 outline-none focus:border-emerald-300/50" />
               <button onClick={() => void fork()} disabled={!nameOk || busy}
-                className="px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors shrink-0">
+                className="px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors shrink-0">
                 {busy ? '…' : '⑄ FORK IT — IT BECOMES YOURS'}
               </button>
             </div>
             {err && <div className="mt-2 text-amber-200/90">{err}</div>}
-            <div className="mt-2 text-[10px] text-white/40">it opens in the ENGINE — connect your AI there and tell it what the fork should become.</div>
+            <div className="mt-2 text-[11px] text-white/50">it opens in the ENGINE — connect your AI there and tell it what the fork should become.</div>
           </>
         ) : (
-          <div className="text-white/50 leading-relaxed">the maker hasn&apos;t enabled forking on this world — pick another from the shelf, or brew below.</div>
+          <div className="text-white/60 leading-relaxed">the maker hasn&apos;t enabled forking on this world — pick another from the shelf, or brew below.</div>
         )) : (
-          <div className="text-white/50 leading-relaxed">house cartridge — its code is open ground to read, but forks grow from real worlds. Brew below instead.</div>
+          <div className="text-white/60 leading-relaxed">house cartridge — its code is open ground to read, but forks grow from real worlds. Brew below instead.</div>
         )}
       </div>
 
       {/* brew from nothing — the full create flow */}
       <div className="rounded-2xl border border-white/12 bg-black/40 p-4">
-        <div className="text-[12px] tracking-[0.18em] text-white/90 mb-1">✧ BREW FROM NOTHING</div>
-        <div className="text-white/55 leading-relaxed mb-2.5">the full create flow: describe a world, your AI builds it live. Blank ground or any open base.</div>
+        <div className="text-[13px] tracking-[0.18em] text-white/90 mb-1">✧ BREW FROM NOTHING</div>
+        <div className="text-white/65 leading-relaxed mb-2.5">the full create flow: describe a world, your AI builds it live. Blank ground or any open base.</div>
         <button onClick={() => { setFlowOpen(true); onBrew?.() }}
-          className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[11px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
+          className="inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors">
           ✧ OPEN THE CREATE FLOW
         </button>
       </div>
@@ -1780,20 +1854,20 @@ function BrewIconPanel({ bounds, onClose }: { bounds: Inset; onClose: () => void
       onClick={onClose}>
       <div className="w-full max-w-[460px] rounded-2xl border border-amber-300/25 bg-[#12100b]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[12px] tracking-[0.25em] text-amber-200/85">◆ BREW YOUR ICON</span>
+          <span className="text-[13px] tracking-[0.25em] text-amber-200/85">◆ BREW YOUR ICON</span>
           <button onClick={onClose} aria-label="close"
-            className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+            className="w-8 h-8 grid place-items-center rounded-lg text-white/70 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
         </div>
-        <p className="text-[11px] text-white/55 leading-relaxed mb-3">describe your icon, then hand the prompt to your AI — it authors a safe, gentle avatar and confirms. Your icon walks the commons with you.</p>
+        <p className="text-[12px] text-white/65 leading-relaxed mb-3">describe your icon, then hand the prompt to your AI — it authors a safe, gentle avatar and confirms. Your icon walks the commons with you.</p>
         <textarea value={desc} onChange={e => setDesc(e.target.value)} maxLength={200} rows={3}
           placeholder="a shy blue jellyfish that drifts…"
-          className="w-full resize-none rounded-xl bg-black/50 border border-white/15 px-3 py-2 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-amber-300/50 mb-2" />
+          className="w-full resize-none rounded-xl bg-black/50 border border-white/15 px-3 py-2 text-[13px] text-white/90 placeholder:text-white/40 outline-none focus:border-amber-300/50 mb-2" />
         <button onClick={async () => { try { await navigator.clipboard.writeText(playerGlyphPrompt(desc.trim(), tok || null)); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { /* manual */ } }}
           disabled={desc.trim().length < 3}
-          className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-35 transition-colors">
+          className="w-full py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[13px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-35 transition-colors">
           {copied ? '✓ COPIED' : '⧉ COPY FOR YOUR AI'}
         </button>
-        {!tok && <p className="mt-2 text-[10px] text-white/40">sign in to mint your icon key — the prompt needs it.</p>}
+        {!tok && <p className="mt-2 text-[11px] text-white/50">sign in to mint your icon key — the prompt needs it.</p>}
       </div>
     </div>
   )
@@ -1815,23 +1889,23 @@ function AttribLineage({ scene }: { scene: string }) {
   }, [scene, isSpace])
   return (
     <div data-attrib-lineage>
-      <div className="text-[10.5px] tracking-[0.2em] text-white/60 mb-1">⑂ LINEAGE</div>
-      {!isSpace && <div className="text-[10.5px] text-white/45 leading-relaxed">house cartridge — an original of the cafe.</div>}
-      {isSpace && t === null && <div className="text-[10.5px] text-white/40">…</div>}
+      <div className="text-[11.5px] tracking-[0.2em] text-white/70 mb-1">⑂ LINEAGE</div>
+      {!isSpace && <div className="text-[11.5px] text-white/55 leading-relaxed">house cartridge — an original of the cafe.</div>}
+      {isSpace && t === null && <div className="text-[11.5px] text-white/50">…</div>}
       {isSpace && t && (
-        <div className="text-[10.5px] leading-relaxed">
+        <div className="text-[11.5px] leading-relaxed">
           <div className="text-white/70">
             {t.trail.length <= 1
               ? 'an original — no upstream.'
               : t.trail.map((n, i) => (
                   <span key={i}>
-                    {i > 0 && <span className="text-white/30"> ⑂ </span>}
+                    {i > 0 && <span className="text-white/40"> ⑂ </span>}
                     <span className={i === t.trail.length - 1 ? 'text-amber-200/90' : 'text-white/70'}>{n.name}</span>
                   </span>
                 ))}
           </div>
           {t.remixes.length > 0 && (
-            <div className="mt-1 text-white/45">forks: {t.remixes.map(r => r.name).join(' · ')}</div>
+            <div className="mt-1 text-white/55">forks: {t.remixes.map(r => r.name).join(' · ')}</div>
           )}
         </div>
       )}

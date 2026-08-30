@@ -19,20 +19,20 @@ export default function McpConnectPanel() {
 
   return (
     <>
-        <div className="text-[13px] text-glow/45 leading-relaxed mb-2">
+        <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
           Add cartridge.cafe to <b>Claude Code</b> / Cursor as an MCP server. Your AI gets the guide, the bridge, and <b>the eye</b> — then one click of connect_account and every world it brews is born owned by you.
         </div>
-        <div className="text-[13px] text-emerald-300/80 leading-relaxed mb-3 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
+        <div className="text-[14px] text-emerald-300/80 leading-relaxed mb-3 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
           One command adds it — then just ask your AI to <b>“brew me a world where…”</b>. Sign in later and everything it made transfers to you.
         </div>
-        <div className="text-[12px] tracking-[0.12em] text-glow/35 mb-1">CLAUDE CODE — one command</div>
+        <div className="text-[13px] tracking-[0.12em] text-glow/35 mb-1">CLAUDE CODE — one command</div>
         <button onClick={() => copy(ADD_CMD, 'cmd')}
-          className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-left text-[12.5px] text-void font-bold break-all transition-all mb-3">
+          className="w-full rounded-md bg-flame hover:bg-glow px-3 py-2 text-left text-[13.5px] text-void font-bold break-all transition-all mb-3">
           {copied === 'cmd' ? 'COPIED ✓' : copied === 'fail:cmd' ? '⚠ copy blocked — select below' : ADD_CMD}
         </button>
-        <div className="text-[12px] tracking-[0.12em] text-glow/35 mb-1">OR any MCP client — config</div>
+        <div className="text-[13px] tracking-[0.12em] text-glow/35 mb-1">OR any MCP client — config</div>
         <button onClick={() => copy(JSON_CFG, 'json')}
-          className="w-full rounded-md border border-brass/30 px-3 py-2 text-left text-[12px] text-steamer/80 hover:text-glow break-all transition-colors">
+          className="w-full rounded-md border border-brass/30 px-3 py-2 text-left text-[13px] text-steamer/80 hover:text-glow break-all transition-colors">
           {copied === 'json' ? 'copied ✓' : copied === 'fail:json' ? '⚠ copy blocked' : JSON_CFG}
         </button>
     </>

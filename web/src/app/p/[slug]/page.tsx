@@ -51,17 +51,17 @@ export default async function PublicPage({ params }: { params: Promise<{ slug: s
     <div className="min-h-dvh bg-[#0A0D13] text-[#E9EFF7]">
       {unclaimed && (
         <div className="border-b border-[#2a2410] bg-[#171307] px-4 py-1.5 text-center">
-          <span className="font-mono text-[11px] text-[#8a7440]">
+          <span className="font-mono text-[12px] text-[#8a7440]">
             unclaimed page · this address is provisional — claiming ($10) names it and anchors it forever
           </span>
         </div>
       )}
       <PageBlocks blocks={page.blocks} title={page.title} />
       <footer className={`mx-auto w-full max-w-3xl px-3 pt-4 text-center space-x-4 ${isOwner ? 'pb-20' : 'pb-8'}`}>
-        <a href="/pages" className="text-[11px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
+        <a href="/pages" className="text-[12px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
           built on cartridge.cafe · make your own ✦
         </a>
-        <Link href="/p" className="text-[11px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
+        <Link href="/p" className="text-[12px] font-mono text-[#3f4f63] hover:text-[#FFB25A] transition-colors">
           more pages →
         </Link>
       </footer>

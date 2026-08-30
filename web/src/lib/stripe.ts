@@ -143,21 +143,27 @@ export async function createExperienceCheckout(
  *  (no pre-created price id; only STRIPE_SECRET_KEY). The webhook credits the
  *  gencredits ledger; the buyer lands back on /cards to spend it on a brief. */
 export async function createWorldgenCheckout(
-  userId: string, origin: string,
+  userId: string, origin: string, qty = 1,
 ): Promise<{ url: string } | { error: string; status: number }> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const n = Math.max(1, Math.min(20, Math.floor(qty)))
+  // ONE line charged at the BUNDLE total (quantity 1) so the discount is real;
+  // the credit COUNT rides metadata[qty], which the webhook grants from — the
+  // Stripe line quantity is deliberately decoupled from the credits.
+  const totalCents = worldgenPriceUsd(n) * 100
   const form = new URLSearchParams({
     mode: 'payment',
     'line_items[0][quantity]': '1',
     'line_items[0][price_data][currency]': 'usd',
-    'line_items[0][price_data][unit_amount]': String(GEN_PRICE_USD * 100),
-    'line_items[0][price_data][product_data][name]': 'generate a world',
-    'line_items[0][price_data][product_data][description]': 'one world generation — born with your brief; connect your AI and it builds it live',
+    'line_items[0][price_data][unit_amount]': String(totalCents),
+    'line_items[0][price_data][product_data][name]': n === 1 ? 'generate a world' : `${n} world builds`,
+    'line_items[0][price_data][product_data][description]': 'world build credits — each births a world from your brief (forking a world spends one too); credits never expire',
     success_url: `${origin}/create?paid=worldgen`,   // the generate flow lives at /create now
     cancel_url: `${origin}/create?paycancel=worldgen`,
     'metadata[userId]': userId,
     'metadata[product]': 'worldgen',
+    'metadata[qty]': String(n),
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
@@ -341,6 +347,60 @@ export async function findActiveSubscriptions(userId: string): Promise<ActiveSub
   }))
 }
 
+/** ENTERPRISE INVOICE (Galen, Aug 30: "is invoice auto sent to the company?").
+ *  Proprietary/white-label customers don't swipe a card — the keeper sends a
+ *  Stripe invoice they pay net-30. This creates (or reuses) a Customer by email,
+ *  adds a line item, and issues an invoice with collection_method=send_invoice
+ *  so Stripe EMAILS it and handles the hosted pay page + receipts. One-off by
+ *  default; recurring white-label billing is a subscription (future). Inert
+ *  without STRIPE_SECRET_KEY (key-drop law). */
+export async function sendCompanyInvoice(opts: {
+  email: string; companyName: string; amountUsd: number; description: string; daysUntilDue?: number
+}): Promise<{ url: string; invoiceId: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const amount = Math.round(opts.amountUsd * 100)
+  if (!Number.isFinite(amount) || amount < 100) return { error: 'amount must be at least $1', status: 400 }
+  const auth = { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' }
+  const post = async (path: string, body: URLSearchParams) => {
+    const r = await fetch('https://api.stripe.com/v1/' + path, { method: 'POST', headers: auth, body: body.toString() })
+    return { ok: r.ok, j: (await r.json()) as Record<string, unknown> & { error?: { message?: string } } }
+  }
+
+  // reuse a customer for this email if one exists, else create it
+  const found = await fetch(`https://api.stripe.com/v1/customers/search?query=${encodeURIComponent(`email:'${opts.email}'`)}&limit=1`, { headers: { Authorization: 'Bearer ' + secret } })
+  let customerId = ''
+  if (found.ok) { const fj = (await found.json()) as { data?: Array<{ id: string }> }; customerId = fj.data?.[0]?.id ?? '' }
+  if (!customerId) {
+    const c = await post('customers', new URLSearchParams({ email: opts.email, name: opts.companyName }))
+    if (!c.ok || typeof c.j.id !== 'string') return { error: c.j.error?.message || 'could not create customer', status: 502 }
+    customerId = c.j.id
+  }
+
+  const inv = await post('invoices', new URLSearchParams({
+    customer: customerId,
+    collection_method: 'send_invoice',
+    days_until_due: String(Math.max(1, Math.min(90, Math.floor(opts.daysUntilDue ?? 30)))),
+    'metadata[product]': 'company', 'metadata[companyName]': opts.companyName,
+    auto_advance: 'true',
+  }))
+  if (!inv.ok || typeof inv.j.id !== 'string') return { error: inv.j.error?.message || 'could not open invoice', status: 502 }
+  const invoiceId = inv.j.id
+
+  const item = await post('invoiceitems', new URLSearchParams({
+    customer: customerId, invoice: invoiceId, currency: 'usd',
+    amount: String(amount), description: opts.description.slice(0, 200),
+  }))
+  if (!item.ok) return { error: item.j.error?.message || 'could not add line item', status: 502 }
+
+  const finalized = await post(`invoices/${invoiceId}/finalize`, new URLSearchParams())
+  if (!finalized.ok) return { error: finalized.j.error?.message || 'could not finalize invoice', status: 502 }
+  const sent = await post(`invoices/${invoiceId}/send`, new URLSearchParams())
+  if (!sent.ok) return { error: sent.j.error?.message || 'could not send invoice', status: 502 }
+  const url = (sent.j.hosted_invoice_url as string) || (finalized.j.hosted_invoice_url as string) || ''
+  return { url, invoiceId }
+}
+
 /** Open the Stripe BILLING PORTAL for a customer — invoices, payment method,
  *  and cancellation live there (the legally clean self-serve surface). */
 export async function createPortalSession(customerId: string, returnUrl: string): Promise<{ url: string } | { error: string; status: number }> {
@@ -397,6 +457,22 @@ export async function revokeEntitlement(userId: string, product: string, slug?: 
 export const GEN_PRICE_USD = 5
 export const GEN_CREDITS_PER_PURCHASE = 1
 
+// BUNDLE DISCOUNT (Galen, Aug 30): buy more, pay less per credit. This table
+// is THE one truth — the checkout amount and every buy button read it, so a
+// price only ever lives in one place. Anything not listed falls back to the
+// linear $5/credit rate (rounded up), so odd quantities still charge fairly.
+//   1 → $5    ($5.00/ea)
+//   3 → $12   ($4.00/ea · save $3)
+//   5 → $18   ($3.60/ea · save $7)
+//  10 → $30   ($3.00/ea · save $20)
+export const GEN_BUNDLES: Record<number, number> = { 1: 5, 3: 12, 5: 18, 10: 30 }
+
+/** Total price in whole USD for `qty` build credits (bundle rate if listed). */
+export function worldgenPriceUsd(qty: number): number {
+  const n = Math.max(1, Math.min(20, Math.floor(qty)))
+  return GEN_BUNDLES[n] ?? n * GEN_PRICE_USD
+}
+
 const genSlot = (userId: string) => 'gencredits:' + userId
 
 export async function readGenCredits(userId: string): Promise<number> {
@@ -404,13 +480,13 @@ export async function readGenCredits(userId: string): Promise<number> {
   return typeof doc?.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
 }
 
-/** Webhook-side: +N credits, idempotent per checkout sessionId. */
-export async function grantGenCredits(userId: string, sessionId: string | undefined): Promise<number> {
+/** Webhook-side: +qty credits, idempotent per checkout sessionId. */
+export async function grantGenCredits(userId: string, sessionId: string | undefined, qty = GEN_CREDITS_PER_PURCHASE): Promise<number> {
   const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
   const grants = Array.isArray(doc.grants) ? doc.grants : []
   const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
   if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
-  const next = n + GEN_CREDITS_PER_PURCHASE
+  const next = n + Math.max(1, Math.min(20, Math.floor(qty)))
   await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })
   return next
 }

@@ -35,10 +35,10 @@ export function BranchesPanel({ cellBase, cellData, setCellData, cellDraft, setC
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setBranchesOpen(false)}>
                 <div className="max-w-md w-[92%] max-h-[76%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-[16px] tracking-[0.25em] text-white/50">⑂ BRANCHES OF {base.toUpperCase()}</div>
-                    <button aria-label="Close" className="text-white/40 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
+                    <div className="text-[16px] tracking-[0.25em] text-white/60">⑂ BRANCHES OF {base.toUpperCase()}</div>
+                    <button aria-label="Close" className="text-white/50 hover:text-white text-[18px] leading-none px-1.5 py-0.5 rounded border border-white/10 hover:border-white/30 transition-colors" onClick={() => setBranchesOpen(false)}>✕</button>
                   </div>
-                  <div className="flex items-center gap-2 mb-3 text-[14px] text-white/40">
+                  <div className="flex items-center gap-2 mb-3 text-[14px] text-white/50">
                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
                     <span>{viewers.length} here now</span>
                   </div>
@@ -53,7 +53,7 @@ export function BranchesPanel({ cellBase, cellData, setCellData, cellDraft, setC
                     else { handleLoadScene(base) }
                   }}>
                     <span className="text-emerald-300/90">main</span>
-                    <span className="text-white/40 text-[14px]"> — the world as it stands</span>
+                    <span className="text-white/50 text-[14px]"> — the world as it stands</span>
                   </button>
                   {branchList.filter(bB => bB.author !== 'winner' && !bB.author.startsWith('winner · ')).map(bB => {
                     const chat = cellData.discussion[bB.author] || []
@@ -62,17 +62,17 @@ export function BranchesPanel({ cellBase, cellData, setCellData, cellDraft, setC
                         <div className="flex items-center">
                           <button className="flex-1 text-left px-3 py-2 hover:bg-white/5 transition-colors" onClick={() => { setBranchesOpen(false); handleLoadScene(bB.name) }}>
                             <span className="text-amber-200/90">⑂ {bB.author}</span>
-                            <span className="text-white/40 text-[14px]"> — v{bB.v} · ride it</span>
+                            <span className="text-white/50 text-[14px]"> — v{bB.v} · ride it</span>
                           </button>
-                          <button className="mr-2 px-2 py-1 text-[14px] text-white/50 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
+                          <button className="mr-2 px-2 py-1 text-[14px] text-white/60 hover:text-white" onClick={() => setDiscOpen(discOpen === bB.author ? null : bB.author)}>
                             💬{chat.length > 0 ? chat.length : ''}
                           </button>
                         </div>
                         {discOpen === bB.author && (
                           <div className="border-t border-white/10 px-3 py-2">
-                            {chat.length === 0 && <div className="text-white/30 text-[14px] mb-1">no discussion yet — say why this branch should win</div>}
+                            {chat.length === 0 && <div className="text-white/40 text-[14px] mb-1">no discussion yet — say why this branch should win</div>}
                             {chat.slice(-8).map((m, i) => (
-                              <div key={i} className="text-[16px] mb-0.5"><span className="text-white/45">{m.who}:</span> {m.text}</div>
+                              <div key={i} className="text-[16px] mb-0.5"><span className="text-white/55">{m.who}:</span> {m.text}</div>
                             ))}
                             <div className="flex gap-1.5 mt-1.5">
                               <input
@@ -90,9 +90,9 @@ export function BranchesPanel({ cellBase, cellData, setCellData, cellDraft, setC
                     )
                   })}
                   {branchList.length === 0 && (
-                    <div className="text-white/35 text-[16px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
+                    <div className="text-white/45 text-[16px] px-1 py-2">no branches yet — be the first: ⑂ BRANCH</div>
                   )}
-                  <div className="text-[14px] text-white/30 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
+                  <div className="text-[14px] text-white/40 mt-2">unity chant law: five to a cell · one voice each · the winner becomes the world</div>
                 </div>
               </div>
             )

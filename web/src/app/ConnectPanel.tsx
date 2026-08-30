@@ -34,14 +34,14 @@ export default function ConnectPanel({ onClose }: { onClose: () => void }) {
         <div className="mt-3 pt-3 border-t border-brass/20">
           {!showMcp ? (
             <button onClick={() => setShowMcp(true)}
-              className="text-[12px] text-steamer/60 hover:text-glow underline underline-offset-2 decoration-brass/40">
+              className="text-[13px] text-steamer/60 hover:text-glow underline underline-offset-2 decoration-brass/40">
               ⧉ Prefer an MCP client (Claude Code / Cursor)? →
             </button>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-[12px] tracking-[0.12em] text-flame/80">⧉ MCP SERVER</div>
-                <button onClick={() => setShowMcp(false)} className="text-[11px] text-glow/40 hover:text-glow">hide</button>
+                <div className="text-[13px] tracking-[0.12em] text-flame/80">⧉ MCP SERVER</div>
+                <button onClick={() => setShowMcp(false)} className="text-[12px] text-glow/40 hover:text-glow">hide</button>
               </div>
               <McpBody />
             </div>

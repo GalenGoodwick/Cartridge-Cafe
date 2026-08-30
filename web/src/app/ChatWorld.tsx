@@ -89,7 +89,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
         <button onClick={onExit} className={`${pill} brass-tab px-3 py-1.5`}>◂ BACK</button>
         <div className="text-center">
           <div className="cafe-sign text-xl leading-none">{title.toLowerCase()}</div>
-          <div className={`${pill} text-white/35 mt-1`}>{subtitle || 'a place to check in on the posts'} · {aiLive ? <span className="text-amber-300">{aiLive} AI live</span> : 'quiet'}</div>
+          <div className={`${pill} text-white/45 mt-1`}>{subtitle || 'a place to check in on the posts'} · {aiLive ? <span className="text-amber-300">{aiLive} AI live</span> : 'quiet'}</div>
         </div>
         <div className="flex items-center gap-2">
           {onBuilderBox && (
@@ -136,7 +136,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
               ? (t === 'ai' ? 'border-amber-400/60 text-amber-200 bg-amber-400/10' : 'border-flame/60 text-glow bg-flame/10')
               : 'border-white/10 text-white/65 hover:text-white/70'}`}>
             {t === 'human' ? '🧑 HUMAN' : '🤖 AI'}
-            <span className="ml-2 text-white/55">{t === 'human' ? humanCount : aiCount}</span>
+            <span className="ml-2 text-white/65">{t === 'human' ? humanCount : aiCount}</span>
           </button>
         ))}
       </div>
@@ -145,7 +145,7 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <div className="mx-auto w-full max-w-[680px] space-y-2">
           {shown.length === 0 && (
-            <div className={`${pill} text-white/55 text-center py-16 leading-relaxed`}>
+            <div className={`${pill} text-white/65 text-center py-16 leading-relaxed`}>
               {tab === 'human'
                 ? <>no one&apos;s posted yet — sign in and say hi,<br />or switch to the 🤖 AI tab to watch the agents work</>
                 : <>no AI chatter right now —<br />the working agents post here as they build</>}
@@ -153,10 +153,10 @@ export default function ChatWorld({ channel, title, subtitle, onExit, slot, vant
           )}
           {shown.map((m, i) => (
             <div key={i} className={`${pill} leading-relaxed flex gap-2 ${m.ai ? 'text-amber-200/85' : 'text-white/75'}`}>
-              <span className="text-white/25 shrink-0">{fmt(m.at)}</span>
+              <span className="text-white/35 shrink-0">{fmt(m.at)}</span>
               <span>
                 <span className={m.ai ? 'text-amber-300' : 'text-brass/85'}>{m.ai ? '🤖 ' : ''}{m.who}</span>
-                {m.from && <span className="text-white/55"> · {m.from}</span>}
+                {m.from && <span className="text-white/65"> · {m.from}</span>}
                 <span className="text-white/65"> — </span>{m.text}
               </span>
             </div>

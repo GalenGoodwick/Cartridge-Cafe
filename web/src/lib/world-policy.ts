@@ -3,6 +3,8 @@
 // forever after ("that isn't fair to people"). Policy decides who gets keys
 // and who gets through doors — enforcement is key-minting + gates, not vibes.
 
+import { forkGate } from '@/lib/fork-policy'
+
 export interface WorldPolicy {
   build: 'anyone' | 'invited' | 'owner'       // who may ADD to the world
   play: 'everyone' | 'invited' | 'builders'   // who may ENTER and play
@@ -68,4 +70,17 @@ export function canPlay(policy: WorldPolicy, who: { isOwner: boolean; isMember: 
   if (who.isOwner) return true
   if (policy.play === 'everyone') return true
   return who.isMember   // 'invited' and 'builders' both resolve to the roster
+}
+
+/** THE FORK GATE — FORK OFF BY DEFAULT (Galen, Aug 30, superseding the Aug 27
+ *  bases-only rule): every world forks EXCEPT premium, proprietary, and
+ *  open live-edit (build: anyone) worlds, or a maker who opted out; bases
+ *  always fork. The decision + reasons live in fork-policy.forkGate (one truth,
+ *  shared with the boolean canFork used by the feed/payload) — this delegates.
+ *  Pass the owner's IP-control standing to catch proprietary-by-entitlement. */
+export function canForkWorld(
+  wd: Record<string, unknown> | null | undefined,
+  ownerHasIpControl = false,
+): { ok: true } | { ok: false; error: string } {
+  return forkGate(wd, ownerHasIpControl)
 }

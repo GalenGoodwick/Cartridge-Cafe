@@ -29,12 +29,12 @@ export function InstructionsPanel({ playScene, ctx, instrEdit, setInstrEdit, ins
                 className="w-[380px] max-w-[80vw] max-h-[62vh] flex flex-col overflow-hidden rounded-xl border border-white/15 bg-black/90 backdrop-blur font-mono text-white/85 shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               >
                 <div className="flex items-center justify-between gap-2 px-5 py-3 border-b border-white/10 bg-black/90 flex-shrink-0">
-                  <div className="text-[16px] tracking-[0.25em] text-white/50">INSTRUCTIONS</div>
+                  <div className="text-[16px] tracking-[0.25em] text-white/60">INSTRUCTIONS</div>
                   <div className="flex items-center gap-2">
                     {can(ctx, 'editLaw') && !instrEdit && (
                       <>
                         <button
-                          className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
+                          className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white border border-white/15 rounded px-2 py-0.5 transition-colors"
                           onClick={() => { setInstrDraft(String(simulationRef.current?.worldData?.instructions || '')); setInstrEdit(true) }}
                         >
                           EDIT
@@ -43,7 +43,7 @@ export function InstructionsPanel({ playScene, ctx, instrEdit, setInstrEdit, ins
                     )}
                     <button
                       aria-label="Close instructions"
-                      className="w-6 h-6 rounded text-white/60 hover:text-white hover:bg-white/10 text-[18px] leading-none transition-colors"
+                      className="w-6 h-6 rounded text-white/70 hover:text-white hover:bg-white/10 text-[18px] leading-none transition-colors"
                       onClick={() => { setInstrOpen(false); setInstrEdit(false) }}
                     >
                       ✕
@@ -61,7 +61,7 @@ export function InstructionsPanel({ playScene, ctx, instrEdit, setInstrEdit, ins
                       placeholder={'Key entry first, one per line:\nWASD — move · SPACE — dash · CLICK — select\n\nThen the point: what the player is trying to do, and what winning is.'}
                     />
                     <div className="flex gap-2 mt-3 justify-end">
-                      <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
+                      <button className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white px-2 py-1" onClick={() => setInstrEdit(false)}>CANCEL</button>
                       <button
                         className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
                         onClick={() => { const s = simulationRef.current; if (s) s.worldData.instructions = instrDraft; setInstrEdit(false) }}

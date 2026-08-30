@@ -165,7 +165,7 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
   const byBase = branches.reduce<Record<string, Branch[]>>((m, b) => { (m[b.base] ||= []).push(b); return m }, {})
   const selBox = (k: string) => (
     <button onClick={() => toggleSel(k)} aria-label="select" disabled={!!bulk}
-      className={`shrink-0 w-4 h-4 rounded border text-[10px] leading-none flex items-center justify-center transition-colors ${sel.has(k) ? 'border-red-400/80 bg-red-500/25 text-red-200' : 'border-white/25 text-transparent hover:border-white/50'}`}>✓</button>
+      className={`shrink-0 w-4 h-4 rounded border text-[11px] leading-none flex items-center justify-center transition-colors ${sel.has(k) ? 'border-red-400/80 bg-red-500/25 text-red-200' : 'border-white/25 text-transparent hover:border-white/50'}`}>✓</button>
   )
 
   return (
@@ -175,21 +175,21 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
       <div className="h-full w-[380px] max-w-[90vw] overflow-y-auto border-l border-white/15 bg-[#0c0a09]/92 backdrop-blur-sm p-5 text-white/85 shadow-2xl pointer-events-auto"
         onClick={e => e.stopPropagation()} onMouseLeave={() => hoverPreview(null)}>
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[15px] tracking-[0.25em] text-white/55">⚙ MY WORLDS &amp; BRANCHES</div>
-          <button onClick={onClose} className="text-white/40 hover:text-white text-[16px] leading-none px-1">✕</button>
+          <div className="text-[15px] tracking-[0.25em] text-white/65">⚙ MY WORLDS &amp; BRANCHES</div>
+          <button onClick={onClose} className="text-white/50 hover:text-white text-[16px] leading-none px-1">✕</button>
         </div>
 
-        {loading ? <div className="text-white/40 text-[14px] py-6 text-center">loading…</div> : err ? (
+        {loading ? <div className="text-white/50 text-[14px] py-6 text-center">loading…</div> : err ? (
           <div className="text-amber-300/90 text-[14px] py-4">{err}</div>
         ) : (
           <>
             {/* WORLDS */}
             <div className="flex items-center justify-between mb-1.5">
-              <div className="text-[13px] tracking-[0.2em] text-white/35">WORLDS ({worlds.length}) — spaces you own</div>
+              <div className="text-[14px] tracking-[0.2em] text-white/45">WORLDS ({worlds.length}) — spaces you own</div>
               {worlds.length > 1 && <button onClick={() => toggleAll(worlds.map(w => 'w:' + w.slug))} disabled={!!bulk}
-                className="text-[11px] tracking-[0.15em] text-white/35 hover:text-white/70 px-1">select all</button>}
+                className="text-[12px] tracking-[0.15em] text-white/45 hover:text-white/70 px-1">select all</button>}
             </div>
-            {worlds.length === 0 ? <div className="text-white/30 text-[13px] mb-4">no worlds yet.</div> : (
+            {worlds.length === 0 ? <div className="text-white/40 text-[14px] mb-4">no worlds yet.</div> : (
               <div className="mb-4 divide-y divide-white/5">
                 {worlds.map(w => {
                   const k = 'w:' + w.slug
@@ -203,14 +203,14 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
                           className="flex-1 min-w-0 bg-black/50 border border-white/20 rounded px-2 py-1 text-[14px] text-white/90 outline-none focus:border-emerald-300/50" />
                       ) : (
                         <button onClick={() => openWorld(w.slug, w.name)} className="flex-1 min-w-0 text-left text-[14px] text-white/85 hover:text-emerald-200 truncate" title="open">
-                          {w.name}{!w.isPublic && <span className="text-white/30"> · private</span>}
+                          {w.name}{!w.isPublic && <span className="text-white/40"> · private</span>}
                         </button>
                       )}
-                      <div className="flex items-center gap-1 shrink-0 text-[12px] tracking-[0.1em]">
+                      <div className="flex items-center gap-1 shrink-0 text-[13px] tracking-[0.1em]">
                         {editing === k ? (
                           <button onClick={() => renameWorld(w)} disabled={busy === w.slug} className="px-1.5 py-0.5 rounded text-emerald-300 hover:bg-emerald-400/10">save</button>
                         ) : (
-                          <button onClick={() => startRename(k, w.name)} className="px-1.5 py-0.5 rounded text-white/45 hover:text-white hover:bg-white/10">rename</button>
+                          <button onClick={() => startRename(k, w.name)} className="px-1.5 py-0.5 rounded text-white/55 hover:text-white hover:bg-white/10">rename</button>
                         )}
                         <button onClick={() => deleteWorld(w)} disabled={busy === w.slug} className="px-1.5 py-0.5 rounded text-red-400/70 hover:text-red-300 hover:bg-red-500/10">delete</button>
                       </div>
@@ -222,18 +222,18 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
 
             {/* BRANCHES */}
             <div className="flex items-center justify-between mb-1.5">
-              <div className="text-[13px] tracking-[0.2em] text-white/35">BRANCHES ({branches.length}) — your challengers</div>
+              <div className="text-[14px] tracking-[0.2em] text-white/45">BRANCHES ({branches.length}) — your challengers</div>
               {branches.length > 1 && <button onClick={() => toggleAll(branches.map(b => 'b:' + b.name))} disabled={!!bulk}
-                className="text-[11px] tracking-[0.15em] text-white/35 hover:text-white/70 px-1">select all</button>}
+                className="text-[12px] tracking-[0.15em] text-white/45 hover:text-white/70 px-1">select all</button>}
             </div>
-            {branches.length === 0 ? <div className="text-white/30 text-[13px]">no branches yet — ⑂ CREATE BRANCH on any world.</div> : (
+            {branches.length === 0 ? <div className="text-white/40 text-[14px]">no branches yet — ⑂ CREATE BRANCH on any world.</div> : (
               <div className="space-y-3">
                 {Object.entries(byBase).map(([base, list]) => (
                   <div key={base}>
                     <div className="flex items-center justify-between mb-0.5">
-                      <div className="text-[12px] text-white/30 tracking-[0.15em]">{base.toUpperCase()}</div>
+                      <div className="text-[13px] text-white/40 tracking-[0.15em]">{base.toUpperCase()}</div>
                       {list.length > 1 && <button onClick={() => toggleAll(list.map(b => 'b:' + b.name))} disabled={!!bulk}
-                        className="text-[10px] tracking-[0.15em] text-white/25 hover:text-white/60 px-1">all</button>}
+                        className="text-[11px] tracking-[0.15em] text-white/35 hover:text-white/70 px-1">all</button>}
                     </div>
                     <div className="divide-y divide-white/5">
                       {list.map(b => {
@@ -243,12 +243,12 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
                             onMouseEnter={() => hoverPreview(b.name)}>
                             {selBox(k)}
                             {editing === k ? (
-                              <div className="flex-1 min-w-0 flex items-center gap-1 text-[13px] text-white/40">
+                              <div className="flex-1 min-w-0 flex items-center gap-1 text-[14px] text-white/50">
                                 <span className="shrink-0">⑂ {handle} ·</span>
                                 <input autoFocus value={draft} onChange={e => setDraft(e.target.value)} maxLength={40}
                                   placeholder="label (optional)"
                                   onKeyDown={e => { if (e.key === 'Enter') renameBranch(b); if (e.key === 'Escape') setEditing(null) }}
-                                  className="flex-1 min-w-0 bg-black/50 border border-white/20 rounded px-2 py-1 text-[13px] text-white/90 outline-none focus:border-emerald-300/50" />
+                                  className="flex-1 min-w-0 bg-black/50 border border-white/20 rounded px-2 py-1 text-[14px] text-white/90 outline-none focus:border-emerald-300/50" />
                                 <span className="shrink-0">· v{b.version}</span>
                               </div>
                             ) : (
@@ -256,11 +256,11 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
                                 ⑂ {b.label ? b.label + ' · ' : ''}v{b.version}
                               </button>
                             )}
-                            <div className="flex items-center gap-1 shrink-0 text-[12px] tracking-[0.1em]">
+                            <div className="flex items-center gap-1 shrink-0 text-[13px] tracking-[0.1em]">
                               {editing === k ? (
                                 <button onClick={() => renameBranch(b)} disabled={busy === b.name} className="px-1.5 py-0.5 rounded text-emerald-300 hover:bg-emerald-400/10">save</button>
                               ) : (
-                                <button onClick={() => startRename(k, b.label || '')} className="px-1.5 py-0.5 rounded text-white/45 hover:text-white hover:bg-white/10">rename</button>
+                                <button onClick={() => startRename(k, b.label || '')} className="px-1.5 py-0.5 rounded text-white/55 hover:text-white hover:bg-white/10">rename</button>
                               )}
                               <button onClick={() => deleteBranch(b)} disabled={busy === b.name} className="px-1.5 py-0.5 rounded text-red-400/70 hover:text-red-300 hover:bg-red-500/10">delete</button>
                             </div>
@@ -276,12 +276,12 @@ export default function ManagePanel({ onClose, onPreview, onOpenScene, onOpenSpa
             {(sel.size > 0 || bulk) && (
               <div className="sticky bottom-0 mt-4 -mx-5 -mb-5 px-5 py-3 bg-[#0c0a09]/95 border-t border-white/10 flex items-center justify-between gap-3">
                 {bulk ? (
-                  <div className="text-[13px] text-white/60 tracking-[0.1em]">deleting… {bulk.done}/{bulk.total}</div>
+                  <div className="text-[14px] text-white/70 tracking-[0.1em]">deleting… {bulk.done}/{bulk.total}</div>
                 ) : (
                   <>
-                    <button onClick={() => setSel(new Set())} className="text-[12px] tracking-[0.15em] text-white/40 hover:text-white/70">clear ({sel.size})</button>
+                    <button onClick={() => setSel(new Set())} className="text-[13px] tracking-[0.15em] text-white/50 hover:text-white/70">clear ({sel.size})</button>
                     <button onClick={deleteSelected}
-                      className="px-3 py-1.5 rounded-lg border border-red-400/50 text-red-300 hover:bg-red-500/15 text-[13px] tracking-[0.15em]">
+                      className="px-3 py-1.5 rounded-lg border border-red-400/50 text-red-300 hover:bg-red-500/15 text-[14px] tracking-[0.15em]">
                       🗑 DELETE {sel.size} SELECTED
                     </button>
                   </>

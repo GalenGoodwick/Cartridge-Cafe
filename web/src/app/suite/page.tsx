@@ -25,10 +25,10 @@ export default async function SuitePage() {
 
   const Row = ({ mark, title, body, live }: { mark: string; title: string; body: string; live: boolean }) => (
     <div className="flex gap-3 items-start">
-      <div className={`font-mono text-[13px] mt-0.5 ${live ? 'text-emerald-300/90' : 'text-white/30'}`}>{mark}</div>
+      <div className={`font-mono text-[14px] mt-0.5 ${live ? 'text-emerald-300/90' : 'text-white/40'}`}>{mark}</div>
       <div>
-        <div className="font-mono text-[13.5px] text-white/85">{title} {!live && <span className="text-[10px] tracking-[0.15em] text-white/30 ml-1">COMING</span>}</div>
-        <div className="font-mono text-[12px] leading-relaxed text-white/45 mt-0.5">{body}</div>
+        <div className="font-mono text-[13.5px] text-white/85">{title} {!live && <span className="text-[11px] tracking-[0.15em] text-white/40 ml-1">COMING</span>}</div>
+        <div className="font-mono text-[13px] leading-relaxed text-white/55 mt-0.5">{body}</div>
       </div>
     </div>
   )
@@ -36,9 +36,9 @@ export default async function SuitePage() {
   return (
     <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
       <div className="mx-auto max-w-2xl px-6 py-14 font-mono">
-        <a href="/" className="text-[13px] tracking-[0.2em] text-amber-200/60 hover:text-amber-200">◂ cartridge.cafe</a>
-        <h1 className="cafe-sign text-4xl text-glow mt-4 mb-2">◆ premium suite{!active && !buyable && <span className="ml-3 align-middle font-mono text-[11px] tracking-[0.3em] text-amber-200/70 border border-amber-300/40 rounded px-2 py-1">COMING SOON</span>}</h1>
-        <p className="text-[13px] text-white/50 mb-8">
+        <a href="/" className="text-[14px] tracking-[0.2em] text-amber-200/60 hover:text-amber-200">◂ cartridge.cafe</a>
+        <h1 className="cafe-sign text-4xl text-glow mt-4 mb-2">◆ premium suite{!active && !buyable && <span className="ml-3 align-middle font-mono text-[12px] tracking-[0.3em] text-amber-200/70 border border-amber-300/40 rounded px-2 py-1">COMING SOON</span>}</h1>
+        <p className="text-[14px] text-white/60 mb-8">
           {active
             ? 'your IP control membership is active — everything below is yours.'
             : 'the IP control membership: your work stays yours alone, and the studio doors open.'}
@@ -46,7 +46,7 @@ export default async function SuitePage() {
 
         <div className="flex flex-col gap-5">
           <section className={box}>
-            <div className="text-[12px] tracking-[0.3em] text-amber-200/70 mb-4">WHAT THE SUITE HOLDS</div>
+            <div className="text-[13px] tracking-[0.3em] text-amber-200/70 mb-4">WHAT THE SUITE HOLDS</div>
             <div className="flex flex-col gap-4">
               <Row mark="◆" live title="total IP control"
                 body="every world you make is closed source — playable on the shelf, never readable or reusable by other members. the platform commons deal stops at your door." />
@@ -64,13 +64,13 @@ export default async function SuitePage() {
           <section className={box}>
             {active ? (
               <div className="flex flex-wrap gap-3">
-                <a href={`/c/${handle}`} className="font-mono text-[13px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">◈ OPEN MY COMPANY SPACE</a>
-                <a href="/account" className="font-mono text-[13px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-white/20 text-white/70 hover:bg-white/10">MANAGE MEMBERSHIP</a>
+                <a href={`/c/${handle}`} className="font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">◈ OPEN MY COMPANY SPACE</a>
+                <a href="/account" className="font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-white/20 text-white/70 hover:bg-white/10">MANAGE MEMBERSHIP</a>
               </div>
             ) : buyable ? (
               <SuiteBuy />
             ) : (
-              <p className="text-[12.5px] text-white/45">the suite is COMING SOON — pricing lands with it, and nothing here is on sale yet. playing and the $10/mo editing membership are unaffected.</p>
+              <p className="text-[13.5px] text-white/55">the suite is COMING SOON — pricing lands with it, and nothing here is on sale yet. playing and the $10/mo editing membership are unaffected.</p>
             )}
           </section>
         </div>
@@ -82,7 +82,7 @@ export default async function SuitePage() {
 /** the buy button posts JSON (the checkout route's shape), so it's a client hop */
 function SuiteBuy() {
   return (
-    <a href="/suite/buy" className="inline-block font-mono text-[13px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">
+    <a href="/suite/buy" className="inline-block font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">
       ◆ JOIN THE SUITE
     </a>
   )

@@ -29,24 +29,24 @@ export default function GridChat({ slotKey, title, bounds, onClose, inline }: {
   const body = (
       <div className="w-full max-w-[640px] h-full flex flex-col p-4 mx-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
-          <span className="font-mono text-[12px] tracking-[0.25em] text-white/85">◉ {title} — THE ROOM</span>
+          <span className="font-mono text-[13px] tracking-[0.25em] text-white/85">◉ {title} — THE ROOM</span>
           {!inline && (
             <button onClick={onClose} aria-label="close chat"
-              className="w-8 h-8 grid place-items-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
+              className="w-8 h-8 grid place-items-center rounded-lg text-white/70 hover:text-white hover:bg-white/10 text-[16px]">✕</button>
           )}
         </div>
 
         {/* the thread */}
         <div ref={listRef}
           onScroll={e => { const el = e.currentTarget; atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40 }}
-          className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 font-mono text-[13px] leading-relaxed">
+          className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-white/12 bg-black/50 p-3 font-mono text-[14px] leading-relaxed">
           {msgs.length === 0 && (
-            <div className="text-white/45 py-6 text-center">quiet in here — say something.</div>
+            <div className="text-white/55 py-6 text-center">quiet in here — say something.</div>
           )}
           {msgs.map((m, i) => (
             <div key={i} className="py-1 border-b border-white/5 last:border-0">
               <span className={`${m.who === who ? 'text-emerald-200' : 'text-amber-200/90'}`}>{m.who}</span>
-              <span className="text-white/35 text-[10px] ml-2">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="text-white/45 text-[11px] ml-2">{new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               <div className="text-white/90 whitespace-pre-wrap break-words">{m.text}</div>
             </div>
           ))}
@@ -57,10 +57,10 @@ export default function GridChat({ slotKey, title, bounds, onClose, inline }: {
           <input
             value={draft} onChange={e => setDraft(e.target.value)}
             placeholder={who ? `say it, ${who}…` : 'say something…'}
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/20 font-mono text-[13px] text-white/95 placeholder:text-white/35 outline-none focus:border-emerald-300/50"
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/20 font-mono text-[14px] text-white/95 placeholder:text-white/45 outline-none focus:border-emerald-300/50"
           />
           <button type="submit" disabled={!draft.trim()}
-            className="px-4 py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors">
+            className="px-4 py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[13px] tracking-[0.15em] hover:bg-emerald-400/25 disabled:opacity-35 transition-colors">
             SAY
           </button>
         </form>

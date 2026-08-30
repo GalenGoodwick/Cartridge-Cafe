@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { policyOf } from '@/lib/world-policy'
+import { worldIsForkable } from '@/lib/fork-policy'
+import { hasIpControl } from '@/lib/stripe'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
 import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
@@ -53,16 +55,40 @@ export async function GET(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  // deviceConfig (fit law): surfaced so the support gate can admit phones to
-  // worlds that DECLARE mobile — one cheap JSON path, no snapshot download
+  // deviceConfig (fit law) + the FORK FACTS in one cheap jsonb read (no snapshot
+  // download): device gate, and the worldData paths canFork needs so the client
+  // learns the AUTHORITATIVE forkability (fork off by default — Galen, Aug 30).
   let deviceConfig: string | null = null
+  let forkable = true
   try {
-    const rows = await prisma.$queryRaw<Array<{ d: string | null }>>`
-      SELECT snapshot->'worldParams'->>'deviceConfig' AS d FROM "PlayerSpace" WHERE id = ${space.id}`
-    deviceConfig = rows[0]?.d === 'mobile' ? 'mobile' : rows[0]?.d === 'desktop' ? 'desktop' : null
-  } catch { /* absent = desktop default */ }
+    const rows = await prisma.$queryRaw<Array<{
+      d: string | null; premium_usd: string | null; build: string | null
+      forkable: string | null; base: string | null; proprietary: string | null; closed: string | null
+    }>>`
+      SELECT snapshot->'worldParams'->>'deviceConfig'            AS d,
+             snapshot->'worldData'->'premium'->>'usd'           AS premium_usd,
+             snapshot->'worldData'->'policy'->>'build'          AS build,
+             snapshot->'worldData'->>'forkable'                 AS forkable,
+             snapshot->'worldData'->>'__base'                   AS base,
+             snapshot->'worldData'->>'proprietary'              AS proprietary,
+             snapshot->'worldData'->>'closed'                   AS closed
+      FROM "PlayerSpace" WHERE id = ${space.id}`
+    const r = rows[0]
+    deviceConfig = r?.d === 'mobile' ? 'mobile' : r?.d === 'desktop' ? 'desktop' : null
+    // rebuild a minimal worldData so the ONE truth (canFork) reads it, not a
+    // second copy of the rule living here
+    const wd: Record<string, unknown> = {
+      premium: r?.premium_usd != null ? { usd: Number(r.premium_usd) } : undefined,
+      policy: r?.build ? { build: r.build } : undefined,
+      forkable: r?.forkable === 'true' ? true : r?.forkable === 'false' ? false : undefined,
+      __base: r?.base === 'true',
+      proprietary: r?.proprietary === 'true',
+      closed: r?.closed === 'true',
+    }
+    forkable = worldIsForkable(wd, await hasIpControl(space.ownerId))
+  } catch { /* absent = desktop default, forkable stays true (the default) */ }
 
-  return NextResponse.json({ space: { ...space, deviceConfig } })
+  return NextResponse.json({ space: { ...space, deviceConfig, forkable } })
 }
 
 /** PATCH /api/spaces/:slug — Update space metadata (owner only) */

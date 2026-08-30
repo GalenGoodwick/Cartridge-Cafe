@@ -33,10 +33,10 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
   return (
             <div className="absolute -translate-x-1/2 bottom-6 z-50 pointer-events-auto w-[560px] max-w-[86vw] h-[560px] max-h-[82vh] rounded-xl border border-white/12 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
               style={{ left: 'calc(50% + 145px)' }}>
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/65">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/10 font-mono text-[14px] tracking-[0.2em] text-white/65">
                 <span>⌁ BUILDERBOX</span>
                 <div className="flex items-center gap-2.5">
-                  <span className="text-white/55">{terminalLog.length} steps</span>
+                  <span className="text-white/65">{terminalLog.length} steps</span>
                   <button
                     onClick={() => { setBuildConsoleOpen(false); buildConsoleClosedRef.current = true }}
                     title="close the BuilderBox"
@@ -45,7 +45,7 @@ export function BuilderBoxPanel({ terminalLog, setBuildConsoleOpen, buildConsole
               </div>
               <div ref={buildConsoleRef} className="flex-1 min-h-0 flex flex-col">
                 {terminalLog.length === 0
-                  ? <div className="font-mono text-[14px] text-white/60 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
+                  ? <div className="font-mono text-[14px] text-white/70 leading-relaxed px-3 py-2">no build running — speak below and the network hears.<br/>when an AI builds here, each shader, field, and rule lands live.</div>
                   : <AgentTerminalPanel entries={terminalLog} header={false} />}
               </div>
               {/* the MERGED WORLD CHAT — one surface (Galen). Entries invite AIs. */}

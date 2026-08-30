@@ -171,7 +171,7 @@ function NodeGraph() {
           <text y={-44} textAnchor="middle" fill="#FFB25A" fontSize={10.5} fontFamily="var(--font-mono, monospace)" letterSpacing="0.16em">◉ AI DOCKED</text>
         </g>
       </svg>
-      <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-[11px] tracking-[0.1em] text-crema/70">
+      <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-[12px] tracking-[0.1em] text-crema/70">
         <span className="flex items-center gap-1.5"><i className="inline-block w-2 h-2 rounded-full" style={{ background: '#34d39a' }} /> green · tested + seen</span>
         <span className="flex items-center gap-1.5"><i className="inline-block w-2 h-2 rounded-full" style={{ background: '#FFB25A' }} /> open · yours to claim</span>
         <span className="flex items-center gap-1.5">🔒 claimed · someone&apos;s live</span>
@@ -388,7 +388,7 @@ function TabPage({ tab }: { tab: Tab }) {
   return (
     <article className="mx-auto max-w-5xl px-6 sm:px-10">
       <Reveal>
-        <p className="font-mono text-[11px] tracking-[0.28em] uppercase text-flame/85">{tab.tag}</p>
+        <p className="font-mono text-[12px] tracking-[0.28em] uppercase text-flame/85">{tab.tag}</p>
         <h2 className="mt-3 font-sans font-extrabold tracking-[-0.02em] text-[32px] sm:text-[46px] leading-[1.02] text-steamer">{tab.title}</h2>
         <p className="mt-4 max-w-2xl font-serif text-[18px] sm:text-[20px] leading-relaxed text-crema/85">{tab.essence}</p>
       </Reveal>
@@ -411,20 +411,20 @@ function TabPage({ tab }: { tab: Tab }) {
         </Reveal>
         <Reveal delay={180}>
           <div className="rounded-2xl border border-white/8 bg-[#0b0e16]/60 backdrop-blur-sm p-6">
-            <p className="font-mono text-[10px] tracking-[0.24em] uppercase text-crema/40">the shape of it</p>
+            <p className="font-mono text-[11px] tracking-[0.24em] uppercase text-crema/40">the shape of it</p>
             <dl className="mt-3 flex flex-col gap-3">
               {tab.points.map(([k, v]) => (
                 <div key={k}>
-                  <dt className="font-mono text-[12.5px] text-glow tracking-[0.06em]">{k}</dt>
+                  <dt className="font-mono text-[13.5px] text-glow tracking-[0.06em]">{k}</dt>
                   <dd className="mt-0.5 text-[14px] leading-snug text-crema/75">{v}</dd>
                 </div>
               ))}
             </dl>
-            <div className="mt-5 rounded-lg bg-void/60 border border-white/8 px-3 py-2 font-mono text-[12px] leading-relaxed text-ghost/90 break-words">
+            <div className="mt-5 rounded-lg bg-void/60 border border-white/8 px-3 py-2 font-mono text-[13px] leading-relaxed text-ghost/90 break-words">
               {tab.term}
             </div>
-            <p className="mt-4 font-mono text-[10px] tracking-[0.18em] uppercase text-crema/35">in the code</p>
-            <ul className="mt-1.5 flex flex-col gap-1 font-mono text-[12px] text-crema/60">
+            <p className="mt-4 font-mono text-[11px] tracking-[0.18em] uppercase text-crema/35">in the code</p>
+            <ul className="mt-1.5 flex flex-col gap-1 font-mono text-[13px] text-crema/60">
               {tab.files.map(f => <li key={f} className="truncate">{f}</li>)}
             </ul>
           </div>
@@ -434,7 +434,7 @@ function TabPage({ tab }: { tab: Tab }) {
       {/* why it matters for an AI — the use case, on every page */}
       <Reveal delay={220}>
         <div className="mt-6 rounded-2xl border border-flame/25 bg-flame/[0.06] p-6 sm:p-7">
-          <p className="font-mono text-[10px] tracking-[0.26em] uppercase text-flame/85">◐ why it matters for an AI</p>
+          <p className="font-mono text-[11px] tracking-[0.26em] uppercase text-flame/85">◐ why it matters for an AI</p>
           <p className="mt-2.5 font-serif text-[17px] sm:text-[18px] leading-relaxed text-crema/90">{tab.ai}</p>
         </div>
       </Reveal>
@@ -474,14 +474,14 @@ export default function FrameworkView() {
         style={{ background: 'radial-gradient(130% 80% at 50% -10%, rgba(10,13,19,0.12), rgba(10,13,19,0.9) 64%)' }} />
 
       {/* top bar */}
-      <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5 font-mono text-[13px]">
+      <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5 font-mono text-[14px]">
         <a href="/" className="tracking-[0.2em] text-brass hover:text-flame transition-colors">◂ cartridge.cafe</a>
         <a href="/" className="tracking-[0.18em] text-steamer/80 hover:text-glow transition-colors">enter the café →</a>
       </header>
 
       {/* hero */}
       <section className="relative z-10 mx-auto max-w-4xl px-6 sm:px-10 pt-6 sm:pt-10 pb-10 text-center">
-        <Reveal><p className="font-mono text-[12px] tracking-[0.34em] text-flame/90 uppercase mb-5">a different model of coding</p></Reveal>
+        <Reveal><p className="font-mono text-[13px] tracking-[0.34em] text-flame/90 uppercase mb-5">a different model of coding</p></Reveal>
         <Reveal delay={80}>
           <h1 className="font-sans font-extrabold leading-[0.98] tracking-[-0.02em] text-[40px] sm:text-[60px] text-steamer">
             Ten pieces.<br className="hidden sm:block" /> <span className="text-glow">One machine</span> for AI-built worlds.
@@ -501,13 +501,13 @@ export default function FrameworkView() {
         <div className="flex flex-wrap justify-center gap-2.5">
           {GROUPS.map(g => (
             <div key={g.label} className="flex items-center gap-1 rounded-2xl border border-white/8 bg-void/40 backdrop-blur-sm px-1.5 py-1.5">
-              <span className="hidden lg:inline px-2 font-mono text-[9.5px] tracking-[0.22em] uppercase text-crema/35">{g.label}</span>
+              <span className="hidden lg:inline px-2 font-mono text-[10.5px] tracking-[0.22em] uppercase text-crema/35">{g.label}</span>
               {g.ids.map(id => {
                 const t = TABS.find(x => x.id === id)!
                 const on = t.id === activeId
                 return (
                   <button key={id} onClick={() => select(id)}
-                    className={`rounded-xl px-3 py-1.5 font-mono text-[13px] tracking-[0.08em] transition-all ${on
+                    className={`rounded-xl px-3 py-1.5 font-mono text-[14px] tracking-[0.08em] transition-all ${on
                       ? 'bg-flame text-void font-bold shadow-[0_0_20px_rgba(245,176,76,0.4)]'
                       : 'text-steamer/70 hover:text-glow hover:bg-white/5'}`}>
                     {t.label}

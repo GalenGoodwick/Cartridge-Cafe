@@ -32,7 +32,7 @@ function BlockView({ block: b }: { block: Block }) {
       return (
         <div className={`relative overflow-hidden rounded-lg border border-[#1c2941] bg-black ${b.span === 2 ? 'col-span-2' : 'col-span-1'} ${ASPECT_CLASS[b.aspect]}`}>
           {hazard ? (
-            <div className="absolute inset-0 grid place-items-center p-3 text-center text-[11px] font-mono text-[#55677E]">
+            <div className="absolute inset-0 grid place-items-center p-3 text-center text-[12px] font-mono text-[#55677E]">
               frame withheld (unsafe shader)
             </div>
           ) : (
