@@ -1,5 +1,3 @@
-import fs from 'fs/promises'
-import path from 'path'
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -16,56 +14,64 @@ export const runtime = 'nodejs'
  *  to space first"). The house-cartridge (scene) path is the legacy second way
  *  to open a world; consolidating on DB spaces kills the double path (and the
  *  scope-mismatch class of bug). This endpoint is the SAFE, dedupe-first half:
- *  it reads the bundled cartridges, classifies them, and — only on POST — mints
- *  a DB space for each ORPHAN game (one with no existing space of that slug).
- *  GET = dry run (no writes). Deleting the dead fork files + retiring the scene
- *  loader is a separate git change, done AFTER the spaces exist. */
+ *  it reads the bundled cartridges over HTTP (public/ is NOT in the serverless
+ *  fs bundle on Vercel — fs.readFile fails there), classifies them, and — only
+ *  on POST — mints a DB space for each ORPHAN game (no existing space of that
+ *  slug). GET = dry run (no writes). Deleting the dead fork files + retiring the
+ *  scene loader is a separate git change, done AFTER the spaces exist. */
 
-const CART_DIR = () => path.join(process.cwd(), 'public', 'cartridges')
-
-// structural chrome — NOT games, never migrated (app scaffolding + the index)
+// structural chrome in the index — NOT games, never migrated
 function isStructural(name: string): boolean {
   const u = name.toUpperCase()
-  return name === 'index' || u === 'CAFE' || u === 'MAIN' || u === 'MAIN-COMMONS' ||
-    u === 'SUB-MAIN' || u === 'BLANK' || u.startsWith('CAFE ⑂')
-}
-// legacy branch/fork snapshots (NAME ⑂ handle · v1) — dead artifacts, delete-in-repo
-function isFork(name: string): boolean { return name.includes(' ⑂ ') }
-
-async function cartridgeNames(): Promise<string[]> {
-  const files = await fs.readdir(CART_DIR())
-  return files.filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''))
+  return u === 'BLANK' || u === 'MAIN-COMMONS' || u === 'MAIN' || u === 'SUB-MAIN' ||
+    u === 'CAFE' || u === 'INDEX' || u.startsWith('CAFE ⑂')
 }
 
-interface GameRow { name: string; slug: string; twin: boolean; twinSlug?: string }
+async function cartridgeNames(origin: string): Promise<string[]> {
+  const r = await fetch(`${origin}/cartridges/index.json`, { cache: 'no-store' })
+  if (!r.ok) throw new Error(`index.json ${r.status}`)
+  const j = (await r.json()) as { names?: string[] }
+  return Array.isArray(j.names) ? j.names : []
+}
 
-async function classify(): Promise<{ structural: string[]; forks: string[]; games: GameRow[] }> {
-  const names = await cartridgeNames()
+async function fetchCartridge(origin: string, name: string): Promise<Record<string, unknown>> {
+  const r = await fetch(`${origin}/cartridges/${encodeURIComponent(name)}.json`, { cache: 'no-store' })
+  if (!r.ok) throw new Error(`${name}.json ${r.status}`)
+  return (await r.json()) as Record<string, unknown>
+}
+
+interface GameRow { name: string; slug: string; twin: boolean }
+
+async function classify(origin: string): Promise<{ structural: string[]; games: GameRow[] }> {
+  const names = await cartridgeNames(origin)
   const structural = names.filter(isStructural)
-  const forks = names.filter(n => !isStructural(n) && isFork(n))
-  const gameNames = names.filter(n => !isStructural(n) && !isFork(n))
+  const gameNames = names.filter(n => !isStructural(n))
   const games: GameRow[] = []
   for (const name of gameNames) {
     const slug = slugify(name)
     const existing = await prisma.playerSpace.findUnique({ where: { slug }, select: { slug: true } })
-    games.push({ name, slug, twin: !!existing, twinSlug: existing?.slug })
+    games.push({ name, slug, twin: !!existing })
   }
-  return { structural, forks, games }
+  return { structural, games }
 }
 
 export async function GET(req: NextRequest) {
   if (!(await isAdmin(req.headers.get('authorization')))) return NextResponse.json({ error: 'not the keeper' }, { status: 403 })
-  const { structural, forks, games } = await classify()
-  const orphans = games.filter(g => !g.twin)
-  const twins = games.filter(g => g.twin)
-  return NextResponse.json({
-    dryRun: true,
-    summary: { cartridges: structural.length + forks.length + games.length, structural: structural.length, deadForks: forks.length, games: games.length, twins: twins.length, orphansToCreate: orphans.length },
-    orphansToCreate: orphans.map(o => ({ name: o.name, slug: o.slug })),
-    twinsToRepoint: twins.map(t => ({ name: t.name, slug: t.slug })),
-    deadForksToDelete: forks,
-    structuralKept: structural,
-  })
+  try {
+    const { structural, games } = await classify(req.nextUrl.origin)
+    const orphans = games.filter(g => !g.twin)
+    const twins = games.filter(g => g.twin)
+    return NextResponse.json({
+      dryRun: true,
+      summary: { games: games.length, structural: structural.length, deadForks: 0, twins: twins.length, orphansToCreate: orphans.length, cartridges: games.length + structural.length },
+      orphansToCreate: orphans.map(o => ({ name: o.name, slug: o.slug })),
+      twinsToRepoint: twins.map(t => ({ name: t.name, slug: t.slug })),
+      deadForksToDelete: [],
+      structuralKept: structural,
+    })
+  } catch (e) {
+    return NextResponse.json({ error: 'dry run failed: ' + (e instanceof Error ? e.message : String(e)) }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -75,14 +81,14 @@ export async function POST(req: NextRequest) {
   const owner = email ? await prisma.user.findUnique({ where: { email }, select: { id: true } }) : null
   if (!owner) return NextResponse.json({ error: 'need a signed-in admin to own the migrated worlds' }, { status: 400 })
 
-  const { games } = await classify()
+  const origin = req.nextUrl.origin
+  const { games } = await classify(origin)
   const orphans = games.filter(g => !g.twin)
   const created: Array<{ name: string; slug: string }> = []
   const failed: Array<{ name: string; error: string }> = []
   for (const o of orphans) {
     try {
-      const raw = await fs.readFile(path.join(CART_DIR(), o.name + '.json'), 'utf8')
-      const snapshot = JSON.parse(raw) as Record<string, unknown>
+      const snapshot = await fetchCartridge(origin, o.name)
       const space = await createSpaceUniqueSlug(o.slug, (s) => ({
         name: (typeof snapshot.name === 'string' && snapshot.name) || o.name,
         slug: s,
