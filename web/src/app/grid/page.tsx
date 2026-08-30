@@ -512,8 +512,12 @@ export default function TheGrid() {
   const connectPrompt = useMemo(() => {
     const origin = typeof window !== 'undefined' ? window.location.origin.replace('localhost:3131', 'cartridge.cafe') : 'https://cartridge.cafe'
     if (!plugToken) return ''
-    return worldBriefingPrompt({ token: plugToken, worldName: selected?.name ?? 'my world', origin })
-  }, [plugToken, selected])
+    // Opening a world DIRECTLY (by URL) leaves `selected` null, so the prompt
+    // used to say the literal "my world" (Galen: nocturne "says my world").
+    // Fall back to the resolved space's real name before that generic default.
+    const worldName = selected?.name ?? spc?.name ?? spaceInfo?.name ?? 'my world'
+    return worldBriefingPrompt({ token: plugToken, worldName, origin })
+  }, [plugToken, selected, spc, spaceInfo])
 
   // cfg with STABLE IDENTITY: even when other eye fields churn (a live world's
   // graph changes every tick), the owner views' props only change when the
@@ -1101,7 +1105,7 @@ export default function TheGrid() {
             ) : uiSet !== 'engine' ? (
             <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
               className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-full truncate">
-              {selected?.name ?? '—'}
+              {selected?.name ?? spc?.name ?? '—'}
             </button>
             ) : null)}
             <span className="flex-1" />
