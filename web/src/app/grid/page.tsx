@@ -679,20 +679,23 @@ export default function TheGrid() {
           the commons window: opening the menu layers over it, closing returns
           to it (Galen: dockstar must not kill the commons). */}
       {selOpen && (
-        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
+        // items-start + overflow-y-auto: on a phone the option cards are taller
+        // than the frame — center-align clipped them (Galen: "menu options
+        // overwhelm space"). Now the menu SCROLLS from the top instead.
+        <div className="fixed z-[128] flex items-start justify-center overflow-y-auto backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
           onClick={() => setSelOpen(false)}>
-          <div className="p-4 w-full max-w-[520px]" onClick={e => e.stopPropagation()}>
+          <div className="p-3 sm:p-4 w-full max-w-[520px] my-auto" onClick={e => e.stopPropagation()}>
           {/* THE BRAND — the real sign (the cup + the cafe-sign wordmark, same
               as the masthead) + the line that says what this place IS (Galen) */}
-          <div className="flex flex-col items-center mb-4">
+          <div className="flex flex-col items-center mb-3 sm:mb-4">
             <div className="flex items-center justify-center gap-2.5">
-              <img src="/cartridge-cup.svg" alt="" className="w-9 h-9 -mt-0.5" />
-              <h1 className="cafe-sign text-[24px] leading-none">cartridge<span className="not-italic font-mono text-[16px] text-brass">.cafe</span></h1>
+              <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 sm:w-9 sm:h-9 -mt-0.5" />
+              <h1 className="cafe-sign text-[22px] sm:text-[24px] leading-none">cartridge<span className="not-italic font-mono text-[15px] sm:text-[16px] text-brass">.cafe</span></h1>
             </div>
-            <div className="font-mono text-[10.5px] tracking-[0.18em] text-white/55 mt-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
+            <div className="font-mono text-[9.5px] sm:text-[10.5px] tracking-[0.18em] text-white/55 mt-1.5 sm:mt-2 text-center px-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {([
               ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
               ['main', '◉', 'MAIN', 'the commons + social space'],
@@ -701,11 +704,11 @@ export default function TheGrid() {
             ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
-                className={`text-left rounded-2xl border p-4 transition-colors active:bg-white/10 ${
+                className={`text-left rounded-2xl border p-3 sm:p-4 transition-colors active:bg-white/10 ${
                   uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
-                <div className={`text-[22px] mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
-                <div className={`font-mono text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
-                <div className="font-mono text-[11px] text-white/50 mt-1 leading-relaxed">{sub}</div>
+                <div className={`text-[18px] sm:text-[22px] mb-0.5 sm:mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
+                <div className={`font-mono text-[13px] sm:text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
+                <div className="font-mono text-[10px] sm:text-[11px] text-white/50 mt-0.5 sm:mt-1 leading-snug">{sub}</div>
               </button>
             ))}
             {isAdmin && (
@@ -1086,6 +1089,9 @@ export default function TheGrid() {
       )}
 
       <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: BAR_H }}>
+        {/* solid black backing under the bar (Galen: "bottom bar not black") —
+            the world/menu no longer shows through between the buttons */}
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
         <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
           {/* LEFT ZONE */}
           <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
@@ -1173,7 +1179,7 @@ export default function TheGrid() {
                 if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
               }}
                 className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
-                {copied ? '✓ COPIED' : '↗ SHARE'}
+                {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
               </button>
             )}
           </div>
