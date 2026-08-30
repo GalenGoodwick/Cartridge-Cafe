@@ -22,6 +22,18 @@ export function TouchControls({ simRef, frame, suppressed }: {
 }) {
   const [isTouch] = useState(() =>
     typeof window !== 'undefined' && (('ontouchstart' in window) || navigator.maxTouchPoints > 0))
+  // OPT-IN (Galen, Aug 30: 'remove from mobile games as default but keep as an
+  // accessible primitive'): the generic stick/A/B render ONLY when the world
+  // declares worldData.touchControls = 'stick' (or true). The first-class path
+  // is declared ui buttons (click:"key:<k>"); this is the legacy convenience.
+  const [optedIn, setOptedIn] = useState(false)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const tc = simRef.current?.worldData?.['touchControls']
+      setOptedIn(tc === 'stick' || tc === true)
+    }, 600)
+    return () => clearInterval(iv)
+  }, [simRef])
   const originRef = useRef<{ x: number; y: number } | null>(null)
   const nubRef = useRef<HTMLDivElement>(null)
   // LAYOUT IS COMPUTED, not hand-placed (touch-layout.ts — collision-free by
@@ -85,7 +97,7 @@ export function TouchControls({ simRef, frame, suppressed }: {
     if (wd) flag(wd, key, down)
   }, [simRef, flag])
 
-  if (!isTouch || !zones || suppressed) return null
+  if (!isTouch || !zones || suppressed || !optedIn) return null
   // a MINI frame (the grid's browse/engine shrink) is not a playfield — the
   // stick/buttons only ride a frame big enough to play in (Galen: "UI controls
   // are showing on mobile" over the shrunk grid)
