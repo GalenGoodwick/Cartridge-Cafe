@@ -71,7 +71,11 @@ export async function renderSnapshot(
   if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the __vf state trace per sampled tick
   try {
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 25_000)
+    // 90s, not 25: Railway's SOFTWARE Vulkan (lavapipe) spends ~23s on
+    // pipeline compile for even a trivial world — 25s aborted EVERY prod
+    // probe and reported it as 'unreachable' (the Aug 29 mystery). The local
+    // Metal eye answers in seconds; the cloud fallback just needs the time.
+    const timer = setTimeout(() => ctrl.abort(), 90_000)
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${secret}`, 'Content-Type': 'application/json' },
