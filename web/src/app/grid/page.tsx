@@ -23,7 +23,7 @@ import { MembershipBanner } from '@/app/cards/MembershipBanner'
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'search'
+type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
@@ -183,7 +183,7 @@ export default function TheGrid() {
 
   // catalog + icons (prod real; local = bundled cartridges)
   useEffect(() => {
-    const feed = tab === 'search' ? 'published' : tab
+    const feed = tab
     fetch(`/api/cards?tab=${feed}`).then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         const list = Array.isArray(d.cards) && d.cards.length
@@ -209,11 +209,12 @@ export default function TheGrid() {
         setIcons(m)
       }).catch(() => { /* letter tiles */ })
   }, [])
+  // SEARCH is a persistent filter over the ACTIVE tab (Galen), not its own tab
   const shown = useMemo(() =>
-    tab === 'search' && q.trim()
+    q.trim()
       ? entries.filter(e => e.name.toLowerCase().includes(q.trim().toLowerCase()))
       : entries,
-  [entries, tab, q])
+  [entries, q])
 
   // linkable state
   useEffect(() => {
@@ -579,7 +580,7 @@ export default function TheGrid() {
       {browsing && (
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
-          {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · search */}
+          {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['forked', '⑄ FORKS'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
@@ -588,27 +589,29 @@ export default function TheGrid() {
                 {label}
               </button>
             ))}
-            <button onClick={() => setTab('search')}
-              className={`font-mono text-[10.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                tab === 'search' ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/40 hover:text-white/70'}`}>
-              ⌕ SEARCH
-            </button>
-            {tab === 'search' && (
-              <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="filter games…"
-                className="font-mono text-[11px] px-3 py-1 rounded-lg bg-black/50 border border-sky-300/40 text-white/85 placeholder:text-white/25 outline-none w-44" />
+          </div>
+          {/* SEARCH — always visible under the tabs (Galen); filters the active tab */}
+          <div className="relative shrink-0 w-full max-w-[320px]">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-white/35">⌕</span>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="search games…"
+              className="font-mono text-[11px] w-full pl-8 pr-8 py-1.5 rounded-lg bg-black/50 border border-white/12 text-white/85 placeholder:text-white/25 outline-none focus:border-sky-300/50 transition-colors" />
+            {q && (
+              <button onClick={() => setQ('')} aria-label="clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 grid place-items-center rounded text-white/40 hover:text-white hover:bg-white/10 text-[12px]">✕</button>
             )}
           </div>
-          {/* the icons */}
-          {tab === 'mine' && shown.length === 0 && (
+          {/* the icons — contextual empties show only when NOT searching (a
+              search miss shows the "nothing matches" line below instead) */}
+          {tab === 'mine' && !q.trim() && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">no worlds on your deed yet — sign in, or brew one at /create.</div>
           )}
-          {tab === 'premium' && shown.length === 0 && (
+          {tab === 'premium' && !q.trim() && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">no premium worlds yet.</div>
           )}
-          {tab === 'unfinished' && shown.length === 0 && (
+          {tab === 'unfinished' && !q.trim() && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">nothing on the workbench shelf.</div>
           )}
-          {tab === 'forked' && shown.length === 0 && (
+          {tab === 'forked' && !q.trim() && shown.length === 0 && (
             <div className="font-mono text-[11px] text-white/45 py-6 text-center">no forked worlds published yet — fork a world and publish it to land it here.</div>
           )}
           <div className="grid gap-3 w-full max-w-[980px] pb-2"
@@ -632,7 +635,7 @@ export default function TheGrid() {
                 </button>
               )
             })}
-            {tab === 'search' && q.trim() && shown.length === 0 && (
+            {q.trim() && shown.length === 0 && (
               <div className="col-span-full font-mono text-[11px] text-white/30 text-center py-6">nothing matches “{q}”</div>
             )}
           </div>
