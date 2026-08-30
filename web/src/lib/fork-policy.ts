@@ -26,13 +26,16 @@ export interface ForkFacts {
   base: boolean
 }
 
-/** THE DECISION. Bases always fork (that's their purpose). Otherwise the
- *  maker's explicit OFF wins; failing that, a world forks unless it is premium,
- *  proprietary, or an open live-edit world. Default: forkable. */
+/** THE DECISION. Paid or closed products NEVER fork — not even a base (Galen,
+ *  Aug 30: "no forking premium games"; premium's price IS its IP, proprietary
+ *  is closed by contract). Otherwise a base always forks; the maker's explicit
+ *  OFF wins next; and an open live-edit world is joined, not copied. Default:
+ *  forkable. */
 export function canFork(f: ForkFacts): boolean {
+  if (f.premium || f.proprietary) return false
   if (f.base) return true
   if (f.explicitOff) return false
-  return !f.premium && !f.proprietary && !f.liveEdit
+  return !f.liveEdit
 }
 
 /** Derive the fork facts from a world's worldData plus the owner's IP-control

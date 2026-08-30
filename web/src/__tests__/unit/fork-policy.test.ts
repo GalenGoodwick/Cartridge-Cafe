@@ -21,8 +21,12 @@ describe('canFork — the default-on decision', () => {
   it('the maker may opt OUT explicitly', () => {
     expect(canFork(facts({ explicitOff: true }))).toBe(false)
   })
-  it('a base ALWAYS forks — even past every exclusion', () => {
-    expect(canFork(facts({ base: true, premium: true, proprietary: true, liveEdit: true, explicitOff: true }))).toBe(true)
+  it('a base forks past live-edit and explicit opt-out', () => {
+    expect(canFork(facts({ base: true, liveEdit: true, explicitOff: true }))).toBe(true)
+  })
+  it('premium/proprietary block forking EVEN a base (Galen: no forking premium games)', () => {
+    expect(canFork(facts({ base: true, premium: true }))).toBe(false)
+    expect(canFork(facts({ base: true, proprietary: true }))).toBe(false)
   })
 })
 
@@ -56,8 +60,9 @@ describe('forkFactsOf — reading worldData (once)', () => {
     expect(forkFactsOf({}, false).explicitOff).toBe(false)
     expect(worldIsForkable({ forkable: false }, false)).toBe(false)
   })
-  it('__base === true marks a base', () => {
+  it('__base === true marks a base — but a PREMIUM base still does not fork', () => {
     expect(forkFactsOf({ __base: true }, false).base).toBe(true)
-    expect(worldIsForkable({ __base: true, premium: { usd: 9 } }, false)).toBe(true)
+    expect(worldIsForkable({ __base: true }, false)).toBe(true)
+    expect(worldIsForkable({ __base: true, premium: { usd: 9 } }, false)).toBe(false)
   })
 })

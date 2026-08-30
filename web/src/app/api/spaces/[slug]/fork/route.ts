@@ -100,13 +100,6 @@ export async function POST(
       const so = source.snapshot as { worldParams?: Record<string, unknown> }
       so.worldParams = { ...(so.worldParams ?? {}), gridSize: gReq }
     }
-    // THE FORK'S BRIEF (Galen, Aug 30): the "what should it become" prompt from
-    // the FORK engine tab lands as creation_brief, so the AI you connect next
-    // reads the intent. A fresh intent means the fork is not yet "done".
-    if (typeof body.brief === 'string' && body.brief.trim()) {
-      snapObj.worldData.creation_brief = { at: Date.now(), by: user.id, prompt: body.brief.trim().slice(0, 600) }
-      delete snapObj.worldData.brief_done
-    }
   }
 
   // race-safe unique slug (the old findUnique-then-create raced on the final
