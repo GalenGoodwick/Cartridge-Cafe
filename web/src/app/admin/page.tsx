@@ -48,6 +48,17 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [faults, setFaults] = useState<FaultReport[] | null>(null)
   const [faultFilter, setFaultFilter] = useState('')
+  // ◆ COMPANIES — proprietary/white-label tenants (provision + invoice)
+  type CompanyRow = { handle: string; name: string; domain: string | null; ownerEmail: string; ownerName: string | null; ipControl: boolean; worlds: number; at: number }
+  const [companies, setCompanies] = useState<CompanyRow[] | null>(null)
+  const [coForm, setCoForm] = useState({ email: '', handle: '', name: '', domain: '' })
+  const [coNote, setCoNote] = useState('')
+  const loadCompanies = () => {
+    fetch('/api/admin/company').then(r => r.ok ? r.json() : null)
+      .then(d => setCompanies(Array.isArray(d?.companies) ? d.companies : []))
+      .catch(() => setCompanies([]))
+  }
+  useEffect(loadCompanies, [])
 
   const loadFaults = () => {
     fetch('/api/engine/quarantine').then(r => r.ok ? r.json() : null)
@@ -285,6 +296,83 @@ export default function AdminPage() {
     )
   }
 
+  const provision = async () => {
+    if (!coForm.email.trim() || !coForm.handle.trim()) { setCoNote('email and handle are required'); return }
+    setBusy('provision'); setCoNote('')
+    try {
+      const r = await fetch('/api/admin/company', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(coForm),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok) { setCoForm({ email: '', handle: '', name: '', domain: '' }); setCoNote(`✓ provisioned ${d.company?.handle} → ${d.ownerEmail}`); loadCompanies() }
+      else setCoNote(d.error || 'provision failed')
+    } finally { setBusy('') }
+  }
+  const deprovision = async (handle: string) => {
+    if (!window.confirm(`Deprovision ${handle}? Releases the handle and revokes IP control (worlds are untouched).`)) return
+    setBusy('deprov:' + handle)
+    try {
+      await fetch('/api/admin/company?handle=' + encodeURIComponent(handle), { method: 'DELETE' })
+      loadCompanies()
+    } finally { setBusy('') }
+  }
+  const invoice = async (handle: string, name: string) => {
+    const amt = window.prompt(`Invoice ${name} — amount in USD (Stripe emails a net-30 invoice):`, '')
+    if (!amt) return
+    const desc = window.prompt('Line description:', `cartridge.cafe — ${name} white-label`) || `cartridge.cafe — ${name}`
+    setBusy('inv:' + handle); setCoNote('')
+    try {
+      const r = await fetch('/api/admin/company/invoice', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle, amountUsd: Number(amt), description: desc }),
+      })
+      const d = await r.json().catch(() => ({}))
+      setCoNote(r.ok ? `✓ invoice sent to ${d.sentTo}` : (d.error || 'invoice failed'))
+    } finally { setBusy('') }
+  }
+
+  const Companies = () => (
+    <section className={`${box} p-4 mb-4`}>
+      <div className="font-mono text-[10.5px] tracking-[0.2em] text-amber-200/80 mb-1">◆ COMPANIES · PROPRIETARY TENANTS</div>
+      <p className="font-mono text-[9.5px] text-white/40 mb-3">provision a white-label customer: bind a chosen handle to their account + grant IP control. they get /c/&lt;handle&gt; (and &lt;handle&gt;.cartridge.cafe once DNS is pointed). bill by Stripe invoice, net-30.</p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <input value={coForm.email} onChange={e => setCoForm({ ...coForm, email: e.target.value })} placeholder="owner email (must have signed in once)"
+          className="font-mono text-[12px] bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-white/85 outline-none focus:border-amber-300/50" />
+        <input value={coForm.handle} onChange={e => setCoForm({ ...coForm, handle: e.target.value.toLowerCase() })} placeholder="handle (e.g. fortis)"
+          className="font-mono text-[12px] bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-white/85 outline-none focus:border-amber-300/50" />
+        <input value={coForm.name} onChange={e => setCoForm({ ...coForm, name: e.target.value })} placeholder="company name (FORTIS)"
+          className="font-mono text-[12px] bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-white/85 outline-none focus:border-amber-300/50" />
+        <input value={coForm.domain} onChange={e => setCoForm({ ...coForm, domain: e.target.value })} placeholder="custom domain (optional)"
+          className="font-mono text-[12px] bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-white/85 outline-none focus:border-amber-300/50" />
+      </div>
+      <button onClick={provision} disabled={busy === 'provision'}
+        className="font-mono text-[11px] tracking-[0.15em] px-4 py-2 rounded-lg border border-emerald-300/50 text-emerald-100 hover:bg-emerald-400/15 disabled:opacity-40">
+        {busy === 'provision' ? 'PROVISIONING…' : '✚ PROVISION COMPANY'}
+      </button>
+      {coNote && <div className="font-mono text-[11px] text-amber-200/90 mt-2">{coNote}</div>}
+      {companies && companies.length > 0 && (
+        <div className="mt-4 flex flex-col gap-1.5">
+          {companies.map(c => (
+            <div key={c.handle} className="flex items-center gap-2 py-1.5 border-b border-white/5 font-mono text-[11.5px]">
+              <a href={`/c/${c.handle}`} className={`w-28 truncate ${c.ipControl ? 'text-amber-100' : 'text-white/40'}`}>◆ {c.handle}</a>
+              <span className="flex-1 truncate text-white/55">{c.ownerEmail} · {c.worlds} world{c.worlds === 1 ? '' : 's'}{c.domain ? ' · ' + c.domain : ''}{!c.ipControl && ' · ⚠ NO IP CTRL'}</span>
+              <button onClick={() => invoice(c.handle, c.name)} disabled={busy === 'inv:' + c.handle}
+                className="text-[10px] tracking-[0.12em] px-2 py-1 rounded border border-white/20 text-white/70 hover:bg-white/10 disabled:opacity-40">
+                {busy === 'inv:' + c.handle ? '…' : 'INVOICE'}
+              </button>
+              <button onClick={() => deprovision(c.handle)} disabled={busy === 'deprov:' + c.handle}
+                className="text-[10px] tracking-[0.12em] px-2 py-1 rounded border border-red-400/30 text-red-200/80 hover:bg-red-500/15 disabled:opacity-40">
+                {busy === 'deprov:' + c.handle ? '…' : '✕'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {companies && companies.length === 0 && <div className="font-mono text-[11px] text-white/35 mt-3">no companies provisioned yet.</div>}
+    </section>
+  )
+
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
       <div className="max-w-[860px] mx-auto">
@@ -296,6 +384,7 @@ export default function AdminPage() {
 
         <Overview />
         <BridgeWatch />
+        <Companies />
 
         {err && <div className="font-mono text-[13px] text-red-300">{err}</div>}
         {!err && !roots && <div className="font-mono text-[12px] text-white/50">fetching the shelf…</div>}

@@ -347,6 +347,60 @@ export async function findActiveSubscriptions(userId: string): Promise<ActiveSub
   }))
 }
 
+/** ENTERPRISE INVOICE (Galen, Aug 30: "is invoice auto sent to the company?").
+ *  Proprietary/white-label customers don't swipe a card — the keeper sends a
+ *  Stripe invoice they pay net-30. This creates (or reuses) a Customer by email,
+ *  adds a line item, and issues an invoice with collection_method=send_invoice
+ *  so Stripe EMAILS it and handles the hosted pay page + receipts. One-off by
+ *  default; recurring white-label billing is a subscription (future). Inert
+ *  without STRIPE_SECRET_KEY (key-drop law). */
+export async function sendCompanyInvoice(opts: {
+  email: string; companyName: string; amountUsd: number; description: string; daysUntilDue?: number
+}): Promise<{ url: string; invoiceId: string } | { error: string; status: number }> {
+  const secret = process.env.STRIPE_SECRET_KEY
+  if (!secret) return { error: 'payments not configured yet', status: 501 }
+  const amount = Math.round(opts.amountUsd * 100)
+  if (!Number.isFinite(amount) || amount < 100) return { error: 'amount must be at least $1', status: 400 }
+  const auth = { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' }
+  const post = async (path: string, body: URLSearchParams) => {
+    const r = await fetch('https://api.stripe.com/v1/' + path, { method: 'POST', headers: auth, body: body.toString() })
+    return { ok: r.ok, j: (await r.json()) as Record<string, unknown> & { error?: { message?: string } } }
+  }
+
+  // reuse a customer for this email if one exists, else create it
+  const found = await fetch(`https://api.stripe.com/v1/customers/search?query=${encodeURIComponent(`email:'${opts.email}'`)}&limit=1`, { headers: { Authorization: 'Bearer ' + secret } })
+  let customerId = ''
+  if (found.ok) { const fj = (await found.json()) as { data?: Array<{ id: string }> }; customerId = fj.data?.[0]?.id ?? '' }
+  if (!customerId) {
+    const c = await post('customers', new URLSearchParams({ email: opts.email, name: opts.companyName }))
+    if (!c.ok || typeof c.j.id !== 'string') return { error: c.j.error?.message || 'could not create customer', status: 502 }
+    customerId = c.j.id
+  }
+
+  const inv = await post('invoices', new URLSearchParams({
+    customer: customerId,
+    collection_method: 'send_invoice',
+    days_until_due: String(Math.max(1, Math.min(90, Math.floor(opts.daysUntilDue ?? 30)))),
+    'metadata[product]': 'company', 'metadata[companyName]': opts.companyName,
+    auto_advance: 'true',
+  }))
+  if (!inv.ok || typeof inv.j.id !== 'string') return { error: inv.j.error?.message || 'could not open invoice', status: 502 }
+  const invoiceId = inv.j.id
+
+  const item = await post('invoiceitems', new URLSearchParams({
+    customer: customerId, invoice: invoiceId, currency: 'usd',
+    amount: String(amount), description: opts.description.slice(0, 200),
+  }))
+  if (!item.ok) return { error: item.j.error?.message || 'could not add line item', status: 502 }
+
+  const finalized = await post(`invoices/${invoiceId}/finalize`, new URLSearchParams())
+  if (!finalized.ok) return { error: finalized.j.error?.message || 'could not finalize invoice', status: 502 }
+  const sent = await post(`invoices/${invoiceId}/send`, new URLSearchParams())
+  if (!sent.ok) return { error: sent.j.error?.message || 'could not send invoice', status: 502 }
+  const url = (sent.j.hosted_invoice_url as string) || (finalized.j.hosted_invoice_url as string) || ''
+  return { url, invoiceId }
+}
+
 /** Open the Stripe BILLING PORTAL for a customer — invoices, payment method,
  *  and cancellation live there (the legally clean self-serve surface). */
 export async function createPortalSession(customerId: string, returnUrl: string): Promise<{ url: string } | { error: string; status: number }> {

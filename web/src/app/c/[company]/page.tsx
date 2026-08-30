@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasIpControl } from '@/lib/stripe'
+import { getCompanyByHandle } from '@/lib/company'
 
 export const metadata: Metadata = { title: 'Company', description: 'A private development space on cartridge.cafe.' }
 export const dynamic = 'force-dynamic'
@@ -17,13 +18,23 @@ export default async function CompanyPage({ params }: { params: Promise<{ compan
   const { company } = await params
   const handle = company.toLowerCase().replace(/[^a-z0-9_-]/g, '')
 
-  // the company account = the ACTIVE user whose email local-part is the handle
-  const users = await prisma.$queryRawUnsafe<Array<{ id: string; name: string | null; email: string }>>(
-    `SELECT id, name, email FROM "User" WHERE lower(split_part(email, '@', 1)) = $1 AND status = 'ACTIVE' LIMIT 5`,
-    handle,
-  ).catch(() => [])
+  // OWNER RESOLUTION — the provisioned registry is the truth (a chosen handle
+  // bound to an account). Fall back to the legacy email-local-part guess only
+  // for handles registered before provisioning existed.
   let owner: { id: string; name: string | null } | null = null
-  for (const u of users) if (await hasIpControl(u.id)) { owner = u; break }
+  let regName: string | null = null
+  const registered = await getCompanyByHandle(handle)
+  if (registered && (await hasIpControl(registered.ownerId))) {
+    const u = await prisma.user.findUnique({ where: { id: registered.ownerId }, select: { id: true, name: true } })
+    if (u) { owner = u; regName = registered.name }
+  }
+  if (!owner) {
+    const users = await prisma.$queryRawUnsafe<Array<{ id: string; name: string | null; email: string }>>(
+      `SELECT id, name, email FROM "User" WHERE lower(split_part(email, '@', 1)) = $1 AND status = 'ACTIVE' LIMIT 5`,
+      handle,
+    ).catch(() => [])
+    for (const u of users) if (await hasIpControl(u.id)) { owner = u; break }
+  }
 
   const shell = (body: React.ReactNode) => (
     <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
@@ -56,7 +67,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ compan
     inside = seat > 0
   }
 
-  const companyName = (owner.name || handle).toUpperCase()
+  const companyName = (regName || owner.name || handle).toUpperCase()
 
   if (!inside) {
     return shell(
