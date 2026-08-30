@@ -1141,6 +1141,18 @@ export default function TheGrid() {
                 {copied ? '✓ COPIED' : '↗ SHARE'}
               </button>
             )}
+            {/* ⑄ FORK — the visible fork control in the play bar (Galen: "just a
+                button in the engine"). The engine dock's fork lives in a hidden
+                (chromeHidden) frame, so surface it here for any forkable space
+                world; cmd('fork') runs the engine's own fork (instantForkSpace →
+                the credit-gated API). forkable comes from fork-policy via config. */}
+            {uiSet === 'games' && phase === 'play' && scene.startsWith('space:') && !!eyeData?.config?.forkable && (
+              <button onClick={() => { cmd('fork'); setSelOpen(false); setConnectOpen(false) }}
+                title="fork this world — a new world you own, with lineage back here"
+                className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-emerald-500/15 border-emerald-300/45 text-emerald-100 hover:bg-emerald-500/25 hover:text-white transition-colors shrink-0">
+                ⑄ FORK
+              </button>
+            )}
           </div>
         </div>
       </div>
