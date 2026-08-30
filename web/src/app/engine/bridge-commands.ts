@@ -57,6 +57,47 @@ export interface CommandContext {
   showToast: (message: string, type?: 'info' | 'success' | 'error', subtitle?: string) => void
 }
 
+/** TAB-AS-EYE stats: decode the renderer's in-frame PNG capture (already ≤256
+ *  wide — requestFrameCapture(256, …, raw:true) downscales in the readback) and
+ *  measure it. Returns the base64 body (no data: prefix) + luminance stats.
+ *  NOTE the PNG must come from the renderer's IN-FRAME readback: a WebGPU
+ *  canvas presents-and-clears, so any out-of-task read of the canvas element
+ *  (toDataURL/drawImage/createImageBitmap) is blank — proven in every timing
+ *  under chromium/swiftshader, Aug 29. */
+export async function probeStatsFromPng(dataUrl: string): Promise<{
+  image: string; imageMime: string; meanLum: number; coveragePct: number; w: number; h: number
+}> {
+  const img = new Image()
+  img.src = dataUrl
+  await img.decode()
+  const w = img.naturalWidth, h = img.naturalHeight
+  if (!w || !h) throw new Error('capture decoded to no pixels')
+  const oc = new OffscreenCanvas(w, h)
+  const g = oc.getContext('2d')
+  if (!g) throw new Error('no 2d context for probe stats')
+  g.drawImage(img, 0, 0)
+  const px = g.getImageData(0, 0, w, h).data
+  let lumSum = 0, lit = 0
+  for (let i = 0; i < px.length; i += 4) {
+    const lum = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]
+    lumSum += lum
+    if (lum > 16) lit++   // near-black threshold — matches the service probe's coverage idea
+  }
+  const n = w * h
+  const comma = dataUrl.indexOf(',')
+  return {
+    image: dataUrl.slice(comma + 1), imageMime: 'image/png',
+    meanLum: Math.round((lumSum / n) * 10) / 10,
+    coveragePct: Math.round((lit / n) * 1000) / 10,
+    w, h,
+  }
+}
+
+// reachable from the console + eye harnesses: the SAME stats function the
+// probe_frame case runs, so a test/human can measure a capture without faking
+// the SSE channel
+if (typeof window !== 'undefined') (window as any).__ccProbeStats = probeStatsFromPng
+
 /** Execute one bridge command. `cmd` is untyped JSON from the SSE stream —
  *  exactly what the inline handler received (data.command from JSON.parse). */
 export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise<void> {
@@ -1557,6 +1598,41 @@ export async function applyBridgeCommand(cmd: any, ctx: CommandContext): Promise
               if (!tweenId) { pushTerminal('cancel_tween', undefined, 'ERROR: id required'); break }
               sim.cancelTween(tweenId)
               pushTerminal('cancel_tween', undefined, `"${tweenId}" cancelled`)
+              break
+            }
+
+            // TAB-AS-EYE: the bridge asks THIS live tab (real GPU, real frame
+            // loop) to answer a render_probe in ~1s instead of the 25s cloud
+            // software renderer. The renderer serves the capture IN-FRAME right
+            // after its next submit (requestFrameCapture raw — the only moment a
+            // WebGPU canvas is readable), then we POST stats + PNG back against
+            // data.id for the bridge's waitForCommandResult. Fire-and-forget so
+            // the wait never blocks the SSE command stream.
+            case 'probe_frame': {
+              const probeCommandId = data.id as string | undefined
+              if (!probeCommandId) break
+              ;(async () => {
+                const post = (result: Record<string, unknown>) =>
+                  fetch('/api/engine/compile-result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: probeCommandId, result }) }).catch(() => {})
+                try {
+                  const dataUrl = await Promise.race([
+                    renderer.requestFrameCapture(256, 0.9, true),
+                    // a hidden tab's rAF loop is parked — answer honestly instead
+                    // of leaving the bridge to its 12s timeout (10s: a software-GPU
+                    // dev tab needs seconds for the readback; real GPUs take ms)
+                    new Promise<null>(r => setTimeout(() => r(null), 10000)),
+                  ])
+                  if (!dataUrl) throw new Error('no frame captured within 10s (tab hidden or renderer stalled)')
+                  const captured = await probeStatsFromPng(dataUrl)
+                  await post({
+                    ok: true, source: 'live-tab', realGpu: true, ...captured,
+                    uiRev: ((sim.worldData.__uiRects as any)?.rev ?? null),
+                    declaredUi: !!sim.worldData.ui,
+                  })
+                } catch (e) {
+                  await post({ ok: false, error: String((e as Error)?.message ?? e).slice(0, 300) })
+                }
+              })()
               break
             }
 

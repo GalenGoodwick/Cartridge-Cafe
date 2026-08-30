@@ -263,7 +263,7 @@ export class FieldRenderer {
   private hitIdPixelCount: number = 0
   private hitIdReadbackPending: boolean = false
   private _hitReadbackNeeded: boolean = false
-  private _captureReq: { resolve: (s: string | null) => void; maxSize: number; quality: number } | null = null
+  private _captureReq: { resolve: (s: string | null) => void; maxSize: number; quality: number; raw?: boolean } | null = null
   /** True only when some field is hittable — gates the hit-ID copy + readback. */
   get hitReadbackNeeded(): boolean { return this._hitReadbackNeeded }
   /** Latest readback: per-pixel field index (0xFFFFFFFF = no field) */
@@ -2752,7 +2752,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     if (this._captureReq && capTex) {
       const req = this._captureReq
       this._captureReq = null
-      void this.captureCanvasJpeg(req.maxSize, req.quality, capTex).then(req.resolve)
+      void this.captureCanvasJpeg(req.maxSize, req.quality, capTex, req.raw).then(req.resolve)
     }
   }
 
@@ -2997,17 +2997,25 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
    *  OUTSIDE the loop (a click, a UI handler): it queues the capture and render() serves
    *  it in-frame from the real presented texture, so you get what's on screen — not the
    *  blank/next frame a bare getCurrentTexture() would grab. Resolves next frame. */
-  requestFrameCapture(maxSize = 512, quality = 0.82): Promise<string | null> {
-    return new Promise((resolve) => { this._captureReq = { resolve, maxSize, quality } })
+  requestFrameCapture(maxSize = 512, quality = 0.82, raw = false): Promise<string | null> {
+    return new Promise((resolve) => { this._captureReq = { resolve, maxSize, quality, raw } })
   }
+
+  /** a queued requestFrameCapture waiting for the next real render — the frame
+   *  memoizer must not skip render() while one is pending, or a STATIC world
+   *  starves the capture forever (found by the tab-as-eye probe, Aug 30) */
+  get capturePending(): boolean { return this._captureReq !== null }
 
   /** Snap the CURRENT presented frame to a JPEG data URL — must be called from
    *  within the frame loop right after render(), while getCurrentTexture() still
    *  holds this frame (WebGPU releases it on present, so a detached toDataURL
    *  reads black). Downscaled; BGRA→RGBA handled per canvas format.
    *  Pass `tex` to capture a texture already acquired this frame (render() does this
-   *  to serve requestFrameCapture); otherwise it grabs the current texture. */
-  async captureCanvasJpeg(maxSize = 192, quality = 0.85, tex?: GPUTexture): Promise<string | null> {
+   *  to serve requestFrameCapture); otherwise it grabs the current texture.
+   *  `raw` (TAB-AS-EYE probes): honest pixels — no blank-frame reject, no dark-scene
+   *  gain, PNG not JPEG. The icon path keeps its legibility cosmetics; a probe must
+   *  never have its measurements beautified. */
+  async captureCanvasJpeg(maxSize = 192, quality = 0.85, tex?: GPUTexture, rawMode = false): Promise<string | null> {
     const device = this.device
     const ctx = this.context
     if (!device || !ctx) return null
@@ -3060,15 +3068,17 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
       if (out[i + 2] > peak) peak = out[i + 2]
       luma += 0.299 * out[i] + 0.587 * out[i + 1] + 0.114 * out[i + 2]
     }
-    if (peak < 8) return null
-    // Lift dark scenes so the icon stays legible at 64px; bright worlds untouched.
-    const mean = luma / (outW * outH)
-    const gain = Math.max(1, Math.min(3.5, 70 / Math.max(mean, 1)))
-    if (gain > 1.02) {
-      for (let i = 0; i < out.length; i += 4) {
-        out[i] = Math.min(255, out[i] * gain)
-        out[i + 1] = Math.min(255, out[i + 1] * gain)
-        out[i + 2] = Math.min(255, out[i + 2] * gain)
+    if (!rawMode) {
+      if (peak < 8) return null
+      // Lift dark scenes so the icon stays legible at 64px; bright worlds untouched.
+      const mean = luma / (outW * outH)
+      const gain = Math.max(1, Math.min(3.5, 70 / Math.max(mean, 1)))
+      if (gain > 1.02) {
+        for (let i = 0; i < out.length; i += 4) {
+          out[i] = Math.min(255, out[i] * gain)
+          out[i + 1] = Math.min(255, out[i + 1] * gain)
+          out[i + 2] = Math.min(255, out[i + 2] * gain)
+        }
       }
     }
     const c = document.createElement('canvas')
@@ -3076,7 +3086,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     const cx = c.getContext('2d')
     if (!cx) return null
     cx.putImageData(new ImageData(out, outW, outH), 0, 0)
-    return c.toDataURL('image/jpeg', quality)
+    return rawMode ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', quality)
   }
 
   // --- State update compute ---

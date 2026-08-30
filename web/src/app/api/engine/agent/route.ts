@@ -84,6 +84,9 @@ export type EngineCommand =
   | { type: 'reset' }
   // Visual type undo — restore previous shader version
   | { type: 'undo_visual'; name: string }
+  // TAB-AS-EYE: ask a live tab to capture its presented canvas and POST stats +
+  // PNG to /api/engine/compile-result against this command's queue id
+  | { type: 'probe_frame' }
 
 type QueueEntry = { id: string; command: EngineCommand; timestamp: number }
 
@@ -142,7 +145,10 @@ function deduplicateQueue(queue: QueueEntry[], entry: QueueEntry): void {
 // freshly-restored session re-runs destructive state transitions (e.g. a
 // replayed save_scene overwrites the saved scene with whatever world the new
 // session happens to hold). Broadcast to live listeners, never queue.
-const NO_REPLAY = new Set(['save_scene', 'load_scene', 'delete_scene', 'reset'])
+const NO_REPLAY = new Set(['save_scene', 'load_scene', 'delete_scene', 'reset',
+  // probe_frame is a live question to a tab that exists NOW — replaying it to a
+  // reconnecting tab would post stale captures against long-dead command ids
+  'probe_frame'])
 
 /** Ephemeral input (key/mouse flags) must broadcast live but never replay —
  *  a reconnecting tab re-running an hour-old key press is a phantom input.
@@ -387,6 +393,11 @@ export async function POST(req: NextRequest) {
 
     const results: { id: string; type: string; fieldId?: string }[] = []
     let statusPayload: ReturnType<typeof getEngineState> | null = null
+    // when a command routes to a space channel, `listeners` must count THAT
+    // space's SSE tabs — the global set is a different audience entirely (the
+    // bridge gates live-tab waits on this count; a wrong 0/`>0` either skips a
+    // present tab or stalls on an absent one)
+    let routedSpaceId: string | null = null
 
     for (const cmd of commands) {
       // Command result from browser — resolve waiting bridge requests
@@ -405,7 +416,7 @@ export async function POST(req: NextRequest) {
 
       // Extract and strip space routing metadata
       const cmdSpaceId = (cmd as Record<string, unknown>).__spaceId as string | undefined
-      if (cmdSpaceId) delete (cmd as Record<string, unknown>).__spaceId
+      if (cmdSpaceId) { delete (cmd as Record<string, unknown>).__spaceId; routedSpaceId = cmdSpaceId }
 
       const entry = pushCommand(cmd, cmdSpaceId)
       const result: { id: string; type: string; fieldId?: string } = { id: entry.id, type: cmd.type }
@@ -460,7 +471,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       queued: results.length,
       commands: results,
-      listeners: listeners.size,
+      listeners: routedSpaceId ? (spaceListeners.get(routedSpaceId)?.size ?? 0) : listeners.size,
       ...(statusPayload ? { engineState: statusPayload } : {}),
     })
   } catch (err) {

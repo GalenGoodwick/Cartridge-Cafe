@@ -5304,7 +5304,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // Conservative bail-outs: 3D mode, GPU hooks, legacy effects, interactions,
       // projectiles/particles, state shaders, or a pipeline mid-compile.
       let skipRender = false
-      if (!mode3D && !stepHookData && renderer.superReady &&
+      if (!mode3D && !stepHookData && renderer.superReady && !renderer.capturePending &&
           fieldEffects.length === 0 && activeInteractions.length === 0 &&
           sim.projectiles.length === 0 && !renderer.hasStateUpdate() &&
           now - lastParticleRef.current > 6000) {

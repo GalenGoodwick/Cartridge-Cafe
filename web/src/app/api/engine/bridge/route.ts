@@ -1041,12 +1041,40 @@ export async function POST(req: NextRequest) {
       // mutates. Icon/player tokens never reach here (guarded above), so this is
       // scoped to the world the token already owns.
       if (cmd.type === 'render_probe') {
-        const snap = isSpaceScoped
-          ? await getSpaceSnapshot(auth.spaceId!)
-          : isSceneScoped
-            ? loadScene(auth.sceneName!)
-            : getEngineState()
-        const out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input })
+        // TAB-AS-EYE (Galen's ruling): a live tab on this world already rendered
+        // the frame on a REAL GPU — ask IT first (~1s) before the cloud software
+        // renderer (~25s). Space-scoped only: the spaceId SSE channel is the only
+        // routing that guarantees the answering tab is showing THIS world (scene
+        // tokens are headless by design; the global channel has no world identity).
+        // Same queue as every other command (pushToAgent → agent POST → SSE);
+        // the tab answers via POST /api/engine/compile-result against the queue id.
+        let out: Record<string, unknown> | null = null
+        if (isSpaceScoped && cmd.eye !== 'service') {
+          try {
+            const queued = await pushToAgent({ type: 'probe_frame' }, req, auth.spaceId) as { commands?: Array<{ id: string }>; listeners?: number }
+            const probeId = queued?.commands?.[0]?.id
+            if (probeId && Number(queued?.listeners ?? 0) > 0) {
+              const live = await waitForCommandResult(probeId, 12000) as Record<string, unknown> | null
+              if (live && live.ok === true) {
+                out = { ...live, next: 'answered by a LIVE TAB (real GPU, the presented frame). For headless ticks/physics over time use {type:"playthrough"}; add eye:"service" to force the cloud renderer.' }
+                // THE NOTHING ERROR speaks with the same voice in BOTH eyes
+                // (Galen: 'rendering as nothing should throw a nothing error')
+                if (typeof out.coveragePct === 'number' && (out.coveragePct as number) < 1) {
+                  out.nothing = true
+                  out.error = `NOTHING RENDERED — the live tab's frame is ~${out.coveragePct}% drawn. Almost always: a field with NO visualType, a WGSL shader that failed to compile, or content built off the 0..512 grid. Fix, then re-probe — do not trust this build.`
+                }
+              }
+            }
+          } catch { /* the live eye is an optimization — fall through to the service eye */ }
+        }
+        if (!out) {
+          const snap = isSpaceScoped
+            ? await getSpaceSnapshot(auth.spaceId!)
+            : isSceneScoped
+              ? loadScene(auth.sceneName!)
+              : getEngineState()
+          out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input }) as Record<string, unknown>
+        }
         results.push({ type: 'render_probe', ...out })
         // stash the eye image + the renderer's SELF-REPORT so the BuilderBox shows a
         // human/AI WHAT THE AI SEES *and how the renderer describes it* (#7: a renderer
