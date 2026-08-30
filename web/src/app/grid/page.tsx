@@ -62,6 +62,7 @@ export default function TheGrid() {
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
+  const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
   const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
@@ -1060,6 +1061,26 @@ export default function TheGrid() {
           (Galen: "always primary and centered" — mobile was smooshing it out).
           Side zones are absolute and overflow-hidden: they can never push the
           cup. NARROW: no title, no REC — the phone bar is cup + essentials. */}
+      {/* ⟲ RESET CONFIRM — restart is destructive (progress lost), so it asks */}
+      {resetConfirm && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setResetConfirm(false)}>
+          <div className="w-full max-w-xs rounded-2xl border border-white/15 bg-[#0a0913]/97 p-5 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[13px] tracking-[0.2em] text-amber-100/90 mb-2">⟲ RESTART {selected?.name ?? 'this world'}?</div>
+            <p className="text-[12px] leading-relaxed text-white/50 mb-4">This starts the world over from the beginning — your current progress is lost.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setResetConfirm(false)}
+                className="font-mono text-[12px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-white/20 text-white/70 hover:bg-white/10 transition-colors">keep playing</button>
+              <button data-grid-reset-go onClick={() => {
+                setResetConfirm(false)
+                try { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true })) } catch { /* ssr */ }
+              }}
+                className="font-mono text-[12px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 bg-amber-400/15 text-amber-100 hover:bg-amber-400/25 transition-colors">RESTART</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: BAR_H }}>
         <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
           {/* LEFT ZONE */}
@@ -1102,6 +1123,16 @@ export default function TheGrid() {
                 {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
               </button>
             )}
+            {/* ⟲ RESET — only for worlds that declare R-reset; sits left of the
+                dockstar and always confirms first (Galen). Fires the same 'r'
+                the keyboard path handles. */}
+            {uiSet === 'games' && phase === 'play' && cfgStable?.rReset && (
+              <button data-grid-reset onClick={() => setResetConfirm(true)}
+                title="restart this world"
+                className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5">
+                ⟲ {!narrow && 'RESET'}
+              </button>
+            )}
           </div>
           {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
           <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
@@ -1127,7 +1158,7 @@ export default function TheGrid() {
             <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
               className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                 instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-              ? INSTRUCTIONS
+              {narrow ? '?' : '? INSTRUCTIONS'}
             </button>
             )}
             {uiSet === 'games' && phase === 'play' && (
