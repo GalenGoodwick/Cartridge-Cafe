@@ -59,6 +59,28 @@ export default function AdminPage() {
       .catch(() => setCompanies([]))
   }
   useEffect(loadCompanies, [])
+  // ⑂ CARTRIDGE MIGRATION — house scenes → DB spaces (dedupe-safe, dry-run first)
+  type MigratePlan = { summary: { cartridges: number; structural: number; deadForks: number; games: number; twins: number; orphansToCreate: number }; orphansToCreate: Array<{ name: string; slug: string }>; twinsToRepoint: Array<{ name: string; slug: string }>; deadForksToDelete: string[] }
+  const [plan, setPlan] = useState<MigratePlan | null>(null)
+  const [migResult, setMigResult] = useState<string>('')
+  const dryRun = async () => {
+    setBusy('dryrun'); setMigResult('')
+    try {
+      const r = await fetch('/api/admin/migrate-cartridges')
+      const d = await r.json()
+      if (r.ok) setPlan(d); else setMigResult(d.error || 'dry run failed')
+    } finally { setBusy('') }
+  }
+  const runMigrate = async () => {
+    if (!plan || !window.confirm(`Create ${plan.summary.orphansToCreate} DB spaces from orphan cartridges? (private, dedupe-safe)`)) return
+    setBusy('migrate'); setMigResult('')
+    try {
+      const r = await fetch('/api/admin/migrate-cartridges', { method: 'POST' })
+      const d = await r.json()
+      setMigResult(r.ok ? `✓ created ${d.createdCount} spaces${d.failed?.length ? ` · ${d.failed.length} failed` : ''}` : (d.error || 'migrate failed'))
+      if (r.ok) dryRun()
+    } finally { setBusy('') }
+  }
 
   const loadFaults = () => {
     fetch('/api/engine/quarantine').then(r => r.ok ? r.json() : null)
@@ -373,6 +395,47 @@ export default function AdminPage() {
     </section>
   )
 
+  const Migrate = () => (
+    <section className={`${box} p-4 mb-4`}>
+      <div className="font-mono text-[11.5px] tracking-[0.2em] text-amber-200/80 mb-1">⑂ CARTRIDGE MIGRATION · SCENE → SPACE</div>
+      <p className="font-mono text-[10.5px] text-white/50 mb-3">consolidate on DB spaces (one way to open a world). DRY RUN reads the bundled cartridges and finds ORPHAN games (no space yet); MIGRATE mints a private space for each. dedupe-safe — twins are skipped. dead fork files + the scene loader are removed in a follow-up git change.</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={dryRun} disabled={busy === 'dryrun'}
+          className="font-mono text-[12px] tracking-[0.15em] px-4 py-2 rounded-lg border border-sky-300/50 text-sky-100 hover:bg-sky-400/15 disabled:opacity-40">
+          {busy === 'dryrun' ? 'READING…' : '◈ DRY RUN'}
+        </button>
+        {plan && plan.summary.orphansToCreate > 0 && (
+          <button onClick={runMigrate} disabled={busy === 'migrate'}
+            className="font-mono text-[12px] tracking-[0.15em] px-4 py-2 rounded-lg border border-emerald-300/50 text-emerald-100 hover:bg-emerald-400/15 disabled:opacity-40">
+            {busy === 'migrate' ? 'MIGRATING…' : `⑂ MIGRATE ${plan.summary.orphansToCreate} ORPHANS`}
+          </button>
+        )}
+      </div>
+      {migResult && <div className="font-mono text-[12px] text-amber-200/90 mt-2">{migResult}</div>}
+      {plan && (
+        <div className="mt-3 font-mono text-[11px] text-white/70 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-white/55">
+            <span>cartridges <span className="text-white/85">{plan.summary.cartridges}</span></span>
+            <span>structural (keep) <span className="text-white/85">{plan.summary.structural}</span></span>
+            <span>dead forks (delete) <span className="text-amber-200/85">{plan.summary.deadForks}</span></span>
+            <span>games <span className="text-white/85">{plan.summary.games}</span></span>
+            <span>twins (skip) <span className="text-white/85">{plan.summary.twins}</span></span>
+            <span>orphans → create <span className="text-emerald-200/90">{plan.summary.orphansToCreate}</span></span>
+          </div>
+          {plan.orphansToCreate.length > 0 && (
+            <div className="text-white/55">create: <span className="text-emerald-200/85">{plan.orphansToCreate.map(o => o.slug).join(', ')}</span></div>
+          )}
+          {plan.twinsToRepoint.length > 0 && (
+            <div className="text-white/45">already spaces: {plan.twinsToRepoint.map(t => t.slug).join(', ')}</div>
+          )}
+          {plan.deadForksToDelete.length > 0 && (
+            <div className="text-white/40">dead fork files ({plan.deadForksToDelete.length}) — removed in git, not here</div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+
   return (
     <div className="min-h-screen px-4 py-8" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
       <div className="max-w-[860px] mx-auto">
@@ -384,6 +447,7 @@ export default function AdminPage() {
 
         <Overview />
         <BridgeWatch />
+        <Migrate />
         <Companies />
 
         {err && <div className="font-mono text-[14px] text-red-300">{err}</div>}
