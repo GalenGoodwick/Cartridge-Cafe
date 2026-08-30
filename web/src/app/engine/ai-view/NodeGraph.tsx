@@ -82,15 +82,15 @@ export function NodeGraphOverlay({ graph, onClose, onVisit }: { graph: AiNodeGra
   return (
     <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6" onClick={onClose}>
       <div className="w-full max-w-[1100px] h-[80vh] rounded-xl border border-white/15 bg-[#0a0b10] overflow-hidden flex flex-col shadow-[0_10px_60px_rgba(0,0,0,0.6)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 font-mono text-[13px] tracking-[0.2em] text-white/45">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 font-mono text-[14px] tracking-[0.2em] text-white/55">
           <span>◇ WORLD ARCHITECTURE · {total} nodes</span>
-          <div className="flex items-center gap-3 text-[12px]">
+          <div className="flex items-center gap-3 text-[13px]">
             {(['module', 'visual', 'field', 'hook'] as const).map(k => (
               <span key={k} className="inline-flex items-center gap-1" style={{ color: NODE_KIND_STYLE[k].text }}>
                 <span className="inline-block w-2 h-2 rounded-full" style={{ background: NODE_KIND_STYLE[k].dot }} />{NODE_KIND_STYLE[k].label}
               </span>
             ))}
-            <button onClick={onClose} className="text-white/40 hover:text-white text-[15px] leading-none ml-1">✕</button>
+            <button onClick={onClose} className="text-white/50 hover:text-white text-[15px] leading-none ml-1">✕</button>
           </div>
         </div>
         <div className="flex-1 min-h-0 flex">
@@ -119,9 +119,9 @@ export function NodeGraphOverlay({ graph, onClose, onVisit }: { graph: AiNodeGra
             </svg>
           </div>
           {/* inspector */}
-          <div className="w-[380px] border-l border-white/10 p-3 overflow-auto font-mono text-[12px]">
+          <div className="w-[380px] border-l border-white/10 p-3 overflow-auto font-mono text-[13px]">
             {selNode ? <NodeInspector node={selNode} graph={graph} onVisit={onVisit} /> : (
-              <div className="text-white/30 leading-relaxed">click a node to inspect it.<br/><br/>modules compose into visuals, visuals paint fields, hooks drive the uniforms visuals read.</div>
+              <div className="text-white/40 leading-relaxed">click a node to inspect it.<br/><br/>modules compose into visuals, visuals paint fields, hooks drive the uniforms visuals read.</div>
             )}
           </div>
         </div>
@@ -142,17 +142,17 @@ export function NodeInspector({ node, graph, onVisit }: { node: ANode; graph: Ai
         <span className="tracking-[0.15em]" style={{ color: st.text }}>{st.label.slice(0, -1)}</span>
       </div>
       <div className="text-white/90 text-[14px] break-words mb-2">{node.title}</div>
-      <div className="space-y-1 text-white/55">
+      <div className="space-y-1 text-white/65">
         {node.kind === 'module' && <div>WGSL source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
         {node.kind === 'visual' && <div>shader source · <span className="text-white/80">{(node.wgslLen / 1024).toFixed(1)} KB</span></div>}
         {node.kind === 'field' && <><div>shape · <span className="text-white/80">{node.shape || '—'}</span></div><div>painted by · <span className="text-white/80">{node.visual || '(none)'}</span></div><div>body · <span className={node.pixelCollide ? 'text-emerald-300/90' : 'text-white/80'}>{node.pixelCollide ? 'rendered pixels ◉' : 'bounding rect'}</span></div></>}
-        {node.kind === 'hook' && <><div>author · <span className="text-white/80">{node.author || '—'}</span></div><div>JS · <span className="text-white/80">{(node.codeLen / 1024).toFixed(1)} KB</span></div>{node.desc && <div className="text-white/45 mt-1 leading-relaxed">{node.desc}</div>}</>}
+        {node.kind === 'hook' && <><div>author · <span className="text-white/80">{node.author || '—'}</span></div><div>JS · <span className="text-white/80">{(node.codeLen / 1024).toFixed(1)} KB</span></div>{node.desc && <div className="text-white/55 mt-1 leading-relaxed">{node.desc}</div>}</>}
         {node.kind === 'hook' && onVisit && <VisitButton hookId={node.title} onVisit={onVisit} />}
       </div>
       {(ins.length > 0 || outs.length > 0) && (
         <div className="mt-3 pt-2 border-t border-white/10 space-y-1.5">
-          {ins.length > 0 && <div><div className="text-white/35 text-[11px] mb-0.5">← fed by ({ins.length})</div>{ins.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.from)}</div>)}{ins.length > 8 && <div className="text-white/30">+{ins.length - 8} more</div>}</div>}
-          {outs.length > 0 && <div><div className="text-white/35 text-[11px] mb-0.5">→ feeds ({outs.length})</div>{outs.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.to)}</div>)}{outs.length > 8 && <div className="text-white/30">+{outs.length - 8} more</div>}</div>}
+          {ins.length > 0 && <div><div className="text-white/45 text-[12px] mb-0.5">← fed by ({ins.length})</div>{ins.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.from)}</div>)}{ins.length > 8 && <div className="text-white/40">+{ins.length - 8} more</div>}</div>}
+          {outs.length > 0 && <div><div className="text-white/45 text-[12px] mb-0.5">→ feeds ({outs.length})</div>{outs.slice(0, 8).map((e, i) => <div key={i} className="text-white/65 truncate">{idTitle(e.to)}</div>)}{outs.length > 8 && <div className="text-white/40">+{outs.length - 8} more</div>}</div>}
         </div>
       )}
       {(() => {
@@ -160,12 +160,12 @@ export function NodeInspector({ node, graph, onVisit }: { node: ANode; graph: Ai
         if (!src) return null
         return (
           <div className="mt-3 pt-2 border-t border-white/10">
-            <div className="text-white/35 text-[11px] mb-1">source · {(src.length / 1024).toFixed(1)} KB</div>
-            <pre className="text-[10px] leading-[1.45] text-white/70 bg-white/[0.04] border border-white/10 rounded-md p-2 overflow-auto max-h-[46vh] whitespace-pre">{src}</pre>
+            <div className="text-white/45 text-[12px] mb-1">source · {(src.length / 1024).toFixed(1)} KB</div>
+            <pre className="text-[11px] leading-[1.45] text-white/70 bg-white/[0.04] border border-white/10 rounded-md p-2 overflow-auto max-h-[46vh] whitespace-pre">{src}</pre>
           </div>
         )
       })()}
-      <div className="mt-3 pt-2 border-t border-white/10 text-white/25 text-[11px] leading-relaxed">
+      <div className="mt-3 pt-2 border-t border-white/10 text-white/35 text-[12px] leading-relaxed">
         {(node.kind === 'module' || node.kind === 'visual' || node.kind === 'hook')
           ? 'code node — AI-authored, human-openable. (edit wiring in Tier-2)'
           : 'structural node — becomes draggable/wireable in Tier-2.'}
@@ -184,7 +184,7 @@ function VisitButton({ hookId, onVisit }: { hookId: string; onVisit: (hookId: st
   return (
     <button
       onClick={() => { const ok = onVisit(hookId); setState(ok ? 'went' : 'nowhere'); setTimeout(() => setState('idle'), 1600) }}
-      className="mt-2 px-2 py-1 rounded border border-white/20 text-[11px] tracking-[0.12em] text-white/70 hover:text-white hover:border-white/50 transition-colors"
+      className="mt-2 px-2 py-1 rounded border border-white/20 text-[12px] tracking-[0.12em] text-white/70 hover:text-white hover:border-white/50 transition-colors"
     >{state === 'went' ? '⤷ TRAVELLING…' : state === 'nowhere' ? 'NO LIVE RENDER POS' : '⤷ VISIT — go to where this renders'}</button>
   )
 }

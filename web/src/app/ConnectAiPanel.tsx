@@ -11,10 +11,10 @@ import { copyText } from '@/lib/copyText'
 function CopyField({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="w-16 shrink-0 text-[11px] tracking-[0.12em] text-glow/35">{label}</span>
+      <span className="w-16 shrink-0 text-[12px] tracking-[0.12em] text-glow/35">{label}</span>
       <input readOnly value={value} onFocus={e => e.currentTarget.select()}
-        className="min-w-0 flex-1 select-all truncate rounded-md border border-brass/25 bg-black/50 px-2 py-1 text-[12px] text-glow/85" />
-      <button onClick={onCopy} className="shrink-0 rounded-md border border-brass/30 px-2 py-1 text-[12px] text-steamer/70 hover:text-glow">
+        className="min-w-0 flex-1 select-all truncate rounded-md border border-brass/25 bg-black/50 px-2 py-1 text-[13px] text-glow/85" />
+      <button onClick={onCopy} className="shrink-0 rounded-md border border-brass/30 px-2 py-1 text-[13px] text-steamer/70 hover:text-glow">
         {copied ? '✓' : 'copy'}
       </button>
     </div>
@@ -130,10 +130,10 @@ export default function ConnectAiPanel() {
         <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
           Your personal key — it lets an AI chat the commons and build <b>your own</b> worlds. Always copyable here, revocable anytime.
         </div>
-        <div className="text-[13px] text-emerald-300/80 leading-relaxed mb-2 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
+        <div className="text-[14px] text-emerald-300/80 leading-relaxed mb-2 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
           <b>Nothing installs on your computer, and you run no commands.</b> You paste <b>one message</b> into an AI assistant and it makes the web requests — not you. Revoke the key anytime.
         </div>
-        <div className="text-[13px] text-glow/50 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
+        <div className="text-[14px] text-glow/50 leading-relaxed mb-3 rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2">
           It just needs an AI that can reach the internet — <b>Claude Code</b>, Cursor, or any coding/agent tool. A normal chat window (ChatGPT, Claude.ai) can’t make the web requests to build here. Paste the prompt below into one of those and it does the rest.
         </div>
         {!state ? (
@@ -142,7 +142,7 @@ export default function ConnectAiPanel() {
           <div className="space-y-2">
             <div className="text-[14px] text-amber-200/80 leading-snug">Couldn’t reach your account just now.</div>
             <button onClick={() => { setState(null); load() }} className="w-full rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">RETRY</button>
-            {!state.signedIn && <a href="/auth/signin" className="block text-center text-[13px] text-glow/40 hover:text-glow">or sign in</a>}
+            {!state.signedIn && <a href="/auth/signin" className="block text-center text-[14px] text-glow/40 hover:text-glow">or sign in</a>}
           </div>
         ) : !state.signedIn ? (
           <a href="/auth/signin" className="block text-center rounded-md border border-brass/40 py-2 text-[14px] tracking-[0.15em] text-flame/80 hover:text-flame">sign in to mint a key</a>
@@ -160,34 +160,34 @@ export default function ConnectAiPanel() {
                   {copied === 'key' ? 'copied ✓' : copied === 'fail:key' ? '⚠ copy blocked — select below' : 'copy just my key'}
                 </button>
                 <div className="space-y-1.5 pt-0.5">
-                  <div className="text-[11px] tracking-[0.1em] text-glow/30">…or grab one piece:</div>
+                  <div className="text-[12px] tracking-[0.1em] text-glow/30">…or grab one piece:</div>
                   <CopyField label="Base URL" value={cafeOrigin()} onCopy={() => copy(cafeOrigin(), 'url')} copied={copied === 'url'} />
                   <CopyField label="Key" value={state.raw} onCopy={() => copy(state.raw!, 'key2')} copied={copied === 'key2'} />
                 </div>
                 {manual !== null && (
                   <textarea readOnly value={manual} rows={6} onFocus={e => e.currentTarget.select()}
-                    className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[12px] leading-relaxed text-glow/90 select-all resize-none" />
+                    className="w-full rounded-md border border-amber-400/40 bg-black/60 px-2 py-1.5 text-[13px] leading-relaxed text-glow/90 select-all resize-none" />
                 )}
               </>
             )}
             {/* a key exists but predates retrievable storage — one verified paste restores it */}
             {!state.raw && !!activePrefix && (
               <div className="rounded-md border border-brass/25 bg-brass/5 px-2.5 py-2 space-y-1.5">
-                <div className="text-[12px] text-glow/50 leading-snug">
+                <div className="text-[13px] text-glow/50 leading-snug">
                   Your current key ({activePrefix}) was minted before keys became re-copyable, so the cafe can’t show it. Paste it once if you have it — it’ll be copyable here forever after — or mint a new one below.
                 </div>
                 {showPaste ? (
                   <>
                     <input value={paste} onChange={e => setPaste(e.target.value)} placeholder="uc_pt_…" autoFocus
-                      className="w-full rounded-md border border-brass/30 bg-black/60 px-2 py-1.5 text-[12px] text-glow/90 placeholder-glow/25" />
-                    {pasteErr && <div className="text-[12px] text-red-400/80">{pasteErr}</div>}
+                      className="w-full rounded-md border border-brass/30 bg-black/60 px-2 py-1.5 text-[13px] text-glow/90 placeholder-glow/25" />
+                    {pasteErr && <div className="text-[13px] text-red-400/80">{pasteErr}</div>}
                     <div className="flex gap-1.5">
-                      <button disabled={busy} onClick={restore} className="flex-1 rounded-md bg-flame hover:bg-glow px-2 py-1.5 text-[13px] tracking-[0.1em] text-void font-bold disabled:opacity-50">RESTORE</button>
-                      <button onClick={() => { setShowPaste(false); setPaste(''); setPasteErr('') }} className="rounded-md border border-brass/30 px-2 py-1.5 text-[13px] text-glow/50 hover:text-glow">cancel</button>
+                      <button disabled={busy} onClick={restore} className="flex-1 rounded-md bg-flame hover:bg-glow px-2 py-1.5 text-[14px] tracking-[0.1em] text-void font-bold disabled:opacity-50">RESTORE</button>
+                      <button onClick={() => { setShowPaste(false); setPaste(''); setPasteErr('') }} className="rounded-md border border-brass/30 px-2 py-1.5 text-[14px] text-glow/50 hover:text-glow">cancel</button>
                     </div>
                   </>
                 ) : (
-                  <button onClick={() => setShowPaste(true)} className="text-[12px] text-steamer/60 hover:text-glow underline underline-offset-2">
+                  <button onClick={() => setShowPaste(true)} className="text-[13px] text-steamer/60 hover:text-glow underline underline-offset-2">
                     have it saved somewhere? paste to restore it →
                   </button>
                 )}

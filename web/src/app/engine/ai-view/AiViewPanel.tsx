@@ -30,7 +30,7 @@ function SwarmRows({ nodes, depth = 0 }: { nodes: SwarmNodeView[]; depth?: numbe
       </div>
       {n.connects && n.connects.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-0.5" style={{ paddingLeft: 14 }}>
-          {n.connects.map((c, i) => <span key={i} className="px-1 rounded border border-white/10 text-white/35 text-[10px]" title={c.via}>→ {c.to}</span>)}
+          {n.connects.map((c, i) => <span key={i} className="px-1 rounded border border-white/10 text-white/45 text-[11px]" title={c.via}>→ {c.to}</span>)}
         </div>
       )}
       {n.children && n.children.length > 0 && <SwarmRows nodes={n.children} depth={depth + 1} />}
@@ -57,19 +57,19 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
               <div
                 className="absolute bottom-6 z-50 pointer-events-auto w-[272px] max-w-[40vw] h-[560px] max-h-[82vh] rounded-xl border border-amber-300/20 bg-black/85 backdrop-blur overflow-hidden flex flex-col shadow-[0_8px_40px_rgba(0,0,0,0.55)]"
                 style={{ right: 'calc(50% + 147px)' }}>
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-amber-300/15 font-mono text-[13px] tracking-[0.2em] text-amber-300/50">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-amber-300/15 font-mono text-[14px] tracking-[0.2em] text-amber-300/50">
                   <span>◈ AI VIEW</span>
                   <span className="flex items-center gap-2">
                     <span className={focusFresh ? 'text-amber-300/80 animate-pulse' : 'text-white/20'}>{focusFresh ? '● live' : '○ idle'}</span>
                     {onClose && <button onClick={onClose} aria-label="close ai view"
-                      className="text-white/35 hover:text-white text-[14px] leading-none px-0.5">✕</button>}
+                      className="text-white/45 hover:text-white text-[14px] leading-none px-0.5">✕</button>}
                   </span>
                 </div>
                 {/* TABS — EYE (focus + render) | NODES (architecture graph) */}
-                <div className="flex border-b border-white/10 font-mono text-[12px]">
+                <div className="flex border-b border-white/10 font-mono text-[13px]">
                   {(['eye', 'nodes', 'swarm'] as const).filter(t => t !== 'swarm' || !!swarm).map(t => (
                     <button key={t} onClick={() => setAiViewTab(t)}
-                      className={`flex-1 px-3 py-1.5 tracking-[0.15em] transition-colors ${aiViewTab === t ? 'text-amber-200 bg-white/5 border-b-2 border-amber-300/60' : 'text-white/35 hover:text-white/60 border-b-2 border-transparent'}`}>
+                      className={`flex-1 px-3 py-1.5 tracking-[0.15em] transition-colors ${aiViewTab === t ? 'text-amber-200 bg-white/5 border-b-2 border-amber-300/60' : 'text-white/45 hover:text-white/70 border-b-2 border-transparent'}`}>
                       {t === 'eye' ? '◉ EYE' : t === 'nodes' ? '◇ NODES' : '⛓ SWARM'}
                     </button>
                   ))}
@@ -77,49 +77,49 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                 {aiViewTab === 'eye' ? (
                   <>
                     {/* FOCUS — what the AI is working on right now */}
-                    <div className="px-3 py-2 border-b border-white/10 font-mono text-[12px]">
+                    <div className="px-3 py-2 border-b border-white/10 font-mono text-[13px]">
                       {focusFresh ? (
                         <div className="flex items-start gap-2 text-amber-300/85">
                           <span className="animate-pulse leading-5">◈</span>
                           <span className="flex-1">
                             {aiFocus!.action || '…'}{aiFocus!.fieldName ? ' · ' + aiFocus!.fieldName : ''}
-                            <span className="block text-white/30 text-[11px] mt-0.5">{Math.max(0, Math.round((Date.now() - aiFocus!.at!) / 1000))}s ago</span>
+                            <span className="block text-white/40 text-[12px] mt-0.5">{Math.max(0, Math.round((Date.now() - aiFocus!.at!) / 1000))}s ago</span>
                           </span>
                         </div>
                       ) : (
-                        <div className="text-white/30 leading-relaxed">no AI editing this world right now.<br/>when one does, its focus lands here live.</div>
+                        <div className="text-white/40 leading-relaxed">no AI editing this world right now.<br/>when one does, its focus lands here live.</div>
                       )}
                       {/* HUMAN SNAPSHOT — hand your live view to the AI (universal infra):
                           captures the canvas → slot human_shot:<scope> the AI reads. */}
                       {sendHumanShot && (
                         <button onClick={sendHumanShot} disabled={humanShot === 'sending'}
                           title="Capture your current view and send it to the AI editing this world"
-                          className="mt-2 w-full px-2 py-1.5 rounded border border-amber-300/25 bg-amber-300/[0.06] hover:bg-amber-300/[0.12] text-amber-200/80 font-mono text-[11px] tracking-[0.1em] transition-colors disabled:opacity-50">
+                          className="mt-2 w-full px-2 py-1.5 rounded border border-amber-300/25 bg-amber-300/[0.06] hover:bg-amber-300/[0.12] text-amber-200/80 font-mono text-[12px] tracking-[0.1em] transition-colors disabled:opacity-50">
                           {humanShot === 'sending' ? '◈ sending…' : humanShot === 'sent' ? '✓ sent to the AI' : humanShot === 'err' ? '⚠ failed — retry' : '📸 send my view to the AI'}
                         </button>
                       )}
                     </div>
                     {/* SHADER REJECT — the silent-black-screen trap, made loud */}
                     {focusFresh && aiFocus!.error && (
-                      <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/[0.07] font-mono text-[11px]">
+                      <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/[0.07] font-mono text-[12px]">
                         <div className="text-red-300/90 tracking-[0.1em] mb-1">⚠ SHADER REJECTED · {aiFocus!.error.name}</div>
                         <div className="text-red-200/70 leading-relaxed break-words max-h-24 overflow-auto">{aiFocus!.error.error}</div>
                       </div>
                     )}
                     {/* EYE — the AI's render_probe snapshot */}
                     <div className="px-3 pt-2 pb-2.5 flex-1 min-h-0 overflow-auto">
-                      <div className="font-mono text-[11px] text-amber-300/45 mb-1.5">◉ what the AI sees{eyeFresh && aiEye!.name ? ' · ' + aiEye!.name : ''}</div>
+                      <div className="font-mono text-[12px] text-amber-300/45 mb-1.5">◉ what the AI sees{eyeFresh && aiEye!.name ? ' · ' + aiEye!.name : ''}</div>
                       {eyeFresh ? (
                         <>
                           <img src={aiEye!.png!.startsWith('data:') ? aiEye!.png! : 'data:image/png;base64,' + aiEye!.png!} alt="the AI's eye" className="w-full rounded border border-white/10 object-contain bg-black" />
                           {/* the renderer's SELF-REPORT (#7) — what the probe measured, not
                               just what it drew. Red flags surface first. */}
                           {aiEye!.stats && (
-                            <div className="mt-1.5 font-mono text-[10.5px] leading-relaxed">
+                            <div className="mt-1.5 font-mono text-[11.5px] leading-relaxed">
                               {(aiEye!.stats.errors || 0) > 0 && <div className="text-red-300/90">⚠ {aiEye!.stats.errors} shader error{aiEye!.stats.errors === 1 ? '' : 's'} in probe</div>}
                               {(aiEye!.stats.hookErrors || 0) > 0 && <div className="text-amber-300/90">⚠ {aiEye!.stats.hookErrors} hook error{aiEye!.stats.hookErrors === 1 ? '' : 's'} (budget/throw) during probe</div>}
                               {aiEye!.stats.visible === false && <div className="text-red-300/90">⚠ probe target not visible</div>}
-                              <div className="text-white/35 flex flex-wrap gap-x-2.5">
+                              <div className="text-white/45 flex flex-wrap gap-x-2.5">
                                 {typeof aiEye!.stats.coveragePct === 'number' && <span title="pixels the visual covered">cover {Math.round(aiEye!.stats.coveragePct)}%</span>}
                                 {typeof aiEye!.stats.meanLum === 'number' && <span className={aiEye!.stats.meanLum < 8 ? 'text-amber-300/80' : ''} title="mean luminance — very low = near-black">lum {Math.round(aiEye!.stats.meanLum)}</span>}
                                 {typeof aiEye!.stats.motion === 'number' && <span title="frame-to-frame change">motion {Math.round(aiEye!.stats.motion)}</span>}
@@ -140,7 +140,7 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                           title="Capture your current view (screenshot + scene data) and save it for the AI to see"
                           className="w-full aspect-square rounded border border-dashed border-amber-300/25 bg-black/50 hover:bg-amber-300/[0.06] hover:border-amber-300/40 flex flex-col items-center justify-center text-center px-3 gap-1.5 transition-colors disabled:opacity-60 cursor-pointer">
                           <span className="text-2xl leading-none">{humanShot === 'sending' ? '◈' : humanShot === 'sent' ? '✓' : humanShot === 'err' ? '⚠' : '📸'}</span>
-                          <span className="font-mono text-[11px] text-amber-200/50 leading-relaxed">{humanShot === 'sending' ? 'capturing…' : humanShot === 'sent' ? 'sent to the AI' : humanShot === 'err' ? 'failed — click to retry' : 'no eye yet — click to capture your view for the AI'}</span>
+                          <span className="font-mono text-[12px] text-amber-200/50 leading-relaxed">{humanShot === 'sending' ? 'capturing…' : humanShot === 'sent' ? 'sent to the AI' : humanShot === 'err' ? 'failed — click to retry' : 'no eye yet — click to capture your view for the AI'}</span>
                         </button>
                       )}
                     </div>
@@ -150,48 +150,48 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                   <div className="flex-1 min-h-0 flex flex-col">
                     {swarm ? (
                       <>
-                        <div className="px-3 py-2 border-b border-white/10 font-mono text-[11px]">
+                        <div className="px-3 py-2 border-b border-white/10 font-mono text-[12px]">
                           <div className="flex items-center justify-between">
                             <span className="text-amber-300/60 tracking-[0.15em] truncate" title={swarm.project}>⛓ {swarm.project}</span>
-                            <span className="text-white/40 shrink-0 ml-2">{swarm.done}/{swarm.total} green</span>
+                            <span className="text-white/50 shrink-0 ml-2">{swarm.done}/{swarm.total} green</span>
                           </div>
                           <div className="mt-1.5 h-1.5 rounded bg-white/10 overflow-hidden">
                             <div className="h-full bg-emerald-400/70 transition-all" style={{ width: `${swarm.total ? Math.round((swarm.done / swarm.total) * 100) : 0}%` }} />
                           </div>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 font-mono text-[11px]">
+                        <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 font-mono text-[12px]">
                           <SwarmRows nodes={swarm.nodes} />
                         </div>
-                        <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[10px] text-white/25 flex flex-wrap gap-x-2 gap-y-0.5">
+                        <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[11px] text-white/35 flex flex-wrap gap-x-2 gap-y-0.5">
                           {(['green', 'claimed', 'partial', 'open', 'red'] as const).map(s => (
                             <span key={s}><span style={{ color: SWARM_STATUS_COLOR[s] }}>●</span> {s === 'claimed' ? 'docked' : s}</span>
                           ))}
                         </div>
                       </>
                     ) : (
-                      <div className="p-3 text-white/30 font-mono text-[11px] leading-relaxed">no swarm graph yet — predesign one over the bridge with <span className="text-amber-300/50">swarm_map {'{nodes:[…]}'}</span>.</div>
+                      <div className="p-3 text-white/40 font-mono text-[12px] leading-relaxed">no swarm graph yet — predesign one over the bridge with <span className="text-amber-300/50">swarm_map {'{nodes:[…]}'}</span>.</div>
                     )}
                   </div>
                 ) : (
                   /* NODES — the world's architecture, compact; ⤢ opens the full graph */
                   <div className="flex-1 min-h-0 flex flex-col">
-                    <div className="px-3 py-2 border-b border-white/10 grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+                    <div className="px-3 py-2 border-b border-white/10 grid grid-cols-2 gap-1.5 font-mono text-[12px]">
                       {(['module', 'visual', 'field', 'hook'] as const).map(k => {
                         const n = nodeGraph ? (k === 'module' ? nodeGraph.modules.length : k === 'visual' ? nodeGraph.visuals.length : k === 'field' ? nodeGraph.fields.length : nodeGraph.hooks.length) : 0
                         return (
                           <div key={k} className="flex items-center gap-1.5">
                             <span className="inline-block w-2 h-2 rounded-full" style={{ background: NODE_KIND_STYLE[k].dot }} />
                             <span style={{ color: NODE_KIND_STYLE[k].text }}>{n}</span>
-                            <span className="text-white/30">{NODE_KIND_STYLE[k].label.toLowerCase()}</span>
+                            <span className="text-white/40">{NODE_KIND_STYLE[k].label.toLowerCase()}</span>
                           </div>
                         )
                       })}
                     </div>
-                    <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 space-y-2.5 font-mono text-[11px]">
+                    <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2 space-y-2.5 font-mono text-[12px]">
                       {nodeGraph && (nodeGraph.modules.length + nodeGraph.visuals.length + nodeGraph.fields.length + nodeGraph.hooks.length) > 0 ? (
                         ([['visual', nodeGraph.visuals], ['field', nodeGraph.fields], ['module', nodeGraph.modules], ['hook', nodeGraph.hooks]] as const).map(([k, list]) => list.length === 0 ? null : (
                           <div key={k}>
-                            <div className="text-white/30 tracking-[0.15em] mb-1">{NODE_KIND_STYLE[k].label}</div>
+                            <div className="text-white/40 tracking-[0.15em] mb-1">{NODE_KIND_STYLE[k].label}</div>
                             <div className="flex flex-wrap gap-1">
                               {list.map(nd => (
                                 <span key={nd.id} className="px-1.5 py-0.5 rounded border truncate max-w-full" style={{ borderColor: NODE_KIND_STYLE[k].ring, color: NODE_KIND_STYLE[k].text }} title={nd.title}>{nd.title.length > 22 ? nd.title.slice(0, 21) + '…' : nd.title}</span>
@@ -200,11 +200,11 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                           </div>
                         ))
                       ) : (
-                        <div className="text-white/30 leading-relaxed">no nodes yet — this world has no modules, visuals, fields, or hooks loaded.</div>
+                        <div className="text-white/40 leading-relaxed">no nodes yet — this world has no modules, visuals, fields, or hooks loaded.</div>
                       )}
                     </div>
                     <button onClick={() => setNodesExpanded(true)}
-                      className="m-2 px-3 py-1.5 rounded border border-amber-300/30 text-amber-200/80 hover:bg-amber-300/10 font-mono text-[12px] tracking-[0.15em] transition-colors">
+                      className="m-2 px-3 py-1.5 rounded border border-amber-300/30 text-amber-200/80 hover:bg-amber-300/10 font-mono text-[13px] tracking-[0.15em] transition-colors">
                       ⤢ EXPAND GRAPH
                     </button>
                   </div>
@@ -212,15 +212,15 @@ export function AiViewPanel({ aiFocus, aiEye, aiViewTab, setAiViewTab, nodeGraph
                 {/* P0 PERF footer — live engine budgets, always visible. Green/amber/red
                     on frame time = the 30/50/60fps cliffs the review said were invisible. */}
                 {perf && (
-                  <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[10.5px] flex items-center gap-2.5 flex-wrap">
+                  <div className="px-3 py-1.5 border-t border-white/10 font-mono text-[11.5px] flex items-center gap-2.5 flex-wrap">
                     <span className={perf.frameMs > 33 ? 'text-red-300' : perf.frameMs > 20 ? 'text-amber-300' : 'text-emerald-300/80'} title="frame time (EMA)">
                       ⧗ {perf.frameMs.toFixed(1)}ms{perf.frameMs > 0 ? ' · ' + Math.round(1000 / perf.frameMs) + 'fps' : ''}
                     </span>
-                    <span className={perf.hookMs > 8 ? 'text-amber-300' : 'text-white/40'} title="total step-hook CPU per frame">hooks {perf.hookMs.toFixed(1)}ms</span>
-                    {perf.topHook && perf.topHook[1] > 1 && <span className="text-white/30" title="slowest hook by id">↳ {perf.topHook[0].length > 10 ? perf.topHook[0].slice(0, 9) + '…' : perf.topHook[0]} {perf.topHook[1].toFixed(1)}</span>}
+                    <span className={perf.hookMs > 8 ? 'text-amber-300' : 'text-white/50'} title="total step-hook CPU per frame">hooks {perf.hookMs.toFixed(1)}ms</span>
+                    {perf.topHook && perf.topHook[1] > 1 && <span className="text-white/40" title="slowest hook by id">↳ {perf.topHook[0].length > 10 ? perf.topHook[0].slice(0, 9) + '…' : perf.topHook[0]} {perf.topHook[1].toFixed(1)}</span>}
                     {perf.compileAgeS < 8 && <span className="text-sky-300/70" title="last WGSL compile latency">⚙ {perf.compileMs.toFixed(0)}ms</span>}
-                    {perf.syncKB > 0 && <span className={perf.syncKB > 512 ? 'text-amber-300' : 'text-white/40'} title="last owner-sync snapshot size (posted every 2s)">⇅ {perf.syncKB < 1024 ? perf.syncKB.toFixed(0) + 'KB' : (perf.syncKB / 1024).toFixed(1) + 'MB'}</span>}
-                    <span className="text-white/25 ml-auto" title="field count">{perf.fields}f</span>
+                    {perf.syncKB > 0 && <span className={perf.syncKB > 512 ? 'text-amber-300' : 'text-white/50'} title="last owner-sync snapshot size (posted every 2s)">⇅ {perf.syncKB < 1024 ? perf.syncKB.toFixed(0) + 'KB' : (perf.syncKB / 1024).toFixed(1) + 'MB'}</span>}
+                    <span className="text-white/35 ml-auto" title="field count">{perf.fields}f</span>
                   </div>
                 )}
               </div>

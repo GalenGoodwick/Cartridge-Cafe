@@ -55,23 +55,23 @@ export function MembershipBanner() {
     <div className="mb-3 rounded-lg border border-cyan-300/25 bg-cyan-400/[0.04] px-3.5 py-2.5 flex items-center gap-3 flex-wrap">
       <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse shrink-0" />
       {m.member ? (
-        <p className="font-mono text-[11.5px] tracking-[0.04em] text-cyan-100/85 min-w-0">
+        <p className="font-mono text-[12.5px] tracking-[0.04em] text-cyan-100/85 min-w-0">
           ✓ EDITING MEMBER — build on any open building world (play is free) · your lineage is kept forever.
         </p>
       ) : (
         <>
-          <p className="font-mono text-[11.5px] leading-relaxed text-cyan-100/70 min-w-0">
+          <p className="font-mono text-[12.5px] leading-relaxed text-cyan-100/70 min-w-0">
             play any game <span className="text-cyan-200">free</span> — the editing membership lets you build on open building worlds and co-program them. cancel anytime · your lineage stays forever.
           </p>
-          {note && <span className="font-mono text-[11px] text-cyan-200/80">{note}</span>}
+          {note && <span className="font-mono text-[12px] text-cyan-200/80">{note}</span>}
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <button onClick={subscribe} disabled={busy || !m.buyable}
-              className="shrink-0 font-mono text-[12px] tracking-[0.12em] px-3.5 py-1.5 rounded border transition-colors disabled:opacity-40 border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15"
+              className="shrink-0 font-mono text-[13px] tracking-[0.12em] px-3.5 py-1.5 rounded border transition-colors disabled:opacity-40 border-cyan-300/50 text-cyan-100 hover:bg-cyan-400/15"
               title="build on open building worlds">
               {busy ? '…' : `${m.signedIn ? 'EDIT LIVE' : 'JOIN'} · $${m.usd}/mo`}
             </button>
           </div>
-          {!m.buyable && <span className="font-mono text-[10px] text-white/30 w-full text-right">subscriptions open soon</span>}
+          {!m.buyable && <span className="font-mono text-[11px] text-white/40 w-full text-right">subscriptions open soon</span>}
         </>
       )}
     </div>

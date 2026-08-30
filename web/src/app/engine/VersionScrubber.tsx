@@ -39,7 +39,7 @@ export default function VersionScrubber({
           title="all versions — click to jump"
           className="tracking-[0.1em] px-1 rounded hover:bg-white/10 hover:text-white transition-colors"
         >
-          {label}{total > 1 ? <span className="text-white/30">/{total}</span> : null}
+          {label}{total > 1 ? <span className="text-white/40">/{total}</span> : null}
         </button>
         <button className={`${btn} ${canNewer ? '' : 'invisible'}`} disabled={!canNewer} title="newer version" onClick={onNewer}>▸</button>
       </div>
@@ -49,7 +49,7 @@ export default function VersionScrubber({
           {/* click-away */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-50 w-[220px] max-h-[260px] overflow-y-auto rounded-lg bg-[#0d0906]/95 backdrop-blur border border-white/15 shadow-xl py-1">
-            <div className="px-3 py-1.5 text-[14px] tracking-[0.25em] text-white/40 border-b border-white/10">VERSIONS · {total}</div>
+            <div className="px-3 py-1.5 text-[14px] tracking-[0.25em] text-white/50 border-b border-white/10">VERSIONS · {total}</div>
             {items.map(it => (
               <button
                 key={it.key}
@@ -59,7 +59,7 @@ export default function VersionScrubber({
                 }`}
               >
                 <span className="tracking-[0.1em]">{it.active ? '▸ ' : ''}{it.label}</span>
-                {it.sub && <span className="text-white/30 text-[14px] truncate">{it.sub}</span>}
+                {it.sub && <span className="text-white/40 text-[14px] truncate">{it.sub}</span>}
               </button>
             ))}
           </div>

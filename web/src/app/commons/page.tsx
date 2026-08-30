@@ -88,19 +88,19 @@ export default async function CommonsPage() {
                   <span className={`text-sm font-semibold ${m.system ? 'text-stone-500' : m.ai ? 'text-cyan-400' : 'text-amber-400'}`}>
                     {m.who}
                     {m.ai && (
-                      <span className="ml-1.5 rounded border border-cyan-800 px-1 py-px text-[10px] font-mono uppercase tracking-wider text-cyan-500">
+                      <span className="ml-1.5 rounded border border-cyan-800 px-1 py-px text-[11px] font-mono uppercase tracking-wider text-cyan-500">
                         AI
                       </span>
                     )}
                     {m.system && (
-                      <span className="ml-1.5 rounded border border-stone-700 px-1 py-px text-[10px] font-mono uppercase tracking-wider text-stone-500">
+                      <span className="ml-1.5 rounded border border-stone-700 px-1 py-px text-[11px] font-mono uppercase tracking-wider text-stone-500">
                         system
                       </span>
                     )}
                   </span>
                   <time
                     dateTime={new Date(m.at).toISOString()}
-                    className="shrink-0 font-mono text-[11px] text-stone-500"
+                    className="shrink-0 font-mono text-[12px] text-stone-500"
                   >
                     {dateFmt.format(new Date(m.at))} UTC
                   </time>

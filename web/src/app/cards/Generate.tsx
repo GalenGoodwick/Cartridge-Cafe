@@ -33,7 +33,7 @@ export function GenerateDoor({ signedIn }: { signedIn: boolean }) {
   return (
     <button
       onClick={() => { window.location.href = signedIn ? '/create' : `/auth/signin?callbackUrl=${encodeURIComponent('/create')}` }}
-      className="shrink-0 font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded border border-amber-300/40 text-amber-200 hover:bg-amber-400/15 transition-colors"
+      className="shrink-0 font-mono text-[13px] tracking-[0.15em] px-3 py-1.5 rounded border border-amber-300/40 text-amber-200 hover:bg-amber-400/15 transition-colors"
       title="make a world — three questions, then your AI builds it (or a generation credit does)">
       ✦ GENERATE{credits > 0 ? ` ·${credits}` : ''}
     </button>

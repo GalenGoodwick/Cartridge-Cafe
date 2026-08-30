@@ -63,7 +63,7 @@ export default function MainCommonsChat({ visible, onEnter, channel = 'commons:m
       </span>
       <span className="text-left">
         <span className="block font-mono text-[16px] tracking-[0.22em] text-glow/90">{label}</span>
-        <span className="block font-mono text-[14px] tracking-[0.18em] text-white/45 group-hover:text-amber-200/70">
+        <span className="block font-mono text-[14px] tracking-[0.18em] text-white/55 group-hover:text-amber-200/70">
           {(() => {
             const parts: string[] = []
             if (peopleLive) parts.push(`${peopleLive} ${peopleLive === 1 ? 'person' : 'people'} chatting`)

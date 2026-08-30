@@ -64,9 +64,9 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, 
   if (playMode) {
     if (!devLive) return null
     return (
-      <div className="pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 flex items-center border border-white/10 text-[13px] tracking-[0.15em] text-red-300/85">
+      <div className="pointer-events-none font-mono rounded-lg bg-black/55 backdrop-blur px-2.5 flex items-center border border-white/10 text-[14px] tracking-[0.15em] text-red-300/85">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 animate-pulse" aria-hidden />
-        developer live{watching > 0 && <span className="text-white/40"> · {watching} watching</span>}
+        developer live{watching > 0 && <span className="text-white/50"> · {watching} watching</span>}
       </div>
     )
   }
@@ -79,14 +79,14 @@ export function FocusChip({ ctx, nameOverride, ownerName, ownerId, ownerHandle, 
         {/* the live badge — a soft red pulse before the name while a builder works */}
         {devLive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle animate-pulse" aria-hidden />}
         {(nameOverride || id.base).toUpperCase()}
-        {ownerName && <span className="text-white/45 tracking-normal"> · {makerHref
+        {ownerName && <span className="text-white/55 tracking-normal"> · {makerHref
           ? <a href={makerHref} title={`${ownerName}'s worlds`} className="pointer-events-auto hover:text-white hover:underline decoration-dotted underline-offset-4 transition-colors">{ownerName}</a>
           : ownerName}</span>}
       </div>
-      <div className={`text-[14px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/45'}`}>{sub}</div>
+      <div className={`text-[14px] tracking-[0.15em] mt-0.5 ${branchy ? 'text-emerald-300/80' : 'text-white/55'}`}>{sub}</div>
       {devLive && !compact && (
-        <div className="text-[12px] tracking-[0.15em] mt-0.5 text-red-300/80">
-          developer live{watching > 0 && <span className="text-white/40"> · {watching} watching</span>}
+        <div className="text-[13px] tracking-[0.15em] mt-0.5 text-red-300/80">
+          developer live{watching > 0 && <span className="text-white/50"> · {watching} watching</span>}
         </div>
       )}
     </div>

@@ -76,21 +76,21 @@ export default function SummonPrompt({ slug, scene, name }: { slug?: string; sce
           onChange={e => setBrief(e.target.value.slice(0, 800))}
           onKeyDown={onKey}
           placeholder={`⚑ summon AIs to "${name}" — what should they build?`}
-          className="flex-1 min-w-0 bg-black/40 border border-amber-400/25 rounded px-2 py-1.5 text-[13px] text-white/90 outline-none focus:border-amber-400/50 placeholder:text-white/30"
+          className="flex-1 min-w-0 bg-black/40 border border-amber-400/25 rounded px-2 py-1.5 text-[14px] text-white/90 outline-none focus:border-amber-400/50 placeholder:text-white/40"
         />
         <button
           onClick={summon} disabled={sending || !brief.trim()}
-          className="shrink-0 rounded px-3 py-1.5 text-[12px] tracking-[0.12em] uppercase border border-amber-400/40 text-amber-100 bg-amber-400/15 hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+          className="shrink-0 rounded px-3 py-1.5 text-[13px] tracking-[0.12em] uppercase border border-amber-400/40 text-amber-100 bg-amber-400/15 hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
           {sending ? '…' : 'Summon'}
         </button>
       </div>
-      <div className="flex items-center justify-between mt-1.5 text-[11px]">
-        <span className="text-white/35">
+      <div className="flex items-center justify-between mt-1.5 text-[12px]">
+        <span className="text-white/45">
           {here.watchers ? `${here.watchers} here · ${here.builders} building · ${here.regions} region${here.regions === 1 ? '' : 's'}${here.contested ? ` · ${here.contested}⚔` : ''}` : 'no AIs here yet'}
         </span>
         {flash
           ? <span className="text-emerald-300/90 truncate ml-2">{flash}</span>
-          : <span className="text-white/25">⌘⏎ to send</span>}
+          : <span className="text-white/35">⌘⏎ to send</span>}
       </div>
     </div>
   )

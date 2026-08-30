@@ -78,14 +78,14 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
       <div className="w-full max-w-2xl max-h-[86vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 p-5 font-mono text-white/85"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[15px] tracking-[0.25em] text-white/60">◲ SPRITES</span>
-          <button onClick={onClose} className="text-white/40 hover:text-white text-[16px]">✕</button>
+          <span className="text-[15px] tracking-[0.25em] text-white/70">◲ SPRITES</span>
+          <button onClick={onClose} className="text-white/50 hover:text-white text-[16px]">✕</button>
         </div>
 
         {/* ── upload / staging ── */}
         {!stage ? (
           <button onClick={() => fileRef.current?.click()}
-            className="w-full mb-4 px-4 py-6 rounded-lg border-2 border-dashed border-white/20 text-white/50 hover:text-amber-200 hover:border-amber-300/40 text-[13px] tracking-[0.15em] transition-colors">
+            className="w-full mb-4 px-4 py-6 rounded-lg border-2 border-dashed border-white/20 text-white/60 hover:text-amber-200 hover:border-amber-300/40 text-[14px] tracking-[0.15em] transition-colors">
             ⬆ DROP A PNG — a single sprite or a whole sheet to rip
           </button>
         ) : (
@@ -100,8 +100,8 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
                     backgroundImage: `repeating-linear-gradient(to right, rgba(255,200,80,0.55) 0 1px, transparent 1px calc(100% / ${stage.cols})), repeating-linear-gradient(to bottom, rgba(255,200,80,0.55) 0 1px, transparent 1px calc(100% / ${stage.rows}))`,
                   }} />
               </div>
-              <div className="flex-1 min-w-[200px] text-[12.5px] space-y-2">
-                <div className="text-white/40">{stage.w}×{stage.h}px → {stage.cols}×{stage.rows} = <span className="text-amber-200">{stage.cols * stage.rows} slot{stage.cols * stage.rows > 1 ? 's' : ''}</span>
+              <div className="flex-1 min-w-[200px] text-[13.5px] space-y-2">
+                <div className="text-white/50">{stage.w}×{stage.h}px → {stage.cols}×{stage.rows} = <span className="text-amber-200">{stage.cols * stage.rows} slot{stage.cols * stage.rows > 1 ? 's' : ''}</span>
                   {stage.cols * stage.rows > 1 && <> · {Math.floor(stage.w / stage.cols)}×{Math.floor(stage.h / stage.rows)}px each</>}</div>
                 <label className="block">name
                   <input value={stage.name} onChange={e => setStage(s => s && ({ ...s, name: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') }))}
@@ -133,7 +133,7 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
                     className="flex-1 px-3 py-1.5 rounded border border-amber-300/50 text-amber-100 hover:bg-amber-400/15 tracking-[0.12em] disabled:opacity-40">
                     {busy ? '…' : stage.cols * stage.rows > 1 ? `⚡ RIP INTO ${stage.cols * stage.rows} SLOTS` : '⚡ UPLOAD SPRITE'}
                   </button>
-                  <button onClick={() => setStage(null)} className="px-3 py-1.5 text-white/40 hover:text-white/70">cancel</button>
+                  <button onClick={() => setStage(null)} className="px-3 py-1.5 text-white/50 hover:text-white/70">cancel</button>
                 </div>
               </div>
             </div>
@@ -141,13 +141,13 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
         )}
         <input ref={fileRef} type="file" accept="image/png,image/webp,image/gif" className="hidden"
           onChange={e => pick(e.target.files?.[0] ?? null)} />
-        {err && <div className="mb-3 text-[12px] text-red-300/90">{err}</div>}
+        {err && <div className="mb-3 text-[13px] text-red-300/90">{err}</div>}
 
         {/* ── the world's sheets ── */}
         {sheets.length === 0 && !stage && (
-          <div className="text-[12.5px] text-white/35 leading-relaxed">
+          <div className="text-[13.5px] text-white/45 leading-relaxed">
             no sprites yet — upload a png above. Your AI can also do it over the bridge
-            (<span className="text-white/55">define_sheet</span>), and any visual samples slots with
+            (<span className="text-white/65">define_sheet</span>), and any visual samples slots with
             <span className="text-emerald-200/80"> sprite(i, uv)</span> / <span className="text-emerald-200/80">spriteAnim(first, n, fps, uv, time)</span>.
           </div>
         )}
@@ -155,19 +155,19 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
           <div key={sh.name} className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 flex gap-3 items-start flex-wrap">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`data:image/png;base64,${sh.png_b64}`} alt="" className="max-w-[160px] max-h-[120px] border border-white/10 rounded [image-rendering:pixelated]" />
-            <div className="flex-1 min-w-[180px] text-[12.5px]">
+            <div className="flex-1 min-w-[180px] text-[13.5px]">
               <div className="text-amber-200/90 tracking-[0.1em]">{sh.name}</div>
-              <div className="text-white/40 mt-0.5">
+              <div className="text-white/50 mt-0.5">
                 {sh.cols}×{sh.rows}{sh.cols * sh.rows > 1 ? ` · slots ${sh.name}.0–${sh.name}.${sh.cols * sh.rows - 1}` : ''}
                 {sh.fps ? <span className="text-emerald-200/80"> · clip @{sh.fps}fps</span> : ''}
               </div>
               {sh.fps && sh.cols * sh.rows > 1 ? <AnimPreview png={sh.png_b64} cols={sh.cols} rows={sh.rows} fps={sh.fps} /> : null}
-              <div className="mt-1.5 text-[11px] text-white/30">
+              <div className="mt-1.5 text-[12px] text-white/40">
                 sample: <span className="text-emerald-200/70">sprite({meta?.slots.find(s => s.name === sh.name || s.name === sh.name + '.0')?.i ?? '…'}, uv)</span>
               </div>
             </div>
             <button onClick={() => remove(sh.name)} disabled={busy}
-              className="shrink-0 text-[11px] text-red-300/60 hover:text-red-200 tracking-[0.1em]">DELETE</button>
+              className="shrink-0 text-[12px] text-red-300/60 hover:text-red-200 tracking-[0.1em]">DELETE</button>
           </div>
         ))}
       </div>

@@ -71,7 +71,7 @@ export default function AgentTerminalPanel({ entries, header = true }: { entries
     <div className="relative flex flex-col min-h-0 flex-1">
       <button onClick={toCurrent} disabled={atBottom}
         title={atBottom ? 'at the newest line' : 'jump to the newest line'}
-        className={`absolute bottom-2 right-3 z-10 px-2 py-0.5 rounded font-mono text-[12px] tracking-[0.18em] border transition-colors ${atBottom ? 'border-white/10 text-white/25 bg-black/40 cursor-default' : 'border-amber-400/50 text-amber-300 bg-black/70 hover:bg-black/90 animate-pulse'}`}>
+        className={`absolute bottom-2 right-3 z-10 px-2 py-0.5 rounded font-mono text-[13px] tracking-[0.18em] border transition-colors ${atBottom ? 'border-white/10 text-white/35 bg-black/40 cursor-default' : 'border-amber-400/50 text-amber-300 bg-black/70 hover:bg-black/90 animate-pulse'}`}>
         ▼ CURRENT
       </button>
       {header && (

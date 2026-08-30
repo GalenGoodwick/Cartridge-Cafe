@@ -6583,10 +6583,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 backgroundImage: 'repeating-linear-gradient(0deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%), repeating-linear-gradient(90deg, rgba(120,170,255,0.10) 0 1px, transparent 1px 12.5%)' }} />
           )}
           {inspectOn && !viewport && (
-            <div className="fixed top-14 left-3 z-[999] pointer-events-auto font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-sky-400/40 p-2.5 max-w-[380px]">
+            <div className="fixed top-14 left-3 z-[999] pointer-events-auto font-mono text-[13px] bg-black/75 backdrop-blur rounded-lg border border-sky-400/40 p-2.5 max-w-[380px]">
               <div className="text-sky-200 tracking-[0.15em] mb-1.5">◉ INSPECT — clicks are documented for the AI (game paused)
                 {inspectHover ? <span className="ml-2 text-white/80"><span style={{ display: 'inline-block', width: 10, height: 10, background: inspectHover.hex, border: '1px solid rgba(255,255,255,0.4)', marginRight: 4 }} />{inspectHover.hex} ({inspectHover.x},{inspectHover.y})</span> : null}</div>
-              {inspectLog.length === 0 && <div className="text-white/40">click anything…</div>}
+              {inspectLog.length === 0 && <div className="text-white/50">click anything…</div>}
               {[...inspectLog].reverse().map((en, i) => (
                 <div key={en.at + '-' + i}>
                   <button
@@ -6604,7 +6604,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   {/* PIXEL → SOURCE: the newest click shows the exact visual that
                       drew it — backtrack a pixel to the code that produced it. */}
                   {i === 0 && en.source && (
-                    <pre className="mt-1 mb-1 max-h-40 overflow-auto rounded bg-black/50 border border-emerald-400/20 px-2 py-1 text-[11px] leading-snug text-emerald-100/80 whitespace-pre-wrap">{en.source.trim()}</pre>
+                    <pre className="mt-1 mb-1 max-h-40 overflow-auto rounded bg-black/50 border border-emerald-400/20 px-2 py-1 text-[12px] leading-snug text-emerald-100/80 whitespace-pre-wrap">{en.source.trim()}</pre>
                   )}
                 </div>
               ))}
@@ -6688,9 +6688,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   const k = uiEditSquare.side / 512
                   return (
                     <div key={p.id} className="absolute" style={{ left: p.x * k, top: p.y * k, width: p.w * k, height: p.h * k, outline: '1.5px dashed rgba(255,190,80,0.8)', background: 'rgba(255,190,80,0.06)' }}>
-                      <div className="absolute -top-[15px] left-0 px-1 font-mono text-[10px] leading-[14px] text-amber-200 bg-black/70 rounded-t" style={{ letterSpacing: '0.1em' }}>{p.id}</div>
+                      <div className="absolute -top-[15px] left-0 px-1 font-mono text-[11px] leading-[14px] text-amber-200 bg-black/70 rounded-t" style={{ letterSpacing: '0.1em' }}>{p.id}</div>
                       {p.collapsible && (
-                        <div className="absolute top-0 right-0 w-[16px] h-[13px] text-center font-mono text-[9px] leading-[13px] text-amber-100 bg-amber-500/40" title={p.collapsed ? 'expand' : 'collapse'}>{p.collapsed ? '▸' : '▾'}</div>
+                        <div className="absolute top-0 right-0 w-[16px] h-[13px] text-center font-mono text-[10px] leading-[13px] text-amber-100 bg-amber-500/40" title={p.collapsed ? 'expand' : 'collapse'}>{p.collapsed ? '▸' : '▾'}</div>
                       )}
                       {p.draggable && !p.collapsed && (
                         <div className="absolute -bottom-[1px] -right-[1px] w-[9px] h-[9px] bg-amber-400/80" title="drag to resize" />
@@ -6699,9 +6699,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   )
                 })}
               </div>
-              <div className="fixed top-14 left-3 z-[999] font-mono text-[12px] bg-black/75 backdrop-blur rounded-lg border border-amber-400/40 p-2.5 max-w-[380px] pointer-events-none">
+              <div className="fixed top-14 left-3 z-[999] font-mono text-[13px] bg-black/75 backdrop-blur rounded-lg border border-amber-400/40 p-2.5 max-w-[380px] pointer-events-none">
                 <div className="text-amber-200 tracking-[0.15em]">⧉ UI EDIT — drag to move · edge to resize · ▾ to collapse</div>
-                <div className="text-white/50 mt-1">changes land in worldData.__uiOverrides (the AI reads them)</div>
+                <div className="text-white/60 mt-1">changes land in worldData.__uiOverrides (the AI reads them)</div>
               </div>
             </div>
           )}
@@ -6737,7 +6737,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             >
               ⌁ {(spaceId ? (spaceName || spaceSlug || 'world') : (cellBase() || 'world')).split(' ⑂ ')[0].toUpperCase()} BUILDERBOX
               {(chatLive.people + chatLive.ai) > 0 && (
-                <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[13px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
+                <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-black text-[14px] font-bold ${chatLive.people > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}>
                   {chatLive.people + chatLive.ai}
                 </span>
               )}
@@ -6800,14 +6800,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               {branchCreateOpen && (
                 <div className="absolute right-full top-0 mr-2 z-50 w-72 max-h-[80vh] overflow-y-auto rounded-xl bg-[#0d0906]/95 backdrop-blur border border-emerald-300/25 p-3 shadow-2xl">
                   <div className="text-[14px] tracking-[0.25em] text-emerald-200/80 mb-1">⑄ FORK THIS WORLD</div>
-                  <div className="text-[14px] text-white/40 leading-snug mb-2">a <span className="text-emerald-200/80">fork</span> is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
+                  <div className="text-[14px] text-white/50 leading-snug mb-2">a <span className="text-emerald-200/80">fork</span> is your own copy — a new world you own, with lineage back to this one. The original stays the maker&apos;s.</div>
                   {/* GATE 1 — NAME (unlocks the brief) */}
-                  <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">1 · NAME IT</div>
+                  <div className="text-[14px] tracking-[0.2em] text-white/50 mb-1">1 · NAME IT</div>
                   <input
                     autoFocus value={branchLabel} onChange={e => setBranchLabel(e.target.value)} maxLength={40}
                     onKeyDown={e => { if (e.key === 'Escape') setBranchCreateOpen(false) }}
                     placeholder="e.g. neon-remix"
-                    className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[16px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50"
+                    className="w-full mb-2 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[16px] text-white/85 placeholder:text-white/35 outline-none focus:border-emerald-300/50"
                   />
                   {(() => {
                     const nameOk = branchLabel.trim().length >= 2
@@ -6816,11 +6816,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                     return (<>
                       {/* GATE 2 — BRIEF (locked until name) */}
                       <div className={'transition-opacity ' + (nameOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
-                        <div className="text-[14px] tracking-[0.2em] text-white/40 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/30">· name it first</span>}</div>
+                        <div className="text-[14px] tracking-[0.2em] text-white/50 mb-1">2 · WHAT SHOULD IT BUILD {!nameOk && <span className="text-white/40">· name it first</span>}</div>
                         <textarea value={branchBrief} onChange={e => setBranchBrief(e.target.value)} maxLength={500} rows={3} disabled={!nameOk}
                           placeholder="a tidepool at dusk; anemones open when my cursor is still; crabs argue over a pearl…"
-                          className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/25 outline-none focus:border-emerald-300/50 resize-none" />
-                        <div className="text-[14px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/40'}>{briefLen}/500</span><span className="text-white/30"> · min 100 to unlock</span></div>
+                          className="w-full mb-1 px-2 py-1.5 rounded bg-black/50 border border-white/15 text-[14px] text-white/85 placeholder:text-white/35 outline-none focus:border-emerald-300/50 resize-none" />
+                        <div className="text-[14px] mb-2"><span className={briefOk ? 'text-emerald-200' : 'text-white/50'}>{briefLen}/500</span><span className="text-white/40"> · min 100 to unlock</span></div>
                       </div>
                       {/* GATE 3 — BUILD (locked until brief) */}
                       <div className={'transition-opacity ' + (briefOk ? 'opacity-100' : 'opacity-35 pointer-events-none select-none')}>
@@ -6832,7 +6832,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                     </>)
                   })()}
                   <button onClick={() => setBranchCreateOpen(false)} aria-label="cancel"
-                    className="w-full mt-2 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[14px] transition-colors">cancel</button>
+                    className="w-full mt-2 px-2 py-1 rounded border border-white/15 text-white/50 hover:text-white text-[14px] transition-colors">cancel</button>
                 </div>
               )}
             </div>}
@@ -6865,7 +6865,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   className={'w-full px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ' +
                     (spacePublic
                       ? 'bg-amber-400/15 border-amber-300/40 text-amber-200 hover:bg-amber-400/25'
-                      : 'bg-black/60 border-white/15 text-white/60 hover:text-white hover:bg-black/80')}
+                      : 'bg-black/60 border-white/15 text-white/70 hover:text-white hover:bg-black/80')}
                 >
                   {spacePublic ? '● PLAYABLE' : '○ UNPLAYABLE'}
                 </button>
@@ -6896,7 +6896,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                       {pubBusy ? '…' : spacePublic ? 'MAKE UNPLAYABLE' : 'MAKE PLAYABLE'}
                     </button>
                     <button onClick={() => setPubConfirm(false)}
-                      className="w-full mt-1.5 px-2 py-1 rounded border border-white/15 text-white/40 hover:text-white text-[14px] transition-colors">
+                      className="w-full mt-1.5 px-2 py-1 rounded border border-white/15 text-white/50 hover:text-white text-[14px] transition-colors">
                       cancel
                     </button>
                   </div>
@@ -6906,10 +6906,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             {(branchList.length > 0 || lastSceneRef.current.includes(' ⑂ ')) && (
               <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10">
                 <button onClick={() => stepBranch(-1)} title="previous in the family"
-                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">◂</button>
-                <span className="px-1 py-1 text-[14px] text-white/35 tracking-[0.25em] select-none">BROWSE</span>
+                  className="px-2 py-1 text-white/55 hover:text-white hover:bg-black/80 transition-colors">◂</button>
+                <span className="px-1 py-1 text-[14px] text-white/45 tracking-[0.25em] select-none">BROWSE</span>
                 <button onClick={() => stepBranch(1)} title="next in the family"
-                  className="px-2 py-1 text-white/45 hover:text-white hover:bg-black/80 transition-colors">▸</button>
+                  className="px-2 py-1 text-white/55 hover:text-white hover:bg-black/80 transition-colors">▸</button>
               </div>
               )}
             {/* WORLD TOOLS — folded into the EDIT dropdown so it's not a stray
@@ -7062,7 +7062,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 <div className="flex items-stretch justify-between rounded-lg overflow-hidden bg-black/60 backdrop-blur border border-white/10 font-mono text-[14px]">
                   <button disabled={!canOlder} title="older version"
                     onClick={() => go(cur === undefined ? vs[vs.length - 1] : vs[idx - 1])}
-                    className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">◂</button>
+                    className="px-1.5 text-white/55 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">◂</button>
                   <button
                     onClick={() => { setVersionsOpen(v => !v); if (!versionsOpen) loadVersions() }}
                     title="browse this world's version history — save a point, or roll back"
@@ -7072,7 +7072,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   </button>
                   <button disabled={!canNewer} title="newer version — ▸ past the newest returns to LIVE"
                     onClick={() => go(idx + 1 < vs.length ? vs[idx + 1] : undefined)}
-                    className="px-1.5 text-white/45 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">▸</button>
+                    className="px-1.5 text-white/55 hover:text-white hover:bg-black/80 disabled:opacity-30 disabled:cursor-default transition-colors">▸</button>
                 </div>
               )
             })()}
@@ -7128,7 +7128,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             {riding && (() => {
               const author = (riding.split(' ⑂ ')[1] || '').split(' · ')[0]
               return (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70">
                   <span className="text-amber-200/80">⑂ {author}</span>
                   <button className="px-1 hover:text-white" title="discuss this branch" onClick={() => { setDiscOpen(author); setBranchesOpen(true) }}>💬</button>
                 </div>
@@ -7150,7 +7150,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               // as a plain indicator so it doesn't beg to be clicked mid-edit.
               if (busy) {
                 return (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50">
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60">
                     {dot}{label}
                   </div>
                 )
@@ -7165,7 +7165,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               const onPill = () => window.dispatchEvent(new CustomEvent('cafe:open-connect'))
               return (
                 <button onClick={onPill} title={connected ? 'manage the AI connection' : 'connect an AI'}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[14px] tracking-[0.2em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/60 hover:text-white hover:border-emerald-300/40 hover:bg-black/80 transition-colors cursor-pointer">
                   {dot}{label}<span className="text-emerald-300/70">{connected ? '· manage' : '· connect'}</span>
                 </button>
               )
@@ -7179,7 +7179,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             {spaceId && (
               <div className="flex items-center gap-1">
                 <button
-                  className={`px-2 py-1 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/60 hover:text-white hover:bg-black/80'}`}
+                  className={`px-2 py-1 rounded-lg text-[14px] tracking-[0.15em] font-mono backdrop-blur border transition-colors ${remixArm ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/60 border-white/10 text-white/70 hover:text-white hover:bg-black/80'}`}
                   title="remix this world into a new one you own"
                   onClick={() => {
                     if (remixArm) { setRemixArm(false); window.dispatchEvent(new CustomEvent('cafe:remix-world')) }
@@ -7240,7 +7240,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             return (
               <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 pointer-events-none">
                 <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-amber-400 animate-spin" />
-                <div className="font-mono text-[14px] tracking-[0.25em] text-white/50">
+                <div className="font-mono text-[14px] tracking-[0.25em] text-white/60">
                   {/* HONEST label (Galen, Aug 26: '"AI is building" but no AI is
                       building') — only EDITS ACTUALLY LANDING (aiEditing) or the
                       server-stamped AI HEARTBEAT (__ai_last_cmd, key-authed,
@@ -7252,7 +7252,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                   })()}
                 </div>
                 {loading && loadHeavy && (
-                  <div className="font-mono text-[12px] tracking-[0.15em] text-white/30">heavy shaders — a few seconds</div>
+                  <div className="font-mono text-[13px] tracking-[0.15em] text-white/40">heavy shaders — a few seconds</div>
                 )}
                 {/* THE WAY IN (Galen, Aug 26: "build the flow that once they
                     generate the world they can connect their AI") — while the
@@ -7360,8 +7360,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             <div className="absolute inset-0 z-[58] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={dismissEditCoach}>
               <div className="relative w-full max-w-sm rounded-2xl border border-white/15 bg-[#0d0906]/95 backdrop-blur p-5 font-mono text-white/85 shadow-2xl" onClick={e => e.stopPropagation()}>
                 <button onClick={dismissEditCoach} aria-label="close"
-                  className="absolute top-3 right-3 w-7 h-7 rounded text-white/50 hover:text-white hover:bg-white/10 text-lg leading-none transition-colors">✕</button>
-                <div className="text-[15px] tracking-[0.2em] text-white/50 mb-3">THE EDIT MENU</div>
+                  className="absolute top-3 right-3 w-7 h-7 rounded text-white/60 hover:text-white hover:bg-white/10 text-lg leading-none transition-colors">✕</button>
+                <div className="text-[15px] tracking-[0.2em] text-white/60 mb-3">THE EDIT MENU</div>
                 <div className="text-[14px] leading-relaxed text-white/70 space-y-1.5">
                   <div><span className="text-white/90">⚙ WORLD TOOLS</span> — name, visibility, share, settings, delete.</div>
                   <div><span className="text-white/90">⌁ BUILDERBOX</span> — the build log + world chat; speak and the AI network hears.</div>
@@ -7423,8 +7423,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setPlugOpen(false)}>
                 <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[16px] tracking-[0.25em] text-white/50">⚡ CONNECT YOUR AI</div>
-                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
+                    <div className="text-[16px] tracking-[0.25em] text-white/60">⚡ CONNECT YOUR AI</div>
+                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/60">
                       {/* honest dot: the server-stamped AI heartbeat (key-authed
                           commands in the last 25s) or a live SSE agent — never
                           just a minted key */}
@@ -7438,7 +7438,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                       })()}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-2 text-[16px]">
+                  <p className="text-white/70 mb-2 text-[16px]">
                     Describe what to build here, then paste this to any AI (Claude, or anything that speaks HTTP). The eye versions every settled edit.
                   </p>
                   {mintFailed ? (
@@ -7467,7 +7467,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                         COPY
                       </button>
                     )}
-                    <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
+                    <button className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white px-2 py-1" onClick={() => setPlugOpen(false)}>CLOSE</button>
                   </div>
                 </div>
               </div>
@@ -7487,17 +7487,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMkIconOpen(false)}>
                 <div className="max-w-lg w-[92%] rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[17px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[16px] tracking-[0.25em] text-white/50">◆ MAKE YOUR ICON</div>
-                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/50">
+                    <div className="text-[16px] tracking-[0.25em] text-white/60">◆ MAKE YOUR ICON</div>
+                    <div className="flex items-center gap-1.5 text-[14px] tracking-[0.2em] text-white/60">
                       <span className={`inline-block w-2 h-2 rounded-full ${mkIconSet ? 'bg-emerald-400' : 'bg-white/25'}`} />
                       {mkIconSet ? 'ICON SET' : 'WAITING'}
                     </div>
                   </div>
-                  <p className="text-white/60 mb-2 text-[16px]">Describe the icon (optional), then hand this to your AI. It writes a small self-contained shader for your shelf bubble — no image, nothing stored but the code.</p>
+                  <p className="text-white/70 mb-2 text-[16px]">Describe the icon (optional), then hand this to your AI. It writes a small self-contained shader for your shelf bubble — no image, nothing stored but the code.</p>
                   <input value={mkIconDesc} onChange={e => setMkIconDesc(e.target.value)} maxLength={120}
                     placeholder="e.g. a dusk tidepool, anemones glowing"
                     className="w-full bg-black/50 border border-white/15 rounded-lg px-3 py-2 text-[17px] text-white/90 outline-none focus:border-white/35 mb-3" />
-                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[13px] text-emerald-200/90 select-all max-h-48 overflow-y-auto">{prompt}</pre>
+                  <pre className="whitespace-pre-wrap bg-black/60 border border-white/10 rounded-lg p-3 text-[14px] text-emerald-200/90 select-all max-h-48 overflow-y-auto">{prompt}</pre>
                   <div className="flex gap-2 mt-3 justify-end">
                     <button
                       className="text-[14px] tracking-[0.15em] bg-white/10 hover:bg-white/20 border border-white/20 rounded px-3 py-1 transition-colors"
@@ -7505,9 +7505,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                     >
                       {mkIconCopied ? 'COPIED ✓' : 'COPY PROMPT'}
                     </button>
-                    <button className="text-[14px] tracking-[0.15em] text-white/50 hover:text-white px-2 py-1" onClick={() => setMkIconOpen(false)}>CLOSE</button>
+                    <button className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white px-2 py-1" onClick={() => setMkIconOpen(false)}>CLOSE</button>
                   </div>
-                  <p className="text-white/40 mt-2 text-[14px]">{mkIconSet ? 'Your AI set the icon — it appears on the shelf shortly.' : 'The moment your AI stores it, this flips to ICON SET.'}</p>
+                  <p className="text-white/50 mt-2 text-[14px]">{mkIconSet ? 'Your AI set the icon — it appears on the shelf shortly.' : 'The moment your AI stores it, this flips to ICON SET.'}</p>
                 </div>
               </div>
             )

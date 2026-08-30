@@ -75,7 +75,7 @@ export default async function FeedPage() {
             {items.map(it => (
               <li key={it.slug + it.at.getTime()}>
                 <Link href={`/space/${it.slug}`} className="flex items-baseline gap-3 rounded-lg border border-brass/15 hover:border-brass/40 bg-black/20 px-4 py-3 transition-colors">
-                  <span className={`text-[13px] tracking-[0.15em] shrink-0 ${it.kind === 'published' ? 'text-emerald-300/80' : 'text-amber-200/70'}`}>
+                  <span className={`text-[14px] tracking-[0.15em] shrink-0 ${it.kind === 'published' ? 'text-emerald-300/80' : 'text-amber-200/70'}`}>
                     {it.kind === 'published' ? 'NEW' : 'EDIT'}
                   </span>
                   <span className="flex-1 min-w-0">

@@ -70,7 +70,7 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
           round (no squish), it fills the box (no letterbox), content reflows
           instead of being chopped (no crop). No square-and-crop. */}
       {art && <FitShader />}
-      <span className="absolute top-1 left-2 font-mono text-[10px] tracking-[0.15em] z-10"
+      <span className="absolute top-1 left-2 font-mono text-[11px] tracking-[0.15em] z-10"
         style={{ color: isGame ? '#50c8ff' : '#ffbe3c', textShadow: '0 1px 2px #000' }}>
         {r.id} · {r.rect.w}×{r.rect.h}
       </span>
@@ -79,7 +79,7 @@ function Region({ r, children, art }: { r: SolvedRegion; children?: React.ReactN
   )
 }
 
-const chip = 'font-mono text-[12px] tracking-[0.15em] px-3 py-1.5 rounded-lg border border-white/15 bg-black/60 text-white/80 pointer-events-auto'
+const chip = 'font-mono text-[13px] tracking-[0.15em] px-3 py-1.5 rounded-lg border border-white/15 bg-black/60 text-white/80 pointer-events-auto'
 
 export default function ShellProof() {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
@@ -99,7 +99,7 @@ export default function ShellProof() {
 
   const tenants: Record<string, React.ReactNode> = {
     'chrome.topbar': <div className="absolute inset-0 flex items-center px-3 gap-2 pointer-events-none">
-      <span className={chip}>◂</span><span className="font-mono text-[13px] tracking-[0.15em] text-white/85">BASE · Galen</span></div>,
+      <span className={chip}>◂</span><span className="font-mono text-[14px] tracking-[0.15em] text-white/85">BASE · Galen</span></div>,
     'chrome.rail': <div className="absolute inset-0 flex flex-col items-end p-2 gap-1.5 pointer-events-none">
       <span className={chip}>⛶ PLAY</span><span className={chip}>? INSTRUCTIONS</span><span className={chip}>✎ EDIT</span></div>,
     'chrome.bottombar.right': <div className="absolute inset-0 flex items-center justify-end px-2 gap-2 pointer-events-none">
@@ -127,10 +127,10 @@ export default function ShellProof() {
         ))}
       </div>
       <button onClick={() => setPhone(p => !p)}
-        className="fixed top-2 left-1/2 -translate-x-1/2 z-[999] font-mono text-[11px] tracking-[0.2em] px-3 py-1.5 rounded-full border border-emerald-300/50 text-emerald-200 bg-black/80 pointer-events-auto">
+        className="fixed top-2 left-1/2 -translate-x-1/2 z-[999] font-mono text-[12px] tracking-[0.2em] px-3 py-1.5 rounded-full border border-emerald-300/50 text-emerald-200 bg-black/80 pointer-events-auto">
         {phone ? '◻ DESKTOP INSTANCE' : '▯ PHONE INSTANCE'}
       </button>
-      <div className="fixed bottom-1 left-1/2 -translate-x-1/2 z-[999] font-mono text-[10px] tracking-[0.15em] text-white/40">
+      <div className="fixed bottom-1 left-1/2 -translate-x-1/2 z-[999] font-mono text-[11px] tracking-[0.15em] text-white/50">
         {`the whole layout is solved from the doc — no hand CSS · gate: ${uiGridOverlaps(SHELL_DOC, solved).length === 0 ? 'PASS (overlaps: [])' : 'COLLIDE'}`}
       </div>
     </>

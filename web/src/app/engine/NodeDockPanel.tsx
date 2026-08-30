@@ -73,7 +73,7 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
   }
 
   const holdChip = (n: NodeRow) => {
-    if (!n.holder) return <span className="px-1.5 rounded border border-white/15 text-white/35">FREE</span>
+    if (!n.holder) return <span className="px-1.5 rounded border border-white/15 text-white/45">FREE</span>
     const stale = !n.heldAt || now - n.heldAt > NODE_HOLD_TTL
     return stale
       ? <span className="px-1.5 rounded border border-amber-300/40 text-amber-200/70" title={`held by ${n.holder}… but idle — takeable`}>STALE</span>
@@ -82,14 +82,14 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
 
   return (
     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[26rem] max-h-[82vh] overflow-y-auto rounded-xl bg-black/85 backdrop-blur border border-white/10 font-mono text-white/80 shadow-2xl">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[14px] tracking-[0.25em] text-white/50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 text-[14px] tracking-[0.25em] text-white/60">
         <span>⬢ NODES — who builds what</span>
-        <button onClick={onClose} aria-label="close" className="text-white/40 hover:text-white text-sm leading-none px-1">×</button>
+        <button onClick={onClose} aria-label="close" className="text-white/50 hover:text-white text-sm leading-none px-1">×</button>
       </div>
       {rows === null ? (
-        <div className="px-3 py-6 text-center text-[13px] tracking-[0.2em] text-white/30">READING THE ROSTER…</div>
+        <div className="px-3 py-6 text-center text-[14px] tracking-[0.2em] text-white/40">READING THE ROSTER…</div>
       ) : rows.length === 0 ? (
-        <div className="px-3 py-5 text-[13px] leading-relaxed text-white/40">
+        <div className="px-3 py-5 text-[14px] leading-relaxed text-white/50">
           no nodes yet — every hook an AI pushes becomes a node here, with its own history, hold, and feed.
         </div>
       ) : (
@@ -106,11 +106,11 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
               <button
                 onClick={() => { const next = openId === n.id ? null : n.id; setOpenId(next); if (next && !n.feed) load(next) }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-[13.5px] hover:bg-white/5 transition-colors">
-                <span className="text-white/40">{KIND_GLYPH[n.kind]}</span>
+                <span className="text-white/50">{KIND_GLYPH[n.kind]}</span>
                 <span className="text-white/85 truncate flex-1">{n.id}</span>
-                <span className="text-white/30">v{n.rev}</span>
-                <span className="text-[11px]">{holdChip(n)}</span>
-                <span className="text-white/25">{openId === n.id ? '▾' : '▸'}</span>
+                <span className="text-white/40">v{n.rev}</span>
+                <span className="text-[12px]">{holdChip(n)}</span>
+                <span className="text-white/35">{openId === n.id ? '▾' : '▸'}</span>
               </button>
               {openId === n.id && (
                 <div className="px-3 pb-2.5 space-y-2">
@@ -119,30 +119,30 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
                     {[...n.history].reverse().map(h => {
                       const current = h.rev === n.history[n.history.length - 1]?.rev
                       return (
-                        <div key={h.rev} className={`flex items-center gap-2 text-[12.5px] leading-snug ${h.bad ? 'text-red-300/50' : current ? 'text-amber-200/90' : 'text-white/55'}`}>
+                        <div key={h.rev} className={`flex items-center gap-2 text-[13.5px] leading-snug ${h.bad ? 'text-red-300/50' : current ? 'text-amber-200/90' : 'text-white/65'}`}>
                           <span className="w-8 shrink-0">v{h.rev}</span>
-                          <span className="w-9 shrink-0 text-white/30">{age(h.at, now)}</span>
-                          <span className="shrink-0 text-white/35">{h.by.slice(0, 8)}</span>
+                          <span className="w-9 shrink-0 text-white/40">{age(h.at, now)}</span>
+                          <span className="shrink-0 text-white/45">{h.by.slice(0, 8)}</span>
                           <span className="truncate flex-1">{h.bad ? '✕ marked bad' : (h.note || `${h.codeBytes}b`)}{current ? ' · live' : ''}</span>
                           {isOwner && !h.bad && !current && (
                             <button disabled={busy} onClick={() => void revert(n.id, h.rev)}
-                              className="shrink-0 px-1.5 rounded border border-emerald-300/40 text-emerald-200/80 hover:bg-emerald-400/15 text-[11px] disabled:opacity-40 transition-colors">
+                              className="shrink-0 px-1.5 rounded border border-emerald-300/40 text-emerald-200/80 hover:bg-emerald-400/15 text-[12px] disabled:opacity-40 transition-colors">
                               ↩ revert
                             </button>
                           )}
                         </div>
                       )
                     })}
-                    {n.history.length === 0 && <div className="text-[12px] text-white/30">no history yet</div>}
+                    {n.history.length === 0 && <div className="text-[13px] text-white/40">no history yet</div>}
                   </div>
                   {/* FEED — the node's internals: dock/undock/status/error/revert lines */}
                   {n.feed && n.feed.length > 0 && (
                     <div className="pt-1 border-t border-white/5 space-y-0.5">
                       {n.feed.slice(-8).map((f, i) => (
-                        <div key={i} className="text-[12px] leading-snug text-white/45">
-                          <span className="text-white/25">{age(f.at, now)} </span>
-                          <span className={f.kind === 'error' ? 'text-red-300/60' : f.kind === 'revert' ? 'text-amber-200/60' : 'text-white/30'}>{f.kind}</span>
-                          <span className="text-white/55"> · {f.text}</span>
+                        <div key={i} className="text-[13px] leading-snug text-white/55">
+                          <span className="text-white/35">{age(f.at, now)} </span>
+                          <span className={f.kind === 'error' ? 'text-red-300/60' : f.kind === 'revert' ? 'text-amber-200/60' : 'text-white/40'}>{f.kind}</span>
+                          <span className="text-white/65"> · {f.text}</span>
                         </div>
                       ))}
                     </div>
@@ -153,7 +153,7 @@ export function NodeDockPanel({ spaceSlug, isOwner, onClose, showToast }: {
           )})}
         </div>
       )}
-      <div className="px-3 py-2 border-t border-white/10 text-[12px] leading-relaxed text-white/30">
+      <div className="px-3 py-2 border-t border-white/10 text-[13px] leading-relaxed text-white/40">
         every AI push is a version here. HELD = a builder is docked (fresh); STALE holds are takeable; a bad rev is never a revert target. {isOwner ? 'revert restores as a NEW version — history is append-only.' : 'the owner can revert any node to a good version.'}
       </div>
     </div>

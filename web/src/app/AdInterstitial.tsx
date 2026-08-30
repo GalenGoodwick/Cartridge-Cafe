@@ -26,7 +26,7 @@ export default function AdInterstitial({ ad, onClose }: { ad: Ad; onClose: () =>
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-[440px] max-w-[92vw] rounded-2xl bg-[#171009]/95 border border-[#b97a2a]/30 p-6 font-mono text-white/85 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[14px] tracking-[0.3em] text-white/35">ADVERTISEMENT</span>
+          <span className="text-[14px] tracking-[0.3em] text-white/45">ADVERTISEMENT</span>
           <span className="text-[14px] tracking-[0.2em] text-[#c9b370]">{ad.advertiser.toLowerCase()}</span>
         </div>
         <button onClick={interact} className="block w-full text-left">
@@ -46,8 +46,8 @@ export default function AdInterstitial({ ad, onClose }: { ad: Ad; onClose: () =>
             {left > 0 ? `CONTINUE IN ${left}` : 'CONTINUE ▸'}
           </button>
         </div>
-        <div className="mt-3 text-center text-[13px] tracking-[0.25em] text-white/25">
-          no links · stays in the cafe · <span className="text-white/45">protect a world to go ad-free</span>
+        <div className="mt-3 text-center text-[14px] tracking-[0.25em] text-white/35">
+          no links · stays in the cafe · <span className="text-white/55">protect a world to go ad-free</span>
         </div>
       </div>
     </div>

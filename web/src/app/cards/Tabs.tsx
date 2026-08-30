@@ -40,12 +40,12 @@ export function CardTabs({ counts, active, familyName, onPick, engine }: {
         const on = t.slug === active
         return (
           <button key={t.slug} role="tab" aria-selected={on} onClick={() => onPick(t.slug)}
-            className={`shrink-0 font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-t-lg border border-b-0 transition-colors
+            className={`shrink-0 font-mono text-[13px] tracking-[0.18em] px-3.5 py-2 rounded-t-lg border border-b-0 transition-colors
               ${on
                 ? 'bg-[#120c08] border-[#b97a2a]/50 text-amber-200'
-                : 'bg-black/40 border-white/10 text-white/45 hover:text-amber-200/80 hover:border-[#b97a2a]/30'}`}>
+                : 'bg-black/40 border-white/10 text-white/55 hover:text-amber-200/80 hover:border-[#b97a2a]/30'}`}>
             {t.label}
-            {t.count !== null && <span className={`ml-2 ${on ? 'text-amber-200/50' : 'text-white/25'}`}>{t.count}</span>}
+            {t.count !== null && <span className={`ml-2 ${on ? 'text-amber-200/50' : 'text-white/35'}`}>{t.count}</span>}
           </button>
         )
       })}

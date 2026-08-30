@@ -162,7 +162,7 @@ export default function Toolbar({
               {brush.activeFieldId === field.id && fields.size > 1 && (
                 <span
                   onClick={e => { e.stopPropagation(); onDeleteField(field.id) }}
-                  className="absolute -top-1 -right-1 w-3 h-3 bg-error text-white text-[13px] rounded-full items-center justify-center hidden group-hover:flex leading-none"
+                  className="absolute -top-1 -right-1 w-3 h-3 bg-error text-white text-[14px] rounded-full items-center justify-center hidden group-hover:flex leading-none"
                 >
                   x
                 </span>
