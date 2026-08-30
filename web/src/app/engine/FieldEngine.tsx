@@ -6777,12 +6777,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 create action. Under it, the ◂/▸ browse row steps the family
                 (main → each legacy branch head) — no sign-in needed. */}
             {!isHub && <div className="relative flex flex-col items-stretch gap-1 font-mono text-[14px]">
-              {/* FORK OFF BY DEFAULT (Galen, Aug 30): a player's world shows the
-                  fork button to non-owners UNLESS it's premium/proprietary/
-                  live-edit or the maker opted out — the server already decided
-                  (forkableProp = fork-policy.canFork). NEVER to its own owner
-                  (it's already yours). House scenes remain forkable by nature. */}
-              {(spaceId ? (!isOwner && forkableProp === true) : true) && <button
+              {/* THE FORK BUTTON — shown whenever the world is forkable (server
+                  decided: forkableProp = fork-policy.canFork; off only for
+                  premium/proprietary/live-edit/opted-out). Shown to the OWNER
+                  too (Galen, Aug 30: "just asking for a button in the engine") —
+                  an owner forking their own world spins a variant; the API
+                  charges the credit, the keeper forks free. House scenes remain
+                  forkable by nature. */}
+              {(spaceId ? forkableProp === true : true) && <button
                 onClick={() => { if (spaceSlug) instantForkSpace(); else handleBranch() }}
                 className="px-2.5 py-1.5 rounded-lg tracking-[0.15em] bg-emerald-400/20 backdrop-blur border border-emerald-300/50 text-emerald-200 hover:bg-emerald-400/30 hover:text-emerald-100 transition-colors"
                 title={me ? 'fork this world — instantly yours; your AI does the rest' : 'sign in to fork this world'}
