@@ -140,7 +140,7 @@ export default function TheGrid() {
     setBuying('')
   }
 
-  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null; rReset?: boolean } | null | undefined>(undefined)
+  const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null; rReset?: boolean; gridSize?: number | null } | null | undefined>(undefined)
   useEffect(() => {
     if (!scene.startsWith('space:')) { setSpaceInfo(null); return }
     const slug = scene.slice(6)
@@ -149,12 +149,12 @@ export default function TheGrid() {
     Promise.all([
       fetch(`/api/spaces/${encodeURIComponent(slug)}`).then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch('/api/auth/session').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null; rReset?: boolean } } | null, { user?: { id?: string } } | null]) => {
+    ]).then(([d, s]: [{ space?: { id: string; name?: string; ownerId: string; owner?: { name?: string | null } | null; forkable?: boolean; deviceConfig?: 'mobile' | 'desktop' | null; rReset?: boolean; gridSize?: number | null } } | null, { user?: { id?: string } } | null]) => {
       if (dead) return
       const sp = d?.space
       if (!sp?.id) { setSpaceInfo(null); return }
       const meId = s?.user?.id ?? null
-      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null, rReset: !!sp.rReset })
+      setSpaceInfo({ slug, id: sp.id, name: sp.name || slug, ownerName: sp.owner?.name ?? undefined, ownerId: sp.ownerId, isOwner: !!meId && meId === sp.ownerId, forkable: sp.forkable !== false, device: sp.deviceConfig ?? null, rReset: !!sp.rReset, gridSize: sp.gridSize ?? null })
     }).catch(() => { if (!dead) setSpaceInfo(null) })
     return () => { dead = true }
   }, [scene])
@@ -556,9 +556,9 @@ export default function TheGrid() {
       {uiSet === 'main'
         ? <FieldEngine key="house" playScene="MAIN-COMMONS" presenceKey="CAFE" hooksTrusted viewport={inset} externalTopbar />
         : spc
-          ? <FieldEngine key={'space-' + spc.slug} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
+          ? <FieldEngine key={'space-' + spc.slug + '-' + (spc.gridSize ?? 0)} spaceId={spc.id} spaceSlug={spc.slug} spaceName={spc.name}
               spaceOwnerName={spc.ownerName} spaceOwnerId={spc.ownerId} isOwner={spc.isOwner} forkable={spc.forkable}
-              viewport={inset} externalTopbar />
+              gridSize={spc.gridSize ?? undefined} viewport={inset} externalTopbar />
           : !spaceResolving && <FieldEngine key="house" playScene={scene} hooksTrusted viewport={inset} externalTopbar />}
 
       {/* THE FRAME */}

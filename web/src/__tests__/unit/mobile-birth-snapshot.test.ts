@@ -33,12 +33,12 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
     expect(wp.gridH).toBe(1024)
 
     // — a base visual exists (no grey square)
-    const bg = snap.visualTypes.find(v => v.name === 'base_bg')
+    const bg = (snap.visualTypes ?? []).find(v => v.name === 'base_bg')
     expect(bg).toBeTruthy()
     expect(bg!.wgsl).toContain('fn visual_base_bg')
 
     // — a skinned full-bleed backdrop field, sized to and centered on the rect
-    const backdrop = snap.fields.find(f => f.name === 'backdrop')
+    const backdrop = (snap.fields ?? []).find(f => f.name === 'backdrop')
     expect(backdrop).toBeTruthy()
     expect(backdrop!.visualTypeName).toBe('base_bg')
     expect(backdrop!.w).toBe(576)
@@ -47,7 +47,7 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
     expect(backdrop!.transform.y).toBe(512)
 
     // — the anatomy slots are present (builder has somewhere to build)
-    const hookIds = snap.stepHooks.map(h => h.id)
+    const hookIds = (snap.stepHooks ?? []).map(h => h.id)
     expect(hookIds).toEqual(expect.arrayContaining(['player', 'world', 'rules', 'hud']))
   })
 
@@ -56,7 +56,7 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
     const snap = emptySnapshot()
     if (Object.keys(birthParams).length) (snap as unknown as { worldParams: Record<string, unknown> }).worldParams = { ...birthParams }
     for (const cmd of baseBackdropSeedCommands(birthParams)) applyCommandToSnapshotObject(snap, cmd)
-    const backdrop = snap.fields.find(f => f.name === 'backdrop')
+    const backdrop = (snap.fields ?? []).find(f => f.name === 'backdrop')
     expect(backdrop).toBeTruthy()
     expect(backdrop!.w).toBe(512)
     expect(backdrop!.transform.x).toBe(256)
