@@ -18,6 +18,7 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt, worldBriefingPrompt } from '@/lib/connectPrompt'
+import { startCafeAudio } from '@/app/engine/cafe-audio'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
@@ -169,6 +170,12 @@ export default function TheGrid() {
     m(); window.addEventListener('resize', m)
     return () => window.removeEventListener('resize', m)
   }, [])
+
+  // THE AUDIO — the deleted CafeShell used to call this; without it the window
+  // gesture listeners that RESUME the shared AudioContext never registered, so
+  // no world (or shell) sound ever played (Galen: "sound is broken"). Idempotent;
+  // MAIN wants the cafe drone, worlds stay quiet (their own GameAudio carries them).
+  useEffect(() => { startCafeAudio(uiSet === 'main' ? 'CAFE' : 'world') }, [uiSet])
 
   // BLOCK ZOOM (Galen: zooming throws off the UI). Pinch is off via the layout
   // viewport; here: ctrl/cmd+wheel, ctrl/cmd +/-/0, and Safari gesture events.
