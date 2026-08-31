@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 
 interface SpacePageProps {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ version?: string; join?: string; paid?: string; paycancel?: string }>
+  searchParams: Promise<{ version?: string; join?: string; paid?: string; paycancel?: string; connect?: string }>
 }
 
 export async function generateMetadata({ params }: SpacePageProps) {
@@ -130,7 +130,13 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
   // past them, THE GRID is the one renderer. paid/paycancel ride along so the
   // premium-checkout round-trip (success_url = /space/<slug>?paid=experience)
   // finishes in the grid's gate. generateMetadata still serves the OG card.
-  const qs = new URLSearchParams({ w: 'space:' + slug, ui: 'games', ph: 'play' })
+  // CONNECT INTENT (Galen, Aug 30: "we lost copy prompt in building world"):
+  // a fresh world lands here as /space/<slug>?connect=1 — carry it into the
+  // grid's ENGINE ⚿ CONNECT AI tab (where the paste-prompt + copy button live)
+  // instead of dropping it into play mode with no prompt.
+  const connecting = search.connect === '1'
+  const qs = new URLSearchParams({ w: 'space:' + slug, ui: connecting ? 'engine' : 'games' })
+  if (connecting) qs.set('connect', '1'); else qs.set('ph', 'play')
   if (typeof search.paid === 'string') qs.set('paid', search.paid)
   if (typeof search.paycancel === 'string') qs.set('paycancel', search.paycancel)
   redirect('/grid?' + qs.toString())

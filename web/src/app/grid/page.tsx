@@ -245,6 +245,13 @@ export default function TheGrid() {
         setChatOpen(true)
         u.searchParams.delete('chat'); window.history.replaceState(null, '', u.toString())
       }
+      // CONNECT INTENT (Galen: "lost copy prompt"): a freshly-built world arrives
+      // as ?connect=1 — open the ENGINE ⚿ CONNECT AI tab so its paste-prompt +
+      // copy button are right there, no hunting.
+      if (u.searchParams.get('connect') === '1') {
+        setUiSet('engine'); setTool('connect')
+        u.searchParams.delete('connect'); window.history.replaceState(null, '', u.toString())
+      }
     } catch { /* ssr */ }
   }, [])
   // PUSH (not replace) so the BROWSER BACK BUTTON backs out to the previously
