@@ -40,9 +40,11 @@ const EASE = 'top 0.32s ease-out, right 0.32s ease-out, bottom 0.32s ease-out, l
 const M = 16, BAR_H = 64, DOCK_W = 248
 const MIN_W = 180, MIN_H = 120   // the frame can NEVER smash to a line
 const LOCAL: Entry[] = [
-  { slug: 'cinderfell', name: 'CINDERFELL', scene: 'CINDERFELL', maker: 'Galen' },
-  // (STARFIELD removed from the shelf — Galen, Aug 28; the cartridge file
-  // stays on disk for reference, nothing lists it.)
+  // SPACE, not scene (Galen, Aug 30: "one way to open a world"). Every house
+  // game already has a DB space twin, so the default boot + fallback open the
+  // cinderfell SPACE — nothing opens a game as a bundled scene anymore. The
+  // scene loader stays only for structural chrome (MAIN-COMMONS/CAFE).
+  { slug: 'cinderfell', name: 'CINDERFELL', scene: 'space:cinderfell', maker: 'Galen' },
 ]
 
 export default function TheGrid() {
