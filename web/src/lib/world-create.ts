@@ -237,7 +237,12 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   // gridSize = the rect's long axis makes the space contain the rect; the camera
   // then centers on the rect (see FieldEngine restingCenter) and coverZoomFloor
   // fills the phone. This is why a mobile world was misaligned from birth.
-  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridSize: 1024, gridW: 576, gridH: 1024, deviceConfig: 'mobile' } : {}
+  // MATCH THE WORKING BASE GAMES (Galen, Aug 30: "why are those working?"): a
+  // functional mobile world (ascent) is a PLAIN gridSize square — no gridW/gridH
+  // rect, no raised gridSize — with deviceConfig:'mobile' for the phone frame.
+  // The portrait-rect approach mis-framed every mobile world; drop it. The base
+  // backdrop is seeded to the square (512²) and the camera rests at its center.
+  const birthParams: Record<string, unknown> = targets === 'mobile' ? { deviceConfig: 'mobile' } : {}
   const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
   if (!baseWorld) return { birthData, birthParams }
   const src = await prisma.playerSpace.findUnique({

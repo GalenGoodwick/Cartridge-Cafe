@@ -17,7 +17,8 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
   it('produces a viewport-aligned, backdrop-skinned mobile snapshot', async () => {
     // 1) the real birth params for a mobile world (no base)
     const { birthParams } = await resolveBirthExtras('test-user', { targets: 'mobile' })
-    expect(birthParams).toMatchObject({ gridSize: 1024, gridW: 576, gridH: 1024, deviceConfig: 'mobile' })
+    expect(birthParams).toMatchObject({ deviceConfig: 'mobile' })   // plain square — matches the working base games
+    expect(birthParams.gridW).toBeUndefined()   // NO portrait rect (it mis-framed every mobile world)
 
     // 2) build the snapshot exactly as birthWorld does: params + seeds
     const snap = emptySnapshot()
@@ -26,11 +27,10 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
     for (const cmd of baseBackdropSeedCommands(birthParams)) applyCommandToSnapshotObject(snap, cmd)
 
     // 3) THE SNAPSHOT SHOWS IT PROPERLY DONE:
-    // — the space HOLDS the portrait rect (the alignment root fix)
+    // — a plain square world (the proven working shape), deviceConfig for the frame
     const wp = (snap as unknown as { worldParams: Record<string, unknown> }).worldParams
-    expect(wp.gridSize).toBe(1024)
-    expect(wp.gridW).toBe(576)
-    expect(wp.gridH).toBe(1024)
+    expect(wp.deviceConfig).toBe('mobile')
+    expect(wp.gridW).toBeUndefined()
 
     // — a base visual exists (no grey square)
     const bg = (snap.visualTypes ?? []).find(v => v.name === 'base_bg')
@@ -41,10 +41,10 @@ describe('mobile birth snapshot — set up in context, aligned', () => {
     const backdrop = (snap.fields ?? []).find(f => f.name === 'backdrop')
     expect(backdrop).toBeTruthy()
     expect(backdrop!.visualTypeName).toBe('base_bg')
-    expect(backdrop!.w).toBe(576)
-    expect(backdrop!.h).toBe(1024)
-    expect(backdrop!.transform.x).toBe(288)   // rect center — matches the camera's restingCenter
-    expect(backdrop!.transform.y).toBe(512)
+    expect(backdrop!.w).toBe(512)
+    expect(backdrop!.h).toBe(512)
+    expect(backdrop!.transform.x).toBe(256)   // square center — matches the camera's restingCenter (gridSize/2)
+    expect(backdrop!.transform.y).toBe(256)
 
     // — the anatomy slots are present (builder has somewhere to build)
     const hookIds = (snap.stepHooks ?? []).map(h => h.id)

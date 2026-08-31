@@ -2540,8 +2540,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // camera on the square center framed the wrong point on every mobile/rect
   // world. Square worlds (no gridW/gridH) fall back to gridSize/2, unchanged.
   const restingCenter = () => {
-    const wp = (simulationRef.current?.worldParams ?? {}) as { gridW?: number; gridH?: number }
-    return { x: (wp.gridW ?? gridSize) / 2, y: (wp.gridH ?? gridSize) / 2 }
+    // The working base games (e.g. ascent) are plain gridSize squares centered
+    // at gridSize/2 — that is the proven frame. Rect-centering broke that; stay
+    // on the square center. (clampCamera still pins a declared rect on-screen.)
+    return { x: gridSize / 2, y: gridSize / 2 }
   }
   // keep the load-path reset (below) on the same math without threading closures
   const restingZoomRef = useRef(restingZoom)
