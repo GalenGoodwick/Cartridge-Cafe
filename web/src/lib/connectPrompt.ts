@@ -40,6 +40,13 @@ export const enterTheEye = (origin: string) =>
 export const buildInNodes = (origin: string) =>
   `BUILD IN NODES, never a monolith — this is what keeps a large game maintainable no matter its state, and it holds whether you build it alone or in a swarm. Two halves: (a) LOGIC — put each subsystem in its OWN small step-hook (movement, enemies, hud, save), not one giant hook; a node you add is protected, so nothing can clobber it and you never overwrite another builder's. (b) VISUALS — put each layer in its OWN superimposed field (composite over the \`behind\` channel, alpha = your real coverage), not one mega-shader. Small nodes and separate layers are each independently editable, independently verifiable with the eye, and clobber-proof by construction — the only way one AI keeps a big game alive to edit, and the only way many AIs build one world at once without stepping on each other. Recipes: ${origin}/api/engine/guide?section=build-in-nodes and ?section=layering.`
 
+/** THE NODE LAW, asserted BEFORE the guide (Galen): a builder must know the
+ *  node-claim modality the instant they connect — before reading anything else —
+ *  or they build a monolith / clobber a peer. Every create + co-edit prompt opens
+ *  with this; the guide (next) is the reference this law commands. */
+export const nodeLawFirst = (origin: string) =>
+  `▸ THE BUILDING LAW — READ THIS FIRST, BEFORE THE GUIDE. You build in NODES. Every step hook you add IS a node the engine stamps to YOU and PROTECTS: to add behavior you \`add_step_hook\` with a NEW hookId, and the bridge REJECTS any write to a node you don't hold (it shields yours the same way). So the modality is fixed: NEVER a monolith — one small hook per job (movement · enemies · hud · fx …); NEVER overwrite another builder's node — ADD your own beside it. Take or refresh a node with \`claim_node {id}\`, give it up with \`release_node {id}\`; if a packed \`gpuUniforms\` population is shared, declare your slots with \`register_node {owns:{uni:[[a,b]]}}\` (overlap is rejected). VISUALS the same way: each layer its OWN superimposed field, not one mega-shader. This is HOW many hands build one world at once without stepping on each other — additive, claimed, clobber-proof. The guide below is the reference; THIS is the law it serves. Full recipe: ${origin}/api/engine/guide?section=build-in-nodes.`
+
 /** The worktree mandate — isolate repo work; never clobber the shared checkout. */
 export const useTheWorktree = () =>
   `USE THE WORKTREE — if your work ever touches the cafe REPO/code (not just building worlds through the bridge): NEVER edit the shared checkout. Make your OWN git worktree off origin/main, work on your OWN branch, and coordinate every push on the commons FIRST — flag your branch, ack others, land only what's yours. A pull or edit into a dirty shared checkout clobbers other agents' in-flight work; that is the one unforgivable move. Isolate, branch, coordinate, then land.`
@@ -98,6 +105,7 @@ ${authBlock(origin, token)}
 
 THE WORLD: "${name}" — slug \`${slug}\` (live at ${origin}/space/${slug}). It already exists and may be partly built; your job is to pick up where it is and carry it forward.
 
+${nodeLawFirst(origin)}
 1. ${guideStep(origin)}
 2. ${followProtocol(origin)}
 3. TAKE THE WORLD: POST ${origin}/api/engine/bridge {"type":"use_world","slug":"${slug}"} → its uc_st_ world key. Build with THAT key from here on.
@@ -120,6 +128,7 @@ ${authBlock(origin, token)}
 
 THE WORLD: "${name}" — slug \`${slug}\` (live at ${origin}/space/${slug}). Other builders are here too. This is co-building, not a solo world: your changes land next to theirs, live.
 
+${nodeLawFirst(origin)}
 1. ${guideStep(origin)}
 2. TAKE YOUR SEAT: POST ${origin}/api/engine/bridge {"type":"use_world","slug":"${slug}"} → your uc_st_ key for this world. Build with THAT key.
 3. READ THE LIVE STATE FIRST — GET the world state and LOOK: what fields, visuals, hooks, worldData already exist? Read worldData.creation_brief for the vision. You are continuing a shared thing.
@@ -196,6 +205,7 @@ DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable re
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${p.token}
 ${looking}
+${nodeLawFirst(origin)}
 1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
 2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
 ${settings}
@@ -223,6 +233,7 @@ POST commands to ${origin}/api/engine/bridge
 Header: Authorization: Bearer ${token}
 
 Before doing ANYTHING else:
+${nodeLawFirst(origin)}
 1. ${guideStep(origin)}
 2. GET ${origin}/api/engine/bridge (same auth header) to see the world state.
 3. STAND BY. Do not build yet — I am writing your brief right now. It will
