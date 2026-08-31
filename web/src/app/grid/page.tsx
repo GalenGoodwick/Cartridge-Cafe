@@ -1483,6 +1483,22 @@ function ConfigView({ cfg, sceneIsSpace, onAssets }: {
     try { await navigator.clipboard.writeText(iconAuthorPrompt(tok, iconDesc.trim(), origin)); setIconCopied(true); setTimeout(() => setIconCopied(false), 1800) } catch { /* manual */ }
   }
 
+  // ✕ DELETE WORLD — owner-only, behind a confirm popup. The server holds the
+  // real guards (branches · co-built · lineage · flags → clear 409s); we just
+  // surface them. On success the world is gone, so we leave for the hub.
+  const [del, setDel] = useState<'idle' | 'confirm' | 'busy'>('idle')
+  const [delErr, setDelErr] = useState<string | null>(null)
+  const doDelete = async () => {
+    if (!slug || del === 'busy') return
+    setDel('busy'); setDelErr(null)
+    try {
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setDelErr(d?.error || 'Could not delete this world.'); setDel('confirm'); return }
+      window.location.href = '/grid'   // it's gone — back to the hub
+    } catch { setDelErr('Network error — try again.'); setDel('confirm') }
+  }
+
   return (
     <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
       <div className="text-[11.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
@@ -1557,6 +1573,37 @@ function ConfigView({ cfg, sceneIsSpace, onAssets }: {
         social contract: <span className="text-white/85">{cfg?.policy ? `build: ${cfg.policy} · sealed` : 'undeclared · default (owner builds, everyone plays)'}</span>
         {!sceneIsSpace && <div className="mt-1.5 text-white/50">house cartridge — owner controls apply on real worlds.</div>}
       </div>
+
+      {/* ✕ DELETE — owner's danger zone; a confirm popup gates the real call */}
+      {ownedSpace && (
+        <div className="mt-3 rounded-xl border border-red-400/20 bg-red-500/[0.04] p-3.5 flex items-center justify-between gap-3">
+          <span className="text-[12px] text-white/55 leading-snug">Delete this world and its state — this can’t be undone.</span>
+          <button onClick={() => { setDelErr(null); setDel('confirm') }} title="delete this world"
+            className="shrink-0 px-3 py-1.5 rounded-lg border border-red-400/40 text-red-300 hover:bg-red-500/15 text-[12px] tracking-[0.12em] transition-colors">
+            ✕ DELETE
+          </button>
+        </div>
+      )}
+
+      {del !== 'idle' && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => del !== 'busy' && setDel('idle')}>
+          <div className="w-full max-w-sm rounded-xl border border-red-400/25 bg-black/90 p-5 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[13px] tracking-[0.18em] text-red-300/90 mb-2">✕ DELETE WORLD</div>
+            <div className="text-[13px] text-white/75 leading-relaxed">Permanently delete <span className="text-amber-200">{slug}</span>?</div>
+            <div className="text-[12px] text-white/45 mt-1 mb-4">Its state is erased. This can’t be undone.</div>
+            {delErr && <div className="mb-3 text-[12px] text-red-300/90 leading-snug">{delErr}</div>}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDel('idle')} disabled={del === 'busy'}
+                className="px-3 py-1.5 text-[12px] text-white/60 hover:text-white/85 disabled:opacity-40">cancel</button>
+              <button onClick={doDelete} disabled={del === 'busy'}
+                className="px-3.5 py-1.5 rounded-lg border border-red-400/50 bg-red-500/15 text-red-200 hover:bg-red-500/25 text-[12px] tracking-[0.12em] disabled:opacity-40">
+                {del === 'busy' ? 'deleting…' : 'DELETE FOREVER'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
