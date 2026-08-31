@@ -97,12 +97,15 @@ export default function TheGrid() {
   // ACTIVELY morphs to the declared shape (mobile = portrait). A birth posts
   // create-born and the PARENT navigates (no grid-in-iframe).
   const [createShape, setCreateShape] = useState<'desktop' | 'mobile' | 'universal'>('desktop')
+  // the just-born world's slug — the declared shape stays authoritative for it
+  // until the space fetch confirms deviceConfig (no frame-shape race at birth)
+  const [bornSlug, setBornSlug] = useState<string | null>(null)
   useEffect(() => {
     const on = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== 'object') return
       const d = e.data as { cc?: string; targets?: string; slug?: string }
       if (d.cc === 'create-facets' && (d.targets === 'desktop' || d.targets === 'mobile' || d.targets === 'universal')) setCreateShape(d.targets)
-      if (d.cc === 'create-born' && typeof d.slug === 'string') { setScene('space:' + d.slug); setUiSet('engine') }
+      if (d.cc === 'create-born' && typeof d.slug === 'string') { setBornSlug(d.slug); setScene('space:' + d.slug); setUiSet('engine') }
     }
     window.addEventListener('message', on)
     return () => window.removeEventListener('message', on)
@@ -295,13 +298,17 @@ export default function TheGrid() {
   const createSet = uiSet === 'create'
   const narrow = win.w < 700                      // the dock becomes a BOTTOM SHEET on narrow screens
   const dockBottomH = 168                          // narrow engine dock height
-  const miniTop = browsing || engineSet || createSet   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout
+  // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout — except a
+  // CREATE PLAYTEST (phase 'play' inside create), which goes full-frame at the
+  // declared shape while keeping create's context and clean bar.
+  const miniTop = browsing || engineSet || (createSet && phase !== 'play')
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
     // MOBILE IS MOBILE (Galen): a mobile-declared world wears a PHONE-SHAPED
     // frame on desktop too — full-frame play AND the mini frame. CREATE's
     // ▯ MOBILE facet declares the same shape while brewing.
-    const mobileWorld = (createSet && createShape === 'mobile') || spc?.device === 'mobile'
+    const sceneSlug = scene.startsWith('space:') ? scene.slice(6) : null
+    const mobileWorld = ((createSet || (bornSlug != null && bornSlug === sceneSlug)) && createShape === 'mobile') || spc?.device === 'mobile'
     const availH = H - M - BAR_H - 10
     if (!miniTop) {
       if (mobileWorld) {
@@ -326,7 +333,7 @@ export default function TheGrid() {
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [miniTop, win, createSet, createShape, spc])
+  }, [miniTop, win, createSet, createShape, spc, scene, bornSlug])
 
   // (the synthetic-resize ease loop is GONE — Galen: "why do we need a sizing
   // loop at all?" The engine now re-fits itself through a persistent
@@ -414,6 +421,12 @@ export default function TheGrid() {
   // Acked per-slug so it shows once per world, not every remount.
   const [bigScreenAck, setBigScreenAck] = useState<string | null>(null)
   const tryPlay = useCallback(async () => {
+    // CREATE PLAYTEST (Galen, Aug 31): clicking into the world while creating
+    // stays IN the create context — full frame at the world's declared shape
+    // (mobile = portrait via createShape, no dependence on a persisted
+    // deviceConfig), create's clean bar. No games-play chrome (REC /
+    // instructions / share) and no premium gate on a world you're brewing.
+    if (uiSet === 'create') { setPhase('play'); return }
     if (scene.startsWith('space:')) {
       const slug = scene.slice(6)
       try {
@@ -422,17 +435,18 @@ export default function TheGrid() {
       } catch { /* gate unreachable — default open (free) */ }
     }
     setUiSet('games'); setPhase('play')
-  }, [scene])
-  // BELT: a deep link straight to ?ph=play can't skip the gate
+  }, [scene, uiSet])
+  // BELT: a deep link straight to ?ph=play can't skip the gate. A CREATE
+  // PLAYTEST is exempt — you're brewing on a base, not entering a sold world.
   useEffect(() => {
-    if (phase !== 'play' || !scene.startsWith('space:')) return
+    if (phase !== 'play' || uiSet === 'create' || !scene.startsWith('space:')) return
     const slug = scene.slice(6)
     let dead = false
     fetch(`/api/premium?slug=${encodeURIComponent(slug)}`).then(r => r.json()).then(d => {
       if (!dead && d?.premium && !d.owned) { setPhase('browse'); setPremGate({ slug, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable }) }
     }).catch(() => { /* free default */ })
     return () => { dead = true }
-  }, [phase, scene])
+  }, [phase, scene, uiSet])
   // sign-in return (?buy=<slug>): the account was just created for THIS
   // purchase (Galen: account before payment, critical) — reopen the gate with
   // BUY live instead of dropping the player on the shelf to re-find the world.
@@ -673,7 +687,7 @@ export default function TheGrid() {
       {/* CLICK THE FRAME → PLAY, in ENGINE too (the world is always the play
           button — the universal law). While ◎ INSPECT is on, the frame yields:
           clicks must reach the canvas to document what's under them. */}
-      {(engineSet || createSet) && !eyeData?.inspect?.on && (
+      {(engineSet || (createSet && phase !== 'play')) && !eyeData?.inspect?.on && (
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
@@ -684,8 +698,9 @@ export default function TheGrid() {
       )}
 
       {/* ═ THE CREATE UNDER-AREA — contextual: the world in the frame is the
-          default BASE (fork it into yours) · or brew from nothing (/create). ═ */}
-      {createSet && (
+          default BASE (fork it into yours) · or brew from nothing (/create).
+          Hidden during a CREATE PLAYTEST — the full frame owns the screen. ═ */}
+      {createSet && phase !== 'play' && (
         <div className="fixed inset-x-0 z-[112] flex justify-center px-4 overflow-y-auto"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <CreateView
@@ -726,7 +741,7 @@ export default function TheGrid() {
               ['create', '✚', 'CREATE', 'new world · fork from grid'],
             ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
-                onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
+                onClick={() => { setUiSet(k); if (k === 'games' || k === 'create') setPhase('browse'); setSelOpen(false) }}
                 className={`text-left rounded-2xl border p-3 sm:p-4 transition-colors active:bg-white/10 ${
                   uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
                 <div className={`text-[18px] sm:text-[22px] mb-0.5 sm:mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
