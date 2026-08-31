@@ -2534,9 +2534,20 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   }
   const restingZoom = () =>
     Math.max(FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE)), coverZoomFloor())
+  // THE RESTING CENTER (Galen, Aug 30: "not in alignment — fix it at the base"):
+  // a rect world's content lives in the gridW×gridH RECT, whose center is
+  // (gridW/2, gridH/2) — NOT the square-space center (gridSize/2). Resting the
+  // camera on the square center framed the wrong point on every mobile/rect
+  // world. Square worlds (no gridW/gridH) fall back to gridSize/2, unchanged.
+  const restingCenter = () => {
+    const wp = (simulationRef.current?.worldParams ?? {}) as { gridW?: number; gridH?: number }
+    return { x: (wp.gridW ?? gridSize) / 2, y: (wp.gridH ?? gridSize) / 2 }
+  }
   // keep the load-path reset (below) on the same math without threading closures
   const restingZoomRef = useRef(restingZoom)
   restingZoomRef.current = restingZoom
+  const restingCenterRef = useRef(restingCenter)
+  restingCenterRef.current = restingCenter
 
   useEffect(() => {
     if (!playScene && !spaceId) return
@@ -2553,8 +2564,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       const w = cnv?.clientWidth ?? 0, h = cnv?.clientHeight ?? 0
       if (!force && w === lastW && h === lastH) return   // same box — nothing to fit
       lastW = w; lastH = h
-      cameraRef.current.x = gridSize / 2
-      cameraRef.current.y = gridSize / 2
+      const rc = restingCenterRef.current()
+      cameraRef.current.x = rc.x
+      cameraRef.current.y = rc.y
       // A BIG GRID IS TERRITORY, NOT A SHRUNKEN MAP (Galen, task #20): the
       // resting view is always a ~512-unit WINDOW — floored by COVER so the
       // window never overshoots the rect at this viewport's aspect. A 512
@@ -2652,7 +2664,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // 37.5%-tall band with void below (Galen's screenshot, Aug 23).
         // (restingZoomRef also carries the COVER floor — max expansion at any
         // viewport aspect.)
-        cameraRef.current = { x: gridSize / 2, y: gridSize / 2, zoom: restingZoomRef.current() }
+        cameraRef.current = { ...restingCenterRef.current(), zoom: restingZoomRef.current() }
 
         // three sources, in order of specificity:
         //  · a 'space:slug' descriptor → a DB-backed player space's live

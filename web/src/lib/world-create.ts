@@ -106,8 +106,19 @@ export async function birthWorld(opts: {
   // WITHIN the slots.
   {
     const { applyCommandToSnapshot } = await import('@/app/api/engine/space-store')
-    const { placeholderSeedCommands } = await import('@/app/engine/placeholder-nodes')
+    const { placeholderSeedCommands, baseBackdropSeedCommands } = await import('@/app/engine/placeholder-nodes')
     for (const seed of placeholderSeedCommands(Date.now())) {
+      await applyCommandToSnapshot(space.id, seed).catch(() => {})
+    }
+    // BORN IN CONTEXT (Galen, Aug 30): a skinned backdrop sized to the rect, so
+    // the world fills the viewport from frame one — no grey square, one less
+    // thing for the builder to make. Reads the world's actual params (the
+    // snapshot's own rect wins over birthParams, so a base-seeded world fits its
+    // seed's grid).
+    const bornParams = ((snapshot && typeof snapshot === 'object')
+      ? ((snapshot as Record<string, unknown>).worldParams as Record<string, unknown> | undefined)
+      : undefined) ?? opts.worldParams
+    for (const seed of baseBackdropSeedCommands(bornParams)) {
       await applyCommandToSnapshot(space.id, seed).catch(() => {})
     }
   }
@@ -220,7 +231,13 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   // 512 grid letterboxes again inside the phone frame. A mobile world is born
   // with a portrait playable rect (base-mobile's proven 576×1024) so its canvas
   // FILLS the frame from the first field.
-  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridW: 576, gridH: 1024, deviceConfig: 'mobile' } : {}
+  // gridSize MUST hold the portrait rect (Galen, Aug 30: "not in alignment —
+  // fix it at the base"). Without it gridSize defaults to 512, so a 1024-tall
+  // rect never fits the render space and the camera frames the wrong point.
+  // gridSize = the rect's long axis makes the space contain the rect; the camera
+  // then centers on the rect (see FieldEngine restingCenter) and coverZoomFloor
+  // fills the phone. This is why a mobile world was misaligned from birth.
+  const birthParams: Record<string, unknown> = targets === 'mobile' ? { gridSize: 1024, gridW: 576, gridH: 1024, deviceConfig: 'mobile' } : {}
   const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
   if (!baseWorld) return { birthData, birthParams }
   const src = await prisma.playerSpace.findUnique({

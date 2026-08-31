@@ -100,3 +100,34 @@ export function placeholderSeedCommands(now: number): Array<Record<string, unkno
     __now: now,
   }))
 }
+
+// THE BASE BACKDROP (Galen, Aug 30: "program world create to set up visuals in
+// context right off the bat — one less thing to build"). A newborn world is no
+// longer an empty grey square: it opens with ONE skinned full-bleed field sized
+// to the playable rect, so the canvas FILLS the viewport from frame one and the
+// builder can SEE the frame they are building into. It is a quiet backdrop the
+// builder paints over — a starting ground, not a finished look.
+const BASE_BG_WGSL = `
+fn visual_base_bg(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, behind: vec4f) -> vec4f {
+  let g = uv.y * 0.5 + 0.5;
+  var col = mix(vec3f(0.075, 0.085, 0.115), vec3f(0.028, 0.033, 0.05), g);
+  col += vec3f(0.05, 0.06, 0.09) * (0.5 + 0.5 * sin(uv.x * 2.0 + uv.y * 3.0)) * 0.06;
+  col += 0.010 * (vnoise(uv * 34.0) - 0.5);
+  // a soft floor line so the canvas reads as a PLACE, not a void
+  let horizon = smoothstep(0.02, 0.0, abs(uv.y - 0.35));
+  col += vec3f(0.10, 0.13, 0.18) * horizon * 0.25;
+  return vec4f(col, 1.0);
+}`
+
+/** Seeds a skinned full-bleed backdrop field sized to the world's rect — the
+ *  world displays IN CONTEXT from birth (no grey square). `worldParams` carries
+ *  gridSize/gridW/gridH; the field is centered on and sized to the playable rect. */
+export function baseBackdropSeedCommands(worldParams: Record<string, unknown> | undefined): Array<Record<string, unknown>> {
+  const gs = typeof worldParams?.gridSize === 'number' ? worldParams.gridSize as number : 512
+  const w = typeof worldParams?.gridW === 'number' ? worldParams.gridW as number : gs
+  const h = typeof worldParams?.gridH === 'number' ? worldParams.gridH as number : gs
+  return [
+    { type: 'define_visual', name: 'base_bg', wgsl: BASE_BG_WGSL },
+    { type: 'create_field', name: 'backdrop', shape: 'rect', x: w / 2, y: h / 2, width: w, height: h, visualType: 'base_bg', color: [0.06, 0.07, 0.1, 1] },
+  ]
+}
