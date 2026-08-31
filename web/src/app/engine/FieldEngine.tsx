@@ -42,6 +42,7 @@ import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, h
 import { applyBridgeCommand } from './bridge-commands'
 import * as sceneIO from './scene-io'
 import { TouchControls } from './TouchControls'
+import { usePointerLock } from './pointer-lock'
 import type { WorldMode } from './world-mode'
 // DEFAULT_FIELD_EFFECT_GLSL removed — fields are invisible until agents give them a shader
 
@@ -1500,9 +1501,6 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
   // Pointer state for panning (Space + drag to pan)
   const pointerDown = useRef(false)
-  // true while the click that ENGAGED pointer-lock is still held — swallow it for
-  // gameplay so click-to-lock (or re-lock after Esc) doesn't also fire (misfire fix)
-  const lockSwallow = useRef(false)
   const isPanning = useRef(false)
 
   // ── Player presence: every viewer is an orb on everyone else's screen. ──
@@ -3270,29 +3268,6 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     }
   }, [])
 
-  // MOUSE-LOOK (worldData.__mouseLook): mousemove deltas → worldData.mouse_dx/dy
-  // (world-sandbox exposes them as input.lookX/lookY) while the pointer is locked;
-  // the cursor hides on lock. Dead simple — click requests the lock (below), Esc
-  // releases it natively. No effect on non-mouse-look worlds.
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const onMove = (e: MouseEvent) => {
-      if (document.pointerLockElement !== canvas) return
-      const sim = simulationRef.current
-      if (!sim) return
-      sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
-      sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
-    }
-    const onLock = () => { canvas.style.cursor = document.pointerLockElement === canvas ? 'none' : '' }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('pointerlockchange', onLock)
-    return () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('pointerlockchange', onLock)
-    }
-  }, [])
-
   // pointer-lock entry gate (Galen): the click that ENTERS a world (staging a
   //  vote candidate, opening a scene) must never lock the cursor — but the next
   //  deliberate click inside the world must. Time-gate on the last swap.
@@ -3306,25 +3281,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const [declaredControls, setDeclaredControls] = useState(false)
   const declaredControlsRef = useRef(false)
 
-  // LOCK BELT + DIAGNOSIS (Galen: "veilfire lost click to bind cursor" in the
-  // grid; the primary path is byte-identical to /space where it worked, so a
-  // capture-phase retry catches anything upstream swallowing the click — and
-  // pointerlockerror now SAYS SO in the console instead of failing silently).
-  useEffect(() => {
-    const cv = canvasRef.current
-    if (!cv) return
-    const onDown = () => {
-      const sim = simulationRef.current
-      if (!sim || !sim.worldData['__mouseLook']) return
-      if (document.pointerLockElement === cv) return
-      if (performance.now() - swapAtRef.current < 600) return
-      try { cv.requestPointerLock() } catch (e) { console.warn('[cafe] pointer lock refused:', (e as Error).message) }
-    }
-    const onErr = () => console.warn('[cafe] pointerlockerror — the browser refused the cursor bind')
-    cv.addEventListener('pointerdown', onDown, true)
-    document.addEventListener('pointerlockerror', onErr)
-    return () => { cv.removeEventListener('pointerdown', onDown, true); document.removeEventListener('pointerlockerror', onErr) }
-  }, [])
+  // THE POINTER-LOCK NODE — the whole mouse-look lock lifecycle (relative-delta
+  // capture, cursor hide, click-to-lock gate + engaging-click swallow, and the
+  // Safari fullscreen path) lives in pointer-lock.ts now (Galen: "carve it into
+  // a node — it keeps breaking"). It returns lockSwallow, which handlePointerDown
+  // reads to skip the game press on the click that engaged the lock.
+  const lockSwallow = usePointerLock(canvasRef, simulationRef, swapAtRef, worldContainerRef)
 
   // inspect frame-snapshot loop: cheap (4Hz, only while inspect is on)
   useEffect(() => {
@@ -3622,20 +3584,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       }
     }
 
-    // MOUSE-LOOK worlds opt in via worldData.__mouseLook → click locks the pointer
-    // (cursor hides, unbounded relative deltas for turning). Esc releases natively.
-    // the ENTRY click can't lock (it just swapped the world in); a deliberate
-    // click ≥600ms after the swap does — click-to-lock, never lock-on-entry
-    // The click that ENGAGES cursor lock must lock WITHOUT firing — otherwise
-    // click-to-play (and every re-lock after Esc) also lands as a game press, so a
-    // mouse-look world fires a shot the instant you re-capture the cursor (the
-    // misfire). Detect the engaging click, request the lock, and swallow THIS press
-    // for hooks; every later click while already locked fires normally.
-    const engagingLock = !!(sim && sim.worldData['__mouseLook'] && (performance.now() - swapAtRef.current) > 600 && document.pointerLockElement !== canvas)
-    if (engagingLock) {
-      try { canvas.requestPointerLock() } catch { /* not supported */ }
-      lockSwallow.current = true
-    }
+    // THE ENGAGING CLICK — the pointer-lock node (capture-phase, fires before this
+    // handler) already requested the lock and set lockSwallow for the click that
+    // engages it, so we swallow THIS press for gameplay (no misfire on re-lock).
+    const engagingLock = lockSwallow.current
 
     pointerDown.current = true
     lastPointer.current = { x: e.clientX, y: e.clientY }
