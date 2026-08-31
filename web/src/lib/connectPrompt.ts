@@ -191,16 +191,20 @@ export function worldBriefingPrompt(p: {
   // FOR them (a mobile world built square is the bug this block kills) — plus
   // the dials it may adjust and where their contracts live.
   const f = p.facets ?? {}
+  const gs = f.gridSize && f.gridSize > 0 ? f.gridSize : 512
   const declared: string[] = []
-  if (f.fit === 'mobile') declared.push('MOBILE (portrait phone — desktop shows it in a phone frame)')
+  if (f.fit === 'mobile') declared.push(`MOBILE (shown in a portrait phone frame) — your canvas is the ${gs}×${gs} SQUARE, center ${gs / 2},${gs / 2}. This is how the working base games do it; do NOT declare a gridW/gridH portrait rect (it mis-frames the phone). A base backdrop field already fills the square — build your world on top of it, or replace it.`)
   else if (f.fit === 'desktop') declared.push('DESKTOP (wide screen + mouse)')
   if (f.gridW && f.gridH) declared.push(`playable rect ${f.gridW}×${f.gridH} (build to FILL it — content and camera use the whole rect)`)
   else if (f.gridSize) declared.push(`grid ${f.gridSize}×${f.gridSize}`)
   if (f.access === 'open') declared.push('OPEN BUILDING (others may build here too — build in NODES)')
+  const dialsMobile = f.fit === 'mobile'
+    ? `DIALS: worldData.fit ('mobile' = the phone frame) · wd.__camera {x,y,zoom|follow} (frame the square) · set_world_params {gridSize} resizes the square (stay square). Build within the ${gs}×${gs} square — contracts in the guide's THE GRID section.`
+    : `DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect) · worldData.fit ('mobile' = portrait phone world, framed on desktop) · wd.__camera — contracts in the guide's THE GRID section.`
   const settings = declared.length
     ? `SETTINGS (declared at creation — honor them): ${declared.join(' · ')}.
-DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect; a mobile world wants portrait, e.g. 576×1024) · worldData.fit ('mobile' frames it on desktop) · wd.__camera {x,y,zoom|follow} (frame your world) — contracts in the guide's THE GRID section.`
-    : `DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect) · worldData.fit ('mobile' = portrait phone world, framed on desktop) · wd.__camera — contracts in the guide's THE GRID section.`
+${dialsMobile}`
+    : dialsMobile
   return `Connect to my cartridge.cafe ${bm ? `world "${bm.base}" · branch "${bm.by}" · v${bm.version}` : `world "${p.worldName}"`}:
 POST commands to ${origin}/api/engine/bridge
 header: Authorization: Bearer ${p.token}
