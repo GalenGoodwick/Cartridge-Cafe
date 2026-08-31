@@ -45,6 +45,40 @@ export function screenToGrid(
   }
 }
 
+/** GRID ≡ VIEWPORT (Galen, Aug 31: "align grid and grid viewport") — the
+ *  resting camera frame, as PURE math so it is unit-testable (proper-always).
+ *
+ *  Square worlds (no declared rect): unchanged behavior — center gridSize/2,
+ *  FIT_ZOOM-backed contain (whole world visible, letterbox honest).
+ *
+ *  Declared-rect worlds (worldParams.gridW/gridH): the camera rests at the
+ *  RECT's center and at EXACT COVER of the rect. When the frame's aspect
+ *  matches the rect's (the page frame conforms to the declared aspect), cover
+ *  IS contain: every viewport pixel maps to a rect point and vice versa —
+ *  screenToGrid(corner) === rect corner, no letterbox, no crop. The proof
+ *  lives in __tests__/unit/grid-viewport-align.test.ts.
+ *
+ *  zoom semantics: visible world range along the SHORT canvas axis is
+ *  gridSize/zoom; the long axis scales by aspect (see screenToGrid). The
+ *  largest range that stays inside the rect at a given aspect is
+ *  min(gridW/max(aspect,1), gridH·min(aspect,1)); exact cover is gridSize/that. */
+export function restingFrame(
+  gridSize: number,
+  worldParams: { gridW?: number; gridH?: number } | undefined,
+  canvasAspect: number,
+  fitZoom: number,
+  defaultGridSize: number = DEFAULT_GRID_SIZE
+): { center: { x: number; y: number }; zoom: number } {
+  const gw = worldParams?.gridW, gh = worldParams?.gridH
+  const squareZoom = fitZoom * (gridSize / Math.min(gridSize, defaultGridSize))
+  if (!gw && !gh) return { center: { x: gridSize / 2, y: gridSize / 2 }, zoom: squareZoom }
+  const bW = gw ?? gridSize, bH = gh ?? gridSize
+  const aspect = canvasAspect > 0 ? canvasAspect : 1
+  const maxRange = Math.min(bW / Math.max(aspect, 1), bH * Math.min(aspect, 1))
+  const zoom = maxRange > 0 ? gridSize / maxRange : squareZoom
+  return { center: { x: bW / 2, y: bH / 2 }, zoom }
+}
+
 export const DEFAULT_HUES = [190, 30, 120, 280, 0, 60, 330, 210]
 
 export function hueToRgba(hue: number): [number, number, number, number] {

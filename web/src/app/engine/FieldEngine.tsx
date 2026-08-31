@@ -38,7 +38,7 @@ import { VersionsPanel } from './VersionsPanel'
 import { BranchesPanel } from './BranchesPanel'
 import SpaceBreadcrumb from './SpaceBreadcrumb'
 import { useToast } from '@/components/Toast'
-import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, DEFAULT_HUES, hueToRgba, wrapInteractionWgsl, ENGINE_BUILD, scenePreloadCache, playerGlyphWgsl, wrapPlayerGlyph, wrapOtherGlyph } from './engine-utils'
+import { genFieldId, genEffectId, _reusableKeySet, screenToGrid, restingFrame, DEFAULT_HUES, hueToRgba, wrapInteractionWgsl, ENGINE_BUILD, scenePreloadCache, playerGlyphWgsl, wrapPlayerGlyph, wrapOtherGlyph } from './engine-utils'
 import { applyBridgeCommand } from './bridge-commands'
 import * as sceneIO from './scene-io'
 import { TouchControls } from './TouchControls'
@@ -2530,19 +2530,24 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     const maxRange = Math.min(bW / Math.max(aspect, 1), bH * Math.min(aspect, 1))
     return maxRange > 0 ? gridSize / maxRange : 0
   }
-  const restingZoom = () =>
-    Math.max(FIT_ZOOM * (gridSize / Math.min(gridSize, DEFAULT_GRID_SIZE)), coverZoomFloor())
-  // THE RESTING CENTER (Galen, Aug 30: "not in alignment — fix it at the base"):
-  // a rect world's content lives in the gridW×gridH RECT, whose center is
-  // (gridW/2, gridH/2) — NOT the square-space center (gridSize/2). Resting the
-  // camera on the square center framed the wrong point on every mobile/rect
-  // world. Square worlds (no gridW/gridH) fall back to gridSize/2, unchanged.
-  const restingCenter = () => {
-    // The working base games (e.g. ascent) are plain gridSize squares centered
-    // at gridSize/2 — that is the proven frame. Rect-centering broke that; stay
-    // on the square center. (clampCamera still pins a declared rect on-screen.)
-    return { x: gridSize / 2, y: gridSize / 2 }
+  // GRID ≡ VIEWPORT (Galen, Aug 31: "align grid and grid viewport"): the
+  // resting frame is PURE math in engine-utils.restingFrame — square worlds
+  // keep the proven contain frame (center gridSize/2, FIT_ZOOM back-out),
+  // declared-rect worlds rest at the RECT's center at EXACT COVER, so when the
+  // page frame conforms to the world's declared aspect the viewport corners
+  // ARE the rect corners (unit-tested corner-exact in
+  // grid-viewport-align.test.ts). The Aug 30 square-center revert framed rect
+  // worlds on empty space above the rect; centering is guarded on gridW/gridH
+  // so plain-square games (ascent) are byte-identical.
+  const restingFrameNow = () => {
+    const sim = simulationRef.current
+    const wp = (sim?.worldParams ?? {}) as { gridW?: number; gridH?: number }
+    const cnv = canvasRef.current
+    const aspect = cnv && cnv.clientWidth > 0 && cnv.clientHeight > 0 ? cnv.clientWidth / cnv.clientHeight : 1
+    return restingFrame(gridSize, wp, aspect, FIT_ZOOM)
   }
+  const restingZoom = () => restingFrameNow().zoom
+  const restingCenter = () => restingFrameNow().center
   // keep the load-path reset (below) on the same math without threading closures
   const restingZoomRef = useRef(restingZoom)
   restingZoomRef.current = restingZoom

@@ -305,10 +305,17 @@ export default function TheGrid() {
     const availH = H - M - BAR_H - 10
     if (!miniTop) {
       if (mobileWorld) {
-        // full-frame play, portrait: full height, 9:16, centered
+        // full-frame play, portrait — the frame CONFORMS to the world's 9:16
+        // (GRID ≡ VIEWPORT, Galen Aug 31): on a phone taller than 9:16 the
+        // width clamps w, so h must follow w — a full-height frame there is no
+        // longer 9:16 and the world's rect crops under cover. Extra device
+        // height centers the frame; chrome owns the leftover bands, never
+        // dead world-space.
         const w = Math.max(MIN_W, Math.min(availH * (9 / 16), W - M * 2))
+        const h = Math.min(availH, w * (16 / 9))
+        const spare = Math.max(0, availH - h)
         const left = Math.max((W - w) / 2, M)
-        return { top: M, right: Math.max(W - left - w, M), bottom: BAR_H + 10, left }
+        return { top: M + spare / 2, right: Math.max(W - left - w, M), bottom: BAR_H + 10 + spare / 2, left }
       }
       return { top: M, right: M, bottom: BAR_H + 10, left: M }
     }

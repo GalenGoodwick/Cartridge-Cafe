@@ -237,12 +237,17 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   // gridSize = the rect's long axis makes the space contain the rect; the camera
   // then centers on the rect (see FieldEngine restingCenter) and coverZoomFloor
   // fills the phone. This is why a mobile world was misaligned from birth.
-  // MATCH THE WORKING BASE GAMES (Galen, Aug 30: "why are those working?"): a
-  // functional mobile world (ascent) is a PLAIN gridSize square — no gridW/gridH
-  // rect, no raised gridSize — with deviceConfig:'mobile' for the phone frame.
-  // The portrait-rect approach mis-framed every mobile world; drop it. The base
-  // backdrop is seeded to the square (512²) and the camera rests at its center.
-  const birthParams: Record<string, unknown> = targets === 'mobile' ? { deviceConfig: 'mobile' } : {}
+  // GRID ≡ VIEWPORT (Galen, Aug 31: "align grid and grid viewport"): a mobile
+  // world is born a portrait rect and the engine rests at EXACT COVER of that
+  // rect (restingFrame in engine-utils — unit-tested corner-exact: viewport
+  // corners map to rect corners), while the page frame conforms to the world's
+  // declared aspect. The Aug 30 revert to a plain square was triage — the
+  // rect's real bugs (camera resting on the square center at a square-fit
+  // zoom) are now fixed at the base, so alignment is structural, not a
+  // per-world fixup. Square worlds stay squares; only mobile births carry it.
+  const birthParams: Record<string, unknown> = targets === 'mobile'
+    ? { deviceConfig: 'mobile', gridW: 576, gridH: 1024, gridSize: 1024 }
+    : {}
   const baseWorld = typeof body.base === 'string' && body.base.trim() ? body.base.trim() : null
   if (!baseWorld) return { birthData, birthParams }
   const src = await prisma.playerSpace.findUnique({
