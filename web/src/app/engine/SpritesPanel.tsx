@@ -12,7 +12,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 interface Sheet { name: string; png_b64: string; cols: number; rows: number; fps?: number | null }
 interface Meta { slots: Array<{ name: string; i: number }>; clips: Array<{ name: string; first: number; n: number; fps: number }> }
 
-export default function SpritesPanel({ slug, onClose }: { slug: string; onClose: () => void }) {
+// Two faces, one panel: the legacy MODAL (FieldEngine owner chrome) and the
+// INLINE face that fills the engine's ◲ ASSETS tab. readOnly hides the
+// upload/delete doors for non-owners (the server gates writes regardless).
+export default function SpritesPanel({ slug, onClose, inline, readOnly }: { slug: string; onClose?: () => void; inline?: boolean; readOnly?: boolean }) {
   const [sheets, setSheets] = useState<Sheet[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)
   const [busy, setBusy] = useState(false)
@@ -24,7 +27,7 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
   const refresh = useCallback(() => {
     fetch(`/api/spaces/${encodeURIComponent(slug)}/sprites`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.sheets) setSheets(d.sheets) })
+      .then(d => { if (d?.sheets) setSheets(d.sheets); if (d?.meta) setMeta(d.meta) })
       .catch(() => {})
   }, [slug])
   useEffect(() => { refresh() }, [refresh])
@@ -73,17 +76,10 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
     } finally { setBusy(false) }
   }, [slug, busy, refresh])
 
-  return (
-    <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl max-h-[86vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 p-5 font-mono text-white/85"
-        onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-[15px] tracking-[0.25em] text-white/70">◲ SPRITES</span>
-          <button onClick={onClose} className="text-white/50 hover:text-white text-[16px]">✕</button>
-        </div>
-
+  const body = (
+    <>
         {/* ── upload / staging ── */}
-        {!stage ? (
+        {readOnly ? null : !stage ? (
           <button onClick={() => fileRef.current?.click()}
             className="w-full mb-4 px-4 py-6 rounded-lg border-2 border-dashed border-white/20 text-white/60 hover:text-amber-200 hover:border-amber-300/40 text-[14px] tracking-[0.15em] transition-colors">
             ⬆ DROP A PNG — a single sprite or a whole sheet to rip
@@ -146,7 +142,7 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
         {/* ── the world's sheets ── */}
         {sheets.length === 0 && !stage && (
           <div className="text-[13.5px] text-white/45 leading-relaxed">
-            no sprites yet — upload a png above. Your AI can also do it over the bridge
+            {readOnly ? 'no sprites on this world yet — the owner uploads them here.' : 'no sprites yet — upload a png above.'} Your AI can also do it over the bridge
             (<span className="text-white/65">define_sheet</span>), and any visual samples slots with
             <span className="text-emerald-200/80"> sprite(i, uv)</span> / <span className="text-emerald-200/80">spriteAnim(first, n, fps, uv, time)</span>.
           </div>
@@ -162,16 +158,48 @@ export default function SpritesPanel({ slug, onClose }: { slug: string; onClose:
                 {sh.fps ? <span className="text-emerald-200/80"> · clip @{sh.fps}fps</span> : ''}
               </div>
               {sh.fps && sh.cols * sh.rows > 1 ? <AnimPreview png={sh.png_b64} cols={sh.cols} rows={sh.rows} fps={sh.fps} /> : null}
-              <div className="mt-1.5 text-[12px] text-white/40">
-                sample: <span className="text-emerald-200/70">sprite({meta?.slots.find(s => s.name === sh.name || s.name === sh.name + '.0')?.i ?? '…'}, uv)</span>
-              </div>
+              <SampleSnip sheet={sh} meta={meta} />
             </div>
-            <button onClick={() => remove(sh.name)} disabled={busy}
-              className="shrink-0 text-[12px] text-red-300/60 hover:text-red-200 tracking-[0.1em]">DELETE</button>
+            {!readOnly && <button onClick={() => remove(sh.name)} disabled={busy}
+              className="shrink-0 text-[12px] text-red-300/60 hover:text-red-200 tracking-[0.1em]">DELETE</button>}
           </div>
         ))}
+    </>
+  )
+
+  // INLINE — fills whatever container mounts it (the ◲ ASSETS tab)
+  if (inline) return <div className="w-full h-full overflow-y-auto p-4 font-mono text-white/85">{body}</div>
+
+  // MODAL — the legacy owner-chrome popup (FieldEngine)
+  return (
+    <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-[86vh] overflow-y-auto rounded-xl border border-white/15 bg-black/90 p-5 font-mono text-white/85"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[15px] tracking-[0.25em] text-white/70">◲ SPRITES</span>
+          <button onClick={onClose} className="text-white/50 hover:text-white text-[16px]">✕</button>
+        </div>
+        {body}
       </div>
     </div>
+  )
+}
+
+/** The USE line — the WGSL call that samples this asset, copied in one tap. */
+function SampleSnip({ sheet, meta }: { sheet: Sheet; meta: Meta | null }) {
+  const [copied, setCopied] = useState(false)
+  const first = meta?.slots.find(s => s.name === sheet.name || s.name === sheet.name + '.0')?.i
+  const n = sheet.cols * sheet.rows
+  const snip = sheet.fps && n > 1
+    ? `spriteAnim(${first ?? 0}, ${n}, ${sheet.fps}.0, uv, time)`
+    : `sprite(${first ?? 0}, uv)`
+  return (
+    <button disabled={first === undefined}
+      title="copy — paste into any visual's WGSL to draw this asset"
+      onClick={async () => { try { await navigator.clipboard.writeText(snip); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+      className="mt-1.5 block text-left text-[12px] text-white/40 hover:text-white/70 transition-colors disabled:opacity-60">
+      use: <span className="text-emerald-200/70">{first === undefined ? '…' : snip}</span>{copied ? <span className="text-emerald-200 ml-1.5">✓ copied</span> : <span className="ml-1.5 text-white/30">⧉</span>}
+    </button>
   )
 }
 

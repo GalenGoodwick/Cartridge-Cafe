@@ -66,7 +66,7 @@ export default function TheGrid() {
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -544,6 +544,7 @@ export default function TheGrid() {
 
   const sceneIsSpace = scene.startsWith('space:')
   const crewJoin = useCallback((sc: string) => { setScene(sc); setTool('connect') }, [])
+  const openAssets = useCallback(() => setTool('assets'), [])
   const pickScene = useCallback((sc: string) => setScene(sc), [])
 
   const shelfTop = win.h - inset.bottom + 12
@@ -887,7 +888,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -975,12 +976,13 @@ export default function TheGrid() {
               </div>
             )}
             {tool === 'nodes' && <NodesViewM graph={eyeData?.graph ?? null} />}
+            {tool === 'assets' && <AssetsViewM cfg={cfgStable} />}
             {tool === 'crew' && <CrewViewM icons={icons} current={scene} onJoin={crewJoin} />}
             {tool === 'versions' && <VersionsViewM cfg={cfgStable} />}
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
             {tool === 'config' && (
-              <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} />
+              <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} onAssets={openAssets} />
             )}
             {tool === 'chat' && (
               <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
@@ -1368,12 +1370,33 @@ function NodesView({ graph }: { graph: AiNodeGraph | null }) {
   )
 }
 
+// ◲ ASSETS — the world's asset shelf. Upload pixel art, RIP a sheet into
+// slots, animate a strip — each ships as an asset SAVED ON THE WORLD
+// (sprite-store + worldData.sprites), and any visual draws it later with the
+// use-snippet each asset shows (sprite/spriteAnim). Owners upload; everyone
+// else reads the shelf.
+function AssetsView({ cfg }: { cfg: GridCfg | null }) {
+  const slug = cfg?.spaceSlug ?? null
+  return (
+    <div className="w-full h-full flex flex-col font-mono">
+      <div className="flex items-center justify-between px-4 pt-4">
+        <span className="text-[11.5px] tracking-[0.2em] text-amber-200/70">◲ ASSETS — saved on this world, drawn by its visuals</span>
+        {slug && !cfg?.isOwner && <span className="text-[11px] text-white/45">read-only — the owner uploads</span>}
+      </div>
+      {slug
+        ? <div className="flex-1 min-h-0"><SpritesPanel inline slug={slug} readOnly={!cfg?.isOwner} /></div>
+        : <div className="flex-1 grid place-items-center p-6 text-center text-[12.5px] text-white/55 leading-relaxed">house cartridge — assets live on real worlds.<br />brew or fork a world and its shelf opens here.</div>}
+    </div>
+  )
+}
+
 // ⚙ CONFIG — the old world tools, for real (minus lineage — that lives on the
 // title). Space owners get the management overlay (name · visibility · keys);
 // the toggles drive the engine's own writes over cfg: commands.
-function ConfigView({ cfg, sceneIsSpace }: {
+function ConfigView({ cfg, sceneIsSpace, onAssets }: {
   cfg: GridCfg | null
   sceneIsSpace: boolean
+  onAssets: () => void
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
   const Row = ({ label, on, k, disabled, hint }: { label: string; on: boolean; k: string; disabled?: boolean; hint?: string }) => (
@@ -1424,9 +1447,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
     try { await navigator.clipboard.writeText(iconAuthorPrompt(tok, iconDesc.trim(), origin)); setIconCopied(true); setTimeout(() => setIconCopied(false), 1800) } catch { /* manual */ }
   }
 
-  // ◲ SPRITES — the real panel, embedded in the under-area (never over the game)
-  const [spritesOpen, setSpritesOpen] = useState(false)
-
   return (
     <div className="relative w-full h-full overflow-y-auto p-4 font-mono">
       <div className="text-[11.5px] tracking-[0.2em] text-amber-200/70 mb-2">⚙ WORLD CONFIG</div>
@@ -1468,7 +1488,7 @@ function ConfigView({ cfg, sceneIsSpace }: {
           story · instructions. Writes ride the card: cmd into worldData. */}
       {ownedSpace && <CardSection cfg={cfg} />}
 
-      {/* owner workbench — invite / icon / sprites */}
+      {/* owner workbench — invite / icon / the assets shelf door */}
       {ownedSpace && (
         <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[12px]">
           <div className="text-[11.5px] tracking-[0.2em] text-white/60 mb-2">THE WORKBENCH</div>
@@ -1478,10 +1498,10 @@ function ConfigView({ cfg, sceneIsSpace }: {
               className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
               {invite === 'busy' ? '…' : invite === 'copied' ? '✓ LINK COPIED' : invite === 'failed' ? 'MINT FAILED' : '⚭ INVITE A BUILDER'}
             </button>
-            <button onClick={() => setSpritesOpen(true)}
-              title="upload pixel art — rip sprite sheets into slots any visual can sample"
+            <button onClick={onAssets}
+              title="the ◲ ASSETS tab — upload pixel art, rip sheets into slots any visual can sample"
               className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
-              ◲ SPRITES
+              ◲ ASSETS
             </button>
           </div>
           <div className="mt-3 flex gap-2 items-center">
@@ -1502,8 +1522,6 @@ function ConfigView({ cfg, sceneIsSpace }: {
         {!sceneIsSpace && <div className="mt-1.5 text-white/50">house cartridge — owner controls apply on real worlds.</div>}
       </div>
 
-      {/* the sprites panel fills THIS area — the under-area, never the game */}
-      {spritesOpen && slug && <SpritesPanel slug={slug} onClose={() => setSpritesOpen(false)} />}
     </div>
   )
 }
@@ -1968,6 +1986,7 @@ function AttribLineage({ scene }: { scene: string }) {
 // still under a human press. Plain memo — props are content-stable by cfgKey.
 const PublishViewM = memo(PublishView)
 const ConfigViewM = memo(ConfigView)
+const AssetsViewM = memo(AssetsView)
 const VersionsViewM = memo(VersionsView)
 const CrewViewM = memo(CrewView)
 const NodesViewM = memo(NodesView)

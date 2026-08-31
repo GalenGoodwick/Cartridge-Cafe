@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { readSprites, putSheet, deleteSheet } from '@/lib/sprite-store'
+import { readSprites, putSheet, deleteSheet, spritesMeta } from '@/lib/sprite-store'
 import { applyCommandToSnapshot } from '@/app/api/engine/space-store'
 
 export const dynamic = 'force-dynamic'
@@ -48,7 +48,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     if (!uid || uid !== sp.ownerId) return NextResponse.json({ error: 'private world' }, { status: 403 })
   }
   const doc = await readSprites(sp.id)
-  return NextResponse.json({ sheets: doc.sheets })
+  // meta rides along so the ◲ ASSETS tab can show each slot's use-snippet
+  // without waiting for an upload (same builder the mutations mirror)
+  return NextResponse.json({ sheets: doc.sheets, meta: spritesMeta(doc) })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
