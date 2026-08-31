@@ -1182,6 +1182,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   const gridSize = gridSizeProp && Number.isFinite(gridSizeProp) && gridSizeProp >= 64 && gridSizeProp <= 4096
     ? Math.round(gridSizeProp) : DEFAULT_GRID_SIZE
   const cameraRef = useRef<Camera>({ x: gridSize / 2, y: gridSize / 2, zoom: 1 })
+  // GRID ≡ VIEWPORT: the declared-rect key last rested on — when the rect
+  // LANDS (world load) or CHANGES (set_world_params), the camera re-rests once
+  const restRectKeyRef = useRef<string>('')
   const [, forceUpdate] = useState(0)
 
   // 2D/3D render mode
@@ -4792,6 +4795,27 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         const bHC = wpC.gridH ?? gridSize
         camera.x = bWC <= visW ? bWC / 2 : Math.max(visW / 2, Math.min(camera.x, bWC - visW / 2))
         camera.y = bHC <= visH ? bHC / 2 : Math.max(visH / 2, Math.min(camera.y, bHC - visH / 2))
+      }
+
+      // GRID ≡ VIEWPORT (Galen, Aug 31 — the misaligned birth walk): the
+      // mount-time fit runs BEFORE the snapshot lands, so a declared-rect
+      // world rested on the square frame (zoom 1.86, x 512) and stayed there —
+      // the ResizeObserver never re-fires on a stable canvas. Geometry, not
+      // events: when the declared rect KEY changes (first load, or a live
+      // set_world_params), re-rest ONCE at exact cover of the rect. Square
+      // worlds (no gridW/gridH) never enter — behavior byte-identical.
+      {
+        const wpR = sim.worldParams as { gridW?: number; gridH?: number }
+        const rectKey = (wpR.gridW ?? 0) + 'x' + (wpR.gridH ?? 0)
+        if (restRectKeyRef.current !== rectKey) {
+          restRectKeyRef.current = rectKey
+          if (wpR.gridW || wpR.gridH) {
+            const rest = restingFrameNow()
+            camera.x = rest.center.x
+            camera.y = rest.center.y
+            camera.zoom = rest.zoom
+          }
+        }
       }
 
       // Camera follow mode — lerp toward target field position

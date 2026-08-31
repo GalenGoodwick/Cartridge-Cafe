@@ -211,21 +211,38 @@ export class FieldSimulation {
       // snap it home on load. `static:false` (a deliberately moving backdrop)
       // keeps whatever position it saved. The run-time pin in stepTransforms
       // references this block as the healing half -- keep the pair together.
-      if (this.isWorldCovering(field) && !field.parentFieldId && field.properties.get('static') !== false) {
-        const c = this.gridSize / 2
-        if (Math.abs(field.transform.x - c) > 0.5 || Math.abs(field.transform.y - c) > 0.5) {
-          field.transform.x = c
-          field.transform.y = c
-          field.transform.vx = 0
-          field.transform.vy = 0
-        }
-      }
+      this.healWorldCoveringField(field)
     }
   }
 
-  /** Update world physics parameters */
+  /** HOME for a world-covering static field — the DECLARED RECT's center when
+   *  the world has one (GRID ≡ VIEWPORT, Galen Aug 31: a 576×1024 mobile
+   *  backdrop lives at 288,512), else the square center. The old square-only
+   *  home made the healer MISREAD every correctly-placed rect backdrop as
+   *  drift damage and drag it to the square center — the misaligned birth. */
+  private healWorldCoveringField(field: Field): void {
+    if (!this.isWorldCovering(field) || field.parentFieldId || field.properties.get('static') === false) return
+    const wp = this.worldParams as { gridW?: number; gridH?: number }
+    const cx = (typeof wp.gridW === 'number' && wp.gridW > 0 ? wp.gridW : this.gridSize) / 2
+    const cy = (typeof wp.gridH === 'number' && wp.gridH > 0 ? wp.gridH : this.gridSize) / 2
+    if (Math.abs(field.transform.x - cx) > 0.5 || Math.abs(field.transform.y - cy) > 0.5) {
+      field.transform.x = cx
+      field.transform.y = cy
+      field.transform.vx = 0
+      field.transform.vy = 0
+    }
+  }
+
+  /** Update world physics parameters. Loads apply fields BEFORE params land
+   *  (restoreFromSnapshots → setWorldParams), so the load-time heal above ran
+   *  with an unknown rect — re-heal here: the moment the declared rect is
+   *  known, world-covering statics snap to THEIR true home. Also covers a live
+   *  set_world_params resize re-homing the backdrop. */
   setWorldParams(params: Partial<WorldParams>): void {
     Object.assign(this.worldParams, params)
+    if ('gridW' in params || 'gridH' in params || 'gridSize' in params) {
+      for (const field of this.fields.values()) this.healWorldCoveringField(field)
+    }
   }
 
   /** Apply an instantaneous force (impulse) to a field's velocity */
