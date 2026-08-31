@@ -61,11 +61,12 @@ export async function GET(
   let deviceConfig: string | null = null
   let forkable = true
   let rReset = false
+  let gridSize: number | null = null
   try {
     const rows = await prisma.$queryRaw<Array<{
       d: string | null; premium_usd: string | null; build: string | null
       forkable: string | null; base: string | null; proprietary: string | null; closed: string | null
-      r_reset: string | null
+      r_reset: string | null; grid_size: string | null; grid_w: string | null; grid_h: string | null
     }>>`
       SELECT snapshot->'worldParams'->>'deviceConfig'            AS d,
              snapshot->'worldData'->'premium'->>'usd'           AS premium_usd,
@@ -74,10 +75,21 @@ export async function GET(
              snapshot->'worldData'->>'__base'                   AS base,
              snapshot->'worldData'->>'proprietary'              AS proprietary,
              snapshot->'worldData'->>'closed'                   AS closed,
-             snapshot->'worldData'->>'rResetKey'                AS r_reset
+             snapshot->'worldData'->>'rResetKey'                AS r_reset,
+             snapshot->'worldParams'->>'gridSize'               AS grid_size,
+             snapshot->'worldParams'->>'gridW'                  AS grid_w,
+             snapshot->'worldParams'->>'gridH'                  AS grid_h
       FROM "PlayerSpace" WHERE id = ${space.id}`
     const r = rows[0]
     deviceConfig = r?.d === 'mobile' ? 'mobile' : r?.d === 'desktop' ? 'desktop' : null
+    // THE GRID SIZE (Galen, Aug 30: mobile "out of frame"): the engine reads its
+    // gridSize from a prop; without threading the world's declared gridSize the
+    // grid mounts every space at the 512 default, clipping a 1024-tall portrait
+    // world to its top half. Carry it (and the rect) so the mount frames right.
+    const gsNum = r?.grid_size != null ? Number(r.grid_size) : null
+    const gwNum = r?.grid_w != null ? Number(r.grid_w) : null
+    const ghNum = r?.grid_h != null ? Number(r.grid_h) : null
+    gridSize = Number.isFinite(gsNum) && gsNum ? gsNum : (Number.isFinite(gwNum) && Number.isFinite(ghNum) ? Math.max(gwNum as number, ghNum as number) : null)
     rReset = r?.r_reset === 'true'   // ⟲ RESET button gate — the grid reads this in play mode (eye cfg is engine-only)
     // rebuild a minimal worldData so the ONE truth (canFork) reads it, not a
     // second copy of the rule living here
@@ -92,7 +104,7 @@ export async function GET(
     forkable = worldIsForkable(wd, await hasIpControl(space.ownerId))
   } catch { /* absent = desktop default, forkable stays true (the default) */ }
 
-  return NextResponse.json({ space: { ...space, deviceConfig, forkable, rReset } })
+  return NextResponse.json({ space: { ...space, deviceConfig, forkable, rReset, gridSize } })
 }
 
 /** PATCH /api/spaces/:slug — Update space metadata (owner only) */
