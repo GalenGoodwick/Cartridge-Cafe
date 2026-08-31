@@ -1380,7 +1380,9 @@ function AssetsView({ cfg }: { cfg: GridCfg | null }) {
   return (
     <div className="w-full h-full flex flex-col font-mono">
       <div className="flex items-center justify-between px-4 pt-4">
-        <span className="text-[11.5px] tracking-[0.2em] text-amber-200/70">◲ ASSETS — saved on this world, drawn by its visuals</span>
+        <span className="flex items-center gap-2 text-[11.5px] tracking-[0.2em] text-amber-200/70">◲ ASSETS — saved on this world, drawn by its visuals
+          <span className="rounded border border-amber-300/30 bg-amber-400/10 px-1.5 py-0.5 text-[9.5px] tracking-[0.15em] text-amber-200/80">IN DEVELOPMENT</span>
+        </span>
         {slug && !cfg?.isOwner && <span className="text-[11px] text-white/45">read-only — the owner uploads</span>}
       </div>
       {slug

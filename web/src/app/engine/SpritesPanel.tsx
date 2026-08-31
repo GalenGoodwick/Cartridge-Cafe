@@ -147,21 +147,18 @@ export default function SpritesPanel({ slug, onClose, inline, readOnly }: { slug
             <span className="text-emerald-200/80"> sprite(i, uv)</span> / <span className="text-emerald-200/80">spriteAnim(first, n, fps, uv, time)</span>.
           </div>
         )}
+        {/* the shelf — just the sprite + its title (the WGSL snippet is a quiet
+            ⧉ tap; the grid/clip detail lives in the staging view, not here) */}
         {sheets.map(sh => (
-          <div key={sh.name} className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 flex gap-3 items-start flex-wrap">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`data:image/png;base64,${sh.png_b64}`} alt="" className="max-w-[160px] max-h-[120px] border border-white/10 rounded [image-rendering:pixelated]" />
-            <div className="flex-1 min-w-[180px] text-[13.5px]">
-              <div className="text-amber-200/90 tracking-[0.1em]">{sh.name}</div>
-              <div className="text-white/50 mt-0.5">
-                {sh.cols}×{sh.rows}{sh.cols * sh.rows > 1 ? ` · slots ${sh.name}.0–${sh.name}.${sh.cols * sh.rows - 1}` : ''}
-                {sh.fps ? <span className="text-emerald-200/80"> · clip @{sh.fps}fps</span> : ''}
-              </div>
-              {sh.fps && sh.cols * sh.rows > 1 ? <AnimPreview png={sh.png_b64} cols={sh.cols} rows={sh.rows} fps={sh.fps} /> : null}
-              <SampleSnip sheet={sh} meta={meta} />
-            </div>
+          <div key={sh.name} className="mb-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 flex gap-3 items-center">
+            {sh.fps && sh.cols * sh.rows > 1
+              ? <AnimPreview png={sh.png_b64} cols={sh.cols} rows={sh.rows} fps={sh.fps} />
+              /* eslint-disable-next-line @next/next/no-img-element */
+              : <img src={`data:image/png;base64,${sh.png_b64}`} alt="" className="w-14 h-14 object-contain border border-white/10 rounded [image-rendering:pixelated]" />}
+            <div className="flex-1 min-w-0 text-amber-200/90 tracking-[0.1em] text-[14px] truncate">{sh.name}</div>
+            <SampleSnip sheet={sh} meta={meta} />
             {!readOnly && <button onClick={() => remove(sh.name)} disabled={busy}
-              className="shrink-0 text-[12px] text-red-300/60 hover:text-red-200 tracking-[0.1em]">DELETE</button>}
+              className="shrink-0 text-[11px] text-red-300/50 hover:text-red-200 tracking-[0.1em]">DELETE</button>}
           </div>
         ))}
     </>
@@ -185,7 +182,8 @@ export default function SpritesPanel({ slug, onClose, inline, readOnly }: { slug
   )
 }
 
-/** The USE line — the WGSL call that samples this asset, copied in one tap. */
+/** A quiet ⧉ that copies the WGSL call to sample this asset — the messy detail
+ *  (slots · clip · the snippet text) collapses into one tap, off the shelf. */
 function SampleSnip({ sheet, meta }: { sheet: Sheet; meta: Meta | null }) {
   const [copied, setCopied] = useState(false)
   const first = meta?.slots.find(s => s.name === sheet.name || s.name === sheet.name + '.0')?.i
@@ -195,10 +193,10 @@ function SampleSnip({ sheet, meta }: { sheet: Sheet; meta: Meta | null }) {
     : `sprite(${first ?? 0}, uv)`
   return (
     <button disabled={first === undefined}
-      title="copy — paste into any visual's WGSL to draw this asset"
+      title={`copy WGSL — paste into any visual to draw this: ${snip}`}
       onClick={async () => { try { await navigator.clipboard.writeText(snip); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-      className="mt-1.5 block text-left text-[12px] text-white/40 hover:text-white/70 transition-colors disabled:opacity-60">
-      use: <span className="text-emerald-200/70">{first === undefined ? '…' : snip}</span>{copied ? <span className="text-emerald-200 ml-1.5">✓ copied</span> : <span className="ml-1.5 text-white/30">⧉</span>}
+      className="shrink-0 text-[13px] text-white/35 hover:text-emerald-200 transition-colors disabled:opacity-40">
+      {copied ? <span className="text-emerald-200">✓</span> : '⧉'}
     </button>
   )
 }

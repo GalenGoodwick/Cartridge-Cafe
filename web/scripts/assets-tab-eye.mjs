@@ -52,14 +52,17 @@ await p.locator('button', { hasText: '◲ ASSETS' }).first().click()
 await p.waitForTimeout(1200)
 let t = await body()
 T('owner sees the upload door (DROP A PNG)', t.includes('DROP A PNG'))
-T('the world\'s sheet is on the shelf (ember · slots)', t.includes('ember') && t.includes('slots ember.0'))
-T('use-snippet from GET meta (spriteAnim)', t.includes('spriteAnim(0, 4, 8.0, uv, time)'))
-const snip = p.locator('button', { hasText: 'spriteAnim(' }).first()
+T('the tab is flagged IN DEVELOPMENT', t.includes('IN DEVELOPMENT'))
+T('the world\'s sheet is on the shelf by title (ember)', t.includes('ember'))
+// the card is now sprite + title only; the WGSL snippet is a quiet ⧉ (its
+// title attr carries the call) that still copies from GET meta
+const snip = p.locator('button[title*="spriteAnim("]').first()
+T('sheet carries the ⧉ copy-snippet affordance (from GET meta)', await snip.count() > 0)
 if (await snip.count()) {
   await snip.click(); await p.waitForTimeout(300)
   const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '')
-  T('use-snippet copies to clipboard', clip === 'spriteAnim(0, 4, 8.0, uv, time)')
-} else T('use-snippet copies to clipboard', false)
+  T('⧉ copies the WGSL snippet to clipboard', clip === 'spriteAnim(0, 4, 8.0, uv, time)')
+} else T('⧉ copies the WGSL snippet to clipboard', false)
 await p.screenshot({ path: process.env.SHOT || '/tmp/assets-tab-owner.png' })
 
 // ═ 3 · CONFIG workbench ◲ ASSETS door jumps to the tab ═
@@ -82,7 +85,7 @@ t = await body()
 T('non-owner: read-only note', t.includes('read-only — the owner uploads'))
 T('non-owner: no upload door', !t.includes('DROP A PNG'))
 T('non-owner: no DELETE', !t.includes('DELETE'))
-T('non-owner still sees the shelf + use-snippet', t.includes('ember') && t.includes('spriteAnim(0, 4, 8.0, uv, time)'))
+T('non-owner still sees the shelf + copy affordance', t.includes('ember') && await p.locator('button[title*="spriteAnim("]').count() > 0)
 
 console.log(`\n${pass} ✓ ${fail} ✗`)
 await b.close()
