@@ -97,9 +97,6 @@ export default function TheGrid() {
   // ACTIVELY morphs to the declared shape (mobile = portrait). A birth posts
   // create-born and the PARENT navigates (no grid-in-iframe).
   const [createShape, setCreateShape] = useState<'desktop' | 'mobile' | 'universal'>('desktop')
-  // the just-born world's slug — the declared shape stays authoritative for it
-  // until the space fetch confirms deviceConfig (no frame-shape race at birth)
-  const [bornSlug, setBornSlug] = useState<string | null>(null)
   useEffect(() => {
     const on = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== 'object') return
@@ -114,13 +111,14 @@ export default function TheGrid() {
           ? (prev === 'space:cinderfell' ? 'space:mobile-base' : prev)
           : (prev === 'space:mobile-base' ? 'space:cinderfell' : prev))
       }
-      // BORN → ⚿ CONNECT AI (Galen, Aug 31: "MUST show the connect ai prompt
-      // after world generates — it got deleted"): the standalone birth path
-      // lands on /space/<slug>?connect=1 which opens the CONNECT tab; the
-      // embedded create flow lost that handoff when it switched to
-      // create-born messages. Same destination here: ENGINE set, CONNECT tab,
-      // paste-prompt + key ready.
-      if (d.cc === 'create-born' && typeof d.slug === 'string') { setBornSlug(d.slug); setScene('space:' + d.slug); setUiSet('engine'); setTool('connect') }
+      // BORN → THE PROVEN ROUTE (Galen, Aug 31: "find the route and rewire
+      // it"): the standalone birth path navigates to /space/<slug>?connect=1,
+      // which redirects into /grid?w=…&ui=engine&connect=1 — the mount
+      // handler opens the ⚿ CONNECT AI tab with the paste-prompt + key. The
+      // embedded flow's in-place state juggling (setScene/setUiSet/setTool)
+      // raced the panel-reset effect and showed no prompt. A FULL NAVIGATION
+      // is the route that worked: the world OPENS and the prompt appears.
+      if (d.cc === 'create-born' && typeof d.slug === 'string') { window.location.href = '/space/' + encodeURIComponent(d.slug) + '?connect=1' }
     }
     window.addEventListener('message', on)
     return () => window.removeEventListener('message', on)
@@ -322,8 +320,7 @@ export default function TheGrid() {
     // MOBILE IS MOBILE (Galen): a mobile-declared world wears a PHONE-SHAPED
     // frame on desktop too — full-frame play AND the mini frame. CREATE's
     // ▯ MOBILE facet declares the same shape while brewing.
-    const sceneSlug = scene.startsWith('space:') ? scene.slice(6) : null
-    const mobileWorld = ((createSet || (bornSlug != null && bornSlug === sceneSlug)) && createShape === 'mobile') || spc?.device === 'mobile'
+    const mobileWorld = (createSet && createShape === 'mobile') || spc?.device === 'mobile'
     const availH = H - M - BAR_H - 10
     if (!miniTop) {
       if (mobileWorld) {
@@ -348,7 +345,7 @@ export default function TheGrid() {
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
     return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [miniTop, win, createSet, createShape, spc, scene, bornSlug])
+  }, [miniTop, win, createSet, createShape, spc])
 
   // (the synthetic-resize ease loop is GONE — Galen: "why do we need a sizing
   // loop at all?" The engine now re-fits itself through a persistent
