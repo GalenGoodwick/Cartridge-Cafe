@@ -104,8 +104,23 @@ export default function TheGrid() {
     const on = (e: MessageEvent) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== 'object') return
       const d = e.data as { cc?: string; targets?: string; slug?: string }
-      if (d.cc === 'create-facets' && (d.targets === 'desktop' || d.targets === 'mobile' || d.targets === 'universal')) setCreateShape(d.targets)
-      if (d.cc === 'create-born' && typeof d.slug === 'string') { setBornSlug(d.slug); setScene('space:' + d.slug); setUiSet('engine') }
+      if (d.cc === 'create-facets' && (d.targets === 'desktop' || d.targets === 'mobile' || d.targets === 'universal')) {
+        setCreateShape(d.targets)
+        // the framed TEMPLATE follows the declared shape (Galen, Aug 31): a
+        // MOBILE creation frames the mobile base, not a letterboxed desktop
+        // world. Only the DEFAULTS swap — a base the maker framed on purpose
+        // stays put.
+        setScene(prev => d.targets === 'mobile'
+          ? (prev === 'space:cinderfell' ? 'space:mobile-base' : prev)
+          : (prev === 'space:mobile-base' ? 'space:cinderfell' : prev))
+      }
+      // BORN → ⚿ CONNECT AI (Galen, Aug 31: "MUST show the connect ai prompt
+      // after world generates — it got deleted"): the standalone birth path
+      // lands on /space/<slug>?connect=1 which opens the CONNECT tab; the
+      // embedded create flow lost that handoff when it switched to
+      // create-born messages. Same destination here: ENGINE set, CONNECT tab,
+      // paste-prompt + key ready.
+      if (d.cc === 'create-born' && typeof d.slug === 'string') { setBornSlug(d.slug); setScene('space:' + d.slug); setUiSet('engine'); setTool('connect') }
     }
     window.addEventListener('message', on)
     return () => window.removeEventListener('message', on)
