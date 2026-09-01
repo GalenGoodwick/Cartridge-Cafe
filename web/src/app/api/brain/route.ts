@@ -19,11 +19,14 @@ export const dynamic = 'force-dynamic'
 const BRAIN_URL = process.env.CAFE_BRAIN_URL || 'https://cartridge-brain-production.up.railway.app'
 
 async function heldRead(concept: string, writer: string) {
+  // 9s tolerates a Railway cold-start: the brain SLEEPS when idle to save
+  // compute (state survives on its /data volume), so the first call after idle
+  // waits for the wake rather than falling back to the local read.
   const j = (path: string, body?: unknown) => fetch(BRAIN_URL + path, {
     method: body ? 'POST' : 'GET',
     headers: { 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(9000),
     cache: 'no-store',
   })
   // calling the endpoint IS the opt-in to think onto the shared brain
