@@ -1056,7 +1056,7 @@ export async function POST(req: NextRequest) {
             if (probeId && Number(queued?.listeners ?? 0) > 0) {
               const live = await waitForCommandResult(probeId, 12000) as Record<string, unknown> | null
               if (live && live.ok === true) {
-                out = { ...live, next: 'answered by a LIVE TAB (real GPU, the presented frame). For headless ticks/physics over time use {type:"playthrough"}; add eye:"service" to force the cloud renderer.' }
+                out = { ...live, next: 'answered by a LIVE TAB (real GPU, the presented frame). For headless ticks/physics over time use {type:"playthrough"}. No cloud eye — for a headless still, render locally: web/scripts/render-local.mjs --snapshot.' }
                 // THE NOTHING ERROR speaks with the same voice in BOTH eyes
                 // (Galen: 'rendering as nothing should throw a nothing error')
                 if (typeof out.coveragePct === 'number' && (out.coveragePct as number) < 1) {
@@ -1068,12 +1068,11 @@ export async function POST(req: NextRequest) {
           } catch { /* the live eye is an optimization — fall through to the service eye */ }
         }
         if (!out) {
-          const snap = isSpaceScoped
-            ? await getSpaceSnapshot(auth.spaceId!)
-            : isSceneScoped
-              ? loadScene(auth.sceneName!)
-              : getEngineState()
-          out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input }) as Record<string, unknown>
+          // NO CLOUD EYE (Galen, Sep 1): render_probe answers ONLY from a live
+          // tab's real GPU now. Headless with no tab open → tell them to open the
+          // world or render locally; never the (removed) cloud render-service.
+          out = { ok: false, noTab: true,
+            error: 'render_probe answers only from a LIVE TAB (real GPU). No tab is rendering this world right now — open it in a browser, or render a headless still locally: GET the snapshot, then web/scripts/render-local.mjs --snapshot. The cloud render-service eye was removed.' }
         }
         results.push({ type: 'render_probe', ...out })
         // stash the eye image + the renderer's SELF-REPORT so the BuilderBox shows a
