@@ -796,6 +796,13 @@ export async function POST(req: NextRequest) {
         cmd.__admin = isAdminToken(authHeader, { allowLegacyAnthropicKey: true })
         cmd.__member = auth.memberHandle !== undefined   // route truth, never the client's claim
       }
+      // VERIFIED CREATOR (attribution, Galen Sep 1): stamp the un-spoofable
+      // builder identity from the AUTHED key onto every command, so each field/
+      // visual/module/node records WHO actually made it. A crew member key is
+      // named member:<handle> → that handle; the world's own key → 'owner'. This
+      // is route truth (never a client claim), persisted into worldData.__provenance
+      // when the command lands (space-store). Answers "who added this?" for real.
+      if (isSpaceScoped) cmd.__by = auth.memberHandle ? ('@' + auth.memberHandle) : 'owner'
 
       // Icon tokens brew the icon. Only that.
       if (auth.iconUserId && cmd.type !== 'set_player_icon') {
