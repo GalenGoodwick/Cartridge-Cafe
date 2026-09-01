@@ -5797,11 +5797,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           }
           // A deferred sync means an AI is writing this world over the bridge
           // RIGHT NOW (the server skipped our sync to protect that write).
-          // A live hand in the world must be VISIBLE to the human in it.
+          // A live hand in the world must be VISIBLE to the human in it — but
+          // visible means the PULSE (every burst), not a toast drizzle: the
+          // toast fires once per ~5min per session (Galen, Sep 1: a long AI
+          // edit session rained "little notification pop ups" the whole time),
+          // and never from a hidden tab or a visited/embedded world.
           if (syncData?.deferred === 'bridge-write in flight') {
             aiLastEditRef.current = Date.now()
             setAiPulse(p => p + 1)
-            if (Date.now() - bridgeToastRef.current > 10000) {
+            if (!document.hidden && !visitingRef.current && Date.now() - bridgeToastRef.current > 300000) {
               bridgeToastRef.current = Date.now()
               showToast('⚡ an AI is editing this world live', 'success')
             }
