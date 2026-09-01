@@ -5229,7 +5229,10 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // back full retina sharpness (the 2.2M default upscales ~30-50% on hidpi,
       // which reads as soft focus). Clamped so no world can order a GPU-killer.
       const budget = sim.worldData['maxBufferPixels']
-      let wantPx = typeof budget === 'number' ? Math.max(1_000_000, Math.min(6_500_000, budget)) : 2_200_000
+      // floor 250k (was 1M): a heavy raymarched world's declared budget below 1M
+      // must actually take effect — on fullscreen retina the 1M floor + the 0.4
+      // governor floor left NO reachable lever under ~1M px (tideglass, Aug 31)
+      let wantPx = typeof budget === 'number' ? Math.max(250_000, Math.min(6_500_000, budget)) : 2_200_000
       // MOBILE PIXEL CEILING: ~1.2M px ≈ effective dpr 1.8-1.9 on a 390pt
       // phone — visually identical at phone density, roughly half the fragment
       // work and battery. The governor still eases below this under load; a
