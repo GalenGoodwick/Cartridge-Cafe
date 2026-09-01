@@ -3962,6 +3962,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           return
         }
       }
+      // PINCH-ONLY ZOOM (Galen, Aug 31: "remove zoom in via mouse scroll —
+      // two finger on all grids across the whole website"): a trackpad pinch
+      // reaches the browser as a wheel event with ctrlKey set (Chrome/Edge/
+      // Firefox; Safari pinches via the gesture events below). A plain scroll
+      // wheel must never move the grid camera.
+      if (!e.ctrlKey) return
       // SWAP GATE: a trackpad's inertia tail rides through the door — the camera
       // reset runs early in the load, so a late coasting wheel event re-zoomed
       // the fresh camera and STUCK ("main is randomly zoomed in" after backing
@@ -3990,8 +3996,43 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       camera.zoom = Math.max(0.5, Math.min(8, camera.zoom * zoomFactor))
       forceUpdate(n => n + 1)
     }
+    // Safari has no ctrlKey-wheel pinch — its two-finger pinch arrives as
+    // gesture events carrying an absolute scale. Same camera, same clamps.
+    let lastScale = 1
+    const onGestureStart = (e: Event) => { e.preventDefault(); lastScale = (e as { scale?: number }).scale || 1 }
+    const onGestureChange = (e: Event) => {
+      e.preventDefault()
+      const sc = (e as { scale?: number }).scale || 1
+      const ratio = lastScale > 0 ? sc / lastScale : 1
+      lastScale = sc
+      if (performance.now() - swapAtRef.current < 1500) return
+      if (hubCursorRef.current) return
+      if (renderModeRef.current === '3d') {
+        const cam3D = camera3DRef.current
+        const delta = (ratio < 1 ? 5 : -5)
+        const cp = Math.cos(cam3D.pitch), sp = Math.sin(cam3D.pitch)
+        const cy = Math.cos(cam3D.yaw), sy = Math.sin(cam3D.yaw)
+        cam3D.pos[0] += -sy * cp * delta
+        cam3D.pos[1] += sp * delta
+        cam3D.pos[2] += -cy * cp * delta
+        forceUpdate(n => n + 1)
+        return
+      }
+      const camera = cameraRef.current
+      camera.zoom = Math.max(0.5, Math.min(8, camera.zoom * ratio))
+      forceUpdate(n => n + 1)
+    }
+    const onGestureEnd = (e: Event) => { e.preventDefault() }
     canvas.addEventListener('wheel', onWheel, { passive: false })
-    return () => canvas.removeEventListener('wheel', onWheel)
+    canvas.addEventListener('gesturestart', onGestureStart as EventListener)
+    canvas.addEventListener('gesturechange', onGestureChange as EventListener)
+    canvas.addEventListener('gestureend', onGestureEnd as EventListener)
+    return () => {
+      canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('gesturestart', onGestureStart as EventListener)
+      canvas.removeEventListener('gesturechange', onGestureChange as EventListener)
+      canvas.removeEventListener('gestureend', onGestureEnd as EventListener)
+    }
   }, [])
 
   // Keyboard input — writes key states into sim.worldData for step hooks
