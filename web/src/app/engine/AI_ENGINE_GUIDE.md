@@ -97,12 +97,26 @@ renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact m
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
-**When `render_probe` ABORTS — the LOCAL eye (heavy worlds).** The cloud probe
+**THE READY-MADE LOCAL EYE (prefer it — never hand-roll a renderer).** The
+cafe's own render service runs on YOUR machine, on your GPU — fast, private,
+no cloud round-trip, and it is the SAME renderer the cloud runs, so reports
+match. Two packaged forms; use one instead of building your own eye:
+
+- **MCP** (`npx -y cartridge-cafe-mcp`): its `render_probe` renders in-process
+  automatically — nothing to configure (needs Deno installed).
+- **Plain HTTP** (`npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye`):
+  starts the eye at `http://127.0.0.1:8080` and prints a bearer secret. Then:
+  `GET /api/engine/bridge` (your world token) → take `fields/visualTypes/
+  modules/worldData/stepHooks` → `POST /render {"state":{...},"size":256}` →
+  the same pixel report + PNG the cloud eye returns. `/clip` renders mp4s.
+
+**When the cloud `render_probe` ABORTS — heavy worlds.** The cloud probe
 renders on a SOFTWARE GPU (lavapipe) and times out on heavy worlds (tideglass,
 veilfire): you get `render service unreachable … This operation was aborted`,
 not a picture. That is the eye going DARK — **not a pass** — so never ship on
-it. Fall back to the local eye: headless Chrome on THIS machine's REAL GPU.
-From a local repo checkout with Playwright installed:
+it. The local eye above is the fix (a real GPU renders what lavapipe can't).
+From a repo checkout there is also the live-page screenshot eye (headless
+Chrome, Playwright):
 
 ```
 node web/local-eye.mjs <slug|url> [outPng] [waitMs]

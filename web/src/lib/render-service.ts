@@ -96,9 +96,10 @@ export async function renderSnapshot(
     if (out.ok) out.next = 'meanLum=brightness, coveragePct=how much is drawn, bbox=where, dominantColors=palette, motion=movement over time. image is base64 PNG. If coveragePct<1 the world is ~blank; if offscreenHint set, content is mis-placed.' +
       (out.inputReport
         ? ` inputReport.respondsToInput=${out.inputReport.respondsToInput}: ${out.inputReport.note}`
-        : ' For anything INTERACTIVE, re-probe with {"input":"auto"} (or "run-right"/"tap-action"/"sweep-cursor") — it presses the controls and tells you if the world actually reacts.')
+        : ' For anything INTERACTIVE, re-probe with {"input":"auto"} (or "run-right"/"tap-action"/"sweep-cursor") — it presses the controls and tells you if the world actually reacts.') +
+      ' [This render came from the CLOUD eye. A ready-made LOCAL eye renders on your own GPU — faster + private: npx -y cartridge-cafe-mcp (MCP, automatic) or npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP). Never hand-roll a renderer.]'
     return out
   } catch (e) {
-    return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work` }
+    return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work. A ready-made LOCAL eye renders on your own GPU instead: npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP /render), or the cartridge-cafe-mcp MCP whose render_probe is local automatically.` }
   }
 }

@@ -34,7 +34,7 @@ export const followProtocol = (origin: string) =>
 
 /** The eye gate — verify you can SEE before you trust any build. */
 export const enterTheEye = (origin: string) =>
-  `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (the guide's cafe_probe, or GET the bridge world-state) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind.`
+  `ENTER THE EYE — before you trust ANY build, and after every change: probe the world (POST {"type":"render_probe"} to the bridge) and confirm a REAL render comes back — pixels, no WGSL compile errors, on-screen. Headless you are BLIND otherwise: a shader that fails to compile renders as NOTHING with no error reaching you, so you ship a black screen thinking it worked. Re-probe after each change; fix the exact error line; never set brief_done until the eye shows what was asked. If the eye stays closed (no render at all), STOP and say so — never build blind. PREFER THE READY-MADE LOCAL EYE — do NOT hand-roll your own renderer or headless browser: \`npx -y cartridge-cafe-mcp\` gives an MCP whose render_probe renders IN-PROCESS on this machine's own GPU (fast, private, no cloud), and \`npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye\` starts the same eye as a plain HTTP service on localhost for any client (POST /render with the world snapshot from the bridge GET). The cloud eye stays as the fallback when neither can run here.`
 
 /** BUILD IN NODES — the maintainability law for large games (single AI or swarm). */
 export const buildInNodes = (origin: string) =>
@@ -252,9 +252,10 @@ ${nodeLawFirst(origin)}
    appear in worldData.creation_brief. When it does: build exactly that,
    then set worldData.brief_done = true.
 ${stayAwakePointer(origin)}
-You may open your world's page in your own (headless) browser as your eyes —
-GET the bridge URL and use space.viewUrl (it can change when I name the world).
-Your view is yours: it never takes my seat and never counts in head-counts.`
+For eyes, use the READY-MADE local eye (never hand-roll one): \`npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye\`
+— the cafe's own renderer on THIS machine's GPU (POST /render with the bridge GET snapshot). Or open
+space.viewUrl in a headless browser if you must see the live page itself; that view is yours alone —
+it never takes my seat and never counts in head-counts.`
 
 /** PLAYER GLYPH — the cursor-icon brew prompt (the 7th surface; found by the
  *  post-unification sweep hiding inline in CafeShell). */

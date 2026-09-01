@@ -19,12 +19,35 @@
 // CAFE_EYE_SECRET) to point at an eye you run yourself instead of spawning one.
 
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, copyFileSync, readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+/** Deno treats files under node_modules as npm-package code (Node-compat mode)
+ *  and REJECTS their jsr:/npm: imports — so an npm-installed render-service
+ *  cannot run in place. Stage it into ~/.cartridge-cafe/eye/<version>/ (outside
+ *  node_modules) and run Deno there. Idempotent; version-keyed so upgrades
+ *  restage. In-repo (not under node_modules) it runs in place, keeping live-edit
+ *  semantics for dev. */
+export function stageRenderService(serverPath) {
+  if (!serverPath || !serverPath.includes('node_modules')) return serverPath
+  let version = '0'
+  try { version = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version || '0' } catch { /* keyless */ }
+  const srcDir = path.dirname(serverPath)
+  const dstDir = path.join(os.homedir(), '.cartridge-cafe', 'eye', version)
+  const dst = path.join(dstDir, 'server.mjs')
+  try {
+    mkdirSync(dstDir, { recursive: true })
+    for (const f of readdirSync(srcDir)) {
+      if (f.endsWith('.mjs') || f === 'deno.json') copyFileSync(path.join(srcDir, f), path.join(dstDir, f))
+    }
+  } catch { return serverPath }   // staging failed — try in place, better than nothing
+  return existsSync(dst) ? dst : serverPath
+}
 
 // ── locate deno + the render-service the child will run ──────────────────────
 const DENO_CANDIDATES = [
@@ -105,7 +128,7 @@ async function ensureEye() {
   if (eye && child && !child.killed && await healthy(eye.url, eye.secret)) return eye
   if (booting) return booting
 
-  const deno = denoPath(); const server = serverPath()
+  const deno = denoPath(); const server = stageRenderService(serverPath())
   if (!deno || !server) throw new Error('local eye unavailable (no deno / render-service)')
 
   booting = (async () => {
