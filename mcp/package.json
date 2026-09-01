@@ -1,6 +1,6 @@
 {
   "name": "cartridge-cafe-mcp",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "mcpName": "io.github.GalenGoodwick/cartridge-cafe",
   "description": "MCP server for cartridge.cafe \u2014 your AI walks into the cafe and builds live GPU worlds. Guest door included: no account needed for the first three creations.",
   "type": "module",
@@ -12,6 +12,7 @@
     "index.mjs",
     "eye.mjs",
     "bridge-client.mjs",
+    "worlds-store.mjs",
     "local-eye.mjs",
     "probe-format.mjs",
     "render-service/",

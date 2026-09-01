@@ -70,3 +70,26 @@ test('localEye: available() is a boolean and why() explains it', () => {
   assert.equal(typeof localEye.available(), 'boolean')
   assert.equal(typeof localEye.why(), 'string')
 })
+
+test('worlds-store: roundtrip, dedupe by slug, survives a fresh load', async () => {
+  const os = await import('node:os'); const fs = await import('node:fs'); const path = await import('node:path')
+  const file = path.join(os.homedir(), '.cartridge-cafe', 'worlds.json')
+  const backup = fs.existsSync(file) ? fs.readFileSync(file) : null
+  try {
+    const { loadWorlds, saveWorlds } = await import('./worlds-store.mjs')
+    const base = 'https://test.invalid'
+    saveWorlds(base, [
+      { name: 'a', slug: 'a', token: 't1', viewUrl: 'u' },
+      { name: 'b', slug: 'b', token: 't2', viewUrl: 'u' },
+      { name: 'a2', slug: 'a', token: 't3', viewUrl: 'u' },   // same slug — latest wins
+    ])
+    const back = loadWorlds(base)
+    assert.equal(back.length, 2)
+    assert.equal(back.find(w => w.slug === 'a').token, 't3')
+    assert.equal(back.find(w => w.slug === 'b').token, 't2')
+    // other bases untouched
+    assert.deepEqual(loadWorlds('https://other.invalid'), [])
+  } finally {
+    if (backup) fs.writeFileSync(file, backup); else fs.rmSync(file, { force: true })
+  }
+})

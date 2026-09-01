@@ -18,6 +18,7 @@ import os from 'node:os'
 import { makeClient } from './bridge-client.mjs'
 import * as localEye from './local-eye.mjs'
 import { enrichReport, shapeSnapshot, probeContent } from './probe-format.mjs'
+import { loadWorlds, saveWorlds } from './worlds-store.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
@@ -44,7 +45,10 @@ const sip = (res) => {
     jar[kv.slice(0, i)] = kv.slice(i + 1)
   }
 }
-const mine = []   // { name, slug, token, viewUrl }
+// { name, slug, token, viewUrl } — PERSISTED across server runs (worlds-store):
+// a returning session resumes its worlds with zero setup.
+const mine = loadWorlds(BASE)
+const remember = (world) => { mine.push(world); saveWorlds(BASE, mine) }
 
 const H = (extra = {}) => ({ 'Content-Type': 'application/json', 'User-Agent': 'cartridge-mcp/1.0', Origin: BASE, cookie: cookies(), ...extra })
 const jfetch = async (path, opts = {}) => {
@@ -162,7 +166,7 @@ server.tool(
       const r = (out && out.results && out.results[0]) || out || {}
       if (!r.token) return text({ error: r.error || 'create failed', hint: 'if the key was revoked, connect_account {force:true} re-pairs' })
       const world = { name, slug: r.created, token: r.token, viewUrl: `${BASE}/space/${r.created}` }
-      mine.push(world)
+      remember(world)
       return text({ ...world, ownedBy: account.handle, next: r.next })
     }
     // no account, no world: the guest door is closed (no brewing without an account)
@@ -285,7 +289,7 @@ server.tool(
   async ({ slug, key }) => {
     const finish = (name, token) => {
       const world = { name: name || slug, slug, token, viewUrl: `${BASE}/space/${slug}` }
-      mine.push(world)
+      remember(world)
       return text({ ...world, next: 'Read world_state to see what is there, build with the bridge tool, and render_probe to SEE every change before you trust it.' })
     }
     // (1) a pasted uc_st_ IS the world build token — nothing to exchange
@@ -308,3 +312,8 @@ server.tool(
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
+
+// PRE-WARM the in-process eye (fire-and-forget): the Deno child boots + warms
+// its GPU adapter NOW, in the background, so the first render_probe answers in
+// ~1s instead of paying the ~45s cold boot. No await — never delays connect.
+if (localEye.available()) localEye.warm()

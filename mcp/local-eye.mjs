@@ -168,6 +168,12 @@ async function ensureEye() {
   return booting
 }
 
+/** Fire-and-forget pre-warm: boot the child now so the first render is warm.
+ *  Swallows every failure — warming is an optimization, never an error. */
+export function warm() {
+  ensureEye().catch(() => { /* cold boot will happen lazily instead */ })
+}
+
 /**
  * Render a world snapshot on the local eye. Returns the render-service's report
  * ({ ok, meanLum, coveragePct, errors, image(base64), ... }) — the SAME shape
