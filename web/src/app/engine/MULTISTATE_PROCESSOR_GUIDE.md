@@ -87,9 +87,9 @@ evaluations per pixel, not N. Register with one `define_visual` whose `wgsl`
 contains *all* the `g<i>_*` functions + `pick` + `visual_processor`, then one
 full-screen field with `visualType: "processor"`. Send it as **one batch** (§8).
 
-> **Self-contained shaders only.** The headless `render_probe` compiler does NOT
-> inject the engine utility library (`hash21`, `fbm`, `vnoise`, `hsv2rgb`, …). Any
-> state that calls one fails to compile. Every state must inline its own helpers —
+> **Self-contained shaders only.** Do not rely on the engine utility library
+> (`hash21`, `fbm`, `vnoise`, `hsv2rgb`, …) from inside a processor state — inline
+> your own helpers so a state is portable and can never collide. Every state must inline its own helpers —
 > which also means namespacing is enough to guarantee no collisions.
 
 ---
@@ -219,8 +219,8 @@ tables.
 A processor renders *one* state per probe. Verifying it means sampling the state
 space:
 
-- `render_probe` at several `ticks` values (e.g. 30, 900, 1600) so `time` lands on
-  different states — confirm each renders and the index actually advances.
+- render locally at several `--t` seconds (e.g. `render-local.mjs --snapshot snap.json --t 30`,
+  then 900, 1600) so `time` lands on different states — confirm each renders and the index actually advances.
 - Check `ok:true` and read `errors[]` (exact WGSL line) on every compose; a single
   bad state fails the whole module.
 - `?action=describe` for a no-GPU structural x-ray (fields, registered visuals,

@@ -137,12 +137,12 @@ and NAME the rungs you skipped when you report a build as done:
    COMPOSITION**: the live tab concatenates ALL registered visuals + chrome
    into ONE module, so duplicate helper `fn`s or name collisions only exist in
    the composed source. Never register two visuals carrying the same helpers.
-3. **`render_probe`** — catches composed-compile + hook throws + reactivity;
-   **blind to the POPULATION layer**: it binds the snapshot's static
-   `gpuPopulation`, not what your hook pushes during probe ticks. Entities can
-   be missing from the PNG while healthy — and broken while looking fine. And on
-   a HEAVY world it aborts entirely (software GPU) — then it sees nothing; use
-   the **local Metal eye** (`web/local-eye.mjs`, above) instead of shipping blind.
+3. **The local eye** (`render-local.mjs --snapshot`, real GPU) — catches
+   composed-compile + hook throws + the actual pixels; **blind to the POPULATION
+   layer**: it binds the snapshot's static `gpuPopulation`, not what a live tick
+   pushes, so entities can be missing from the PNG while healthy. `render_probe`
+   (tab-as-eye) is the same rung when a live tab is open — real pixels, ~1s — but
+   returns nothing if no tab is watching this world.
 4. **Play entry** — a real player enters `/space/<slug>` fresh and sees
    first-tick truth (boot state, composed shader, entities, input — together).
    No probe substitutes for this. If nobody ran it, your report must say so.
@@ -659,7 +659,7 @@ the next open node. Work lands node by node; merges heal the graph.
 | `swarm_map` | `project?`, `trunk?`, `nodes?:[…]`, `reset?` | Read the work-graph, or **predesign** it by sending `nodes` (each `{id, area, kind, files, exports, dependsOn, tests}`). Claims + evidence survive a re-map unless `reset:true`. |
 | `swarm_jump` | — | The next open node whose foundations are green — a node with **no docked AI** (or `done` when the map is complete) |
 | `swarm_dock` | `node`, `from?` | Claim an open node + get its situation (files you own, contract, foundations-green?, dependents, jump-to). Refused if a peer holds it or its foundations aren't green |
-| `swarm_probe` | `node`, `name?`, `input?`, `size?` | The **eye**: renders THIS space on the cloud GPU and writes `render-verified` **only if it actually renders (and reacts)** — the un-fakeable half of green. Set the node's scene first (`set_world_data`) |
+| `swarm_probe` | `node`, `name?`, `input?`, `size?` | The swarm green-gate: renders THIS space on the shared render-service and writes `render-verified` **only if it actually renders (and reacts)** — the un-fakeable half of green. Set the node's scene first (`set_world_data`). For your own eye while building, use the local eye. |
 | `swarm_release` | `node`, `evidence?`, `from?` | Clear your claim; optionally attest caller-side keys (`{"unit-tested":true}`, `playthrough-confirmed`…). `render-verified` is refused here — only `swarm_probe` writes it |
 | `swarm_heal` | `node` | You changed a node's exports → mark every dependent **needs-heal** (they go red until they re-verify against your new contract) |
 
@@ -1200,8 +1200,9 @@ let sz = spriteSize(0);                          // native pixel size, for aspec
 
 Caps: 64 sheets · 4096 slots · 4MB/sheet · 24MB/world. Metadata lives in
 `worldData.sprites` ({rev, slots, clips}) — read it to map names to indexes.
-KNOWN BLIND SPOT: the cloud `render_probe` does not yet bind sprite atlases —
-verify sprite visuals in a live tab or the local eye.
+Sprite atlases bind in a real browser, so verify sprite visuals in a live tab
+(tab-as-eye) or with the local eye — the offline `render-local` frame may not
+carry them.
 
 ### Entity Populations — the flock buffer
 
@@ -1860,8 +1861,8 @@ THE LOOP (how you build without eyes, then verify with them):
        → per viewport: {ok, errors, culled:[...], rects:{regionId:{rect:{x,y,w,h},backend}}}
      The rects are THE PLAN — exactly where every region will sit, what draws
      it, and what got culled on the phone. Predict first; never guess.
-  3. EYE — once rendered, render_probe the pixels and check them AGAINST the
-     plan's rects. The plan is the shared truth between you, the engine, and
+  3. EYE — once rendered, look at the pixels with the local eye and check them
+     AGAINST the plan's rects. The plan is the shared truth between you, the engine, and
      the eye: what draws and what verifies can never drift.
 
 RULES THAT KEEP DOCS HONEST:
