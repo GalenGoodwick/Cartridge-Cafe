@@ -3,17 +3,38 @@ import { think, brainDirective } from '@/lib/worldbrain'
 
 export const dynamic = 'force-dynamic'
 
-/** THE IMAGINATION BRAIN, reachable by a connecting AI.
- *  A CHOSEN helper (never a gate): hand it the world's concept and it threads
- *  in excellent authors matched to the themes, then returns the PHYSICS their
- *  words encode (the realism you'd never invent alone), the node plan, the
- *  coherence grammar, and a ready-to-follow build directive. Bypass is always
- *  allowed — this just makes the coherent path the easy one.
+/** THE IMAGINATION BRAIN, reachable by a connecting AI or the ◧ BRAIN panel.
+ *  A CHOSEN helper (never a gate). It threads in excellent authors matched to
+ *  the concept's themes and returns the PHYSICS their words encode, a node
+ *  plan, the coherence grammar, and a ready build directive.
  *
- *  GET  /api/brain?concept=a+drowned+crypt+with+a+fallen+star
- *  POST /api/brain   {"concept":"..."}
+ *  It feeds the ONE HELD communal brain (a Railway service) and reads its hot
+ *  communal state on top of the local, deterministic read — so using the panel
+ *  or the endpoint warms the shared brain for everyone. If the held brain is
+ *  unreachable, it degrades cleanly to the local read alone.
+ *
+ *  GET  /api/brain?concept=…&writer=…
+ *  POST /api/brain   {"concept":"…","writer":"…"}
  */
-function respond(concept: string) {
+const BRAIN_URL = process.env.CAFE_BRAIN_URL || 'https://cartridge-brain-production.up.railway.app'
+
+async function heldRead(concept: string, writer: string) {
+  const j = (path: string, body?: unknown) => fetch(BRAIN_URL + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(4000),
+    cache: 'no-store',
+  })
+  // calling the endpoint IS the opt-in to think onto the shared brain
+  await j('/consent', { writer, decision: 'allow' })
+  await j('/ink', { writer, concept })
+  const r = await j('/read')
+  if (!r.ok) throw new Error('read ' + r.status)
+  return r.json() as Promise<{ champion: string; warm_motifs: string[]; node_plan: string[]; physics_hints: string[]; themes_hot_now: string[]; active_writers: string[] }>
+}
+
+async function respond(concept: string, writer: string) {
   const c = (concept || '').trim()
   if (!c) {
     return NextResponse.json({
@@ -21,17 +42,34 @@ function respond(concept: string) {
       example: '/api/brain?concept=a fallen star unraveling in a flooded crypt, the tide breathing its decay',
     }, { status: 400 })
   }
-  const read = think(c)
-  return NextResponse.json({ ...read, directive: brainDirective(read),
-    note: 'chosen guidance, not a gate — build under the physics + grammar and it reads as one coherent world; bypass is always allowed' })
+  const local = think(c)                       // deterministic gift: authors, physics, plan, grammar
+  let held: Awaited<ReturnType<typeof heldRead>> | null = null
+  try { held = await heldRead(c, writer || 'cafe-anon') } catch { /* held brain down — local still stands */ }
+
+  return NextResponse.json({
+    ...local,
+    directive: brainDirective(local),
+    held: !!held,
+    communal: held ? {
+      champion: held.champion,
+      warmMotifs: held.warm_motifs,
+      nodePlan: held.node_plan,
+      physics: held.physics_hints,
+      heatThemes: held.themes_hot_now,
+      activeWriters: held.active_writers,
+    } : null,
+    note: held
+      ? 'you thought this onto the shared cartridge brain — the communal block is its current hot state; build under the physics + grammar and it reads as one coherent world'
+      : 'chosen guidance, not a gate — build under the physics + grammar; the shared brain is momentarily unreachable so this is the local read',
+  })
 }
 
 export async function GET(req: NextRequest) {
-  return respond(req.nextUrl.searchParams.get('concept') || '')
+  return respond(req.nextUrl.searchParams.get('concept') || '', req.nextUrl.searchParams.get('writer') || '')
 }
 
 export async function POST(req: NextRequest) {
-  let body: { concept?: string } = {}
+  let body: { concept?: string; writer?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
-  return respond(body.concept || '')
+  return respond(body.concept || '', body.writer || '')
 }

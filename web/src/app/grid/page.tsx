@@ -18,7 +18,6 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt, worldBriefingPrompt } from '@/lib/connectPrompt'
-import { think, brainDirective, type BrainRead } from '@/lib/worldbrain'
 import { startCafeAudio } from '@/app/engine/cafe-audio'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
@@ -2080,11 +2079,26 @@ const NodesViewM = memo(NodesView)
 // authors and hands back the PHYSICS their words encode, the node plan, and the
 // coherence grammar — then copies a build directive for your AI. Bypass is
 // always allowed; this just makes the coherent path the easy one.
+type BrainResp = {
+  authors: string[]; themes: string[]; physics: string[]; nodePlan: string[]; grammar: string[]
+  directive: string; held: boolean
+  communal: null | { champion: string; warmMotifs: string[]; activeWriters: string[] }
+}
 function BrainView() {
   const [concept, setConcept] = useState('')
-  const [read, setRead] = useState<BrainRead | null>(null)
+  const [read, setRead] = useState<BrainResp | null>(null)
+  const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const run = () => { if (concept.trim()) setRead(think(concept.trim())) }
+  // calls /api/brain — feeds the ONE HELD communal brain AND reads it back,
+  // falling back to the local read if the shared brain is momentarily down
+  const run = async () => {
+    if (!concept.trim() || busy) return
+    setBusy(true)
+    try {
+      const r = await fetch('/api/brain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ concept: concept.trim() }) })
+      setRead(await r.json())
+    } catch { setRead(null) } finally { setBusy(false) }
+  }
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="text-[11.5px] tracking-[0.2em] text-fuchsia-200/70 mb-2">◧ THE BRAIN — borrow realism before you build</div>
@@ -2094,25 +2108,29 @@ function BrainView() {
         Optional — you can always build without it.
       </p>
       <textarea value={concept} onChange={e => setConcept(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) run() }}
+        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void run() }}
         placeholder="a fallen star unraveling in a flooded crypt, the tide breathing its decay…"
         className="w-full h-20 rounded-xl border border-white/12 bg-black/60 p-3 text-[12.5px] text-white/85 placeholder:text-white/25 resize-none outline-none focus:border-fuchsia-300/40" />
-      <button onClick={run} disabled={!concept.trim()}
+      <button onClick={() => void run()} disabled={!concept.trim() || busy}
         className="mt-2 px-3.5 py-1.5 rounded-lg border border-fuchsia-300/50 bg-fuchsia-400/10 text-fuchsia-100 text-[12px] tracking-[0.15em] hover:bg-fuchsia-400/20 disabled:opacity-40 transition-colors">
-        ◧ THINK IT ONTO THE BRAIN
+        {busy ? '◧ THINKING…' : '◧ THINK IT ONTO THE BRAIN'}
       </button>
       {read && (
         <div className="mt-4 space-y-3">
-          {read.authors.length > 0 && (
-            <div className="text-[11px] text-white/55">threaded from <span className="text-amber-200/80">{read.authors.join(', ')}</span> · themes: {read.themes.join(', ') || '—'}</div>
-          )}
+          <div className="text-[11px] text-white/55">
+            {read.authors.length > 0 && <>threaded from <span className="text-amber-200/80">{read.authors.join(', ')}</span> · </>}
+            themes: {read.themes.join(', ') || '—'}
+            {read.held
+              ? <span className="text-emerald-300/70"> · ◉ on the shared brain{read.communal && read.communal.activeWriters.length > 1 ? ` (${read.communal.activeWriters.length} minds active)` : ''}</span>
+              : <span className="text-white/30"> · (shared brain offline — local read)</span>}
+          </div>
           {read.physics.length > 0 && <Sect title="PHYSICS — the realism their words encode" tint="text-sky-200/80" items={read.physics} />}
           {read.nodePlan.length > 0 && <Sect title="NODE PLAN — build these, in order" tint="text-emerald-200/80" items={read.nodePlan} ordered />}
           <Sect title="COHERENCE GRAMMAR — obey all" tint="text-fuchsia-200/80" items={read.grammar} />
           {read.physics.length === 0 && read.nodePlan.length === 0 && (
             <div className="text-[11px] text-white/40">No themes matched yet — try naming the light, the material, the weather, the place.</div>
           )}
-          <button onClick={async () => { try { await navigator.clipboard.writeText(brainDirective(read)); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* manual */ } }}
+          <button onClick={async () => { try { await navigator.clipboard.writeText(read.directive); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* manual */ } }}
             className="px-3.5 py-1.5 rounded-lg border border-white/20 text-white/75 text-[12px] tracking-[0.12em] hover:bg-white/5 transition-colors">
             {copied ? '✓ COPIED' : '⧉ COPY BUILD DIRECTIVE FOR YOUR AI'}
           </button>
