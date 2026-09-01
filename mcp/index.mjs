@@ -16,6 +16,8 @@ import os from 'node:os'
 // dir, so it is copied in on `prepack` (see package.json) to keep the published
 // tarball self-contained. Edit the source at repo-root tools/, not this copy.
 import { makeClient } from './bridge-client.mjs'
+import * as localEye from './local-eye.mjs'
+import { enrichReport, shapeSnapshot, probeContent } from './probe-format.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
@@ -210,9 +212,17 @@ server.tool(
   }),
 )
 
+// Pull the world's renderable snapshot over the bridge (just data — the bridge
+// is good at that). This is what the LOCAL eye runs the shader on.
+async function fetchSnapshot(tok) {
+  const { text: body } = await bridgeFor(tok).bridgeGet()
+  let j; try { j = JSON.parse(body) } catch { return null }
+  return shapeSnapshot(j)
+}
+
 server.tool(
   'render_probe',
-  'THE EYE — render a world on a real cloud GPU and get back a pixel report PLUS the actual PNG. Call this after EVERY change and LOOK at the image. Report fields: errors (WGSL COMPILE errors with the exact line — fix that line), meanLum / coveragePct (coverage<1 ≈ a blank/black world — an unskinned field or a shader that did not compile), bbox / offscreenHint (mis-placed coords — build around 256,256), hookErrors (step-hook throws), motion, and — when input is set — inputReport.respondsToInput. Headless you are otherwise BLIND: a failed shader renders as NOTHING with no error. Defaults to your latest brewed world.',
+  'THE EYE — render a world and get back a pixel report PLUS the actual PNG. Renders IN-PROCESS on this machine\'s GPU when it can (a warm local Deno eye — real GPU, private, no cloud round-trip), else falls back to the cloud eye over the bridge. Call this after EVERY change and LOOK at the image. Report fields: errors (WGSL COMPILE errors with the exact line — fix that line), meanLum / coveragePct (coverage<1 ≈ a blank/black world — an unskinned field or a shader that did not compile), bbox / offscreenHint (mis-placed coords — build around 256,256), hookErrors (step-hook throws), motion, and — when input is set — inputReport.respondsToInput. `eye` says which renderer answered. Headless you are otherwise BLIND: a failed shader renders as NOTHING with no error. Defaults to your latest brewed world.',
   {
     input: z.string().optional().describe('Optional input preset to also press the controls: auto | run-right | tap-action | sweep-cursor'),
     token: z.string().optional().describe('World token. Defaults to your latest brewed world.'),
@@ -220,17 +230,27 @@ server.tool(
   async ({ input, token }) => {
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
+
+    // 1) IN-PROCESS EYE — render on this machine's own GPU (warm Deno child).
+    //    The pixels are computed here and never leave the machine. Only fall
+    //    through to the cloud on a real failure (no deno, boot failed, transport
+    //    died) — a render that came back, even a blank one, is a real verdict.
+    if (localEye.available()) {
+      try {
+        const snap = await fetchSnapshot(tok)
+        if (snap && snap.fields.length) {
+          const r = await localEye.renderLocal(snap, { input, size: 256 })
+          if (r && (r.ok === true || r.image || r.png)) return probeContent(enrichReport(r), `local (${localEye.why()})`)
+        }
+      } catch { /* the local eye is a fast path — fall through to the cloud eye */ }
+    }
+
+    // 2) CLOUD EYE over the bridge — a live tab (real GPU) if one is open on this
+    //    world, else the Railway software renderer. Works with no local runtime.
     const cmd = input ? { type: 'render_probe', input } : { type: 'render_probe' }
     const out = await bridgeFor(tok).bridgeSend(cmd, { normalize: false })
     const r = (out && out.results && out.results[0]) || out || {}
-    const { image, ...report } = r
-    const content = [{ type: 'text', text: JSON.stringify(report, null, 2) }]
-    if (typeof image === 'string' && image.length) {
-      content.push({ type: 'image', data: image.replace(/^data:image\/png;base64,/, ''), mimeType: 'image/png' })
-    } else {
-      content.push({ type: 'text', text: '⚠ NO IMAGE — the eye is CLOSED: nothing rendered. Usually an unskinned field (needs a visualType) or a WGSL compile error above. Fix it and re-probe; do not trust this build.' })
-    }
-    return { content }
+    return probeContent(r, 'cloud (bridge → tab/Railway)')
   },
 )
 
