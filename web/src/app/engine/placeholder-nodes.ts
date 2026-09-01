@@ -113,9 +113,10 @@ fn visual_base_bg(uv: vec2f, sdf: f32, color: vec4f, time: f32, params: vec4f, b
   var col = mix(vec3f(0.075, 0.085, 0.115), vec3f(0.028, 0.033, 0.05), g);
   col += vec3f(0.05, 0.06, 0.09) * (0.5 + 0.5 * sin(uv.x * 2.0 + uv.y * 3.0)) * 0.06;
   col += 0.010 * (vnoise(uv * 34.0) - 0.5);
-  // a soft floor line so the canvas reads as a PLACE, not a void
-  let horizon = smoothstep(0.02, 0.0, abs(uv.y - 0.35));
-  col += vec3f(0.10, 0.13, 0.18) * horizon * 0.25;
+  // BLANK: no horizon line (Galen, Aug 31: "mobile base has a blue line — we need
+  // a blank"). The old soft floor line at uv.y≈0.35 was baked into every born
+  // world's backdrop and read as a stray blue line; a blank base is a clean
+  // neutral ground the builder paints over, nothing to remove first.
   return vec4f(col, 1.0);
 }`
 
