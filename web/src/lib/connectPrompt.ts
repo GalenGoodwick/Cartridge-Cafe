@@ -221,6 +221,7 @@ ${nodeLawFirst(origin)}
 2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
 ${settings}
 ${ask}
+BORROW REALISM (optional, but it is the difference) — before building a rich or atmospheric world, GET ${origin}/api/brain?concept=<your world in one sentence, as a feeling or a place>. It threads in excellent authors and returns the PHYSICS their words encode (e.g. underwater light absorbs red first; wet stone flashes like shook foil; drowned stone crusts to coral), a node plan, and the coherence grammar — realism you would not invent from a generic idea. Your choice; bypass is fine, but a world built straight from "a cool level" comes out generic.
 USE THE EYE — after every build burst: POST {"type":"render_probe"} (pixels + exact WGSL error lines; add "input":"auto" to prove it responds to controls). Headless you are blind without it — a failed shader renders as NOTHING with no error. Never set brief_done until the eye shows what was asked.
 ${scope}`
 }
