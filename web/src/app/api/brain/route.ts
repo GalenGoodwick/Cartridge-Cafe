@@ -41,8 +41,8 @@ async function respond(concept: string, writer: string) {
   const c = (concept || '').trim()
   if (!c) {
     return NextResponse.json({
-      error: 'give a concept — describe the world as a feeling or a place, not a mechanic list',
-      example: '/api/brain?concept=a fallen star unraveling in a flooded crypt, the tide breathing its decay',
+      error: 'stream a fragment of your coded imagination — a form, a material, a motion, the light; ink it and read the champion back, then stream the next',
+      example: '/api/brain?concept=brushed-steel revolving door, chamfered mullions, one cold overhead light, glass fresnel, wings turning at 0.2rad/s&writer=you',
     }, { status: 400 })
   }
   const local = think(c)                       // deterministic gift: authors, physics, plan, grammar
