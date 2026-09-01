@@ -2182,21 +2182,22 @@ function playRecipe(r: EarRecipe): () => void {
   const ctx = new AC()
   void ctx.resume()
   const t0 = ctx.currentTime
-  const master = ctx.createGain(); master.gain.value = r.gain; master.connect(ctx.destination)
+  const limiter = ctx.createDynamicsCompressor(); limiter.threshold.value = -6; limiter.knee.value = 6; limiter.ratio.value = 12; limiter.attack.value = 0.003; limiter.release.value = 0.25; limiter.connect(ctx.destination)
+  const master = ctx.createGain(); master.gain.value = r.gain * 2.9; master.connect(limiter)
   const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, Math.max(0.3, r.reverb)); verb.connect(master)
-  const wet = ctx.createGain(); wet.gain.value = 0.9; wet.connect(verb)
-  const dry = ctx.createGain(); dry.gain.value = 0.6; dry.connect(master)
+  const wet = ctx.createGain(); wet.gain.value = 1.05; wet.connect(verb)
+  const dry = ctx.createGain(); dry.gain.value = 1.25; dry.connect(master)
   // the ONE bed
   const bed = ctx.createBufferSource(); bed.loop = true
   bed.buffer = noiseBuffer(ctx, r.bed === 'drone' ? 'brown' : r.bed)
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = r.cutoff; lp.Q.value = 0.7
-  bed.connect(lp); lp.connect(dry); lp.connect(wet); bed.start()
+  bed.connect(lp); const bedG = ctx.createGain(); bedG.gain.value = 1.8; lp.connect(bedG); bedG.connect(dry); bedG.connect(wet); bed.start()
   // the swell (filter LFO)
   let lfo: OscillatorNode | null = null
   if (r.cutoffLFO > 0) { lfo = ctx.createOscillator(); lfo.frequency.value = r.cutoffLFO; const lg = ctx.createGain(); lg.gain.value = r.cutoff * 0.6; lfo.connect(lg); lg.connect(lp.frequency); lfo.start() }
   // the drone
   let drone: OscillatorNode | null = null
-  if (r.drone) { drone = ctx.createOscillator(); drone.type = 'sine'; drone.frequency.value = r.drone; const dg = ctx.createGain(); dg.gain.value = 0.18; drone.connect(dg); dg.connect(wet); dg.connect(dry); drone.start() }
+  if (r.drone) { drone = ctx.createOscillator(); drone.type = 'sine'; drone.frequency.value = r.drone; const dg = ctx.createGain(); dg.gain.value = 0.42; drone.connect(dg); dg.connect(wet); dg.connect(dry); drone.start() }
   // sparse transients over ~9s
   const DUR = 9
   const evt = (at: number) => {
@@ -2204,25 +2205,25 @@ function playRecipe(r: EarRecipe): () => void {
     const g = ctx.createGain(); g.connect(wet); g.connect(dry)
     if (r.transient === 'bell') {
       const f = 500 + Math.random() * 900
-      for (const [mul, lvl] of [[1, 0.5], [2.01, 0.25], [3.03, 0.12]] as const) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mul; const og = ctx.createGain(); og.gain.setValueAtTime(lvl, at); og.gain.exponentialRampToValueAtTime(0.001, at + 2.4); o.connect(og); og.connect(g); o.start(at); o.stop(at + 2.5) }
+      for (const [mul, lvl] of [[1, 0.95], [2.01, 0.5], [3.03, 0.24]] as const) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mul; const og = ctx.createGain(); og.gain.setValueAtTime(lvl, at); og.gain.exponentialRampToValueAtTime(0.001, at + 2.4); o.connect(og); og.connect(g); o.start(at); o.stop(at + 2.5) }
     } else if (r.transient === 'drip') {
       const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(1400 + Math.random() * 600, at); o.frequency.exponentialRampToValueAtTime(500, at + 0.09)
-      g.gain.setValueAtTime(0.6, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.16); o.connect(g); o.start(at); o.stop(at + 0.2)
+      g.gain.setValueAtTime(1.1, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.16); o.connect(g); o.start(at); o.stop(at + 0.2)
     } else if (r.transient === 'boom') {
       const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(70, at); o.frequency.exponentialRampToValueAtTime(32, at + 0.5)
-      g.gain.setValueAtTime(0.9, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.9); o.connect(g); o.start(at); o.stop(at + 1.0)
+      g.gain.setValueAtTime(1.5, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.9); o.connect(g); o.start(at); o.stop(at + 1.0)
     } else { // crackle / click / gust — short filtered noise
       const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, 'white')
       const bp = ctx.createBiquadFilter(); bp.type = r.transient === 'gust' ? 'lowpass' : 'bandpass'; bp.frequency.value = r.transient === 'click' ? 2600 : 1400
       const dur = r.transient === 'gust' ? 1.2 : 0.07
-      g.gain.setValueAtTime(r.transient === 'gust' ? 0.4 : 0.6, at); g.gain.exponentialRampToValueAtTime(0.001, at + dur)
+      g.gain.setValueAtTime(r.transient === 'gust' ? 0.9 : 1.15, at); g.gain.exponentialRampToValueAtTime(0.001, at + dur)
       n.connect(bp); bp.connect(g); n.start(at); n.stop(at + dur + 0.02)
     }
   }
   let at = t0 + 0.3
   while (at < t0 + DUR) { evt(at); at += Math.max(0.05, (1 / Math.max(0.05, r.rate)) * (0.5 + Math.random())) }
   // fade + teardown
-  master.gain.setValueAtTime(r.gain, t0 + DUR - 1.2); master.gain.exponentialRampToValueAtTime(0.001, t0 + DUR)
+  master.gain.setValueAtTime(r.gain * 2.9, t0 + DUR - 1.2); master.gain.exponentialRampToValueAtTime(0.001, t0 + DUR)
   const timer = window.setTimeout(() => { try { bed.stop(); lfo?.stop(); drone?.stop(); void ctx.close() } catch { /* closed */ } }, DUR * 1000 + 200)
   return () => { try { window.clearTimeout(timer); bed.stop(); lfo?.stop(); drone?.stop(); void ctx.close() } catch { /* already gone */ } }
 }

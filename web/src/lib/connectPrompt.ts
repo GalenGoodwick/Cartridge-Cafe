@@ -222,6 +222,7 @@ ${nodeLawFirst(origin)}
 ${settings}
 ${ask}
 BORROW REALISM (optional, but it is the difference) — before building a rich or atmospheric world, GET ${origin}/api/brain?concept=<your world in one sentence, as a feeling or a place>. It threads in excellent authors and returns the PHYSICS their words encode (e.g. underwater light absorbs red first; wet stone flashes like shook foil; drowned stone crusts to coral), a node plan, and the coherence grammar — realism you would not invent from a generic idea. Your choice; bypass is fine, but a world built straight from "a cool level" comes out generic.
+GIVE IT A VOICE (optional) — GET ${origin}/api/ears?concept=<the world's SOUND as a feeling>. The sonic sibling of the brain: it returns the PHYSICS of that sound (the deep muffles the highs; stone holds a seconds-long reverb; the tide bends pitch), a sound grammar (one bed, one reverb-space, sparse transients), and a starting recipe. Build it into the world's audio. The cafe has eyes AND ears now.
 USE THE EYE — after every build burst: POST {"type":"render_probe"} (pixels + exact WGSL error lines; add "input":"auto" to prove it responds to controls). Headless you are blind without it — a failed shader renders as NOTHING with no error. Never set brief_done until the eye shows what was asked.
 ${scope}`
 }

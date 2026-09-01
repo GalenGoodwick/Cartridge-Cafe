@@ -58,15 +58,15 @@ const GRAMMAR = [
 ]
 
 const RECIPE: Record<string, EarRecipe> = {
-  water:   { bed: 'brown', cutoff: 420, cutoffLFO: 0.08, drone: 46, reverb: 3.4, transient: 'drip', rate: 0.5, gain: 0.5 },
+  water:   { bed: 'brown', cutoff: 720, cutoffLFO: 0.08, drone: 46, reverb: 3.4, transient: 'drip', rate: 0.5, gain: 0.5 },
   fire:    { bed: 'brown', cutoff: 1600, cutoffLFO: 0.4, drone: 60, reverb: 1.2, transient: 'crackle', rate: 6, gain: 0.45 },
   cold:    { bed: 'white', cutoff: 6000, cutoffLFO: 0.05, drone: null, reverb: 2.6, transient: 'bell', rate: 0.5, gain: 0.35 },
   sacred:  { bed: 'drone', cutoff: 1200, cutoffLFO: 0.03, drone: 55, reverb: 5.0, transient: 'bell', rate: 0.35, gain: 0.5 },
-  ruin:    { bed: 'pink', cutoff: 900, cutoffLFO: 0.02, drone: 41, reverb: 0.5, transient: 'click', rate: 0.7, gain: 0.4 },
+  ruin:    { bed: 'pink', cutoff: 1120, cutoffLFO: 0.02, drone: 41, reverb: 0.5, transient: 'click', rate: 0.7, gain: 0.4 },
   storm:   { bed: 'white', cutoff: 3000, cutoffLFO: 0.5, drone: null, reverb: 2.0, transient: 'boom', rate: 0.6, gain: 0.5 },
-  machine: { bed: 'brown', cutoff: 800, cutoffLFO: 0.0, drone: 50, reverb: 1.0, transient: 'click', rate: 3, gain: 0.45 },
+  machine: { bed: 'brown', cutoff: 1000, cutoffLFO: 0.0, drone: 50, reverb: 1.0, transient: 'click', rate: 3, gain: 0.45 },
   organic: { bed: 'pink', cutoff: 2400, cutoffLFO: 0.15, drone: null, reverb: 1.4, transient: 'click', rate: 1.2, gain: 0.4 },
-  void:    { bed: 'drone', cutoff: 500, cutoffLFO: 0.02, drone: 34, reverb: 4.0, transient: null, rate: 0.1, gain: 0.5 },
+  void:    { bed: 'drone', cutoff: 680, cutoffLFO: 0.02, drone: 34, reverb: 4.0, transient: null, rate: 0.1, gain: 0.5 },
 }
 
 const DEFAULT_RECIPE: EarRecipe = { bed: 'pink', cutoff: 1500, cutoffLFO: 0.1, drone: 48, reverb: 1.8, transient: 'click', rate: 0.8, gain: 0.4 }
