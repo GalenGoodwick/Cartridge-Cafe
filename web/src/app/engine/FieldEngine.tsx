@@ -7345,8 +7345,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 {/* CANCEL BUILD (Galen, Aug 29): removes the stuck blank build and
                     the CREATE CREDIT COMES BACK (no cash refund) — the server
                     grants it only for a paid, never-built world. Self-contained:
-                    the old cafe:delete-world listener died with SpaceStage. */}
-                {building && (isOwner || !spaceId) && spaceSlug && (
+                    the old cafe:delete-world listener died with SpaceStage.
+                    HIDDEN WHILE AN AI IS BUILDING (Galen, Sep 1): only a STUCK
+                    blank build should offer cancel — the moment an AI is actually
+                    working (edits landing, or the unspoofable __ai_last_cmd
+                    heartbeat within 25s) the button goes away, same signal that
+                    flips the spinner to "YOUR AI IS BUILDING…". */}
+                {building && (isOwner || !spaceId) && spaceSlug
+                  && !(aiEditing || Number(simulationRef.current?.worldData?.__ai_last_cmd ?? 0) > Date.now() - 25000) && (
                   <button
                     onClick={async () => {
                       if (!window.confirm('Cancel this build? The world is removed and your create credit comes back to spend on a new one (no cash refund).')) return
