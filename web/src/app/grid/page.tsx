@@ -19,6 +19,7 @@ import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt, worldBriefingPrompt } from '@/lib/connectPrompt'
 import { startCafeAudio } from '@/app/engine/cafe-audio'
+import { hearConcept, type EarRecipe } from '@/lib/worldears'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
 type Inset = { top: number; right: number; bottom: number; left: number }
@@ -66,7 +67,7 @@ export default function TheGrid() {
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'brain' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'brain' | 'ears' | 'connect'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -922,7 +923,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['brain', '◧ BRAIN'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['brain', '◧ BRAIN'], ['ears', '◉))) EARS'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -1016,6 +1017,7 @@ export default function TheGrid() {
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
             {tool === 'brain' && <BrainViewM />}
+            {tool === 'ears' && <EarsViewM />}
             {tool === 'config' && (
               <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} onAssets={openAssets} />
             )}
@@ -2153,5 +2155,123 @@ function Sect({ title, tint, items, ordered }: { title: string; tint: string; it
     </div>
   )
 }
+// ◉))) THE EARS — the world's voice. Sonic sibling of the BRAIN: describe the
+// sound as a feeling, borrow the physics of it, and actually HEAR a preview
+// synthesized live from the recipe (WebAudio). A chosen helper, never a gate.
+function noiseBuffer(ctx: AudioContext, kind: 'brown' | 'pink' | 'white'): AudioBuffer {
+  const len = ctx.sampleRate * 2
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+  const d = buf.getChannelData(0)
+  let last = 0, b0 = 0, b1 = 0, b2 = 0
+  for (let i = 0; i < len; i++) {
+    const w = Math.random() * 2 - 1
+    if (kind === 'white') d[i] = w * 0.4
+    else if (kind === 'brown') { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2 }
+    else { b0 = 0.99765 * b0 + w * 0.0990460; b1 = 0.96300 * b1 + w * 0.2965164; b2 = 0.57000 * b2 + w * 1.0526913; d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.18 }
+  }
+  return buf
+}
+function impulse(ctx: AudioContext, seconds: number): AudioBuffer {
+  const len = Math.max(1, Math.floor(ctx.sampleRate * seconds))
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate)
+  for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6) }
+  return buf
+}
+function playRecipe(r: EarRecipe): () => void {
+  const AC = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
+  const ctx = new AC()
+  void ctx.resume()
+  const t0 = ctx.currentTime
+  const master = ctx.createGain(); master.gain.value = r.gain; master.connect(ctx.destination)
+  const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, Math.max(0.3, r.reverb)); verb.connect(master)
+  const wet = ctx.createGain(); wet.gain.value = 0.9; wet.connect(verb)
+  const dry = ctx.createGain(); dry.gain.value = 0.6; dry.connect(master)
+  // the ONE bed
+  const bed = ctx.createBufferSource(); bed.loop = true
+  bed.buffer = noiseBuffer(ctx, r.bed === 'drone' ? 'brown' : r.bed)
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = r.cutoff; lp.Q.value = 0.7
+  bed.connect(lp); lp.connect(dry); lp.connect(wet); bed.start()
+  // the swell (filter LFO)
+  let lfo: OscillatorNode | null = null
+  if (r.cutoffLFO > 0) { lfo = ctx.createOscillator(); lfo.frequency.value = r.cutoffLFO; const lg = ctx.createGain(); lg.gain.value = r.cutoff * 0.6; lfo.connect(lg); lg.connect(lp.frequency); lfo.start() }
+  // the drone
+  let drone: OscillatorNode | null = null
+  if (r.drone) { drone = ctx.createOscillator(); drone.type = 'sine'; drone.frequency.value = r.drone; const dg = ctx.createGain(); dg.gain.value = 0.18; drone.connect(dg); dg.connect(wet); dg.connect(dry); drone.start() }
+  // sparse transients over ~9s
+  const DUR = 9
+  const evt = (at: number) => {
+    if (!r.transient) return
+    const g = ctx.createGain(); g.connect(wet); g.connect(dry)
+    if (r.transient === 'bell') {
+      const f = 500 + Math.random() * 900
+      for (const [mul, lvl] of [[1, 0.5], [2.01, 0.25], [3.03, 0.12]] as const) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mul; const og = ctx.createGain(); og.gain.setValueAtTime(lvl, at); og.gain.exponentialRampToValueAtTime(0.001, at + 2.4); o.connect(og); og.connect(g); o.start(at); o.stop(at + 2.5) }
+    } else if (r.transient === 'drip') {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(1400 + Math.random() * 600, at); o.frequency.exponentialRampToValueAtTime(500, at + 0.09)
+      g.gain.setValueAtTime(0.6, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.16); o.connect(g); o.start(at); o.stop(at + 0.2)
+    } else if (r.transient === 'boom') {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(70, at); o.frequency.exponentialRampToValueAtTime(32, at + 0.5)
+      g.gain.setValueAtTime(0.9, at); g.gain.exponentialRampToValueAtTime(0.001, at + 0.9); o.connect(g); o.start(at); o.stop(at + 1.0)
+    } else { // crackle / click / gust — short filtered noise
+      const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, 'white')
+      const bp = ctx.createBiquadFilter(); bp.type = r.transient === 'gust' ? 'lowpass' : 'bandpass'; bp.frequency.value = r.transient === 'click' ? 2600 : 1400
+      const dur = r.transient === 'gust' ? 1.2 : 0.07
+      g.gain.setValueAtTime(r.transient === 'gust' ? 0.4 : 0.6, at); g.gain.exponentialRampToValueAtTime(0.001, at + dur)
+      n.connect(bp); bp.connect(g); n.start(at); n.stop(at + dur + 0.02)
+    }
+  }
+  let at = t0 + 0.3
+  while (at < t0 + DUR) { evt(at); at += Math.max(0.05, (1 / Math.max(0.05, r.rate)) * (0.5 + Math.random())) }
+  // fade + teardown
+  master.gain.setValueAtTime(r.gain, t0 + DUR - 1.2); master.gain.exponentialRampToValueAtTime(0.001, t0 + DUR)
+  const timer = window.setTimeout(() => { try { bed.stop(); lfo?.stop(); drone?.stop(); void ctx.close() } catch { /* closed */ } }, DUR * 1000 + 200)
+  return () => { try { window.clearTimeout(timer); bed.stop(); lfo?.stop(); drone?.stop(); void ctx.close() } catch { /* already gone */ } }
+}
+function EarsView() {
+  const [concept, setConcept] = useState('')
+  const [read, setRead] = useState<ReturnType<typeof hearConcept> | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const stopRef = useRef<null | (() => void)>(null)
+  useEffect(() => () => { stopRef.current?.() }, [])
+  const listen = () => {
+    const c = concept.trim(); if (!c) return
+    const r = hearConcept(c); setRead(r)
+    stopRef.current?.()
+    try { stopRef.current = playRecipe(r.recipe); setPlaying(true); window.setTimeout(() => setPlaying(false), 9200) } catch { setPlaying(false) }
+  }
+  const stop = () => { stopRef.current?.(); stopRef.current = null; setPlaying(false) }
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono">
+      <div className="text-[11.5px] tracking-[0.2em] text-cyan-200/70 mb-2">◉))) THE EARS — give the world a voice</div>
+      <p className="text-[11px] text-white/45 leading-relaxed mb-3">
+        The cafe has eyes; this is its ears. Describe your world&apos;s <span className="text-white/70">sound as a feeling</span> —
+        it borrows the physics of that sound and plays you a preview. Optional — build silent if you like.
+      </p>
+      <textarea value={concept} onChange={e => setConcept(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) listen() }}
+        placeholder="the muffled deep of a flooded crypt — slow tide, far dripping, a low stone hum…"
+        className="w-full h-20 rounded-xl border border-white/12 bg-black/60 p-3 text-[12.5px] text-white/85 placeholder:text-white/25 resize-none outline-none focus:border-cyan-300/40" />
+      <div className="mt-2 flex gap-2">
+        <button onClick={listen} disabled={!concept.trim()}
+          className="px-3.5 py-1.5 rounded-lg border border-cyan-300/50 bg-cyan-400/10 text-cyan-100 text-[12px] tracking-[0.15em] hover:bg-cyan-400/20 disabled:opacity-40 transition-colors">
+          ◉))) HEAR IT
+        </button>
+        {playing && <button onClick={stop} className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 text-[12px] tracking-[0.12em] hover:bg-white/5 transition-colors">◼ STOP</button>}
+      </div>
+      {read && (
+        <div className="mt-4 space-y-3">
+          <div className="text-[11px] text-white/55">themes: {read.themes.join(', ') || '— (name water, fire, stone, wind, cold…)'} {playing && <span className="text-cyan-300/80">· ◉))) playing</span>}</div>
+          {read.physics.length > 0 && <Sect title="SOUND PHYSICS — the realism this sound carries" tint="text-cyan-200/80" items={read.physics} />}
+          <Sect title="SOUND GRAMMAR — obey all" tint="text-fuchsia-200/80" items={read.grammar} />
+          <button onClick={async () => { try { await navigator.clipboard.writeText(read.directive); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* manual */ } }}
+            className="px-3.5 py-1.5 rounded-lg border border-white/20 text-white/75 text-[12px] tracking-[0.12em] hover:bg-white/5 transition-colors">
+            {copied ? '✓ COPIED' : '⧉ COPY VOICE DIRECTIVE FOR YOUR AI'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 const BrainViewM = memo(BrainView)
+const EarsViewM = memo(EarsView)
 const MyWorldsViewM = memo(MyWorldsView)
