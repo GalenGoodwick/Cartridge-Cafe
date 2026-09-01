@@ -111,9 +111,25 @@ export function appendShaderRev(snap: SceneSnapshot, kind: 'visual' | 'module', 
     rev: (Number(last?.rev) || 0) + 1,
     code: wgsl,
     at: Number(cmd.__now ?? Date.now()),
-    by: String(cmd.__holder ?? '') || 'anon',
+    // prefer the VERIFIED account (cmd.__by, route-stamped) over the token hash
+    by: String(cmd.__by ?? cmd.__holder ?? '') || 'anon',
   })
   capWorldHistory(hist)
+}
+
+/** VERIFIED ATTRIBUTION (Galen Sep 1): record WHO made / last touched each thing
+ *  in a flat, queryable `worldData.__provenance` map — keyed `field:<id>` /
+ *  `visual:<name>` / `module:<name>` / `node:<hookId>`. `by` is the route-stamped,
+ *  un-spoofable identity (a crew member's @handle, or 'owner'), never the
+ *  client-supplied author. Answers "who added this?" for real, per-thing. */
+export function stampProv(snap: SceneSnapshot, key: string, cmd: Record<string, unknown>): void {
+  const wd = snap.worldData as Record<string, unknown>
+  const by = String((cmd.__by ?? cmd.__holder ?? '') || 'anon')
+  const at = Number(cmd.__now ?? Date.now())
+  const prov = (wd.__provenance && typeof wd.__provenance === 'object' ? wd.__provenance : (wd.__provenance = {})) as Record<string, { by: string; at: number; lastBy: string; lastAt: number; edits: number }>
+  const e = prov[key]
+  if (!e) prov[key] = { by, at, lastBy: by, lastAt: at, edits: 1 }   // creator kept; last editor tracked
+  else { e.lastBy = by; e.lastAt = at; e.edits = (Number(e.edits) || 1) + 1 }
 }
 
 /** A QUARANTINED shader heals to last-good instead of being stripped (the
@@ -433,6 +449,7 @@ export function applyCommandToSnapshotObject(
         })(),
       })
       result.fieldId = fieldId
+      stampProv(snap, `field:${fieldId}`, cmd)
       break
     }
 
@@ -638,6 +655,7 @@ export function applyCommandToSnapshotObject(
         snap.visualTypes.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
       }
       appendShaderRev(snap, 'visual', String(cmd.name), String(cmd.wgsl), cmd)
+      stampProv(snap, `visual:${String(cmd.name)}`, cmd)
       break
     }
 
@@ -663,6 +681,7 @@ export function applyCommandToSnapshotObject(
         snap.modules.push({ name: cmd.name as string, wgsl: cmd.wgsl as string })
       }
       appendShaderRev(snap, 'module', String(cmd.name), String(cmd.wgsl), cmd)
+      stampProv(snap, `module:${String(cmd.name)}`, cmd)
       break
     }
 
@@ -911,6 +930,7 @@ export function applyCommandToSnapshotObject(
       const existingIdx = snap.stepHooks.findIndex(h => h.id === hookId)
       if (existingIdx >= 0) snap.stepHooks[existingIdx] = newHook
       else snap.stepHooks.push(newHook)
+      stampProv(snap, `node:${hookId}`, cmd)
       if (wasHookless) {
         result.warning = 'added the FIRST hook to this world — a player who already has it OPEN must RELOAD for the hook to run. The live hot-swap re-loads hooks into an existing sandbox but cannot create one in place, so a uniform-driven shader will render BLACK live until reload. Fresh page loads are unaffected.'
       }
