@@ -2066,7 +2066,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           else if (cmd === 'publish:game') delete sim.worldData['unfinished']
           else if (cmd === 'publish:live') {
             const pol = (sim.worldData['policy'] && typeof sim.worldData['policy'] === 'object' ? sim.worldData['policy'] : {}) as Record<string, unknown>
-            if (pol['build'] == null) sim.worldData['policy'] = { ...pol, build: 'anyone' }   // seal law: only an UNDECLARED contract can open
+            // the contract must be COMPLETE (build + play) or the server's
+            // policy law refuses it as malformed and the world never reaches
+            // the LIVE EDITING tab (Galen's Aug 31 report — revolving-dors).
+            // A bare {build:'anyone'} was exactly that bug.
+            if (pol['build'] == null) sim.worldData['policy'] = { play: 'everyone', ...pol, build: 'anyone' }   // seal law: only an UNDECLARED contract can open
           }
         }
         const pub = cmd !== 'publish:off'
