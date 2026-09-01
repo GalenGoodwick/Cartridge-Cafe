@@ -57,15 +57,24 @@ field is missing its `visualType`.
 You are building BLIND otherwise: a shader that fails to compile QUARANTINES
 silently (the field renders as nothing, no error reaches you), a field can sit
 off-screen, the whole world can be black — and none of it shows up in a `GET`.
-So **look at what you built.** One command, works with ANY world token (a new
-world, an ALTER of an existing one, a branch):
+So **look at what you built — on a REAL GPU, and the LOCAL eye first.** The
+primary eye runs on YOUR machine: pull this world's snapshot from the bridge,
+save it, and render one frame offline (no cloud, works on a private world):
+
+```
+node web/scripts/render-local.mjs --snapshot snap.json --out eye.png
+```
+
+You can also ask a LIVE TAB — tab-as-eye: a browser open on this world answers
+with its real presented frame in ~1s (returns nothing useful if no tab is open):
 
 ```json
 {"type": "render_probe"}
 ```
 
-It renders your world on a real GPU (in the cloud — nothing runs on your
-machine) and returns a pixel report **plus the actual image**:
+(There is no cloud render eye anymore — it hung and got reached for first, so it
+was removed. Real pixels come from your local GPU or a live tab.) Either eye
+returns a pixel report **plus the actual image**:
 - `meanLum` / `coveragePct` — brightness and how much is drawn. `coveragePct < 1`
   ≈ a blank/black world (usually an unskinned field or a shader that didn't compile).
 - `bbox` + `offscreenHint` — where the content is; a hint fires if it's tiny or
@@ -75,10 +84,11 @@ machine) and returns a pixel report **plus the actual image**:
 - the rendered **PNG** (base64) — cross-check it actually looks like the brief.
 
 **Does it PLAY?** A world can render perfectly and ignore every control. For
-anything interactive, press the controls:
+anything interactive, drive it headless over time with `playthrough` — it ticks
+the REAL hooks with a scripted input timeline and returns the state trace:
 
 ```json
-{"type": "render_probe", "input": "auto"}
+{"type": "playthrough", "input": "auto"}
 ```
 
 `input` presets: `"auto"` (hold right + tap action + sweep cursor), `"run-right"`
@@ -86,38 +96,34 @@ anything interactive, press the controls:
 It returns `inputReport.respondsToInput` (true/false) by comparing motion with the
 controls pressed vs a no-input baseline. **`false` means your controls are unwired**
 — the hook must read `wd.input` (`moveX`/`moveY`/`action`/`actionHeld`/`pointer`) or
-the raw `wd.key_*` / `wd.mouse_x`/`wd.mouse_y`. Fix and re-probe until it's `true`.
+the raw `wd.key_*` / `wd.mouse_x`/`wd.mouse_y`. Fix and re-run until it's `true`.
 
 Cheaper, no-GPU structural x-ray (instant, when you just need the layout):
 `GET …/api/engine/bridge?action=describe` → each field (visual, skinned?, on-screen?),
 renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact mistakes.
 
-**The loop:** build → `render_probe` → fix blank/off-screen/compile errors →
-(if interactive) `render_probe {input}` → fix until `respondsToInput` is true →
-*then* set `brief_done`. The bridge refuses `brief_done` while no field has a
-working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
+**The loop:** build → local render (`render-local.mjs`) → fix blank/off-screen/
+compile errors → (if interactive) `playthrough {input}` → fix until
+`respondsToInput` is true → *then* set `brief_done`. The bridge refuses
+`brief_done` while no field has a working visual, but only YOUR eyes catch
+"renders, but wrong / unplayable."
 
-**When `render_probe` ABORTS — the LOCAL eye (heavy worlds).** The cloud probe
-renders on a SOFTWARE GPU (lavapipe) and times out on heavy worlds (tideglass,
-veilfire): you get `render service unreachable … This operation was aborted`,
-not a picture. That is the eye going DARK — **not a pass** — so never ship on
-it. Fall back to the local eye: headless Chrome on THIS machine's REAL GPU.
-From a local repo checkout with Playwright installed:
+**THE LOCAL EYE — your primary eye (real GPU, on your machine).** From a repo
+checkout with Playwright installed, two ways in:
 
 ```
-node web/local-eye.mjs <slug|url> [outPng] [waitMs]
+node web/scripts/render-local.mjs --snapshot snap.json --out eye.png   # offline: assembles the shaders + runs the hook, one frame, works on a PRIVATE world
+node web/local-eye.mjs <slug|url> [outPng] [waitMs]                     # loads the LIVE /space/<slug> (public worlds) in headless Chrome
 ```
 
-It launches Chrome with `--use-angle=metal --enable-unsafe-webgpu`, loads the
-LIVE `/space/<slug>`, writes a screenshot PNG, and prints a report —
-`gateVerdict` (`ok` = a Metal WebGPU adapter was found, where lavapipe had
-none), `faults` (the engine's own `cc:fault`s), and `meanLum`/`coveragePct`
-measured off the SCREENSHOT (a WebGPU swapchain reads back black via `drawImage`
-— sample the screenshot, never the live canvas). Metal renders what lavapipe
-can't, so a world that aborts in the cloud still yields a real frame — then LOOK
-at the PNG. Bonus: it reads the live DEPLOYED world, so it also catches
-bridge-shipped hook/shader drift the cloud snapshot misses. (Two anonymous
-`401`s in the console are normal — an unsigned viewer's presence/save calls.)
+Both use `--use-angle=metal --enable-unsafe-webgpu` (a REAL Metal/Vulkan
+adapter), write a screenshot PNG, and report `gateVerdict`, `faults` (the
+engine's `cc:fault`s), and `meanLum`/`coveragePct` measured off the SCREENSHOT
+(a WebGPU swapchain reads back black via `drawImage` — sample the screenshot,
+never the live canvas). `render-local --snapshot` is the one to reach for on a
+new/private world: GET the world from the bridge, save it, render it. Then LOOK
+at the PNG. (Two anonymous `401`s in the console are normal — an unsigned
+viewer's presence/save calls.)
 
 ### THE PIXEL-EYE LADDER — what each eye can and CANNOT see
 
