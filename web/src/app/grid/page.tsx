@@ -441,10 +441,20 @@ export default function TheGrid() {
     if (uiSet === 'create') { setPhase('play'); return }
     if (scene.startsWith('space:')) {
       const slug = scene.slice(6)
+      // BOUND THE GATE READ: opening a world must not block on the DB. When another
+      // user live-edits a heavy world, their snapshot writes can saturate the shared
+      // connection pool and this /api/premium read would otherwise hang (up to the
+      // 15s pg connect timeout), freezing the expand. Cap it: if the gate doesn't
+      // answer fast, OPEN optimistically — the belt effect below re-checks premium
+      // the moment the DB recovers and bounces an unowned premium world to browse.
       try {
-        const d = await fetch(`/api/premium?slug=${encodeURIComponent(slug)}`).then(r => r.json())
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 1000)
+        const d = await fetch(`/api/premium?slug=${encodeURIComponent(slug)}`, { signal: ctrl.signal })
+          .then(r => r.json())
+          .finally(() => clearTimeout(t))
         if (d?.premium && !d.owned) { setPremGate({ slug, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable }); return }
-      } catch { /* gate unreachable — default open (free) */ }
+      } catch { /* gate slow/unreachable — open now; the belt effect re-gates */ }
     }
     setUiSet('games'); setPhase('play')
   }, [scene, uiSet])
@@ -1514,21 +1524,10 @@ function ConfigView({ cfg, sceneIsSpace, onAssets }: {
         <Row label="restart with R" on={!!cfg?.rReset} k="rreset" disabled={!ownerLaw} />
         <Row label="allow forking" on={!!cfg?.forkable} k="forkable" disabled={!ownerLaw} />
         {/* (✎ design moved to the ⬆ PUBLISH tab — draft vs live is a publishing state) */}
-        {/* ▦ DEVICE — the fit law: which doors admit phones */}
-        <div className="flex items-center justify-between py-2 text-[13px]"
-          title="AUTO = desktop by default. MOBILE declares this world phone-fit (phones are admitted); DESKTOP declares it desktop-only.">
-          <span className="text-white/80">device</span>
-          <span className="flex gap-1.5">
-            {(['auto', 'mobile', 'desktop'] as const).map(d => (
-              <button key={d} data-cfg-device={d} disabled={!ownerLaw}
-                onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'card:' + JSON.stringify({ device: d === 'auto' ? null : d }) })) } catch { /* ssr */ } }}
-                className={`px-2.5 py-0.5 rounded-full border text-[11.5px] tracking-[0.12em] transition-colors disabled:opacity-35 ${
-                  (cfg?.device ?? 'auto') === d ? 'border-sky-300/60 bg-sky-400/15 text-sky-200' : 'border-white/15 text-white/55 hover:text-white'}`}>
-                {d.toUpperCase()}
-              </button>
-            ))}
-          </span>
-        </div>
+        {/* ▦ DEVICE is set ONCE at creation (create flow → birthParams.deviceConfig).
+            No post-creation toggle: flipping the flag can't rebuild a world for a
+            form factor it wasn't authored for — it only ever produced a broken fit.
+            The value still shows below as read-only dimensions. */}
         {(cfg?.gridW || cfg?.gridH) && (
           <div className="flex items-center justify-between py-2 border-t border-white/8 text-[13px]">
             <span className="text-white/80" title="declared world dimensions — the frame cover-fills to these; undeclared worlds letterbox by design">dimensions</span>

@@ -5,14 +5,22 @@ import { signIn, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { NotifyMeButton } from '@/components/NotifyMeButton'
 
-// next-auth error codes, translated into cafe language
+// next-auth error codes, translated into cafe language. The v4 codes that
+// actually reach ?error= are OAuthSignin / OAuthCallback / OAuthCreateAccount /
+// Callback / OAuthAccountNotLinked / AccessDenied / Configuration / Verification
+// / SessionRequired / Default — NOT "OAuthCallbackError" (a made-up code the old
+// map never matched, so provider-return failures silently fell to Default).
 const ERROR_TEXT: Record<string, string> = {
   OAuthAccountNotLinked: 'that email already has a deed under a different door — use the provider you first came in with.',
-  OAuthCallbackError: 'the provider let go of your hand on the way back. try again.',
+  OAuthSignin: 'we could not hand you to the provider. try again.',
+  OAuthCallback: 'the provider let go of your hand on the way back. try again.',
+  OAuthCreateAccount: 'we could not open a deed for that account. try again, or use another door.',
   AccessDenied: 'the counter turned you away. try again or use another door.',
   Callback: 'something broke on the way back in. try again.',
   Configuration: 'this door is not wired up yet.',
   CredentialsSignin: 'that door would not open. try again, or use another.',
+  Verification: 'that link expired. start again.',
+  SessionRequired: 'you need to be signed in for that.',
   Default: 'the door stuck. try again.',
 }
 
@@ -22,11 +30,30 @@ function SignInInner() {
   const errorCode = params.get('error')
   const [providers, setProviders] = useState<Record<string, unknown> | null>(null)
   const [busy, setBusy] = useState(false)
+  const [cookiesOff, setCookiesOff] = useState(false)
   const { data: session } = useSession()
 
   // only offer doors that actually open
   useEffect(() => {
     fetch('/api/auth/providers').then(r => r.json()).then(setProviders).catch(() => setProviders({}))
+  }, [])
+
+  // THE SILENT BOUNCE: a user who completes Google but whose browser drops the
+  // session cookie (Safari private mode, "block all cookies", ITP, a content
+  // blocker) lands right back here with NO ?error= and no clue why. Detect a
+  // non-writable cookie jar and say so, instead of leaving them to flicker
+  // forever. navigator.cookieEnabled lies in some privacy modes, so also probe
+  // by actually writing a throwaway cookie and reading it back.
+  useEffect(() => {
+    try {
+      let ok = navigator.cookieEnabled !== false
+      if (ok) {
+        document.cookie = 'cafe_ck=1; SameSite=Lax; path=/'
+        ok = document.cookie.includes('cafe_ck=1')
+        document.cookie = 'cafe_ck=; Max-Age=0; path=/'
+      }
+      setCookiesOff(!ok)
+    } catch { setCookiesOff(true) }
   }, [])
 
   // Enter through an OAuth door.
@@ -70,6 +97,14 @@ function SignInInner() {
               <p className="font-mono text-[14px] leading-relaxed text-flame/90 text-center pb-1">
                 {ERROR_TEXT[errorCode] || ERROR_TEXT.Default}
               </p>
+            )}
+            {/* the silent-bounce explainer: cookies are how the deed stays in your
+                hand. no jar, no session — you'd loop back here forever with no error. */}
+            {cookiesOff && !session?.user && (
+              <div className="rounded-lg border border-flame/40 bg-flame/10 px-4 py-3 font-mono text-[13px] leading-relaxed text-flame/90 text-center">
+                your browser is blocking cookies, so the counter can&apos;t keep your deed.
+                <br />open a normal (non-private) window and allow cookies for cartridge.cafe, then try again.
+              </div>
             )}
             {/* The sign-in DOORS. Once you're in they vanish — the only
                 thing left is the post-auth card above. */}

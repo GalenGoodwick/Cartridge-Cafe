@@ -2043,13 +2043,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             if (patch.premium && typeof patch.premium.usd === 'number' && patch.premium.usd > 0) sim.worldData['premium'] = { usd: Math.round(patch.premium.usd * 100) / 100 }
             else delete sim.worldData['premium']
           }
-          // ▦ DEVICE — worldParams.deviceConfig (the fit law: which doors admit phones)
-          if ('device' in patch) {
-            const wp = { ...(sim.worldParams ?? {}) } as Record<string, unknown>
-            if (patch.device === 'mobile' || patch.device === 'desktop') wp['deviceConfig'] = patch.device
-            else delete wp['deviceConfig']
-            sim.setWorldParams(wp)
-          }
+          // ▦ DEVICE is fixed at creation (birthParams.deviceConfig) — no live
+          // toggle: re-fitting a built world to another form factor never worked,
+          // so the config buttons were removed and this branch retired with them.
           setCfgTick(n => n + 1)
         } catch { /* malformed patch — drop */ }
       }

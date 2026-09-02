@@ -55,52 +55,36 @@ export async function GET(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  // deviceConfig (fit law) + the FORK FACTS in one cheap jsonb read (no snapshot
-  // download): device gate, and the worldData paths canFork needs so the client
-  // learns the AUTHORITATIVE forkability (fork off by default — Galen, Aug 30).
+  // deviceConfig (fit law) + the FORK FACTS. Read them from the CACHED snapshot
+  // (getSpaceSnapshot: 30s per-lambda, kept warm by the editor's own writes),
+  // NOT via `snapshot->...` subpath SQL. That "cheap jsonb read" was a trap: to
+  // extract ANY subpath Postgres must DETOAST the entire ~300KB world blob, so
+  // every metadata read paid the full cost of the world — measured at up to 3.9s
+  // for a 595-byte response while a heavy world was being live-edited (the writes
+  // churn the TOASTed value). These fields change ~never during play, so 30s of
+  // cache staleness is harmless, and the detoast now happens once per 30s per
+  // lambda instead of once per request.
   let deviceConfig: string | null = null
   let forkable = true
   let rReset = false
   let gridSize: number | null = null
   try {
-    const rows = await prisma.$queryRaw<Array<{
-      d: string | null; premium_usd: string | null; build: string | null
-      forkable: string | null; base: string | null; proprietary: string | null; closed: string | null
-      r_reset: string | null; grid_size: string | null; grid_w: string | null; grid_h: string | null
-    }>>`
-      SELECT snapshot->'worldParams'->>'deviceConfig'            AS d,
-             snapshot->'worldData'->'premium'->>'usd'           AS premium_usd,
-             snapshot->'worldData'->'policy'->>'build'          AS build,
-             snapshot->'worldData'->>'forkable'                 AS forkable,
-             snapshot->'worldData'->>'__base'                   AS base,
-             snapshot->'worldData'->>'proprietary'              AS proprietary,
-             snapshot->'worldData'->>'closed'                   AS closed,
-             snapshot->'worldData'->>'rResetKey'                AS r_reset,
-             snapshot->'worldParams'->>'gridSize'               AS grid_size,
-             snapshot->'worldParams'->>'gridW'                  AS grid_w,
-             snapshot->'worldParams'->>'gridH'                  AS grid_h
-      FROM "PlayerSpace" WHERE id = ${space.id}`
-    const r = rows[0]
-    deviceConfig = r?.d === 'mobile' ? 'mobile' : r?.d === 'desktop' ? 'desktop' : null
+    const snap = await getSpaceSnapshot(space.id)
+    const wp = (snap?.worldParams ?? {}) as Record<string, unknown>
+    const wd = (snap?.worldData ?? {}) as Record<string, unknown>
+    const d = wp['deviceConfig']
+    deviceConfig = d === 'mobile' ? 'mobile' : d === 'desktop' ? 'desktop' : null
     // THE GRID SIZE (Galen, Aug 30: mobile "out of frame"): the engine reads its
     // gridSize from a prop; without threading the world's declared gridSize the
     // grid mounts every space at the 512 default, clipping a 1024-tall portrait
     // world to its top half. Carry it (and the rect) so the mount frames right.
-    const gsNum = r?.grid_size != null ? Number(r.grid_size) : null
-    const gwNum = r?.grid_w != null ? Number(r.grid_w) : null
-    const ghNum = r?.grid_h != null ? Number(r.grid_h) : null
+    const gsNum = wp['gridSize'] != null ? Number(wp['gridSize']) : null
+    const gwNum = wp['gridW'] != null ? Number(wp['gridW']) : null
+    const ghNum = wp['gridH'] != null ? Number(wp['gridH']) : null
     gridSize = Number.isFinite(gsNum) && gsNum ? gsNum : (Number.isFinite(gwNum) && Number.isFinite(ghNum) ? Math.max(gwNum as number, ghNum as number) : null)
-    rReset = r?.r_reset === 'true'   // ⟲ RESET button gate — the grid reads this in play mode (eye cfg is engine-only)
-    // rebuild a minimal worldData so the ONE truth (canFork) reads it, not a
-    // second copy of the rule living here
-    const wd: Record<string, unknown> = {
-      premium: r?.premium_usd != null ? { usd: Number(r.premium_usd) } : undefined,
-      policy: r?.build ? { build: r.build } : undefined,
-      forkable: r?.forkable === 'true' ? true : r?.forkable === 'false' ? false : undefined,
-      __base: r?.base === 'true',
-      proprietary: r?.proprietary === 'true',
-      closed: r?.closed === 'true',
-    }
+    rReset = wd['rResetKey'] === true   // ⟲ RESET button gate — the grid reads this in play mode (eye cfg is engine-only)
+    // canFork reads the AUTHORITATIVE worldData directly (the cached snapshot IS
+    // the real object now — no need to rebuild a minimal copy from string extracts)
     forkable = worldIsForkable(wd, await hasIpControl(space.ownerId))
   } catch { /* absent = desktop default, forkable stays true (the default) */ }
 
