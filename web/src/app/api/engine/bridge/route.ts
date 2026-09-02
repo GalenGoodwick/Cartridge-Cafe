@@ -1043,16 +1043,10 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // render_probe REMOVED from the bridge (Galen, Sep 1). It never rendered
-      // reliably here — the cloud eye is gone and tab-as-eye can't route across
-      // Vercel's serverless instances (the tab's SSE and this POST land on
-      // different lambdas, so listeners=0). A broken, confusing command is worse
-      // than none: go DIRECT to the eye that works — render on your own GPU.
-      if (cmd.type === 'render_probe') {
-        results.push({ type: 'render_probe', ok: false, removed: true,
-          error: 'render_probe is not a bridge command — render on your own GPU with the local eye: the cartridge-cafe-mcp MCP (its render_probe is local + in-process), or `npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye` (plain HTTP /render with the snapshot from the bridge GET). Fast, private, always works.' })
-        continue
-      }
+      // render_probe is GONE from the bridge (Galen, Sep 1) — not even a stub.
+      // The eye is the LOCAL eye (cartridge-cafe-mcp / cartridge-cafe-eye), used
+      // directly; the bridge has no render concept. An unknown 'render_probe'
+      // falls through to the normal unknown-command handling like anything else.
 
       // #12b playthrough — PLAY this world headless. Same render-service sandbox
       // as render_probe (the REAL step-hooks, ticked in order), but driven by a
