@@ -83,16 +83,26 @@ if (setupFile) {
   if (!states[name]) fail(`state "${name}" not in ${setupFile} (have: ${Object.keys(states).join(', ')})`)
   setup = states[name]
 }
-const hook = (snap.stepHooks || [])[0]
+// pick the hook that actually drives the frame (writes gpuUniforms/gpuPopulation),
+// not just stepHooks[0] (often an empty born-slot). --ticks N runs it N times so
+// populations spawn/settle before the frame.
+const hook = (snap.stepHooks || []).find(h => /gpuPopulation|gpuUniforms/.test(h.code || '')) || (snap.stepHooks || [])[0]
+const ticks = Math.max(1, parseInt(arg('ticks') || '1', 10))
 const U = new Float32Array(256)
+let POPsrc = []
 if (hook?.code) {
   const w = runWorld(hook.code)
   try { setup(w.save()) } catch (e) { console.warn('setup threw (continuing):', e.message) }
-  w.wd.__t = t; w.tick()
+  for (let k = 0; k < ticks; k++) { w.wd.__t = t; w.tick() }
   const src = w.wd.gpuUniforms || []
   for (let i = 0; i < Math.min(src.length, 256); i++) U[i] = src[i] || 0
+  POPsrc = w.wd.gpuPopulation || []
 }
 U[3] = U[3] || t   // ensure a time is present even for hookless worlds
+// pack the population the way POPB expects: [0].x = count, then vec4 per entity
+const POP = new Float32Array(4096 * 4)
+POP[0] = Math.min(4095, (POPsrc.length / 4) | 0)
+for (let i = 0; i < Math.min(POPsrc.length, 4095 * 4); i++) POP[4 + i] = POPsrc[i] || 0
 
 // ── render (GPU by default; SW=1 → SwiftShader, any computer) ──
 const srv = http.createServer((q, r) => { r.writeHead(200, { 'Content-Type': 'text/html' }); r.end('<!doctype html><body>') })
@@ -102,7 +112,7 @@ let browser
 try { browser = await chromium.launch({ ...launch, channel: 'chrome' }) } catch { browser = await chromium.launch(launch) }
 const page = await browser.newPage()
 await page.goto('http://localhost:' + port)
-const res = await page.evaluate(async ({ shader, u, sw }) => {
+const res = await page.evaluate(async ({ shader, u, pop, sw }) => {
   const W = 512
   if (!navigator.gpu) return { error: 'no WebGPU in this browser build' }
   const adapter = await navigator.gpu.requestAdapter(sw ? { forceFallbackAdapter: true } : {})
@@ -114,7 +124,7 @@ const res = await page.evaluate(async ({ shader, u, sw }) => {
   dev.pushErrorScope('validation')
   const tex = dev.createTexture({ size: [W, W], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC })
   const wb = dev.createBuffer({ size: 1024, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }); dev.queue.writeBuffer(wb, 0, new Float32Array(u))
-  const popb = dev.createBuffer({ size: 4096 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+  const popb = dev.createBuffer({ size: 4096 * 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }); dev.queue.writeBuffer(popb, 0, new Float32Array(pop))
   const bgl = dev.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }] })
   const pipe = dev.createRenderPipeline({ layout: dev.createPipelineLayout({ bindGroupLayouts: [bgl] }), vertex: { module: mod, entryPoint: 'vs' }, fragment: { module: mod, entryPoint: 'fs', targets: [{ format: 'rgba8unorm' }] } })
   const bg = dev.createBindGroup({ layout: bgl, entries: [{ binding: 0, resource: { buffer: wb } }, { binding: 1, resource: { buffer: popb } }] })
@@ -130,7 +140,7 @@ const res = await page.evaluate(async ({ shader, u, sw }) => {
   const out = document.createElement('canvas'); out.width = W; out.height = W
   out.getContext('2d').putImageData(new ImageData(bytes, W, W), 0, 0)
   return { png: out.toDataURL('image/png'), backend: adapter.info?.architecture || (sw ? 'software' : 'gpu') }
-}, { shader: SHADER, u: Array.from(U), sw: !!process.env.SW })
+}, { shader: SHADER, u: Array.from(U), pop: Array.from(POP), sw: !!process.env.SW })
 await browser.close(); srv.close()
 if (res.error) { console.log('\x1b[31m✗ ' + res.error + '\x1b[0m'); process.exit(1) }
 const outPath = arg('out') || `render-${arg('state') || 'init'}.png`
