@@ -31,6 +31,15 @@ export async function POST(req: NextRequest) {
       const qty = Number(meta.qty)
       await grantGenCredits(meta.userId, obj.id, Number.isFinite(qty) && qty >= 1 ? qty : 1)
     }
+    // THE MEMBERSHIP INCLUDES ONE BUILD CREDIT (Galen, Sep 1: "selecting
+    // membership gives 1") — so a new member can build a world the moment they
+    // join instead of paying again. Idempotent per checkout session: signup
+    // grants exactly one; monthly renewals arrive as invoice/subscription events
+    // (NOT checkout.session.completed), so they never re-grant.
+    if (meta.product === 'editor') {
+      const { grantGenCredits } = await import('@/lib/stripe')
+      await grantGenCredits(meta.userId, obj.id, 1)
+    }
     // a PAID EXPERIENCE grants a seat at the workbench — mint the buyer a
     // co-program membership in the world they bought (idempotent)
     if (meta.product === 'experience' && meta.slug) {
