@@ -57,15 +57,10 @@ field is missing its `visualType`.
 You are building BLIND otherwise: a shader that fails to compile QUARANTINES
 silently (the field renders as nothing, no error reaches you), a field can sit
 off-screen, the whole world can be black — and none of it shows up in a `GET`.
-So **look at what you built.** One command, works with ANY world token (a new
-world, an ALTER of an existing one, a branch):
-
-```json
-{"type": "render_probe"}
-```
-
-It renders your world on a real GPU (in the cloud — nothing runs on your
-machine) and returns a pixel report **plus the actual image**:
+So **look at what you built** — on YOUR machine's GPU, with the ready-made local
+eye (never hand-roll a renderer; there is no bridge/cloud render_probe — see THE
+READY-MADE LOCAL EYE just below for the two one-line ways to run it). It returns
+a pixel report **plus the actual image**:
 - `meanLum` / `coveragePct` — brightness and how much is drawn. `coveragePct < 1`
   ≈ a blank/black world (usually an unskinned field or a shader that didn't compile).
 - `bbox` + `offscreenHint` — where the content is; a hint fires if it's tiny or
@@ -75,11 +70,7 @@ machine) and returns a pixel report **plus the actual image**:
 - the rendered **PNG** (base64) — cross-check it actually looks like the brief.
 
 **Does it PLAY?** A world can render perfectly and ignore every control. For
-anything interactive, press the controls:
-
-```json
-{"type": "render_probe", "input": "auto"}
-```
+anything interactive, add `"input":"auto"` to the local render:
 
 `input` presets: `"auto"` (hold right + tap action + sweep cursor), `"run-right"`
 (platformer/runner), `"tap-action"` (press-timing), `"sweep-cursor"` (cursor/aim).
@@ -92,8 +83,8 @@ Cheaper, no-GPU structural x-ray (instant, when you just need the layout):
 `GET …/api/engine/bridge?action=describe` → each field (visual, skinned?, on-screen?),
 renderable visuals, hook ids, worldData keys, and a WARNINGS list naming exact mistakes.
 
-**The loop:** build → `render_probe` → fix blank/off-screen/compile errors →
-(if interactive) `render_probe {input}` → fix until `respondsToInput` is true →
+**The loop:** build → local render → fix blank/off-screen/compile errors →
+(if interactive) render with `"input"` → fix until `respondsToInput` is true →
 *then* set `brief_done`. The bridge refuses `brief_done` while no field has a
 working visual, but only YOUR eyes catch "renders, but wrong / unplayable."
 
@@ -110,11 +101,9 @@ match. Two packaged forms; use one instead of building your own eye:
   modules/worldData/stepHooks` → `POST /render {"state":{...},"size":256}` →
   the same pixel report + PNG the cloud eye returns. `/clip` renders mp4s.
 
-**When the cloud `render_probe` ABORTS — heavy worlds.** The cloud probe
-renders on a SOFTWARE GPU (lavapipe) and times out on heavy worlds (tideglass,
-veilfire): you get `render service unreachable … This operation was aborted`,
-not a picture. That is the eye going DARK — **not a pass** — so never ship on
-it. The local eye above is the fix (a real GPU renders what lavapipe can't).
+**Heavy worlds (tideglass, veilfire) need a real GPU** — the local eye renders
+them fine on your Metal/Vulkan adapter. (There is no cloud eye; a software
+renderer would choke on them anyway.)
 From a repo checkout there is also the live-page screenshot eye (headless
 Chrome, Playwright):
 
@@ -145,12 +134,11 @@ and NAME the rungs you skipped when you report a build as done:
    COMPOSITION**: the live tab concatenates ALL registered visuals + chrome
    into ONE module, so duplicate helper `fn`s or name collisions only exist in
    the composed source. Never register two visuals carrying the same helpers.
-3. **`render_probe`** — catches composed-compile + hook throws + reactivity;
-   **blind to the POPULATION layer**: it binds the snapshot's static
-   `gpuPopulation`, not what your hook pushes during probe ticks. Entities can
-   be missing from the PNG while healthy — and broken while looking fine. And on
-   a HEAVY world it aborts entirely (software GPU) — then it sees nothing; use
-   the **local Metal eye** (`web/local-eye.mjs`, above) instead of shipping blind.
+3. **The local eye** (cartridge-cafe-mcp `render_probe` / `cartridge-cafe-eye`) —
+   renders on your real GPU: catches composed-compile + hook throws + the actual
+   pixels; **blind to the POPULATION layer**: it binds the snapshot's static
+   `gpuPopulation`, not what a live tick pushes, so entities can be missing from
+   the PNG while healthy. (There is no bridge/cloud render_probe.)
 4. **Play entry** — a real player enters `/space/<slug>` fresh and sees
    first-tick truth (boot state, composed shader, entities, input — together).
    No probe substitutes for this. If nobody ran it, your report must say so.

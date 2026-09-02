@@ -226,7 +226,7 @@ async function fetchSnapshot(tok) {
 
 server.tool(
   'render_probe',
-  'THE EYE — render a world and get back a pixel report PLUS the actual PNG. Renders IN-PROCESS on this machine\'s GPU when it can (a warm local Deno eye — real GPU, private, no cloud round-trip), else falls back to the cloud eye over the bridge. Call this after EVERY change and LOOK at the image. Report fields: errors (WGSL COMPILE errors with the exact line — fix that line), meanLum / coveragePct (coverage<1 ≈ a blank/black world — an unskinned field or a shader that did not compile), bbox / offscreenHint (mis-placed coords — build around 256,256), hookErrors (step-hook throws), motion, and — when input is set — inputReport.respondsToInput. `eye` says which renderer answered. Headless you are otherwise BLIND: a failed shader renders as NOTHING with no error. Defaults to your latest brewed world.',
+  'THE EYE — render a world and get back a pixel report PLUS the actual PNG. Renders IN-PROCESS on this machine\'s GPU (a warm local Deno eye — real GPU, private, no cloud). There is no bridge/cloud render_probe; this local eye is the one that works. Call this after EVERY change and LOOK at the image. Report fields: errors (WGSL COMPILE errors with the exact line — fix that line), meanLum / coveragePct (coverage<1 ≈ a blank/black world — an unskinned field or a shader that did not compile), bbox / offscreenHint (mis-placed coords — build around 256,256), hookErrors (step-hook throws), motion, and — when input is set — inputReport.respondsToInput. Headless you are otherwise BLIND: a failed shader renders as NOTHING with no error. Defaults to your latest brewed world.',
   {
     input: z.string().optional().describe('Optional input preset to also press the controls: auto | run-right | tap-action | sweep-cursor'),
     token: z.string().optional().describe('World token. Defaults to your latest brewed world.'),
@@ -235,26 +235,21 @@ server.tool(
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
 
-    // 1) IN-PROCESS EYE — render on this machine's own GPU (warm Deno child).
-    //    The pixels are computed here and never leave the machine. Only fall
-    //    through to the cloud on a real failure (no deno, boot failed, transport
-    //    died) — a render that came back, even a blank one, is a real verdict.
-    if (localEye.available()) {
-      try {
-        const snap = await fetchSnapshot(tok)
-        if (snap && snap.fields.length) {
-          const r = await localEye.renderLocal(snap, { input, size: 256 })
-          if (r && (r.ok === true || r.image || r.png)) return probeContent(enrichReport(r), `local (${localEye.why()})`)
-        }
-      } catch { /* the local eye is a fast path — fall through to the cloud eye */ }
+    // IN-PROCESS EYE — render on this machine's own GPU (warm Deno child). The
+    // pixels are computed here and never leave the machine. There is no cloud/
+    // bridge render_probe fallback anymore — the local eye is the eye.
+    if (!localEye.available()) {
+      return text({ error: 'local eye unavailable — this machine needs Deno to render in-process. Install Deno (https://deno.land) and retry; the eye then renders on your own GPU. There is no cloud render_probe.' })
     }
-
-    // 2) CLOUD EYE over the bridge — a live tab (real GPU) if one is open on this
-    //    world, else the Railway software renderer. Works with no local runtime.
-    const cmd = input ? { type: 'render_probe', input } : { type: 'render_probe' }
-    const out = await bridgeFor(tok).bridgeSend(cmd, { normalize: false })
-    const r = (out && out.results && out.results[0]) || out || {}
-    return probeContent(r, 'cloud (bridge → tab/Railway)')
+    try {
+      const snap = await fetchSnapshot(tok)
+      if (!snap || !snap.fields.length) return text({ error: 'nothing to render — the world has no fields yet' })
+      const r = await localEye.renderLocal(snap, { input, size: 256 })
+      if (r && (r.ok === true || r.image || r.png)) return probeContent(enrichReport(r), `local (${localEye.why()})`)
+      return text({ error: 'local render returned no image', detail: r })
+    } catch (e) {
+      return text({ error: 'local eye failed: ' + (e?.message || String(e)) })
+    }
   },
 )
 

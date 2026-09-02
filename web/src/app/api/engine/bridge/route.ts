@@ -1043,64 +1043,14 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // #12 render_probe — SEE this world. Renders its shader on the cloud GPU
-      // (render-service) and returns pixel-stats + a base64 PNG. A read; never
-      // mutates. Icon/player tokens never reach here (guarded above), so this is
-      // scoped to the world the token already owns.
+      // render_probe REMOVED from the bridge (Galen, Sep 1). It never rendered
+      // reliably here — the cloud eye is gone and tab-as-eye can't route across
+      // Vercel's serverless instances (the tab's SSE and this POST land on
+      // different lambdas, so listeners=0). A broken, confusing command is worse
+      // than none: go DIRECT to the eye that works — render on your own GPU.
       if (cmd.type === 'render_probe') {
-        // TAB-AS-EYE (Galen's ruling): a live tab on this world already rendered
-        // the frame on a REAL GPU — ask IT first (~1s) before the cloud software
-        // renderer (~25s). Space-scoped only: the spaceId SSE channel is the only
-        // routing that guarantees the answering tab is showing THIS world (scene
-        // tokens are headless by design; the global channel has no world identity).
-        // Same queue as every other command (pushToAgent → agent POST → SSE);
-        // the tab answers via POST /api/engine/compile-result against the queue id.
-        let out: Record<string, unknown> | null = null
-        if (isSpaceScoped && cmd.eye !== 'service') {
-          try {
-            const queued = await pushToAgent({ type: 'probe_frame' }, req, auth.spaceId) as { commands?: Array<{ id: string }>; listeners?: number }
-            const probeId = queued?.commands?.[0]?.id
-            if (probeId && Number(queued?.listeners ?? 0) > 0) {
-              const live = await waitForCommandResult(probeId, 12000) as Record<string, unknown> | null
-              if (live && live.ok === true) {
-                out = { ...live, next: 'answered by a LIVE TAB (real GPU, the presented frame). For headless ticks/physics over time use {type:"playthrough"}; add eye:"service" to force the cloud renderer.' }
-                // THE NOTHING ERROR speaks with the same voice in BOTH eyes
-                // (Galen: 'rendering as nothing should throw a nothing error')
-                if (typeof out.coveragePct === 'number' && (out.coveragePct as number) < 1) {
-                  out.nothing = true
-                  out.error = `NOTHING RENDERED — the live tab's frame is ~${out.coveragePct}% drawn. Almost always: a field with NO visualType, a WGSL shader that failed to compile, or content built off the 0..512 grid. Fix, then re-probe — do not trust this build.`
-                }
-              }
-            }
-          } catch { /* the live eye is an optimization — fall through to the service eye */ }
-        }
-        if (!out) {
-          const snap = isSpaceScoped
-            ? await getSpaceSnapshot(auth.spaceId!)
-            : isSceneScoped
-              ? loadScene(auth.sceneName!)
-              : getEngineState()
-          out = await renderViaService(snap as never, { name: cmd.name, ticks: cmd.ticks, size: cmd.size, input: cmd.input }) as Record<string, unknown>
-        }
-        results.push({ type: 'render_probe', ...out })
-        // stash the eye image + the renderer's SELF-REPORT so the BuilderBox shows a
-        // human/AI WHAT THE AI SEES *and how the renderer describes it* (#7: a renderer
-        // that explains itself). The stats are already computed by the probe — surface
-        // them instead of throwing them away.
-        if (aiScope) {
-          const o = out as { png?: string; image?: string; meanLum?: number; maxLum?: number; coveragePct?: number; visible?: boolean; motion?: number; visual?: string; errors?: unknown[]; hookErrors?: unknown[]; dominantColors?: unknown }
-          const img = o?.png || o?.image
-          if (img) {
-            const stats = {
-              meanLum: o.meanLum, maxLum: o.maxLum, coveragePct: o.coveragePct, visible: o.visible,
-              motion: o.motion, visual: o.visual,
-              errors: Array.isArray(o.errors) ? o.errors.length : 0,
-              hookErrors: Array.isArray(o.hookErrors) ? o.hookErrors.length : 0,
-              dominantColors: Array.isArray(o.dominantColors) ? (o.dominantColors as unknown[]).slice(0, 4) : undefined,
-            }
-            try { await saveGameSlot('ai_eye:' + aiScope, { png: img, at: Date.now(), name: cmd.name ?? null, stats }) } catch { /* courtesy, never blocks the probe */ }
-          }
-        }
+        results.push({ type: 'render_probe', ok: false, removed: true,
+          error: 'render_probe is not a bridge command — render on your own GPU with the local eye: the cartridge-cafe-mcp MCP (its render_probe is local + in-process), or `npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye` (plain HTTP /render with the snapshot from the bridge GET). Fast, private, always works.' })
         continue
       }
 
