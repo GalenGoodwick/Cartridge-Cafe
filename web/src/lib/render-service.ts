@@ -1,9 +1,10 @@
-/** The EYE, callable from any server route. Ships a world snapshot to the
- *  render-service (Deno + software-Vulkan on Railway), which boots it, runs the
- *  real step-hooks for N ticks, reads the framebuffer, and returns pixel-stats +
- *  a base64 PNG. Extracted from the bridge so icon-baking, probes, and any other
- *  server code share ONE caller instead of hand-rolling the fetch. If the service
- *  is unset/down the caller still gets a structured {ok:false} it can fall back on. */
+/** The EYE, callable from any server route. Ships a world snapshot to a LOCAL
+ *  render service (the cartridge-cafe local eye on localhost:8080), which boots
+ *  it, runs the real step-hooks for N ticks, reads the framebuffer, and returns
+ *  pixel-stats + a base64 PNG. The cloud render service was REMOVED (Sep 1) — the
+ *  local eye covers it. Extracted so icon-baking, probes, and any other server
+ *  code share ONE caller. If no local eye is up the caller gets a structured
+ *  {ok:false} pointing at the local eye — every caller degrades on that. */
 
 export type RenderSnapshot = {
   fields?: unknown[]
@@ -23,8 +24,14 @@ export type RenderOpts = {
 
 const LOCAL_RENDER = 'http://localhost:8080'
 let _localUp: boolean | null = null
+// CLOUD EYE REMOVED (Galen, Sep 1: "local eye worked… cloud service isn't
+// needed"). Renders come ONLY from a LOCAL render service (localhost:8080 — the
+// cartridge-cafe local eye / render-service start-local). There is no cloud
+// fallback: off-machine callers get a fast, clean {ok:false} pointing at the
+// local eye, and every caller (render_probe, playthrough, swarm_probe, publish)
+// already degrades on that instead of hanging on a dead cloud.
 async function preferLocal(configured: string | undefined): Promise<string | undefined> {
-  if (configured && configured.includes('localhost')) return configured   // already local (dev env)
+  if (configured && configured.includes('localhost')) return configured   // explicit local (dev env)
   if (_localUp === null) {
     try {
       const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 700)
@@ -32,7 +39,7 @@ async function preferLocal(configured: string | undefined): Promise<string | und
       clearTimeout(t); _localUp = !!(r && r.ok)
     } catch { _localUp = false }
   }
-  return _localUp ? LOCAL_RENDER : configured
+  return _localUp ? LOCAL_RENDER : undefined   // never the cloud
 }
 
 export async function renderSnapshot(
@@ -47,7 +54,7 @@ export async function renderSnapshot(
   const secret = process.env.RENDER_SECRET
   const base = await preferLocal(configured)
   if (!base || !secret) {
-    return { ok: false, error: 'render service not configured (no eyes over HTTP yet) — use describe_scene / health for structural eyes', configured: false }
+    return { ok: false, error: 'no local render eye running — render on your own GPU: npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP) or the cartridge-cafe-mcp MCP (render_probe is local). The cloud render service was removed. Static eyes (describe/health) still work.', configured: false }
   }
   const state = {
     fields: snap?.fields ?? [],
@@ -97,7 +104,7 @@ export async function renderSnapshot(
       (out.inputReport
         ? ` inputReport.respondsToInput=${out.inputReport.respondsToInput}: ${out.inputReport.note}`
         : ' For anything INTERACTIVE, re-probe with {"input":"auto"} (or "run-right"/"tap-action"/"sweep-cursor") — it presses the controls and tells you if the world actually reacts.') +
-      ' [This render came from the CLOUD eye. A ready-made LOCAL eye renders on your own GPU — faster + private: npx -y cartridge-cafe-mcp (MCP, automatic) or npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP). Never hand-roll a renderer.]'
+      ' [Rendered on the LOCAL eye (your own GPU — no cloud). npx -y cartridge-cafe-mcp (MCP, automatic) or npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP). Never hand-roll a renderer.]'
     return out
   } catch (e) {
     return { ok: false, error: `render service unreachable: ${e instanceof Error ? e.message : String(e)} — static eyes (describe/health) still work. A ready-made LOCAL eye renders on your own GPU instead: npx -y --package=cartridge-cafe-mcp cartridge-cafe-eye (plain HTTP /render), or the cartridge-cafe-mcp MCP whose render_probe is local automatically.` }
