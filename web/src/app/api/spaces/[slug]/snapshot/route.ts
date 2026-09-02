@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getSpaceSnapshot } from '@/app/api/engine/space-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,13 +15,16 @@ export async function GET(
   const versionParam = req.nextUrl.searchParams.get('version')
   const revOnly = req.nextUrl.searchParams.get('rev') === '1'
 
+  // Cheap identity read — do NOT select the `snapshot` jsonb column here. Selecting
+  // it forces Postgres to detoast the entire ~300KB world blob on every hit, even
+  // for a ?rev=1 heartbeat that needs a single integer. The body is served from the
+  // warm per-lambda cache (getSpaceSnapshot) below instead.
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
     select: {
       id: true,
       ownerId: true,
       isPublic: true,
-      snapshot: true,
     },
   })
 
@@ -43,7 +47,10 @@ export async function GET(
   // ?rev=1 — the auto-load heartbeat: just the bridge revision, no body.
   // Tabs poll this to learn an AI wrote the world under them.
   if (revOnly) {
-    const wd = (space.snapshot as { worldData?: { __bridge_rev?: unknown } } | null)?.worldData
+    // Served from the warm cache (30s per-lambda, refreshed by the editor's own
+    // writes) — the rev heartbeat no longer detoasts 300KB on every poll.
+    const snap = await getSpaceSnapshot(space.id)
+    const wd = (snap as { worldData?: { __bridge_rev?: unknown } } | null)?.worldData
     return NextResponse.json({ rev: Number(wd?.__bridge_rev) || 0 })
   }
 
@@ -65,8 +72,9 @@ export async function GET(
     })
   }
 
+  const snap = await getSpaceSnapshot(space.id)
   return NextResponse.json({
     spaceId: space.id,
-    snapshot: space.snapshot ?? null,
+    snapshot: snap ?? null,
   })
 }
