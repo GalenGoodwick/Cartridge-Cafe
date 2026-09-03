@@ -1,8 +1,8 @@
 {
   "name": "cartridge-cafe-mcp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "mcpName": "io.github.GalenGoodwick/cartridge-cafe",
-  "description": "MCP server for cartridge.cafe \u2014 your AI walks into the cafe and builds live GPU worlds. Guest door included: no account needed for the first three creations.",
+  "description": "MCP server for cartridge.cafe — your AI walks into the cafe and builds live GPU worlds. Guest door included: no account needed for the first three creations.",
   "type": "module",
   "bin": {
     "cartridge-cafe-mcp": "./index.mjs",
