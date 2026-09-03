@@ -255,22 +255,35 @@ server.tool(
 
 server.tool(
   'playthrough',
-  'PLAY the world headless — the honest test for anything INTERACTIVE. Runs the world\'s REAL step-hooks on the cloud sandbox (same as render_probe), but ticks them over TIME while pressing a scripted input, and returns stateTrace: the game state (position, hp, weapon, flags) at each sampled tick. Catches play-over-time bugs a single frame cannot — can\'t-enter, softlocks, a trigger that never fires, a fight that can\'t be won. Read the trace to confirm the world plays the way the code claims; drive a specific input timeline to reproduce a bug, then re-run after your fix.',
+  'PLAY the world headless — the honest test for anything INTERACTIVE. Runs the world\'s REAL step-hooks on THIS machine\'s local eye (same warm Deno renderer as render_probe — there is no cloud sandbox), ticking them over TIME while pressing a scripted input, and returns stateTrace: the game state (numbers/bools from the world\'s state holder) at each sampled tick. Catches play-over-time bugs a single frame cannot — can\'t-enter, softlocks, a trigger that never fires, a fight that can\'t be won. Read the trace to confirm the world plays the way the code claims; drive a specific input timeline to reproduce a bug, then re-run after your fix.',
   {
-    input: z.string().optional().describe('Input to drive: preset (auto | run-right | tap-action | sweep-cursor) — for a scripted timeline use the bridge tool directly with input:[{from,to,keys,pointer}]. Default: auto'),
-    ticks: z.number().optional().describe('How many ticks to play (default 90 ≈ 1.5s at 60fps).'),
+    input: z.string().optional().describe('Input to drive: preset (auto | run-right | tap-action | sweep-cursor) OR a JSON timeline string: [{"from":0,"to":120,"keys":["d"]},{"from":120,"to":180,"keys":["d","w"]}]. Default: auto'),
+    ticks: z.number().optional().describe('How many ticks to play (default 240 ≈ 4s at 60fps).'),
     token: z.string().optional().describe('World token. Defaults to your latest brewed world.'),
   },
   async ({ input, ticks, token }) => {
     const tok = token || mine[mine.length - 1]?.token
     if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
-    const cmd = { type: 'playthrough' }
-    if (input) cmd.input = input
-    if (ticks) cmd.ticks = ticks
-    const out = await bridgeFor(tok).bridgeSend(cmd, { normalize: false })
-    const r = (out && out.results && out.results[0]) || out || {}
-    const { png, image, ...report } = r
-    return text(report)
+    // LOCAL playthrough — same eye as render_probe, with the state trace on.
+    // The bridge playthrough only works where a render eye runs NEXT TO the
+    // bridge (dev); on prod it is a dead rail, so the MCP never rides it.
+    if (!localEye.available()) {
+      return text({ error: 'local eye unavailable — this machine needs Deno to play headless. Install Deno (https://deno.land) and retry. There is no cloud playthrough.' })
+    }
+    try {
+      const snap = await fetchSnapshot(tok)
+      if (!snap || !snap.fields.length) return text({ error: 'nothing to play — the world has no fields yet' })
+      let drive = input || 'auto'
+      if (typeof drive === 'string' && drive.trim().startsWith('[')) {
+        try { drive = JSON.parse(drive) } catch { return text({ error: 'input timeline is not valid JSON — [{"from":0,"to":120,"keys":["d"]},...]' }) }
+      }
+      const r = await localEye.renderLocal(snap, { input: drive, ticks: ticks ?? 240, trace: true, size: 256 })
+      const { image, png, ...report } = r || {}
+      report.next = 'stateTrace is the game state at each sampled tick — read it over time to confirm the world actually PLAYS the way the code claims. Drive a scripted timeline to reproduce a specific bug, then re-run after the fix.'
+      return text(report)
+    } catch (e) {
+      return text({ error: 'local playthrough failed: ' + (e?.message || String(e)) })
+    }
   },
 )
 

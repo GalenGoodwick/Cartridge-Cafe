@@ -381,7 +381,7 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
     const vt = f.visualTypeName || (typeof f.visualType === 'string' ? f.visualType : null)
     const w = vt ? wgslOf.get(vt) : null
     if (w && /\buv\b/.test(w) && !/viewbox\s*\(/.test(w)) {
-      warnings.push(`SQUISH: screen-canvas field "${f.name}" uses visual "${vt}" whose wgsl reads uv WITHOUT viewbox() — square-uv math distorts at any non-square window. Map into world units: let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;`)
+      warnings.push(`SQUISH: screen-canvas field "${f.name}" uses visual "${vt}" whose wgsl reads uv WITHOUT viewbox() — square-uv math distorts at any non-square window. Map into world units: let wp = viewbox().xy + uv * viewbox().zw; (field uv is y-down like the grid — negate uv.y ONLY if your math is y-up)`)
     }
   }
 
@@ -1070,7 +1070,7 @@ export async function POST(req: NextRequest) {
         // lead with the trace + verdicts; keep the last frame's stats/png for the eye
         results.push({
           type: 'playthrough',
-          ok: out.ok, errors: out.errors, hookErrors: out.hookErrors,
+          ok: out.ok, error: out.error, errors: out.errors, hookErrors: out.hookErrors,
           ticks: out.ticks, stateTrace: out.stateTrace,
           inputReport: out.inputReport, motion: out.motion, frameCost: out.frameCost,
           meanLum: out.meanLum, coveragePct: out.coveragePct, png: out.png,

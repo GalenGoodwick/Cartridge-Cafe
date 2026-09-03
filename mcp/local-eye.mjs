@@ -186,6 +186,7 @@ export async function renderLocal(snap, opts = {}) {
   const payload = { state: snap, size: opts.size ?? 256 }
   if (opts.ticks != null) payload.ticks = opts.ticks
   if (typeof opts.input === 'string' || Array.isArray(opts.input)) payload.input = opts.input
+  if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the state trace per sampled tick
   const ctrl = new AbortController()
   // 200s: the FIRST render on a software GPU can pay a long pipeline compile;
   // warm renders are seconds. Metal is fast throughout.

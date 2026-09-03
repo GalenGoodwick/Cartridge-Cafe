@@ -89,10 +89,11 @@ function uiReport(ui) {
 export async function renderProbe(state, opts = {}) {
   const S = parseInt(opts.size ?? 400);
   const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
-  // PLAYTHROUGH: capture the __vf state trace when driving a scripted input timeline
-  // (or opts.trace) — turns render_probe into a real headless playthrough: the eye
-  // sees pixels, the trace sees the game STATE over time (position/hp/weapon/flags).
-  const traceOn = !!opts.trace || Array.isArray(opts.input);
+  // PLAYTHROUGH IS A TOOL CALL, NOT AN AUTOMATIC THING (Galen, Sep 3): the state
+  // trace engages ONLY when explicitly requested (opts.trace — the playthrough
+  // tool sets it). A probe with a scripted input still measures responsiveness,
+  // but it no longer silently becomes a playthrough.
+  const traceOn = !!opts.trace;
   // dt per tick — 1/60 for probes; a clip passes 1/fps so one tick renders one
   // frame and sim time tracks video time (bells/animations run at real speed).
   const DT = opts.dt ? parseFloat(opts.dt) : 1 / 60;
@@ -458,11 +459,34 @@ ${fieldChain}
     renderMs += performance.now() - r0;
     snap.tick = cur;
     if (traceOn) {
-      const vf = worldData.__vf, st = {}; let n = 0;
-      if (vf && typeof vf === "object") for (const k in vf) {
-        if (n > 90) break; const v = vf[k], t = typeof v;
-        if (t === "number" || t === "boolean") { st[k] = v; n++; }
-        else if (t === "object" && v && !Array.isArray(v)) for (const k2 in v) { if (n > 90) break; const v2 = v[k2], t2 = typeof v2; if (t2 === "number" || t2 === "boolean") { st[k + "." + k2] = v2; n++; } }
+      // THE STATE TRACE — generalized (it hardcoded __vf, veilfire's private
+      // key, so every OTHER world traced empty). Prefer the world's declared
+      // manifest holder (worldData.__state.holder); else sweep the progress
+      // roots the reset law recognizes: `game` + every __-prefixed object key
+      // that isn't engine infrastructure. Numbers/bools, one level deep,
+      // capped — a trace, not a dump.
+      const TRACE_INFRA = new Set(["__nodes","__nodeSeq","__nodeStrict","__nodeHist","__bridge_rev","__sandbox","__budget","__built_ua","__built_at","__original","__state","__provenance","__fixedStep","__seed","__fresh","__trail","__nudge","__entities","__frameMeter","__popProv","__rooms","__resets","__ai_last_cmd","__uiRects"]);
+      const declared = worldData.__state && typeof worldData.__state === "object" ? worldData.__state.holder : null;
+      const roots = [];
+      if (declared && worldData[declared] && typeof worldData[declared] === "object") roots.push([declared, worldData[declared]]);
+      else {
+        if (worldData.game && typeof worldData.game === "object" && !Array.isArray(worldData.game)) roots.push(["game", worldData.game]);
+        for (const k in worldData) {
+          if (!k.startsWith("__") || TRACE_INFRA.has(k)) continue;
+          const v = worldData[k];
+          if (v && typeof v === "object" && !Array.isArray(v)) roots.push([k, v]);
+        }
+      }
+      const st = {}; let n = 0;
+      const pfx = roots.length > 1;
+      for (const [rk, obj] of roots) {
+        if (n > 90) break;
+        for (const k in obj) {
+          if (n > 90) break; const v = obj[k], t = typeof v;
+          const key = pfx ? rk + "." + k : k;
+          if (t === "number" || t === "boolean") { st[key] = v; n++; }
+          else if (t === "object" && v && !Array.isArray(v)) for (const k2 in v) { if (n > 90) break; const v2 = v[k2], t2 = typeof v2; if (t2 === "number" || t2 === "boolean") { st[key + "." + k2] = v2; n++; } }
+        }
       }
       snap.state = st;
     }

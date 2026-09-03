@@ -54,8 +54,10 @@ struct FrameUniforms {
 // THE VIEWBOX (task #20, full-bleed worlds): the camera window in WORLD units —
 // xy = center, zw = half-extents. A screen-canvas visual paints world-anchored
 // content at ANY viewport aspect with:
-//   let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;
-// (uv is the field's -1..1 canvas; -uv.y flips into y-down grid space.)
+//   let wp = viewbox().xy + uv * viewbox().zw;
+// (uv is the field's -1..1 canvas and is ALREADY y-down like the grid — no
+// flip. Negate uv.y only for y-up-authored math; the old -uv.y prescription
+// flipped every y-down-authored world upside down — proven on UNDERTOW.)
 fn viewbox() -> vec4f {
   let vb_aspect = frame.resolution.x / max(frame.resolution.y, 1.0);
   let vb_range = frame.gridSize / max(frame.zoom, 0.001);

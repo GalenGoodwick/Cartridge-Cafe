@@ -99,7 +99,7 @@ match. Two packaged forms; use one instead of building your own eye:
   starts the eye at `http://127.0.0.1:8080` and prints a bearer secret. Then:
   `GET /api/engine/bridge` (your world token) → take `fields/visualTypes/
   modules/worldData/stepHooks` → `POST /render {"state":{...},"size":256}` →
-  the same pixel report + PNG the cloud eye returns. `/clip` renders mp4s.
+  the standard pixel report + PNG. `/clip` renders mp4s.
 
 **Heavy worlds (tideglass, veilfire) need a real GPU** — the local eye renders
 them fine on your Metal/Vulkan adapter. (There is no cloud eye; a software
@@ -655,7 +655,7 @@ the next open node. Work lands node by node; merges heal the graph.
 | `swarm_map` | `project?`, `trunk?`, `nodes?:[…]`, `reset?` | Read the work-graph, or **predesign** it by sending `nodes` (each `{id, area, kind, files, exports, dependsOn, tests}`). Claims + evidence survive a re-map unless `reset:true`. |
 | `swarm_jump` | — | The next open node whose foundations are green — a node with **no docked AI** (or `done` when the map is complete) |
 | `swarm_dock` | `node`, `from?` | Claim an open node + get its situation (files you own, contract, foundations-green?, dependents, jump-to). Refused if a peer holds it or its foundations aren't green |
-| `swarm_probe` | `node`, `name?`, `input?`, `size?` | The **eye**: renders THIS space on the cloud GPU and writes `render-verified` **only if it actually renders (and reacts)** — the un-fakeable half of green. Set the node's scene first (`set_world_data`) |
+| `swarm_probe` | `node`, `name?`, `input?`, `size?` | The **eye**: renders THIS space through the render eye (local-first) and writes `render-verified` **only if it actually renders (and reacts)** — the un-fakeable half of green. Set the node's scene first (`set_world_data`) |
 | `swarm_release` | `node`, `evidence?`, `from?` | Clear your claim; optionally attest caller-side keys (`{"unit-tested":true}`, `playthrough-confirmed`…). `render-verified` is refused here — only `swarm_probe` writes it |
 | `swarm_heal` | `node` | You changed a node's exports → mark every dependent **needs-heal** (they go red until they re-verify against your new contract) |
 
@@ -1038,7 +1038,7 @@ Presence (seeing each other's cursors) is automatic. SHARED STATE — one world,
 - **Rectangles:** `set_world_params { gridW, gridH }` bounds the PLAYABLE RECT inside the space — physics walls stand there. A 2048×768 world is a panorama; 512×2048 a tower.
 - **A big grid is TERRITORY, not a shrunken map:** the resting view is a ~512-unit window; the rest is explored. The camera clamps inside the playable rect so the view never shows void the world could fill.
 - **Frame your own world:** a hook writes `wd.__camera = { x, y, zoom? }` or `{ follow: "<fieldId>" }` — smoothed, hook wins over the AI's `set_camera`.
-- **`viewbox()`** (WGSL builtin): `vec4f(camCenter.xy, viewHalfExtents.zw)` in world units at the REAL viewport aspect — paint view-locked or world-anchored content on any screen shape: `let wp = viewbox().xy + vec2f(uv.x, -uv.y) * viewbox().zw;`
+- **`viewbox()`** (WGSL builtin): `vec4f(camCenter.xy, viewHalfExtents.zw)` in world units at the REAL viewport aspect — paint view-locked or world-anchored content on any screen shape: `let wp = viewbox().xy + uv * viewbox().zw;` (field uv is y-down like the grid; negate uv.y only for y-up math)
 - A screen-shape field's canvas spans the GRID and is positioned by its transform — pin it at grid center (`x: gridSize/2, y: gridSize/2`) or it drifts under physics and your backdrop vanishes off-view.
 
 ## WORLD UI — the UI SYSTEM (chrome-safe HUD)
@@ -1196,8 +1196,8 @@ let sz = spriteSize(0);                          // native pixel size, for aspec
 
 Caps: 64 sheets · 4096 slots · 4MB/sheet · 24MB/world. Metadata lives in
 `worldData.sprites` ({rev, slots, clips}) — read it to map names to indexes.
-KNOWN BLIND SPOT: the cloud `render_probe` does not yet bind sprite atlases —
-verify sprite visuals in a live tab or the local eye.
+KNOWN BLIND SPOT: the headless eye does not yet bind sprite atlases —
+verify sprite visuals in a live tab.
 
 ### Entity Populations — the flock buffer
 

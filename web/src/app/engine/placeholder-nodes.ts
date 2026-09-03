@@ -96,7 +96,9 @@ export function placeholderSeedCommands(now: number): Array<Record<string, unkno
     author: 'the-house',
     code: p.code,
     note: 'blank slot — born with the world',
-    __holder: 'house-seed',
+    // NO __holder: a seeded slot is born FREE. Stamping 'house-seed' here made
+    // auto-claim HOLD every slot for NODE_HOLD_TTL (15m) — locking the world's
+    // own first builder out of its born anatomy (found building UNDERTOW).
     __now: now,
   }))
 }
