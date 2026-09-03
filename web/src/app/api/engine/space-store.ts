@@ -304,6 +304,7 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   remove_tag: new Set(['type', 'fieldId', 'tags']),
   update_effect: new Set(['type', 'fieldId', 'effectId', 'wgsl', 'glsl', 'description', 'blend', 'feedback']),
   remove_interaction: new Set(['type', 'ruleId']),
+  put_world: new Set(['type', 'world']),
 }
 
 export function emptySnapshot(): SceneSnapshot {
@@ -997,6 +998,210 @@ export function applyCommandToSnapshotObject(
           }
         }
       }
+      break
+    }
+
+    case 'put_world': {
+      // THE ONE-SHOT WHOLE-WORLD PUSH. Sections SENT replace wholesale; sections
+      // OMITTED are kept — so a builder can hand over a complete world (or one
+      // complete section) in a single verb instead of dozens of create/add calls.
+      // Composes the SAME machinery as the per-verb paths (universal pipelines):
+      // hooks are delegated to add_step_hook (code gate, replace-in-place,
+      // auto-register, auto-claim, history, owns-conflict warnings), the node
+      // gate refuses the whole put while any node is held by another fresh
+      // builder, and platform-owned worldData keys can never be spoofed in.
+      // ATOMIC: every validation and the gate run BEFORE the first mutation.
+      const worldRaw = cmd.world
+      if (!worldRaw || typeof worldRaw !== 'object' || Array.isArray(worldRaw)) {
+        result.ok = false
+        result.error = 'put_world needs { world: { fields?, stepHooks?, visualTypes?, modules?, interactionRules?, interactionEffects?, worldData?, worldParams? } } — sections sent replace wholesale, sections omitted are kept'
+        return result
+      }
+      const w = worldRaw as Record<string, unknown>
+      const holder = String(cmd.__holder ?? '')
+      const now = Number(cmd.__now ?? Date.now())
+      const warnings: string[] = []
+
+      // ── VALIDATE (no mutation yet) ─────────────────────────────────────────
+      const SECTION_CAPS: Record<string, number> = {
+        fields: 256, stepHooks: 128, visualTypes: 128, modules: 64,
+        interactionRules: 128, interactionEffects: 128,
+      }
+      for (const k of Object.keys(SECTION_CAPS)) {
+        if (w[k] === undefined) continue
+        if (!Array.isArray(w[k])) { result.ok = false; result.error = `put_world: "${k}" must be an array`; return result }
+        if ((w[k] as unknown[]).length > SECTION_CAPS[k]) {
+          result.ok = false
+          result.error = `put_world: "${k}" has ${(w[k] as unknown[]).length} entries — over the cap (${SECTION_CAPS[k]})`
+          return result
+        }
+      }
+      const hooksIn = (w.stepHooks as Record<string, unknown>[] | undefined)
+      if (hooksIn) {
+        const seenH = new Set<string>()
+        for (let i = 0; i < hooksIn.length; i++) {
+          const h = hooksIn[i]
+          if (!h || typeof h !== 'object' || typeof h.code !== 'string' || !h.code.trim()) {
+            result.ok = false
+            result.error = `put_world: every step hook needs { id, code: string } — entry ${i} ("${String(h?.id ?? '?')}") has no code`
+            return result
+          }
+          try { new Function('sim', 'dt', h.code) } catch (e) {
+            result.ok = false
+            result.error = `put_world: hook "${String(h.id ?? i)}" does not compile — NOTHING landed. ${e instanceof Error ? e.message : String(e)}`
+            return result
+          }
+          if (typeof h.id !== 'string' || !h.id) h.id = `hook_${now}_${i}`
+          if (seenH.has(h.id as string)) { result.ok = false; result.error = `put_world: duplicate hook id "${h.id}"`; return result }
+          seenH.add(h.id as string)
+        }
+      }
+      if (w.fields) {
+        const seenF = new Set<string>()
+        for (const f of w.fields as Record<string, unknown>[]) {
+          const id = (f && typeof f.id === 'string') ? f.id : null
+          if (!id) continue
+          // a duplicate id is a MALFORMED payload (two fields would silently fuse
+          // on load) — thrown, not returned, so the route layer 500s loudly
+          if (seenF.has(id)) throw new Error(`put_world: duplicate field id "${id}"`)
+          seenF.add(id)
+        }
+      }
+      if (w.visualTypes) {
+        for (const v of w.visualTypes as Record<string, unknown>[]) {
+          if (!v || typeof v.name !== 'string' || typeof v.wgsl !== 'string') {
+            result.ok = false; result.error = 'put_world: every visualType needs { name: string, wgsl: string }'; return result
+          }
+        }
+      }
+
+      // ── NODE GATE: replacing hooks wholesale overwrites EVERY node, so any
+      // node held fresh by ANOTHER builder refuses the whole put (nothing lands).
+      if (hooksIn && cmd.__admin !== true) {
+        const wdG = snap.worldData as Record<string, unknown>
+        const nodesG = (wdG.__nodes && typeof wdG.__nodes === 'object' ? wdG.__nodes : {}) as Record<string, NodeRecord>
+        for (const [nid, node] of Object.entries(nodesG)) {
+          if (holdStatus(node, holder, now) === 'held') {
+            result.ok = false
+            result.gateRejected = true
+            result.error = `put_world: node "${nid}" is HELD by another builder — the whole-world push is refused, nothing landed. Wait for the hold to go stale or put around it with per-node verbs.`
+            return result
+          }
+        }
+      }
+
+      // ── APPLY (validated — from here on the put lands) ────────────────────
+      if (w.worldParams && typeof w.worldParams === 'object' && !Array.isArray(w.worldParams)) {
+        // merge onto engine defaults + current — a PARTIAL params object must
+        // never strip engine keys (a stripped boundaryMode breaks every load)
+        snap.worldParams = { ...blank.worldParams, ...snap.worldParams, ...(w.worldParams as Record<string, unknown>) } as SceneSnapshot['worldParams']
+      }
+      if (w.worldData && typeof w.worldData === 'object' && !Array.isArray(w.worldData)) {
+        // non-__ keys replace wholesale; every __-prefixed key is PLATFORM-OWNED
+        // on this path (registry, holds, provenance, revs, originals) — carried
+        // from the current world, spoofs stripped. Infrastructure and game state
+        // arrive via their own verbs, never the whole-world put. The policy
+        // contract stays immutable (mayWritePolicy: lands once, then never).
+        const cur = snap.worldData as Record<string, unknown>
+        const incoming = w.worldData as Record<string, unknown>
+        const next: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(incoming)) {
+          if (!k.startsWith('__') && k !== 'policy') next[k] = v
+        }
+        for (const [k, v] of Object.entries(cur)) {
+          if (k.startsWith('__')) next[k] = v
+        }
+        if ('policy' in cur) next.policy = cur.policy
+        else if ('policy' in incoming) {
+          const verdict = mayWritePolicy(cur, incoming.policy)
+          if (verdict.ok) next.policy = verdict.policy
+          else warnings.push('policy refused: ' + verdict.error)
+        }
+        snap.worldData = next
+      }
+      if (w.fields) {
+        // normalize hand-written fields into loadable snapshots — the same
+        // defaults create_field applies, so a put and a build land identical rows
+        snap.fields = (w.fields as Record<string, unknown>[]).map((f, i) => {
+          const skinned = (typeof f.visualTypeName === 'string' && f.visualTypeName) || (typeof f.visualType === 'string' && f.visualType) || undefined
+          if (!skinned) warnings.push(`field "${String(f.name ?? f.id ?? i)}" has no visualType — it renders as NOTHING until skinned (define_visual + set_visual)`)
+          const hasRadius = f.radius != null
+          const hasWH = f.w != null || f.h != null
+          const shape = (f.shapeType as string) ?? (f.shape as string) ?? (hasRadius ? 'circle' : hasWH ? 'rect' : skinned ? 'screen' : 'circle')
+          const t = (f.transform && typeof f.transform === 'object' ? f.transform : {}) as Record<string, unknown>
+          return {
+            id: (typeof f.id === 'string' && f.id) ? f.id : `field_${now}_${i}`,
+            name: (f.name as string) ?? 'Unnamed',
+            color: (f.color as [number, number, number, number]) ?? [1, 1, 1, 1],
+            effects: Array.isArray(f.effects) ? f.effects : [],
+            memory: Array.isArray(f.memory) ? f.memory : [],
+            proximity: Array.isArray(f.proximity) ? f.proximity : [],
+            transform: {
+              x: (t.x as number) ?? (f.x as number) ?? 256,
+              y: (t.y as number) ?? (f.y as number) ?? 256,
+              rotation: (t.rotation as number) ?? 0,
+              scale: (t.scale as number) ?? (f.scale as number) ?? 1,
+              vx: (t.vx as number) ?? 0, vy: (t.vy as number) ?? 0, vr: (t.vr as number) ?? 0,
+              ...(t.z !== undefined ? { z: t.z as number } : {}),
+            },
+            shapeType: shape as 'circle' | 'rect' | 'screen',
+            radius: (f.radius as number) ?? (shape === 'circle' ? 20 : undefined),
+            w: (f.w as number) ?? (shape === 'rect' ? 50 : undefined),
+            h: (f.h as number) ?? (shape === 'rect' ? 50 : undefined),
+            visualTypeName: skinned,
+            visualParams: f.visualParams as [number, number, number, number] | undefined,
+            tags: Array.isArray(f.tags) ? f.tags as string[] : undefined,
+            noHit: f.noHit as boolean | undefined,
+            noCollide: f.noCollide as boolean | undefined,
+            pixelCollide: f.pixelCollide as boolean | undefined,
+            parentFieldId: f.parentFieldId as string | undefined,
+            properties: (f.properties && typeof f.properties === 'object') ? f.properties as Record<string, unknown> : undefined,
+          }
+        }) as SceneSnapshot['fields']
+      }
+      if (w.visualTypes) snap.visualTypes = w.visualTypes as SceneSnapshot['visualTypes']
+      if (w.modules) snap.modules = w.modules as SceneSnapshot['modules']
+      if (w.interactionRules) snap.interactionRules = w.interactionRules as SceneSnapshot['interactionRules']
+      if (w.interactionEffects) snap.interactionEffects = w.interactionEffects as SceneSnapshot['interactionEffects']
+      if (hooksIn) {
+        const wasHookless = snap.stepHooks.length === 0
+        // registry follows the hooks: an AUTO node whose hook vanishes in the put
+        // drops with it; an EXPLICIT (auto:false) registration is a declaration
+        // that outlives any one hook push — it survives.
+        {
+          const wdN = snap.worldData as Record<string, unknown>
+          const nodes = (wdN.__nodes && typeof wdN.__nodes === 'object' ? wdN.__nodes : null) as Record<string, Record<string, unknown>> | null
+          if (nodes) {
+            const incomingIds = new Set(hooksIn.map(h => h.id as string))
+            for (const nid of Object.keys(nodes)) {
+              if (nodes[nid]?.auto === true && !incomingIds.has(nid)) delete nodes[nid]
+            }
+          }
+        }
+        snap.stepHooks = []
+        for (const h of hooksIn) {
+          // the SAME landing path as a single push — code gate (re-checked),
+          // replace-in-place, provenance stamp, __sandbox, auto-register,
+          // auto-claim for the pusher, per-node history, owns-conflict warnings
+          const sub = applyCommandToSnapshotObject(snap, {
+            type: 'add_step_hook',
+            hookId: h.id, code: h.code,
+            ...(typeof h.author === 'string' ? { author: h.author } : {}),
+            ...(typeof h.description === 'string' ? { description: h.description } : {}),
+            ...(typeof h.note === 'string' ? { note: h.note } : {}),
+            __holder: cmd.__holder, __now: cmd.__now, __admin: cmd.__admin, __member: cmd.__member,
+          })
+          if (sub.error) { warnings.push(`hook "${h.id}": ${String(sub.error)}`) }
+          for (const sw of (sub.warnings as string[] | undefined) ?? []) warnings.push(sw)
+          // sub.warning is the first-hook RELOAD notice — ours below is put-accurate
+        }
+        if (wasHookless && hooksIn.length) {
+          warnings.push('this put added the FIRST hooks to a hookless world — a player who already has it OPEN must RELOAD for them to run (the live hot-swap cannot create a sandbox in place); fresh page loads are unaffected')
+        }
+      }
+      result.ok = true
+      result.sections = Object.keys(SECTION_CAPS).concat('worldData', 'worldParams').filter(k => w[k] !== undefined)
+      if (warnings.length) result.warnings = warnings
       break
     }
 

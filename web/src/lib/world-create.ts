@@ -70,6 +70,30 @@ export async function sweepAbandonedDrafts(userId: string): Promise<number> {
  *  hand-rolled copy had drifted to born-PUBLIC "so the buyer can watch the
  *  house AI" — a house AI that does not exist; the platform law is born
  *  PRIVATE unless the caller explicitly says otherwise. */
+/** Compose the birth snapshot — pure, so the born-strict rule is provable in a
+ *  unit test without prisma. BORN STRICT (node-runtime): a world born BLANK is
+ *  born with the node law ON (worldData.__nodeStrict = true) — ownership
+ *  enforcement from frame one, before any hook exists to fight over a lane.
+ *  LEGACY-NEUTRAL: a world born FROM a full snapshot (fork, brew-with-cartridge,
+ *  generate-flow BASE) keeps its source's declaration untouched — forcing strict
+ *  onto inherited hooks would bench working legacy content on day one. */
+export function composeBirthSnapshot(opts: {
+  worldData?: Record<string, unknown>
+  worldParams?: Record<string, unknown>
+  snapshot?: Prisma.InputJsonValue
+}): Prisma.InputJsonValue {
+  let snapshot = opts.snapshot
+    ?? ({ fields: [], worldData: { ...(opts.worldData ?? {}), __nodeStrict: true } } as Prisma.InputJsonValue)
+  // birth-time grid shape (a mobile world is born PORTRAIT, not squeezed into
+  // the default square) — the snapshot's own params win if it declares any
+  if (opts.worldParams && Object.keys(opts.worldParams).length) {
+    const snap = ((snapshot && typeof snapshot === 'object') ? snapshot : { fields: [] }) as Record<string, unknown>
+    const existing = (snap.worldParams as Record<string, unknown> | undefined) ?? {}
+    snapshot = { ...snap, worldParams: { ...opts.worldParams, ...existing } } as Prisma.InputJsonValue
+  }
+  return snapshot
+}
+
 export async function birthWorld(opts: {
   ownerId: string
   name: string
@@ -81,17 +105,7 @@ export async function birthWorld(opts: {
   snapshot?: Prisma.InputJsonValue        // full snapshot override (brew-with-cartridge / generate-flow BASE); wins over worldData
   forkOfId?: string                       // generate-flow BASE: lineage back to the picked world
 }): Promise<{ space: { id: string; slug: string; name: string; description: string | null; isPublic: boolean; createdAt: Date }; token: string }> {
-  let snapshot = opts.snapshot
-    ?? (opts.worldData && Object.keys(opts.worldData).length
-      ? ({ fields: [], worldData: opts.worldData } as Prisma.InputJsonValue)
-      : undefined)
-  // birth-time grid shape (a mobile world is born PORTRAIT, not squeezed into
-  // the default square) — the snapshot's own params win if it declares any
-  if (opts.worldParams && Object.keys(opts.worldParams).length) {
-    const snap = ((snapshot && typeof snapshot === 'object') ? snapshot : { fields: [] }) as Record<string, unknown>
-    const existing = (snap.worldParams as Record<string, unknown> | undefined) ?? {}
-    snapshot = { ...snap, worldParams: { ...opts.worldParams, ...existing } } as Prisma.InputJsonValue
-  }
+  const snapshot: Prisma.InputJsonValue | undefined = composeBirthSnapshot(opts)
   const space = await createSpaceUniqueSlug(opts.baseSlug, (slug) => ({
     name: opts.name,
     slug,
