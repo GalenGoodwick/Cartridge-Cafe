@@ -160,10 +160,16 @@ export function bakeField({ verts: srcVerts, tris }, { res = 64, pad = 0.10, poi
     if (!buckets.has(k)) buckets.set(k, [])
     buckets.get(k).push(i)
   }
+  // ring search is only ever called for voxels the band mark says are NEAR the
+  // surface, so it terminates within a couple of rings — cap it there. (The
+  // first version ran this search for EVERY voxel, including the ~95% of the
+  // volume that clamps to ±band anyway: a thin mesh in a mostly-empty cube
+  // made it crawl — Fox at 80³ took 8.5 min. Banding took it to seconds.)
+  const RING_CAP = Math.ceil(((band * 1.8) * HC)) + 2
   const nearest = (x, y, z) => {
     const bx = clampi(Math.floor(x * HC)), by = clampi(Math.floor(y * HC)), bz = clampi(Math.floor(z * HC))
     let best = Infinity
-    for (let r = 0; r < HC; r++) {
+    for (let r = 0; r <= RING_CAP; r++) {
       for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
         if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue
         const cx = bx + dx, cy = by + dy, cz = bz + dz
@@ -178,10 +184,38 @@ export function bakeField({ verts: srcVerts, tris }, { res = 64, pad = 0.10, poi
       }
       // a hit at ring r bounds the true nearest within ring r+1 — one more ring closes it
       if (best !== Infinity && Math.sqrt(best) <= (r + 1) / HC) break
-      if (best !== Infinity && Math.sqrt(best) > 2 * (4 / res)) break   // already past the band
     }
-    return Math.sqrt(best)
+    return Math.sqrt(best)   // Infinity when nothing within RING_CAP (caller clamps)
   }
+
+  // THE BAND MARK — the whole reason the bake is fast. Exact distance is only
+  // meaningful within ±band (everything else is clamped), so: splat each
+  // surface point into a voxel mark grid, dilate it band+1 voxels outward
+  // (26-neighbor passes), and compute exact distance ONLY where marked.
+  const mark = new Uint8Array(res * res * res)
+  for (let i = 0; i < NP; i++) {
+    const ix = Math.min(res - 1, Math.max(0, Math.floor(pts[i * 3] * res)))
+    const iy = Math.min(res - 1, Math.max(0, Math.floor(pts[i * 3 + 1] * res)))
+    const iz = Math.min(res - 1, Math.max(0, Math.floor(pts[i * 3 + 2] * res)))
+    mark[(iz * res + iy) * res + ix] = 1
+  }
+  const DILATE = 5   // band is 4 voxels; +1 for voxel-center offset
+  let cur = mark
+  for (let pass = 0; pass < DILATE; pass++) {
+    const nxt = Uint8Array.from(cur)
+    for (let iz = 0; iz < res; iz++) for (let iy = 0; iy < res; iy++) for (let ix = 0; ix < res; ix++) {
+      if (cur[(iz * res + iy) * res + ix]) continue
+      let hit = false
+      for (let dz = -1; dz <= 1 && !hit; dz++) for (let dy = -1; dy <= 1 && !hit; dy++) for (let dx = -1; dx <= 1 && !hit; dx++) {
+        const nx = ix + dx, ny = iy + dy, nz = iz + dz
+        if (nx < 0 || ny < 0 || nz < 0 || nx >= res || ny >= res || nz >= res) continue
+        if (cur[(nz * res + ny) * res + nx]) hit = true
+      }
+      if (hit) nxt[(iz * res + iy) * res + ix] = 1
+    }
+    cur = nxt
+  }
+  const banded = cur
 
   // sign: z-column crossings per (x,y) column, parity below the voxel = inside
   const crossings = Array.from({ length: res * res }, () => [])
@@ -212,12 +246,21 @@ export function bakeField({ verts: srcVerts, tris }, { res = 64, pad = 0.10, poi
       const y = (iy + 0.5) / res
       for (let ix = 0; ix < res; ix++) {
         const x = (ix + 0.5) / res
-        let d = nearest(x, y, z)
+        const o = (iz * res + iy) * res + ix
         const cl = crossings[ix * res + iy]
         let below = 0
         for (const cz of cl) { if (cz < z) below++; else break }
-        if (below & 1) { d = -d; inside++ }
-        field[(iz * res + iy) * res + ix] = Math.max(-band, Math.min(band, d))
+        const isInside = (below & 1) === 1
+        if (isInside) inside++
+        let d
+        if (banded[o]) {
+          d = nearest(x, y, z)
+          if (!Number.isFinite(d)) d = band
+          if (isInside) d = -d
+        } else {
+          d = isInside ? -band : band   // outside the band: the clamp IS the answer
+        }
+        field[o] = Math.max(-band, Math.min(band, d))
       }
     }
   }
