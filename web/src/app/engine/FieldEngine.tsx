@@ -2530,6 +2530,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     const aspect = cnv && cnv.clientWidth > 0 && cnv.clientHeight > 0 ? cnv.clientWidth / cnv.clientHeight : 1
     const bW = wp.gridW ?? gridSize
     const bH = wp.gridH ?? gridSize
+    // declared SQUARE = classic square = CONTAIN (mirror of restingFrame's rule)
+    if (bW === bH) return 0
     const maxRange = Math.min(bW / Math.max(aspect, 1), bH * Math.min(aspect, 1))
     return maxRange > 0 ? gridSize / maxRange : 0
   }

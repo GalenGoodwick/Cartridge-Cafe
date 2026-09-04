@@ -73,6 +73,13 @@ export function restingFrame(
   const squareZoom = fitZoom * (gridSize / Math.min(gridSize, defaultGridSize))
   if (!gw && !gh) return { center: { x: gridSize / 2, y: gridSize / 2 }, zoom: squareZoom }
   const bW = gw ?? gridSize, bH = gh ?? gridSize
+  // A declared SQUARE is a classic square (Galen, Sep 4: tideglass/veilfire-3d
+  // "over zoom"): the rect-home sweep stamped gridW=gridH=512 onto legacy
+  // square worlds, silently flipping them from CONTAIN to COVER — a ~44%
+  // vertical crop on a 16:9 monitor that reads as zoomed-in. COVER is for
+  // genuinely rectangular worlds (portrait mobile) where cropping the long
+  // axis is the design; a square rests contained, whole world visible.
+  if (bW === bH) return { center: { x: bW / 2, y: bH / 2 }, zoom: squareZoom }
   const aspect = canvasAspect > 0 ? canvasAspect : 1
   const maxRange = Math.min(bW / Math.max(aspect, 1), bH * Math.min(aspect, 1))
   const zoom = maxRange > 0 ? gridSize / maxRange : squareZoom
