@@ -3,7 +3,9 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { hasIpControl, isProductConfigured } from '@/lib/stripe'
+import { hasIpControl, isProductConfigured, IP_PRICE_USD } from '@/lib/stripe'
+import { getCompanyByOwner } from '@/lib/company'
+import SuiteClaim from './SuiteClaim'
 
 export const metadata: Metadata = { title: 'Premium Suite', description: 'IP control, asset imports, and your company space.' }
 export const dynamic = 'force-dynamic'
@@ -21,7 +23,8 @@ export default async function SuitePage() {
   if (!user) redirect('/auth/signin')
   const active = await hasIpControl(user.id)
   const buyable = isProductConfigured('ip')
-  const handle = user.email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
+  const company = active ? await getCompanyByOwner(user.id) : null
+  const handle = company?.handle || user.email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
 
   const Row = ({ mark, title, body, live }: { mark: string; title: string; body: string; live: boolean }) => (
     <div className="flex gap-3 items-start">
@@ -63,10 +66,13 @@ export default async function SuitePage() {
 
           <section className={box}>
             {active ? (
+              <>
               <div className="flex flex-wrap gap-3">
                 <a href={`/c/${handle}`} className="font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">◈ OPEN MY COMPANY SPACE</a>
                 <a href="/account" className="font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-white/20 text-white/70 hover:bg-white/10">MANAGE MEMBERSHIP</a>
               </div>
+              <SuiteClaim current={company ? { handle: company.handle, name: company.name } : null} />
+              </>
             ) : buyable ? (
               <SuiteBuy />
             ) : (
@@ -83,7 +89,7 @@ export default async function SuitePage() {
 function SuiteBuy() {
   return (
     <a href="/suite/buy" className="inline-block font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-amber-300/50 text-amber-100 hover:bg-amber-400/15">
-      ◆ JOIN THE SUITE
+      ◆ JOIN THE SUITE — ${IP_PRICE_USD}/mo
     </a>
   )
 }

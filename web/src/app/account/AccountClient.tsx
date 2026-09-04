@@ -178,15 +178,15 @@ export default function AccountClient(p: {
                   <div className="text-[14px] text-amber-200/90">◆ IP control — active</div>
                   <p className="text-[12.5px] leading-relaxed text-white/45 mt-1">
                     your worlds are closed source: playable on the shelf, never readable or reusable by others.
-                    includes your custom company page — ask in the commons to set it up.
+                    your company space (name it, claim your subdomain) lives in the <a href="/suite" className="text-amber-200/80 underline hover:text-amber-100">◆ suite</a>.
                   </p>
                 </>
               ) : (
                 <p className="text-[12.5px] leading-relaxed text-white/45">
                   standard deal: your published worlds&rsquo; code is open source <em>within the platform</em>, attributed through lineage.
                   {p.ipBuyable
-                    ? <> the ◆ IP control membership closes your source + adds a company page — available on the front door.</>
-                    : <> a ◆ IP control membership (closed source + company page) is coming.</>}
+                    ? <> the <a href="/suite" className="text-amber-200/80 underline hover:text-amber-100">◆ IP control membership</a> ($100/mo) closes your source + adds your company space.</>
+                    : <> a ◆ IP control membership (closed source + company space) is coming.</>}
                 </p>
               )}
             </div>

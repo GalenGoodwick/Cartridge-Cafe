@@ -259,6 +259,7 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
 // The pay webhook revokes the moment Stripe reports the subscription deleted.
 // Lapse costs the build seat ONLY — your worlds and node lineage stay forever.
 export const EDITOR_PRICE_USD = 10        // the ONE membership
+export const IP_PRICE_USD = 100           // ◆ IP control (Galen, Sep 4: $100/mo)
 
 /** IP CONTROL (the premium tier): the holder's worlds are closed source —
  *  the platform's open-source-within-the-cafe deal does not apply to them.
