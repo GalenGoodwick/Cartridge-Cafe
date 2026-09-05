@@ -1189,11 +1189,11 @@ export default function TheGrid() {
         {/* solid black backing under the bar (Galen: "bottom bar not black") —
             the world/menu no longer shows through between the buttons */}
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
-        <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
+        <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
           {/* LEFT ZONE — priority order (Galen, Sep 5: share flows left next
               to edit and title): ◂ · ⚡EDIT · title · ↗SHARE always visible;
               set-specific controls take the clip when space runs out. */}
-          <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 52px)' }}>
+          <div className="flex-1 basis-0 min-w-0 flex items-center gap-2 overflow-hidden">
             <button data-grid-back aria-label="back"
               onClick={() => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } }}
               title="back — at the start, opens the dockstar"
@@ -1271,7 +1271,7 @@ export default function TheGrid() {
           {/* RIGHT ZONE — flex-row-reverse (Galen, Sep 5: 'CONNECT AI is
               going off the edge'): the FIRST child pins to the RIGHT edge and
               overflow clips on the LEFT — the green door can never fall off. */}
-          <div className="absolute inset-y-0 right-0 flex flex-row-reverse items-center gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 52px)' }}>
+          <div className="flex-1 basis-0 min-w-0 flex flex-row-reverse items-center gap-2 overflow-hidden">
             {uiSet !== 'engine' && (
             <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
               className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${bsz} ${
