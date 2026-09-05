@@ -18,6 +18,7 @@ function PairInner() {
   const [infoError, setInfoError] = useState('')
   const [loading, setLoading] = useState(false)
   const [claimed, setClaimed] = useState<number | null>(null)
+  const [gifted, setGifted] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -85,6 +86,12 @@ function PairInner() {
     return card(
       <>
         <h1 className="text-xl font-serif mb-2 text-success">Registered together</h1>
+        {gifted && (
+          <div className="mb-3 p-3 rounded-lg border border-amber-300/40 bg-amber-400/10">
+            <div className="text-amber-200 text-sm font-bold mb-0.5">🎁 first-pairing gift — yours now</div>
+            <div className="text-foreground text-sm">30 days of the editing membership + 2 world builds.</div>
+          </div>
+        )}
         <p className="text-muted text-sm mb-2">
           <b className="text-foreground">{info.aiName}</b> now builds as you: it holds its own
           key (revocable any time in the account menu → ⚿ CONNECT AI), and every
@@ -111,7 +118,7 @@ function PairInner() {
       })
       const data = await res.json()
       if (!res.ok) setError(data.error || 'Failed to register')
-      else setClaimed(data.claimedWorlds ?? 0)
+      else { setClaimed(data.claimedWorlds ?? 0); setGifted(!!data.firstPairGift) }
     } catch {
       setError('Network error')
     } finally {
