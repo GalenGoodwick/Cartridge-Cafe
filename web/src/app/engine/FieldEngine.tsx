@@ -6451,29 +6451,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // CONNECT AI open flow — shared by the ⚡ CONNECT AI button AND the
   // "AI UNPLUGGED" status pill (clicking the pill should DO the obvious thing).
   const openConnectAi = async () => {
-    // an AI prompt box: its key mint needs a session. Auth FIRST.
-    if (!me) {
-      const sess = await fetch('/api/auth/session').then(r => r.json()).catch(() => null)
-      if (!sess?.user) { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname); return }
-      setMe(sess.user.email || sess.user.name || null)
-    }
-    // owner on their own LIVE space: the AI edits the world DIRECTLY — the
-    // established version system (save points / SET MAIN) is the history and
-    // safety net, not a branch detour. (branch→fork transition: branch-to-edit
-    // retired with branch voting; a fork is simply a new world.)
+    // ONLY-MCP era (Galen, Sep 5): no auth, no key mint — the panel shows the
+    // MCP briefing (one-liner + use_world by slug); keys never ride HTML. Any
+    // player may open it: the sandbox law made every non-premium world theirs
+    // to edit through their own AI.
     setPlugOpen(v => !v)
-    if (!plugToken && spaceSlug) {
-      setPlugBusy(true)
-      try {
-        const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/token`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
-        })
-        const d = await r.json()
-        if (r.ok) setPlugToken(d.token)
-      } finally { setPlugBusy(false) }
-    } else if (!plugToken && !spaceSlug && lastSceneRef.current?.includes(' ⑂ ')) {
-      mintBranchToken(lastSceneRef.current)
-    }
   }
 
   // THE PHONE FRAME, ENGINE-OWNED (Galen, Aug 29: "viewport on desktop MUST
@@ -6832,6 +6814,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               >
                 ⛶ PLAY
               </button>
+            )}
+            {!shellUi && !((simulationRef.current?.worldData?.premium as { usd?: number } | undefined)?.usd) && (
+            <button
+              onClick={() => void openConnectAi()}
+              title="get your AI editing this world"
+              className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono font-bold bg-amber-400 border-2 border-amber-200/80 text-black hover:bg-amber-300 transition-all shadow-[0_0_14px_rgba(245,176,76,0.45)]"
+            >
+              ⚡ EDIT
+            </button>
             )}
             {!shellUi && (
             <button
