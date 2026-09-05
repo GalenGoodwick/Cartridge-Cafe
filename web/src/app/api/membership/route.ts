@@ -17,9 +17,20 @@ export async function GET() {
     ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
     : null
   const member = user ? await hasEditingMembership(user.id) : false
+  // LAPSED = held a seat once (paid or gift), none live now — the front door
+  // shows the rejoin offer off this flag (Galen, Sep 5: "do they get a pop up
+  // when membership expires? with offer to buy again?").
+  let lapsed = false
+  if (user && !member) {
+    const { readEntitlements } = await import('@/lib/stripe')
+    const ents = await readEntitlements(user.id)
+    lapsed = ents.some((e) => e.product === 'editor' || e.product === 'editor_pro')
+  }
   return NextResponse.json({
     member,
+    lapsed,
     usd: EDITOR_PRICE_USD,
+    creditsPerMonth: 2,
     buyable: stripeConfigured(),
     signedIn: !!user,
   })

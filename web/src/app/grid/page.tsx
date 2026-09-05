@@ -79,6 +79,16 @@ export default function TheGrid() {
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
   const [visMsg, setVisMsg] = useState('')   // ◆ SET VISUAL feedback (the EYE pane)
+  // THE LAPSE OFFER (Galen, Sep 5): when a once-held seat has expired, offer
+  // the rejoin ONCE per lapse (dismiss persists in localStorage).
+  const [lapseOffer, setLapseOffer] = useState(false)
+  const [lapseBusy, setLapseBusy] = useState(false)
+  useEffect(() => {
+    if (!me) return
+    fetch('/api/membership').then(r => r.json()).then(d => {
+      if (d?.lapsed && localStorage.getItem('cafe-lapse-offer') !== 'dismissed') setLapseOffer(true)
+    }).catch(() => {})
+  }, [me])
   // the green door's AI-ALIVE light — fed by the engine's cc:ai-live beacon
   const [aiLive, setAiLive] = useState(false)
   useEffect(() => {
@@ -1065,6 +1075,31 @@ export default function TheGrid() {
           prompt). Field-bounded like everything else. */}
       {brewIconOpen && (uiSet === 'main' || uiSet === 'engine') && (
         <BrewIconPanel bounds={inset} onClose={() => setBrewIconOpen(false)} />
+      )}
+
+      {/* ⏳ THE LAPSE OFFER — your seat ended; rejoin keeps the sandbox open */}
+      {lapseOffer && (
+        <div className="fixed inset-0 z-[139] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => { setLapseOffer(false); localStorage.setItem('cafe-lapse-offer', 'dismissed') }}>
+          <div className="w-full max-w-sm rounded-2xl border border-amber-300/40 bg-[#14100a]/97 p-5 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">⏳ YOUR EDITING SEAT ENDED</div>
+            <p className="text-[13px] leading-relaxed text-white/70 mb-1">Your worlds, credits, and crews are all still yours — only the seat to build in <b>other</b> creators&rsquo; worlds paused.</p>
+            <p className="text-[12.5px] leading-relaxed text-white/55 mb-4">Rejoin for $10/mo — and every month includes <b className="text-amber-200/90">2 world builds</b>.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setLapseOffer(false); localStorage.setItem('cafe-lapse-offer', 'dismissed') }}
+                className="font-mono text-[12px] tracking-[0.12em] px-3.5 py-2 rounded-lg border border-white/20 text-white/70 hover:bg-white/10 transition-colors">not now</button>
+              <button disabled={lapseBusy} onClick={async () => {
+                setLapseBusy(true)
+                try { const r = await fetch('/api/membership', { method: 'POST' }); const d = await r.json()
+                  if (r.ok && d?.url) { window.location.href = d.url; return } } catch { /* offline */ }
+                setLapseBusy(false)
+              }}
+                className="font-mono text-[12px] font-bold tracking-[0.12em] px-3.5 py-2 rounded-lg border-2 border-amber-200/80 bg-amber-400 text-black hover:bg-amber-300 transition-all disabled:opacity-40">
+                {lapseBusy ? '…' : 'REJOIN — $10/MO'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ✦ THE PREMIUM GATE — field-bounded; buy once, it's on your account */}

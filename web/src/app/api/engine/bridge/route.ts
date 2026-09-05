@@ -910,7 +910,7 @@ export async function POST(req: NextRequest) {
           if (!isKeeper) {
             creditsLeft = await spendGenCredit(auth.playerId)
             if (creditsLeft === null) {
-              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy build credits on the ACCOUNT page (cartridge.cafe/account) — bundles are cheaper — then create again. Check the balance anytime with {"type":"credits_read"}.`,
+              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy credits on the ACCOUNT page (bundles are cheaper), or note the editing membership includes 2 build credits EVERY month. Check the balance anytime with {"type":"credits_read"}.`, buyAt: 'https://cartridge.cafe/account',
                 needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD, credits: 0 })
               continue
             }

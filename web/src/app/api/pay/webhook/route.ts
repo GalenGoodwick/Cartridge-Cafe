@@ -22,6 +22,24 @@ export async function POST(req: NextRequest) {
   }
   const meta = obj.metadata ?? {}
 
+  // MONTHLY RENEWALS (Galen, Sep 5: "every month bought gives two world
+  // builds"): each PAID subscription cycle grants 2 build credits. Only real
+  // cycles — subscription_create is covered by checkout.session.completed
+  // above, and a $0 trial invoice buys nothing. Idempotent per invoice id.
+  if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
+    const inv = obj as unknown as { id?: string; billing_reason?: string; amount_paid?: number
+      subscription_details?: { metadata?: { userId?: string; product?: string } }
+      parent?: { subscription_details?: { metadata?: { userId?: string; product?: string } } }
+      lines?: { data?: Array<{ metadata?: { userId?: string; product?: string } }> } }
+    const sd = inv.subscription_details?.metadata ?? inv.parent?.subscription_details?.metadata ?? inv.lines?.data?.[0]?.metadata ?? {}
+    if (sd.product === 'editor' && sd.userId && inv.id
+        && inv.billing_reason === 'subscription_cycle'
+        && typeof inv.amount_paid === 'number' && inv.amount_paid > 0) {
+      const { grantGenCredits } = await import('@/lib/stripe')
+      await grantGenCredits(sd.userId, 'inv:' + inv.id, 2)
+    }
+  }
+
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
     // worldgen buys a COUNTER, not a boolean — credit the generation ledger
@@ -31,14 +49,13 @@ export async function POST(req: NextRequest) {
       const qty = Number(meta.qty)
       await grantGenCredits(meta.userId, obj.id, Number.isFinite(qty) && qty >= 1 ? qty : 1)
     }
-    // THE MEMBERSHIP INCLUDES ONE BUILD CREDIT (Galen, Sep 1: "selecting
-    // membership gives 1") — so a new member can build a world the moment they
-    // join instead of paying again. Idempotent per checkout session: signup
-    // grants exactly one; monthly renewals arrive as invoice/subscription events
-    // (NOT checkout.session.completed), so they never re-grant.
+    // EVERY MONTH BOUGHT GIVES TWO WORLD BUILDS (Galen, Sep 5 — supersedes
+    // the Sep 1 'membership gives 1'). Signup month grants 2 here (idempotent
+    // per checkout session); each RENEWAL month grants 2 via the invoice
+    // branch below.
     if (meta.product === 'editor') {
       const { grantGenCredits } = await import('@/lib/stripe')
-      await grantGenCredits(meta.userId, obj.id, 1)
+      await grantGenCredits(meta.userId, obj.id, 2)
     }
     // a PAID EXPERIENCE grants a seat at the workbench — mint the buyer a
     // co-program membership in the world they bought (idempotent)
