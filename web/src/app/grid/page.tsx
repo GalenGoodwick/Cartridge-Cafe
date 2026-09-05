@@ -17,7 +17,7 @@ import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
-import { iconAuthorPrompt, playerGlyphPrompt, worldBriefingPrompt } from '@/lib/connectPrompt'
+import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import { startCafeAudio } from '@/app/engine/cafe-audio'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
@@ -547,36 +547,8 @@ export default function TheGrid() {
   // BUILD KEY on the space, then bake it into the briefing prompt the old
   // engine used (worldBriefingPrompt). No key ⇒ the AI has nothing to build
   // with — the whole point. Minted lazily when the CONNECT surface opens.
-  const [plugToken, setPlugToken] = useState<string | null>(null)
-  const [plugErr, setPlugErr] = useState<string>('')
-  const plugSlugRef = useRef<string>('')
-  const wantConnect = connectOpen || tool === 'connect'
-  useEffect(() => {
-    if (!wantConnect) return
-    const slug = scene.startsWith('space:') ? scene.slice(6) : null
-    if (!slug) { setPlugToken(null); setPlugErr('house cartridge — fork or brew a world of your own to connect an AI to it.'); return }
-    if (plugSlugRef.current === slug && plugToken) return   // already minted for this world
-    plugSlugRef.current = slug
-    setPlugToken(null); setPlugErr('')
-    fetch(`/api/spaces/${encodeURIComponent(slug)}/token`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'AI agent' }),
-    }).then(r => r.json().then(d => ({ ok: r.ok, d })))
-      .then(({ ok, d }) => {
-        if (ok && d?.token) setPlugToken(d.token as string)
-        else setPlugErr(d?.error === 'Unauthorized' || !d ? 'sign in as the owner to mint a build key for this world.' : (d?.error || 'could not mint a build key'))
-      })
-      .catch(() => setPlugErr('could not mint a build key — offline?'))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantConnect, scene])
-  const connectPrompt = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin.replace('localhost:3131', 'cartridge.cafe') : 'https://cartridge.cafe'
-    if (!plugToken) return ''
-    // Opening a world DIRECTLY (by URL) leaves `selected` null, so the prompt
-    // used to say the literal "my world" (Galen: nocturne "says my world").
-    // Fall back to the resolved space's real name before that generic default.
-    const worldName = selected?.name ?? spc?.name ?? spaceInfo?.name ?? 'my world'
-    return worldBriefingPrompt({ token: plugToken, worldName, origin })
-  }, [plugToken, selected, spc, spaceInfo])
+  // (ONLY-MCP era: the old per-world key mint + prompt memo lived here — keys
+  // never ride HTML now; the MCP server does keys via use_world.)
 
   // cfg with STABLE IDENTITY: even when other eye fields churn (a live world's
   // graph changes every tick), the owner views' props only change when the
@@ -878,24 +850,21 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* CONNECT AI — field-bounded, copyable prompt */}
+      {/* CONNECT AI — ONLY MCP (Galen, Sep 5): the one-liner is the whole door;
+          the server carries onboarding, the first-pair gift, and this world's
+          slug is the only context the AI needs. */}
       {connectOpen && (
         <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setConnectOpen(false)}>
           <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-            <p className="text-[12px] text-white/60 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
-            {plugErr && <p className="text-[12px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
-            {!plugErr && !plugToken && <p className="text-[12px] text-white/55 mb-2">minting a build key…</p>}
-            {plugToken && <>
-              <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
-              <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[13px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
-                {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
-              </button>
-              <p className="text-[11px] text-white/45 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
-            </>}
+            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI — ONE COMMAND</div>
+            <p className="text-[12px] text-white/60 leading-relaxed mb-3">Run this in your terminal (Claude Code / any MCP client). Your AI gets the whole cafe: it creates your account with you, your first registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>, and it sets up its own eye.</p>
+            <button onClick={async () => { try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+              className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2.5 text-left text-[13.5px] text-black font-bold break-all transition-all mb-3">
+              {copied ? '✓ COPIED' : 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'}
+            </button>
+            <p className="text-[12px] text-white/55 leading-relaxed">then tell your AI: <span className="text-emerald-200/80 select-all">connect_account, then use_world {'{'}"slug":"{(selected?.slug ?? spc?.slug ?? '')}"{'}'}</span> — and build this world together.</p>
           </div>
         </div>
       )}
@@ -1034,18 +1003,13 @@ export default function TheGrid() {
             )}
             {tool === 'connect' && (
               <div className="w-full h-full overflow-y-auto p-4 font-mono">
-                <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI</div>
-                <p className="text-[12px] text-white/70 leading-relaxed mb-3">Paste this into your working AI (Claude, or any MCP agent) — it carries your world&rsquo;s build key, reads the guide, and builds with you.</p>
-                {plugErr && <p className="text-[12px] text-amber-200/85 leading-relaxed mb-2">{plugErr}</p>}
-                {!plugErr && !plugToken && <p className="text-[12px] text-white/55 mb-2">minting a build key…</p>}
-                {plugToken && <>
-                  <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/80 leading-relaxed select-all whitespace-pre-wrap max-h-[46vh] overflow-y-auto">{connectPrompt}</div>
-                  <button onClick={async () => { try { await navigator.clipboard.writeText(connectPrompt); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                    className="mt-3 w-full py-2.5 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[13px] tracking-[0.18em] hover:bg-emerald-400/25 transition-colors">
-                    {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY THE PROMPT (with your build key)'}
-                  </button>
-                  <p className="text-[11px] text-white/45 mt-2">this key IS write-access to this world — share only with your AI. Re-opening mints a fresh one.</p>
-                </>}
+                <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI — ONE COMMAND</div>
+                <p className="text-[12px] text-white/70 leading-relaxed mb-3">The ONE door is the MCP server. Run this once (Claude Code / any MCP client) — your AI creates your account with you, your first registration gifts 30 days + 2 builds, and use_world opens this world.</p>
+                <button onClick={async () => { try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                  className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2.5 text-left text-[13px] text-black font-bold break-all transition-all mb-2">
+                  {copied ? '✓ COPIED' : 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'}
+                </button>
+                <p className="text-[12px] text-white/55 leading-relaxed">then: <span className="text-emerald-200/80 select-all">connect_account · use_world {'{'}"slug":"{(scene.startsWith('space:') ? scene.slice(6) : '')}"{'}'}</span></p>
               </div>
             )}
           </div>

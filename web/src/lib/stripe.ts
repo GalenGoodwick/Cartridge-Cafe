@@ -312,6 +312,10 @@ export async function createEditorCheckout(
     // webhook maps a future subscription.deleted back to this account/product
     'subscription_data[metadata][userId]': userId,
     'subscription_data[metadata][product]': product,
+    // FREE TRIAL WITH ANY NEW MEMBERSHIP (Galen, Sep 5: "fair that everyone
+    // gets to test before buying") — 30 days on the card before the first
+    // charge; cancel inside the month costs nothing.
+    'subscription_data[trial_period_days]': '30',
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',

@@ -7468,7 +7468,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             const wdF = (simulationRef.current?.worldData ?? {}) as Record<string, unknown>
             const wpF = (simulationRef.current?.worldParams ?? {}) as Record<string, unknown>
             const briefing = worldBriefingPrompt({
-              token: tok, worldName: cur || spaceSlug || '',
+              token: tok, worldName: cur || spaceSlug || '', slug: spaceSlug || undefined,
               branch: bm ? { base: bm[1], by: bm[2], version: bm[3] } : null,
               brief: plugBrief, origin,
               facets: {

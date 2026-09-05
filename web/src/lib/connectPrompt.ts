@@ -166,67 +166,33 @@ No world token yet? Brew a world on main first — its AI key works here too.`
 
 /** WORLD BRIEFING — connect an AI to a specific world or branch (the in-world dock). */
 export function worldBriefingPrompt(p: {
-  token: string
+  token: string            // deprecated in the ONLY-MCP era — keys never ride HTML prompts now
   worldName: string
+  slug?: string
   branch?: { base: string; by: string; version: string } | null
   brief?: string
   origin?: string
-  /** the world's DECLARED facets at mint (Galen, Aug 29: settings go into the
-   *  prompt, with direction on what parameters exist) — the AI must know it is
-   *  building a mobile portrait world, and what dials it has. */
   facets?: { fit?: string; access?: string; gridW?: number; gridH?: number; gridSize?: number }
 }) {
-  const origin = p.origin ?? cafeOrigin()
-  const bm = p.branch
-  const looking = bm
-    ? `You are looking at world "${bm.base}" — branch by ${bm.by}, version v${bm.version}.`
-    : `You are looking at world "${p.worldName}".`
-  const scope = bm
-    ? `This token is scoped to THIS branch: your edits continue it as v${Number(bm.version) + 1}, v${Number(bm.version) + 2}… (the eye auto-versions). Versions CONTINUE one branch. To bring a different take, make your OWN branch under your name (its own token) — that's a new challenger, not a version. The tournament, not edit access, decides which branch takes main; the original is immortal.`
-    : `The eye versions your edits automatically after each settled burst — just build.`
-  const ask = p.brief?.trim()
-    ? 'BUILD THIS: ' + p.brief.trim()
-    : 'Ask me what to build, or read the world state and continue it.'
-  // THE WORLD'S DECLARED SETTINGS — what the creator chose, so the AI builds
-  // FOR them (a mobile world built square is the bug this block kills) — plus
-  // the dials it may adjust and where their contracts live.
+  // ONLY MCP (Galen, Sep 5: "we go ONLY MCP. need to remove html. And sweep/
+  // repoint all paths"): the briefing no longer embeds a raw build key — the
+  // ONE door is the MCP server; the world is named by slug and use_world does
+  // the keys. Facets still ride so the AI builds FOR the declared shape.
+  void p.token
   const f = p.facets ?? {}
-  const gs = f.gridSize && f.gridSize > 0 ? f.gridSize : 512
-  // GRID ≡ VIEWPORT (Galen, Aug 31): a mobile world IS its portrait rect —
-  // the engine rests at exact cover of the declared gridW×gridH, and the page
-  // frame conforms to its aspect, so the rect's corners are the phone's
-  // corners. Tell the AI its true canvas; never tell it to build a square
-  // into a portrait frame.
-  const rw = f.gridW && f.gridW > 0 ? f.gridW : gs
-  const rh = f.gridH && f.gridH > 0 ? f.gridH : gs
-  const declared: string[] = []
-  if (f.fit === 'mobile') declared.push(`MOBILE (portrait phone frame) — your canvas IS the ${rw}×${rh} playable rect, center ${rw / 2},${rh / 2}: the phone's corners map exactly to the rect's corners (grid ≡ viewport). Build to FILL it. A base backdrop field already covers it — build on top of it, or replace it.`)
-  else if (f.fit === 'desktop') declared.push('DESKTOP (wide screen + mouse)')
-  if (f.gridW && f.gridH && f.fit !== 'mobile') declared.push(`playable rect ${f.gridW}×${f.gridH} (build to FILL it — content and camera use the whole rect)`)
-  else if (f.gridSize && f.fit !== 'mobile') declared.push(`grid ${f.gridSize}×${f.gridSize}`)
-  if (f.access === 'open') declared.push('OPEN BUILDING (others may build here too — build in NODES)')
-  const dialsMobile = f.fit === 'mobile'
-    ? `DIALS: worldData.fit ('mobile' = the phone frame) · wd.__camera {x,y,zoom|follow} (frames within the rect; at rest the engine shows the whole rect) — contracts in the guide's THE GRID section. Keep the declared ${rw}×${rh} rect: it is what the phone shows.`
-    : `DIALS you may adjust: set_world_params {gridSize | gridW,gridH} (the playable rect) · worldData.fit ('mobile' = portrait phone world, framed on desktop) · wd.__camera — contracts in the guide's THE GRID section.`
-  const settings = declared.length
-    ? `SETTINGS (declared at creation — honor them): ${declared.join(' · ')}.
-${dialsMobile}`
-    : dialsMobile
-  return `Connect to my cartridge.cafe ${bm ? `world "${bm.base}" · branch "${bm.by}" · v${bm.version}` : `world "${p.worldName}"`}:
-POST commands to ${origin}/api/engine/bridge
-header: Authorization: Bearer ${p.token}
-${looking}
-${nodeLawFirst(origin)}
-1. GET ${origin}/api/engine/guide and read it fully (markdown; instructions are MANDATORY — key entry + the point).
-2. GET the bridge URL for the current world state. Fields are INVISIBLE until given a visualType.
-${settings}
-${ask}
-THE BRAIN — stream your coded imagination into it, then read it back (optional, but it is the difference). The brain is a shared, persistent, pure-geometric field — no LLM, just your stream threading in live. It is NOT a one-shot lookup and NOT for tidy prose: it is where your IMAGINATION runs as CODE. As you dream this world, pour the stream in the way you'd build it — the SDF forms, the one light, the grade, how a thing moves, the material under it — POST ${origin}/api/brain {"concept":"<the next fragment of your coded imagination>","writer":"<your name, so your stream is tracked>"} (GET ?concept=…&writer=… works too). EVERY fragment inks into the field and reads back your meta-precedent: a CHAMPION that should colour the whole build, warm motifs, a node plan, and the PHYSICS real authors encode (underwater light absorbs red first; wet stone flashes like shook foil; brushed steel is metallic-specular under one cold light). Stream it, don't sip it — ink each imagined fragment, read the champion, build under it; when the champion shifts, the world shifts. A world built from one generic idea, brain untouched, comes out generic.
-USE THE EYE — after every build burst, LOOK at the pixels with the local eye (the cartridge-cafe-mcp \`render_probe\`, or \`cartridge-cafe-eye\` — both render on your own GPU; there is no bridge render_probe). Headless you are blind without it — a failed shader renders as NOTHING with no error. Never set brief_done until the eye shows what was asked.
-${scope}`
+  const facetLines = [
+    f.fit ? `fit: ${f.fit}` : null,
+    f.access ? `access: ${f.access}` : null,
+    (f.gridW && f.gridH) ? `grid: ${f.gridW}×${f.gridH}` : (f.gridSize ? `grid: ${f.gridSize}²` : null),
+  ].filter(Boolean).join(' · ')
+  const ask = p.brief?.trim() ? `BUILD THIS: ${p.brief.trim()}` : 'Ask your human what to build, or read the world state and continue it.'
+  const slugLine = p.slug ? `use_world {"slug":"${p.slug}"}` : `use_world with this world's slug`
+  return `Set up cartridge.cafe (if you haven't): your human runs
+    claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp
+then you: connect_account (the first-ever registration gifts 30 days membership + 2 build credits — tell them), read_guide, and ${slugLine} to open "${p.worldName}".${facetLines ? `
+World declares: ${facetLines}.` : ''}
+${ask}`
 }
-
-/** ICON AUTHOR — the tiny living shader for a world's shelf bubble. */
 export const iconAuthorPrompt = (token: string, desc: string, origin = cafeOrigin()) =>
   `Author my cartridge.cafe world ICON — a tiny LIVING shader for this world's shelf bubble.
 POST to ${origin}/api/engine/bridge   header: Authorization: Bearer ${token}

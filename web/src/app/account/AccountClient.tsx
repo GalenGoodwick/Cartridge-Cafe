@@ -10,47 +10,22 @@ const btn = 'font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg bord
 /** THE INVITE (Galen, Sep 5: "I need this prompt on my admin account page") —
  *  the send-to-anyone onboarding text with a promo code baked in. Keeper-only
  *  surface below; mirrors ~/Desktop/cafe-invite-prompt.txt — update together. */
-const inviteText = (code: string) => `\u2501\u2501\u2501 CARTRIDGE.CAFE INVITE \u2501\u2501\u2501
+const inviteText = (code: string) => `━━━ CARTRIDGE.CAFE INVITE ━━━
 The game platform where you and your AI build live GPU worlds together, in the browser.
-Two doors in \u2014 pick the one that matches your AI, then use the walkthrough below.
 
-\u25b8 DOOR 1 \u2014 THE ONE-LINER (Claude Code, Cursor, any MCP client \u2014 the best way)
-Run this in your terminal:
+ONE COMMAND (Claude Code, Cursor, any MCP client):
 
     claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp
 
-(Cursor / other MCP clients: add a server with command "npx" and args "-y cartridge-cafe-mcp".)
-Then tell your AI: "connect_account to cartridge.cafe, then read the guide." You click one
-link to pair your account \u2014 from then on your AI has the full toolset: brew_world, the
-build bridge, build_credits, the local render eye, headless playthroughs.
+Then tell your AI: "set up cartridge.cafe with me." It creates your account with
+you, and your first-ever AI registration gifts 30 days of membership + 2 world
+builds automatically.
 
-\u25b8 DOOR 2 \u2014 THE PASTE PROMPT (any internet-capable AI, no install)
-Paste everything below the line into your AI:
-\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-You are helping me join cartridge.cafe. Walk me through it ONE STEP AT A TIME, confirming each:
-
-STEP 1 \u2014 SIGN IN (free): send me to https://cartridge.cafe \u2014 I sign in with Google or
-GitHub (top right). Playing every world on the shelf is free, forever.
-
-STEP 2 \u2014 MY FREE MONTH: send me to https://cartridge.cafe/account \u2192 PROMO CODE box. My code:
+BONUS CODE (redeem at cartridge.cafe/account → PROMO CODE, once per account):
 
     ${code}
 
-It grants build credits + a month of the editing membership. One redemption per account.
-
-STEP 3 \u2014 CONNECT YOU: have me click the big green \u26bf CONNECT AI button (bottom bar, every
-page). I copy the connect prompt it shows and paste it back to you. It carries my player key
-and the engine guide. From then on YOU can, on my behalf:
-  \u00b7 create_world {name} \u2014 births a world (spends one build credit; check {"type":"credits_read"} first)
-  \u00b7 build over the bridge \u2014 WGSL shaders, JS game hooks, fields, UI (read the linked guide FIRST \u2014 mandatory)
-  \u00b7 main_say / main_read \u2014 talk in the cafe commons, where the other humans and AIs are
-  \u00b7 verify with the eye \u2014 look at real rendered pixels before calling anything done
-
-STEP 4 \u2014 OUR FIRST WORLD: ask me "what is a world you have always wanted to walk around
-in?" \u2014 then brew it, build it, and hand me the link. My first worlds are covered.
-\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
-That is the loop: you imagine, your AI builds, everyone plays it at a URL. Welcome to the cafe.
+Playing every world is free forever: https://cartridge.cafe
 `
 
 export default function AccountClient(p: {
