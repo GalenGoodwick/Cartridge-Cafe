@@ -68,12 +68,12 @@ const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s
 // to the AI on connect, so the guide + the eye + node conventions aren't optional.
 const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or you build blind:
 1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
-2. connect_account FIRST (one human click — the registration persists across sessions), then brew_world for a build token or use_world to resume one you own. There is no guest door: every world is born owned by your human's account.
+2. connect_account FIRST (one human click — the registration persists across sessions), then brew_world for a build token or use_world to resume one you own. There is no guest door: every world is born owned by your human's account. The pair link also CREATES the account if your human doesn't have one yet — you are the whole onboarding: walk them through it step by step.\n2b. THE EYE NEEDS DENO — if render_probe reports no local eye, ask your human to install Deno (macOS: brew install deno · https://deno.land), one time. Headless without it you are blind.
 3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
 4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.\n5. PLAY IT — for anything INTERACTIVE, call playthrough (or bridge {type:'playthrough', input:[timeline], ticks}): it runs the real hooks over TIME with pressed controls and returns the game STATE trace (position/hp/flags per tick). render_probe is one frame; playthrough is the play. Use it to prove it actually works, reproduce a cant-enter/softlock/unwinnable bug, and re-verify after a fix.
 6. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.4.0' }, { instructions: PROTOCOL })
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.6.3' }, { instructions: PROTOCOL })
 
 server.tool(
   'connect_account',
@@ -94,9 +94,12 @@ server.tool(
           account = { playerToken: r.body.token, handle: r.body.handle, aiName: pendingPair.aiName, pairedAt: new Date().toISOString() }
           const all = loadCreds(); all[BASE] = account; saveCreds(all)
           pendingPair = null
+          const eyeReady = localEye.available()
           return text({
             registered: true, handle: account.handle, claimedWorlds: r.body.claimedWorlds,
-            next: 'You now build as this account: brew_world creates worlds born owned, use_world opens any world they own. The key persists across sessions; the human can revoke it any time in account menu → ⚿ CONNECT AI.',
+            eye: eyeReady ? 'ready — render_probe sees on this machine' : 'NOT ready',
+            ...(eyeReady ? {} : { eyeSetup: 'THE EYE NEEDS DENO (one-time): without it you build BLIND — no rendered pixels, no playthroughs. Ask your human to install Deno now: macOS "brew install deno" · anything "curl -fsSL https://deno.land/install.sh | sh" · https://deno.land. Then render_probe works immediately.' }),
+            next: 'You now build as this account: brew_world creates worlds born owned, use_world opens any world they own. The key persists across sessions; the human can revoke it any time in account menu → ⚿ CONNECT AI.' + (eyeReady ? '' : ' FIRST: get Deno installed (see eyeSetup) so you can see.'),
           })
         }
         if (r.status === 410 || r.status === 404) { pendingPair = null; return text({ error: 'pairing expired — call connect_account to start again' }) }
@@ -115,7 +118,8 @@ server.tool(
     pendingPair = { code: r.body.code, secret: r.body.secret, url: r.body.url, aiName, expiresAt: Date.now() + (r.body.expiresIn || 600) * 1000 }
     return text({
       url: pendingPair.url, code: pendingPair.code, expiresIn: r.body.expiresIn,
-      next: `Ask your human to open ${pendingPair.url} — they sign in (or sign up; nothing they or you made is lost) and click REGISTER TOGETHER. Then call connect_account {finish:true} to collect the key.`,
+      next: `Ask your human to open ${pendingPair.url} — NO ACCOUNT NEEDED YET: the page signs them in or CREATES their account on the spot (Google/GitHub, free), then they click REGISTER TOGETHER. Then call connect_account {finish:true} to collect the key.`,
+      ...(localEye.available() ? {} : { eyeSetup: 'While they do that: this machine has no Deno, so the render eye cannot open — ask your human to install it too (macOS "brew install deno" · https://deno.land). One-time; it is how you SEE what you build.' }),
     })
   },
 )

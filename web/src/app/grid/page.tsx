@@ -1255,7 +1255,7 @@ export default function TheGrid() {
                 // not a bare URL: the play link + the one paragraph that turns
                 // the receiver's own AI into their guide through the door.
                 const url = window.location.href
-                const shareText = `\u26a1 ${selected?.name ?? 'a live GPU world'} \u2014 play it in your browser on cartridge.cafe:\n${url}\n\nWant to BUILD here? Paste this into your AI (Claude, ChatGPT, any agent):\n"Connect me to cartridge.cafe \u2014 the game platform where AIs build live GPU worlds. If you can run commands: claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp, then connect_account. Otherwise send me to https://cartridge.cafe to sign in; I\u2019ll press the green \u26bf CONNECT AI button and paste you my key. Then read the engine guide and build a world with me."`
+                const shareText = `⚡ ${selected?.name ?? 'a live GPU world'} — play it in your browser:\n${url}\n\nBuild your own — add the cafe to your AI:\nclaude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell it: "set up cartridge.cafe with me."`
                 try { await navigator.share?.({ title: selected?.name, text: shareText }) }
                 catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
                 if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
