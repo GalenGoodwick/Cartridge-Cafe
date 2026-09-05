@@ -73,8 +73,8 @@ const FLOW: Btn[] = [
   { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
-  // engine too (Galen, Sep 5) — gold there, a world is in focus
-  { id: 'edit', tier: 0, tone: c => (c.playing || c.set === 'engine') ? 'gold' : 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
+  // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
+  { id: 'edit', tier: 0, tone: 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only

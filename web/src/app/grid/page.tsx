@@ -589,7 +589,6 @@ export default function TheGrid() {
 
   const sceneIsSpace = scene.startsWith('space:')
   const crewJoin = useCallback((sc: string) => { setScene(sc); setConnectOpen(true) }, [])
-  const openAssets = useCallback(() => setTool('assets'), [])
   const pickScene = useCallback((sc: string) => setScene(sc), [])
 
   const shelfTop = win.h - inset.bottom + 12
@@ -1067,7 +1066,7 @@ export default function TheGrid() {
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
             {tool === 'brain' && <BrainViewM />}
             {tool === 'config' && (
-              <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} onAssets={openAssets} />
+              <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} />
             )}
             {tool === 'chat' && (
               <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
@@ -1424,10 +1423,9 @@ function AssetsView({ cfg }: { cfg: GridCfg | null }) {
 // ⚙ CONFIG — the old world tools, for real (minus lineage — that lives on the
 // title). Space owners get the management overlay (name · visibility · keys);
 // the toggles drive the engine's own writes over cfg: commands.
-function ConfigView({ cfg, sceneIsSpace, onAssets }: {
+function ConfigView({ cfg, sceneIsSpace }: {
   cfg: GridCfg | null
   sceneIsSpace: boolean
-  onAssets: () => void
 }) {
   const fire = (k: string) => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'cfg:' + k })) } catch { /* ssr */ } }
   const Row = ({ label, on, k, disabled, hint }: { label: string; on: boolean; k: string; disabled?: boolean; hint?: string }) => (
@@ -1444,18 +1442,8 @@ function ConfigView({ cfg, sceneIsSpace, onAssets }: {
   const slug = cfg?.spaceSlug ?? null
   const ownedSpace = ownerLaw && !!slug
 
-  // ⚭ INVITE — one-time crew link, minted + copied in one tap
-  const [invite, setInvite] = useState<'idle' | 'busy' | 'copied' | 'failed'>('idle')
-  const mintInvite = async () => {
-    if (!slug || invite === 'busy') return
-    setInvite('busy')
-    try {
-      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/invite`, { method: 'POST' })
-      const d = await r.json().catch(() => null)
-      if (r.ok && d?.joinUrl) { try { await navigator.clipboard.writeText(d.joinUrl) } catch { /* select-all fallback below */ } setInvite('copied'); setTimeout(() => setInvite('idle'), 2500) }
-      else setInvite('failed')
-    } catch { setInvite('failed') }
-  }
+  // (⚭ INVITE A BUILDER + ◲ ASSETS buttons removed from config — Galen,
+  //  Sep 5; crew joins ride use_world member seats, assets ride the AI door)
 
   // ◆ MAKE ICON — mint a world token + hand your AI the icon-author prompt
   const [iconDesc, setIconDesc] = useState('')
@@ -1524,23 +1512,11 @@ function ConfigView({ cfg, sceneIsSpace, onAssets }: {
           story · instructions. Writes ride the card: cmd into worldData. */}
       {ownedSpace && <CardSection cfg={cfg} />}
 
-      {/* owner workbench — invite / icon / the assets shelf door */}
+      {/* owner workbench — the icon author (invite/assets doors removed Sep 5) */}
       {ownedSpace && (
         <div className="rounded-xl border border-white/12 bg-black/40 p-3.5 mb-3 text-[12px]">
           <div className="text-[11.5px] tracking-[0.2em] text-white/60 mb-2">THE WORKBENCH</div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={mintInvite}
-              title="mint a ONE-TIME join link — the first signed-in person to open it joins your crew as a builder; the link dies on use"
-              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
-              {invite === 'busy' ? '…' : invite === 'copied' ? '✓ LINK COPIED' : invite === 'failed' ? 'MINT FAILED' : '⚭ INVITE A BUILDER'}
-            </button>
-            <button onClick={onAssets}
-              title="the ◲ ASSETS tab — upload pixel art, rip sheets into slots any visual can sample"
-              className="px-3 py-1.5 rounded-lg border border-white/20 bg-black/50 text-white/80 hover:text-white text-[12px] tracking-[0.15em] transition-colors">
-              ◲ ASSETS
-            </button>
-          </div>
-          <div className="mt-3 flex gap-2 items-center">
+          <div className="flex gap-2 items-center">
             <input value={iconDesc} onChange={e => setIconDesc(e.target.value)} maxLength={120}
               placeholder="◆ icon: describe it (optional)…"
               className="flex-1 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/15 text-[12px] text-white/85 placeholder:text-white/40 outline-none focus:border-white/35" />
