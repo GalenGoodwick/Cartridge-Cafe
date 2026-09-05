@@ -42,6 +42,7 @@ const row = (id: string, slug: string, over: Partial<FeedRow> = {}): FeedRow => 
   premium: null,
   hasNodes: false,
   hasContent: true,
+  fit: 'desktop' as const,
   ...over,
 })
 
