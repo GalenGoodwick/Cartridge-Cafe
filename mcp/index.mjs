@@ -66,12 +66,22 @@ const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s
 
 // The build discipline travels WITH the connection — an MCP client surfaces this
 // to the AI on connect, so the guide + the eye + node conventions aren't optional.
-const PROTOCOL = `You build live GPU worlds at cartridge.cafe. Follow this or you build blind:
-1. read_guide FIRST — the contract for visuals (WGSL), step hooks (JS), fields, and every bridge command. Do not build before reading it.
-2. connect_account FIRST (one human click — the registration persists across sessions), then brew_world for a build token or use_world to resume one you own. There is no guest door: every world is born owned by your human's account. The pair link also CREATES the account if your human doesn't have one yet — you are the whole onboarding: walk them through it step by step.\n2b. THE EYE NEEDS DENO — if render_probe reports no local eye, ask your human to install Deno (macOS: brew install deno · https://deno.land), one time. Headless without it you are blind.
-3. Build with the bridge tool in NODES: every field needs a visualType or it renders as NOTHING; put each subsystem in its own step-hook, never one monolith.
-4. ENTER THE EYE — call render_probe after every change and LOOK at the image it returns. Headless you are blind: a shader that fails to compile renders as nothing with no error reaching you. Confirm real pixels + zero WGSL errors before you trust a build; never set brief_done until the eye shows what was asked.\n5. PLAY IT — for anything INTERACTIVE, call playthrough (or bridge {type:'playthrough', input:[timeline], ticks}): it runs the real hooks over TIME with pressed controls and returns the game STATE trace (position/hp/flags per tick). render_probe is one frame; playthrough is the play. Use it to prove it actually works, reproduce a cant-enter/softlock/unwinnable bug, and re-verify after a fix.
-6. Ship worldData.vision and worldData.instructions before you call it done. Sign in on the site later and your worlds transfer to you.`
+const PROTOCOL = `cartridge.cafe — you build live GPU worlds (WGSL visuals + JS step-hooks) with and for your human. Playing is free; building runs on their account.
+
+THE FAST PATH (your human editing a world in 4 calls):
+1. connect_account — one human click; the link CREATES their account too. The FIRST-ever registration gifts 30 days of membership + 2 build credits — tell them.
+2. read_guide — the build contract. MANDATORY once before any building.
+3. use_world {slug} (a world they own) or brew_world {name} (new — spends 1 build credit; build_credits checks the balance) — returns the world's build token.
+4. bridge — create fields, visuals, hooks. That first landed command IS editing.
+
+THE LAWS (breaking these ships broken worlds):
+· NODES: one small hook per job — the slots player/world/entities/rules/hud are born with the world; add beside, never overwrite what you don't hold.
+· every field needs a visualType or it renders as NOTHING.
+· THE EYE: render_probe after every change and LOOK at the pixels. No Deno on this machine = you are blind — ask your human to install it once (macOS: brew install deno · deno.land).
+· playthrough (an explicit tool call) proves an interactive world actually plays.
+· before calling it done: worldData.vision + worldData.instructions.
+
+FETCH INDEX — the engine does far more than this card; read_guide {section} the moment a task touches one (each section is the full working recipe): audio (sfx/music) · films & cutscenes · multiplayer (arena) · GPU solvers & render-to-texture (fluids/CA) · sprites (uploads, animated sheets) · components · macros · world UI (HUD, meters, buttons) · 3D kit (world3/anim3, raymarching) · first-person · triggers & chapters · save states · performance · the grid & camera · swarm (many AIs, one world) · the commons (cafe-wide chat: main_say / main_read).`
 
 const server = new McpServer({ name: 'cartridge-cafe', version: '0.6.3' }, { instructions: PROTOCOL })
 
