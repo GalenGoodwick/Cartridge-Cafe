@@ -80,7 +80,7 @@ export default function TheGrid() {
   const [copied, setCopied] = useState(false)
   const [rec, setRec] = useState<{ on: boolean; secs: number }>({ on: false, secs: 0 })
   // who's signed in — the dockstar menu's ACCOUNT block reads this
-  const [me, setMe] = useState<{ name?: string | null; email?: string | null } | null>(null)
+  const [me, setMe] = useState<{ name?: string | null; email?: string | null } | null | undefined>(undefined)
   useEffect(() => {
     fetch('/api/auth/session').then(r => (r.ok ? r.json() : null))
       .then(d => setMe(d?.user ?? null)).catch(() => setMe(null))
@@ -1172,6 +1172,14 @@ export default function TheGrid() {
                 title="restart this world"
                 className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5">
                 ⟲ {!narrow && 'RESET'}
+              </button>
+            )}
+            {/* ⚿ SIGN IN — only when signed OUT (tri-state: undefined = still
+                checking, no flash), left of the dockstar (Galen, Sep 5). */}
+            {me === null && (
+              <button data-grid-signin onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) }}
+                className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 transition-all shrink-0 shadow-[0_0_14px_rgba(245,176,76,0.45)]">
+                {narrow ? '⚿' : 'SIGN IN'}
               </button>
             )}
             {/* ↗ SHARE — ALWAYS in the bar, left of the NAV cup (Galen, Sep 5).
