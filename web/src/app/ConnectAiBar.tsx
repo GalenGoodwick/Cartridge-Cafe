@@ -17,7 +17,9 @@ export default function ConnectAiBar() {
   // NOT over the game (Galen, Sep 5: "no connect AI button inside the game
   // window") — world pages and the grid carry the bar's own green door; the
   // floating pill is for the SITE pages (account, terms, suite, commons, …).
-  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play')) return null
+  // /create too (Galen, Sep 5: 'no connect ai button inside create flow —
+  // bottom bar is only where it belongs')
+  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play') || path.startsWith('/create')) return null
   const lifted = false
   return (
     <>
