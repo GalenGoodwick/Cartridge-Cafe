@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
       name: name.trim(),
       baseSlug,
       description: description?.trim() || null,
-      isPublic: !draft,   // brew wizard: a draft stays invisible until ENTER WORLD flips it
+      isPublic: !draft && !(await (await import('@/lib/stripe')).hasIpControl(user.id)),   // draft stays invisible until ENTER WORLD; a PROPRIETARY owner's worlds are never auto-shelved (Galen, Sep 5)
       worldData: Object.keys(birthData).length ? birthData : undefined,
       ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
       ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),

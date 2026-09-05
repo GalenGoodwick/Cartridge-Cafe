@@ -932,7 +932,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['brain', '◧ BRAIN'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['brain', '◧ BRAIN'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>

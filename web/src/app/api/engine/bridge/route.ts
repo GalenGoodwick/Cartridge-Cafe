@@ -919,10 +919,16 @@ export async function POST(req: NextRequest) {
           // hand-roll creation (slug + seeds + token) and silently missed what
           // birthWorld gives every other door — the backdrop, born-strict, the
           // first build key. One pipeline now.
+          // AUTO-PUBLISH (Galen, Sep 5: "all games are auto published" — the
+          // publish ceremony is gone for now). Born PUBLIC; the shelf's
+          // hasContent guard keeps blank worlds invisible until they're real.
+          // EXCEPTION: a PROPRIETARY (IP-control) owner's worlds stay born
+          // private — closed-source dev work is never auto-shelved.
           let space: { id: string; slug: string }, worldToken: string
           try {
             const { birthWorld } = await import('@/lib/world-create')
-            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: false })
+            const { hasIpControl } = await import('@/lib/stripe')
+            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: !(await hasIpControl(auth.playerId)) })
             space = born.space; worldToken = born.token
           } catch (e) {
             if (!isKeeper) { await refundGenCredit(auth.playerId!).catch(() => {}) }
@@ -933,7 +939,7 @@ export async function POST(req: NextRequest) {
           commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
           results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: true,
             ...(creditsLeft !== null ? { creditsLeft } : {}),
-            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. The world is PRIVATE until you send {"type":"publish_world"} (requires vision + instructions + brief_done) — the shelf is for finished worlds.` })
+            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. The world is AUTO-PUBLISHED (proprietary owners excepted) — it appears on the shelf once it has real content; still ship worldData.vision + instructions, they are the player-facing soul.` })
           continue
         }
         if (cmd.type === 'use_world') {
@@ -1040,10 +1046,11 @@ export async function POST(req: NextRequest) {
         }
         const pubSnap = await getSpaceSnapshot(auth.spaceId!, true)
         const pubWd = (pubSnap?.worldData ?? {}) as Record<string, unknown>
+        // AUTO-PUBLISH ERA (Galen, Sep 5: "publish tab is removed for now, all
+        // games are auto published"): the ceremony gates are OFF — publish_world
+        // just re-shelves (after an unpublish, or a proprietary owner choosing
+        // to go public). vision/instructions stay strongly advised, not gates.
         const missing: string[] = []
-        if (typeof pubWd.vision !== 'string' || !(pubWd.vision as string).trim()) missing.push('worldData.vision')
-        if (typeof pubWd.instructions !== 'string' || !(pubWd.instructions as string).trim()) missing.push('worldData.instructions')
-        if (!pubWd.brief_done) missing.push('brief_done (itself gated on a WORKING visual — the render check)')
         // SEAM-B (cards): the shelf is a card catalog — a published world owes
         // its card (mandatory TYPE from the generated list + tags). See
         // cards-registry.publishCardError; the map's publish-gate node owns this.

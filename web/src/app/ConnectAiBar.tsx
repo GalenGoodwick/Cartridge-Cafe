@@ -14,11 +14,11 @@ import ConnectPanel from '@/app/ConnectPanel'
 export default function ConnectAiBar() {
   const [open, setOpen] = useState(false)
   const path = usePathname() || '/'
-  // world pages draw their own bottom chrome bar — ride above it
-  // the grid (the games front door) carries its OWN green door in the bottom
-  // bar — the floating pill would double it there
-  if (path === '/grid' || path === '/') return null
-  const lifted = path.startsWith('/space/') || path.startsWith('/play/')
+  // NOT over the game (Galen, Sep 5: "no connect AI button inside the game
+  // window") — world pages and the grid carry the bar's own green door; the
+  // floating pill is for the SITE pages (account, terms, suite, commons, …).
+  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play')) return null
+  const lifted = false
   return (
     <>
       <button
