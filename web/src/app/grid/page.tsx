@@ -66,7 +66,7 @@ export default function TheGrid() {
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'brain' | 'connect'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -283,7 +283,7 @@ export default function TheGrid() {
       // as ?connect=1 — open the ENGINE ⚿ CONNECT AI tab so its paste-prompt +
       // copy button are right there, no hunting.
       if (u.searchParams.get('connect') === '1') {
-        setUiSet('engine'); setTool('connect')
+        setUiSet('engine'); setConnectOpen(true)   // the EDIT modal is the one door now
         u.searchParams.delete('connect'); window.history.replaceState(null, '', u.toString())
       }
     } catch { /* ssr */ }

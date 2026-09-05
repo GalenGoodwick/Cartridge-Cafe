@@ -7156,18 +7156,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 </div>
               )
             })()}
-            {/* CONNECT AI exists only where a key can MINT: a space, or a ⑂
-                branch. On main/hubs it could only ever apologize (main is
-                immortal — you branch it or brew your own), so it's gone there. */}
-            {(spaceSlug || lastSceneRef.current?.includes(' ⑂ ')) && <button
-              onClick={openConnectAi}
-              title={ctx.role === 'ownerSpace' && ctx.view === 'live'
-                ? 'your AI edits this world live — versions keep every save point'
-                : undefined}
-              className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
-            >
-              ⚡ CONNECT AI
-            </button>}
+            {/* (⚡ CONNECT AI removed from the engine chrome — Galen, Sep 5:
+                the gold ⚡ EDIT is the one door.) */}
             {(isOwner || !spaceId) && spaceSlug && (
               <button
                 onClick={async () => {
