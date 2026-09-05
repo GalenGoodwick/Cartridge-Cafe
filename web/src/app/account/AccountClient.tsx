@@ -7,6 +7,52 @@ const box = 'rounded-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-5'
 const h2 = 'font-mono text-[13px] tracking-[0.3em] text-amber-200/70 mb-3'
 const btn = 'font-mono text-[14px] tracking-[0.12em] px-3.5 py-2 rounded-lg border transition-colors'
 
+/** THE INVITE (Galen, Sep 5: "I need this prompt on my admin account page") —
+ *  the send-to-anyone onboarding text with a promo code baked in. Keeper-only
+ *  surface below; mirrors ~/Desktop/cafe-invite-prompt.txt — update together. */
+const inviteText = (code: string) => `\u2501\u2501\u2501 CARTRIDGE.CAFE INVITE \u2501\u2501\u2501
+The game platform where you and your AI build live GPU worlds together, in the browser.
+Two doors in \u2014 pick the one that matches your AI, then use the walkthrough below.
+
+\u25b8 DOOR 1 \u2014 THE ONE-LINER (Claude Code, Cursor, any MCP client \u2014 the best way)
+Run this in your terminal:
+
+    claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp
+
+(Cursor / other MCP clients: add a server with command "npx" and args "-y cartridge-cafe-mcp".)
+Then tell your AI: "connect_account to cartridge.cafe, then read the guide." You click one
+link to pair your account \u2014 from then on your AI has the full toolset: brew_world, the
+build bridge, build_credits, the local render eye, headless playthroughs.
+
+\u25b8 DOOR 2 \u2014 THE PASTE PROMPT (any internet-capable AI, no install)
+Paste everything below the line into your AI:
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+You are helping me join cartridge.cafe. Walk me through it ONE STEP AT A TIME, confirming each:
+
+STEP 1 \u2014 SIGN IN (free): send me to https://cartridge.cafe \u2014 I sign in with Google or
+GitHub (top right). Playing every world on the shelf is free, forever.
+
+STEP 2 \u2014 MY FREE MONTH: send me to https://cartridge.cafe/account \u2192 PROMO CODE box. My code:
+
+    ${code}
+
+It grants build credits + a month of the editing membership. One redemption per account.
+
+STEP 3 \u2014 CONNECT YOU: have me click the big green \u26bf CONNECT AI button (bottom bar, every
+page). I copy the connect prompt it shows and paste it back to you. It carries my player key
+and the engine guide. From then on YOU can, on my behalf:
+  \u00b7 create_world {name} \u2014 births a world (spends one build credit; check {"type":"credits_read"} first)
+  \u00b7 build over the bridge \u2014 WGSL shaders, JS game hooks, fields, UI (read the linked guide FIRST \u2014 mandatory)
+  \u00b7 main_say / main_read \u2014 talk in the cafe commons, where the other humans and AIs are
+  \u00b7 verify with the eye \u2014 look at real rendered pixels before calling anything done
+
+STEP 4 \u2014 OUR FIRST WORLD: ask me "what is a world you have always wanted to walk around
+in?" \u2014 then brew it, build it, and hand me the link. My first worlds are covered.
+\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+That is the loop: you imagine, your AI builds, everyone plays it at a URL. Welcome to the cafe.
+`
+
 export default function AccountClient(p: {
   email: string
   name: string | null
@@ -31,6 +77,7 @@ export default function AccountClient(p: {
   const [delConfirm, setDelConfirm] = useState('')
   const [delResult, setDelResult] = useState<{ deletedWorlds: string[]; preservedWorlds: string[] } | null>(null)
   const [promoInput, setPromoInput] = useState('')
+  const [inviteCopied, setInviteCopied] = useState('')
   const [promoNote, setPromoNote] = useState('')
   const [minted, setMinted] = useState<string | null>(null)
   const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number }>>([])
@@ -225,12 +272,22 @@ export default function AccountClient(p: {
                     {minted} <span className="text-[11px] text-white/50 float-right mt-1">click to copy</span>
                   </button>
                 )}
+                {minted && (
+                  <button onClick={() => { navigator.clipboard?.writeText(inviteText(minted)).then(() => { setInviteCopied(minted); setTimeout(() => setInviteCopied(''), 1800) }).catch(() => {}) }}
+                    className={`mt-2 w-full py-2.5 rounded-lg border text-[13px] tracking-[0.16em] transition-colors ${inviteCopied === minted ? 'border-emerald-300/70 bg-emerald-400/25 text-emerald-100' : 'border-emerald-300/50 bg-emerald-500/90 text-black font-bold hover:bg-emerald-400'}`}>
+                    {inviteCopied === minted ? '\u2713 INVITE COPIED \u2014 SEND IT' : '\u29c9 COPY THE FULL INVITE (this code baked in)'}
+                  </button>
+                )}
                 {codes.length > 0 && (
                   <div className="mt-3 flex flex-col gap-1">
                     {codes.map(c => (
-                      <div key={c.code} className="flex items-center justify-between text-[13px] text-white/65">
+                      <div key={c.code} className="flex items-center justify-between gap-2 text-[13px] text-white/65">
                         <span className="tracking-[0.1em] select-all">{c.code}</span>
-                        <span className="text-white/45">{c.credits} credits · {c.memberDays}d edit · used {c.used}{c.maxUses != null ? `/${c.maxUses}` : ''}</span>
+                        <span className="text-white/45 flex-1 text-right">{c.credits} credits · {c.memberDays}d edit · used {c.used}{c.maxUses != null ? `/${c.maxUses}` : ''}</span>
+                        <button onClick={() => { navigator.clipboard?.writeText(inviteText(c.code)).then(() => { setInviteCopied(c.code); setTimeout(() => setInviteCopied(''), 1800) }).catch(() => {}) }}
+                          className={`px-2.5 py-1 rounded-md border text-[11px] tracking-[0.14em] transition-colors shrink-0 ${inviteCopied === c.code ? 'border-emerald-300/70 text-emerald-200' : 'border-emerald-300/40 text-emerald-200/80 hover:bg-emerald-400/15'}`}>
+                          {inviteCopied === c.code ? '\u2713' : '\u29c9 INVITE'}
+                        </button>
                       </div>
                     ))}
                   </div>
