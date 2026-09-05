@@ -759,15 +759,18 @@ export default function TheGrid() {
             <div className="font-mono text-[9.5px] sm:text-[10.5px] tracking-[0.18em] text-white/55 mt-1.5 sm:mt-2 text-center px-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {/* (CREATE card lives on the BAR now, not here — Galen, Sep 5:
+                'remove create from nav pop up'; ✚ CREATE in the bottom bar is
+                the one door to the create set) */}
             {([
               ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
               ['main', '◉', 'MAIN', 'the commons + social space'],
               ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
-              ['create', '✚', 'CREATE', 'new world · fork from grid'],
             ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
-                onClick={() => { setUiSet(k); if (k === 'games' || k === 'create') setPhase('browse'); setSelOpen(false) }}
+                onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
                 className={`text-left rounded-2xl border p-3 sm:p-4 transition-colors active:bg-white/10 ${
+                  k === 'engine' ? 'col-span-2 ' : ''}${
                   uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
                 <div className={`text-[18px] sm:text-[22px] mb-0.5 sm:mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
                 <div className={`font-mono text-[13px] sm:text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
