@@ -92,7 +92,30 @@ export async function POST(req: NextRequest) {
       await revokePlayerTokenByRaw(raw)
       return NextResponse.json({ error: 'Code expired or invalid' }, { status: 404 })
     }
-    return NextResponse.json({ ok: true, claimedWorlds })
+    // THE FIRST-PAIR MONTH (Galen, Sep 5: the one-liner funnel must carry the
+    // free month itself). The FIRST time an account ever pairs an AI, it is
+    // auto-granted the promo standard — 30 days of the editing membership + 2
+    // build credits — once per account, ever (the grant record marks it even
+    // after the month expires). Admin/keeper accounts skip (already members).
+    let firstPairGift = false
+    try {
+      const { readEntitlements, grantEntitlement, addGenCredits } = await import('@/lib/stripe')
+      const { isAdminUserId } = await import('@/lib/adminAuth')
+      const ents = await readEntitlements(me.id)
+      const had = ents.some((e) => e.sessionId === 'first-pair-month')
+      // never clobber a PAID seat: grantEntitlement replaces same-product
+      // records, so an already-member account keeps its record untouched and
+      // just gets the credits half of the gift
+      const alreadyMember = ents.some((e) => e.active && (e.product === 'editor' || e.product === 'editor_pro'))
+      if (!had && !(await isAdminUserId(me.id))) {
+        if (!alreadyMember) {
+          await grantEntitlement(me.id, { product: 'editor', sessionId: 'first-pair-month', until: Date.now() + 30 * 24 * 60 * 60 * 1000 })
+        }
+        await addGenCredits(me.id, 2, 'first-pair-credits')
+        firstPairGift = true
+      }
+    } catch { /* the pairing itself must never fail on the gift */ }
+    return NextResponse.json({ ok: true, claimedWorlds, firstPairGift })
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

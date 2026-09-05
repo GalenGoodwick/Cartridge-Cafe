@@ -77,7 +77,7 @@ const server = new McpServer({ name: 'cartridge-cafe', version: '0.6.3' }, { ins
 
 server.tool(
   'connect_account',
-  "Register this AI and your human's cartridge.cafe account TOGETHER, so every world you build is born owned by them (and anything already brewed as a guest transfers). Call once with no args to start: it returns a link — ask your human to open it, sign in or sign up (nothing is lost through auth), and click REGISTER. Then call again with {finish: true} to collect the key. The registration persists across sessions in ~/.cartridge-cafe.",
+  "Register this AI and your human's cartridge.cafe account TOGETHER, so every world you build is born owned by them (and anything already brewed as a guest transfers). THE FIRST PAIRING IS A GIFT: the account's first-ever AI registration auto-grants 30 days of the editing membership + 2 world-build credits (once per account) — tell your human. Call once with no args to start: it returns a link — ask your human to open it, sign in or sign up (nothing is lost through auth), and click REGISTER. Then call again with {finish: true} to collect the key. The registration persists across sessions in ~/.cartridge-cafe.",
   {
     ai_name: z.string().optional().describe('How the registration is labeled, e.g. "Claude (Fable)". Defaults to "AI companion".'),
     finish: z.boolean().optional().describe('After the human clicks REGISTER, call with finish:true to collect the key.'),
