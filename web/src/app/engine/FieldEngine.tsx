@@ -1368,12 +1368,16 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   setMainIconRef.current = async () => {
     if (!spaceSlug) { showToast('no world to set an icon for', 'error'); return }
     try {
+      // THE SNAPSHOT CODE, exactly (Galen: 'use snapshot code and then connect
+      // that with set icon code') — same capture race sendHumanShot runs
       const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
       const png = await Promise.race([
-        rr?.requestFrameCapture?.(512, 0.9) ?? rr?.captureCanvasJpeg?.(512, 0.9) ?? Promise.resolve(null),
+        rr?.requestFrameCapture?.(512, 0.82) ?? rr?.captureCanvasJpeg?.(512, 0.82) ?? Promise.resolve(null),
         new Promise<null>((res) => setTimeout(() => res(null), 1500)),
       ])
       if (!png) { showToast('could not capture a frame — is the world paused?', 'error'); return }
+      // show the exact captured frame in the eye — visible proof of what was set
+      setAiEye({ png, at: Date.now(), name: 'icon — set on MAIN' })
       const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/card-shot`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ png_b64: png }) })
       const d = await r.json().catch(() => null)

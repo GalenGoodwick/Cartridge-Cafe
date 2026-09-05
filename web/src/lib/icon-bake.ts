@@ -41,6 +41,7 @@ export type IconRecord = {
   struct?: IconStruct   // pixel-stats from the eye (health signal + palette)
   failed?: boolean      // the eye ran but the world rendered black / gave no image
   reason?: string       // why it failed ('invisible' | 'no-image')
+  manual?: boolean      // ◆ SET VISUAL: a human chose this exact frame — outranks staleness
 }
 
 export type IconHealth = 'ok' | 'missing' | 'black' | 'stale'
@@ -107,6 +108,9 @@ export function iconSnapshotHash(snap: LookSlice | null | undefined): string {
  *   - ok      : a real baked PNG matching the current content */
 export function iconHealth(record: IconRecord | null | undefined, currentHash: string): IconHealth {
   if (!record) return 'missing'
+  // a MANUAL icon (◆ SET VISUAL) is the owner's chosen face — never 'stale',
+  // never re-photographed over; only another SET VISUAL replaces it
+  if (record.manual && record.png_b64) return 'ok'
   if (record.hash !== currentHash) return 'stale'
   if (record.failed) return 'black'
   if (!record.png_b64) return 'missing'

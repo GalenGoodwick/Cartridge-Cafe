@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) return NextResponse.json({ error: 'Sign in first' }, { status: 401 })
   const user = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
-  const space = await prisma.playerSpace.findUnique({ where: { slug: clean }, select: { id: true, ownerId: true } })
+  const space = await prisma.playerSpace.findUnique({ where: { slug: clean }, select: { id: true, ownerId: true, snapshot: true } })
   if (!user || !space) return NextResponse.json({ error: 'not found' }, { status: 404 })
   if (space.ownerId !== user.id) {
     const { isAdminUserId } = await import('@/lib/adminAuth')
@@ -32,6 +32,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   if (!png || png.length < 100) return NextResponse.json({ error: 'no shot — open the EYE and take one first' }, { status: 400 })
   if (png.length > 2_000_000) return NextResponse.json({ error: 'shot too large (2MB cap)' }, { status: 413 })
   try { Buffer.from(png, 'base64') } catch { return NextResponse.json({ error: 'not valid base64 png' }, { status: 400 }) }
-  await saveGameSlotStrict(`world_icon:${clean}`, { png_b64: png, at: Date.now(), by: 'set-visual' })
+  // the CANONICAL IconRecord shape — hash of the current snapshot so
+  // iconHealth serves it, manual so the auto-photographer never overwrites
+  // the owner's chosen frame (only another SET VISUAL does)
+  const { iconSnapshotHash, iconSlotKey } = await import('@/lib/icon-bake')
+  const hash = iconSnapshotHash(space.snapshot as never)
+  await saveGameSlotStrict(iconSlotKey(clean), { hash, at: Date.now(), png_b64: png, manual: true })
   return NextResponse.json({ ok: true, next: 'the games page now shows this exact frame' })
 }
