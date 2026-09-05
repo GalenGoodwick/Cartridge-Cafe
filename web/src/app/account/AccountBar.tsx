@@ -6,7 +6,7 @@
 // set:'account', so only the universal buttons show: ◂ back · share · the
 // identity slot (⚙ ENGINE toggle → the grid) · ✚ create · connect · 👤.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import BottomBar from '@/app/grid/BottomBar'
 import ConnectPanel from '@/app/ConnectPanel'
 
@@ -14,9 +14,11 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
   const [copied, setCopied] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [win, setWin] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1280)
-  if (typeof window !== 'undefined') {
-    window.onresize = () => setWin(window.innerWidth)
-  }
+  useEffect(() => {
+    const onR = () => setWin(window.innerWidth)
+    window.addEventListener('resize', onR)
+    return () => window.removeEventListener('resize', onR)
+  }, [])
   const narrow = win < 700
   const tier = (win < 700 ? 0 : win < 1040 ? 1 : 2) as 0 | 1 | 2
   const go = (url: string) => { window.location.href = url }
