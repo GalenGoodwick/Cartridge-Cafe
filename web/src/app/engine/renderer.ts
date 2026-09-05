@@ -263,7 +263,7 @@ export class FieldRenderer {
   private hitIdPixelCount: number = 0
   private hitIdReadbackPending: boolean = false
   private _hitReadbackNeeded: boolean = false
-  private _captureReq: { resolve: (s: string | null) => void; maxSize: number; quality: number; raw?: boolean } | null = null
+  private _captureReq: { resolve: (s: string | null) => void; maxSize: number; quality: number; raw?: boolean; exact?: boolean } | null = null
   /** True only when some field is hittable — gates the hit-ID copy + readback. */
   get hitReadbackNeeded(): boolean { return this._hitReadbackNeeded }
   /** Latest readback: per-pixel field index (0xFFFFFFFF = no field) */
@@ -2752,7 +2752,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     if (this._captureReq && capTex) {
       const req = this._captureReq
       this._captureReq = null
-      void this.captureCanvasJpeg(req.maxSize, req.quality, capTex, req.raw).then(req.resolve)
+      void this.captureCanvasJpeg(req.maxSize, req.quality, capTex, req.raw, req.exact).then(req.resolve)
     }
   }
 
@@ -2997,8 +2997,8 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
    *  OUTSIDE the loop (a click, a UI handler): it queues the capture and render() serves
    *  it in-frame from the real presented texture, so you get what's on screen — not the
    *  blank/next frame a bare getCurrentTexture() would grab. Resolves next frame. */
-  requestFrameCapture(maxSize = 512, quality = 0.82, raw = false): Promise<string | null> {
-    return new Promise((resolve) => { this._captureReq = { resolve, maxSize, quality, raw } })
+  requestFrameCapture(maxSize = 512, quality = 0.82, raw = false, exact = false): Promise<string | null> {
+    return new Promise((resolve) => { this._captureReq = { resolve, maxSize, quality, raw, exact } })
   }
 
   /** a queued requestFrameCapture waiting for the next real render — the frame
@@ -3015,7 +3015,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
    *  `raw` (TAB-AS-EYE probes): honest pixels — no blank-frame reject, no dark-scene
    *  gain, PNG not JPEG. The icon path keeps its legibility cosmetics; a probe must
    *  never have its measurements beautified. */
-  async captureCanvasJpeg(maxSize = 192, quality = 0.85, tex?: GPUTexture, rawMode = false): Promise<string | null> {
+  async captureCanvasJpeg(maxSize = 192, quality = 0.85, tex?: GPUTexture, rawMode = false, exactMode = false): Promise<string | null> {
     const device = this.device
     const ctx = this.context
     if (!device || !ctx) return null
@@ -3071,8 +3071,11 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     if (!rawMode) {
       if (peak < 8) return null
       // Lift dark scenes so the icon stays legible at 64px; bright worlds untouched.
+      // `exactMode` (SET VISUAL, Galen Sep 5: "bloom … overactive" — the gain was
+      // multiplying dark worlds' highlights into clipping): keep the blank-frame
+      // reject, skip ALL cosmetics — what you see is exactly what is set.
       const mean = luma / (outW * outH)
-      const gain = Math.max(1, Math.min(3.5, 70 / Math.max(mean, 1)))
+      const gain = exactMode ? 1 : Math.max(1, Math.min(3.5, 70 / Math.max(mean, 1)))
       if (gain > 1.02) {
         for (let i = 0; i < out.length; i += 4) {
           out[i] = Math.min(255, out[i] * gain)

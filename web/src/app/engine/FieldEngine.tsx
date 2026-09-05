@@ -1339,9 +1339,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // Capture the EXACT on-screen frame: requestFrameCapture queues it so render()
       // hands back the real presented texture next frame (a bare capture on this click
       // grabs a blank/next frame). Race a timeout so a paused world can't hang the button.
-      const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
+      const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number, raw?: boolean, exact?: boolean) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
       const png = await Promise.race([
-        rr?.requestFrameCapture?.(512, 0.82) ?? rr?.captureCanvasJpeg?.(512, 0.82) ?? Promise.resolve(null),
+        rr?.requestFrameCapture?.(512, 0.82, false, true) ?? rr?.captureCanvasJpeg?.(512, 0.82) ?? Promise.resolve(null),
         new Promise<null>((res) => setTimeout(() => res(null), 1500)),
       ])
       if (!png) throw new Error('no-frame')
@@ -1372,9 +1372,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     try {
       // THE SNAPSHOT CODE, exactly (Galen: 'use snapshot code and then connect
       // that with set icon code') — same capture race sendHumanShot runs
-      const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
+      const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number, raw?: boolean, exact?: boolean) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
       const png = await Promise.race([
-        rr?.requestFrameCapture?.(512, 0.82) ?? rr?.captureCanvasJpeg?.(512, 0.82) ?? Promise.resolve(null),
+        rr?.requestFrameCapture?.(512, 0.82, false, true) ?? rr?.captureCanvasJpeg?.(512, 0.82) ?? Promise.resolve(null),
         new Promise<null>((res) => setTimeout(() => res(null), 1500)),
       ])
       if (!png) { showToast('could not capture a frame — is the world paused?', 'error'); return }
