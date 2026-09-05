@@ -103,6 +103,13 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
     if (!b.show(ctx) || b.tier > ctx.tier) return null
     const active = b.active?.(ctx) ?? (b.id === 'rec' ? ctx.recOn : false)
     const text = (ctx.narrow || ctx.glyphs) ? b.glyph(ctx) : b.label(ctx)
+    // back's arrow reads tiny at chip font size — render it bigger, same box
+    if (b.id === 'back') return (
+      <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
+        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center leading-none ${size} ${ctx.narrow ? 'text-[24px]' : 'text-[20px]'} ${TONES[b.tone](active)}`}>
+        ◂
+      </button>
+    )
     const body = b.id === 'nav'
       ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={(ctx.narrow || ctx.glyphs) ? 'w-6 h-6' : 'w-5 h-5'} />{!(ctx.narrow || ctx.glyphs) && <span>NAV</span>}</span>)
       : text
