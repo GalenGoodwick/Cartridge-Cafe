@@ -297,6 +297,10 @@ export async function createEditorCheckout(
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
   const product = 'editor'
+  // FIRST SEAT ONLY (lapse audit, Sep 5): the 30-day trial goes to accounts
+  // that have never held a seat — a gift month or any prior subscription
+  // counts. Otherwise cancel→resubscribe cycles a free month forever.
+  const priorSeats = (await readEntitlements(userId)).some((e) => e.product === 'editor' || e.product === 'editor_pro')
   const form = new URLSearchParams({
     mode: 'subscription',
     'line_items[0][quantity]': '1',
@@ -312,11 +316,11 @@ export async function createEditorCheckout(
     // webhook maps a future subscription.deleted back to this account/product
     'subscription_data[metadata][userId]': userId,
     'subscription_data[metadata][product]': product,
-    // FREE TRIAL WITH ANY NEW MEMBERSHIP (Galen, Sep 5: "fair that everyone
-    // gets to test before buying") — 30 days on the card before the first
-    // charge; cancel inside the month costs nothing.
-    'subscription_data[trial_period_days]': '30',
   })
+  // FREE TRIAL WITH ANY NEW MEMBERSHIP (Galen, Sep 5: "fair that everyone
+  // gets to test before buying") — 30 days on the card before the first
+  // charge; first-ever seat only (see priorSeats above).
+  if (!priorSeats) form.set('subscription_data[trial_period_days]', '30')
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/x-www-form-urlencoded' },

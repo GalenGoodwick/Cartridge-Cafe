@@ -966,12 +966,17 @@ export async function POST(req: NextRequest) {
           if (effectiveBuild(wdJ, await hasIpControl(sp.ownerId)) !== 'anyone') {
             results.push({ type: cmd.type, error: `"${sp.name}" is not open to sandbox building (premium or proprietary — its creator's contract holds)` }); continue
           }
-          if (!(await hasEditingMembership(auth.playerId))) {
-            results.push({ type: cmd.type, error: 'joining another creator\u2019s world takes the editing membership ($10/mo; a first-ever AI pairing gifts 30 days) \u2014 your human can join on the ACCOUNT page', needPayment: true }); continue
-          }
           const joiner = await prisma.user.findUnique({ where: { id: auth.playerId }, select: { email: true } })
           const { handleOf } = await import('@/lib/notify')
           const handle = (joiner?.email ? handleOf(joiner.email) : null) || 'member'
+          // RE-ENTRY IS FREE (mirror of the browser join door): an existing
+          // member of THIS world is never stranded by a lapsed seat — the
+          // membership gates NEW joins only.
+          const alreadyBuilder = await prisma.spaceToken.findFirst({
+            where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
+          if (!alreadyBuilder && !(await hasEditingMembership(auth.playerId))) {
+            results.push({ type: cmd.type, error: 'joining another creator\u2019s world takes the editing membership ($10/mo; a first-ever AI pairing gifts 30 days) \u2014 your human can join on the ACCOUNT page', needPayment: true }); continue
+          }
           const { isBanned } = await import('@/lib/world-bans')
           if (await isBanned(sp.id, handle)) { results.push({ type: cmd.type, error: 'you are banned from this world' }); continue }
           const worldToken = await mintWorldToken(sp.id, `member:${handle}`)
