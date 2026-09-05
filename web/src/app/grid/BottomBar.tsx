@@ -73,12 +73,13 @@ const FLOW: Btn[] = [
   { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
-  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
+  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '✎ EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
+  // just "AI" (Galen) — liveness speaks through the active glow, not a word
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine', active: c => c.aiLive,
-    label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: c => c.aiLive ? '⚡' : '⚿', testId: 'connect' },
+    label: () => 'AI', glyph: () => 'AI', testId: 'connect' },
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
