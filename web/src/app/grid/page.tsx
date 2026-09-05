@@ -964,10 +964,12 @@ export default function TheGrid() {
                         becomes the games-page card — a direct snapshot of the
                         game, not an authored icon. Writes the world_icon slot. */}
                     <button onClick={async () => {
-                      const shot = eyeData?.shot
+                      // the EYE's photo is eyeData.eye.png — .shot is the
+                      // SNAPSHOT→AI send STATUS, not an image (the 'no shot' bug)
+                      const shot = eyeData?.eye?.png
                       const slug = scene.startsWith('space:') ? scene.slice(6) : null
                       const note = (t: string) => { setVisMsg(t); setTimeout(() => setVisMsg(''), 2500) }
-                      if (!shot || !slug) { note(shot ? 'no world framed' : 'take an EYE shot first'); return }
+                      if (!shot || !slug) { note(shot ? 'no world framed' : 'no eye photo yet — 📸 SNAPSHOT first, then set'); return }
                       try {
                         const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/card-shot`, {
                           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ png_b64: shot }) })
