@@ -4,10 +4,11 @@
 // all icons... wipe the bottom bar... do it from scratch"). The registry below
 // IS the pathway log (see DESIGN-bottom-bar.md — keep them together).
 //
-// One flex row: [ LEFT flex-1 | RIGHT flex-1 row-reversed ] — no floating
-// center. The right group's IDENTITY SLOT is SIGN IN when signed out and
-// TURNS INTO the NAV cup when signed in. Tiers drop WHOLE buttons; edge pins
-// (back / connect) sit outermost in flex order and cannot clip.
+// ONE flex row, ONE div: [ LEFT …spacer… INNER cluster …spacer… RIGHT ].
+// Everything shares a single flex context so it condenses together. The
+// IDENTITY SLOT (beside the green door) is SIGN IN when signed out and TURNS
+// INTO the NAV cup when signed in. Tiers drop WHOLE buttons; edge pins
+// (back / connect) sit at the flex extremes and cannot clip.
 
 export type BarCtx = {
   set: string                 // 'main' | 'games' | 'engine' | ...
@@ -103,7 +104,7 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
       : text
     return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
-        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[b.tone](active)} ${b.id === 'title' ? 'max-w-[34%] truncate' : ''}`}>
+        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[b.tone](active)} ${b.id === 'title' ? 'max-w-[22%] truncate' : ''}`}>
         {body}
       </button>
     )
@@ -111,19 +112,18 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
   return (
     <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))` }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
-      <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-        <div className="flex-1 basis-0 min-w-0 flex items-center gap-2 overflow-hidden">
-          {LEFT.map(render)}
-          <span className="flex-1" />
-          {LEFT_INNER.map(render)}
-        </div>
-        {/* (no center element — Galen, Sep 5: 'remove the floating nav icon';
-            NAV lives in the right group's identity slot beside the green door) */}
-        <div className="flex-1 basis-0 min-w-0 flex flex-row-reverse items-center gap-2 overflow-hidden">
-          {RIGHT.map(render)}
-          <span className="flex-1" />
-          {RIGHT_INNER.map(render)}
-        </div>
+      {/* ONE div, ONE flex context (Galen, Sep 5: 'right and left are on
+          different divs. so move all into left') — every button negotiates
+          space with every other. Spacers split it into edge clusters + a
+          center cluster; RIGHT is written outer→inner so we reverse it here
+          to keep connect pinned to the physical right edge. */}
+      <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 overflow-hidden" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
+        {LEFT.map(render)}
+        <span className="flex-1" />
+        {LEFT_INNER.map(render)}
+        {RIGHT_INNER.map(render)}
+        <span className="flex-1" />
+        {[...RIGHT].reverse().map(render)}
       </div>
     </div>
   )

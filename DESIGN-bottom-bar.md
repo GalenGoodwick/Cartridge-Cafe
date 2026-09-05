@@ -1,7 +1,9 @@
 # THE BOTTOM BAR — the complete pathway log (Sep 5, the from-scratch rebuild)
 
-One fixed bar, one flex row: `[ LEFT flex-1 | RIGHT flex-1 (row-reversed) ]` — no floating
-center. The right group's IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. No absolute zones, ever again.
+One fixed bar, ONE div, one flex row: `[ LEFT …spacer… INNER …spacer… RIGHT ]`.
+Every button lives in the same flex context (Sep 5: "move all into left") — spacers
+make the edge clusters, RIGHT is rendered reversed so `connect` pins the right edge.
+The IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. No absolute zones, no sibling divs, ever again.
 
 ## Every pathway (the registry in grid/BottomBar.tsx implements THIS table)
 
@@ -26,7 +28,7 @@ center. The right group's IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. 
   A button either exists whole or not at all. overflow-hidden is the last-resort
   guard, never the mechanism.
 - **Edge pins**: LEFT 1 (back) and RIGHT 1 (connect) can never be clipped —
-  outermost in flex order (right group is row-reversed).
+  they sit at the extremes of the ONE flex row (RIGHT array renders reversed).
 - **Touch floor**: narrow = 44×44px minimum targets, 16px glyphs.
 - **Tones**: gold = "your AI acts" (EDIT, SIGN IN) · green = "AI presence"
   (CONNECT/LIVE, COMMONS active) · neutral chips = everything else. Premium
