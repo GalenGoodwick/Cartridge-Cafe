@@ -86,7 +86,7 @@ const FLOW: Btn[] = [
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
   // the person — icon only, even wide; right of the green door (Galen)
-  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤', glyph: () => '👤', testId: 'account' },
+  { id: 'account', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: () => '👤', glyph: () => '👤', testId: 'account' },   // not on the create flow (Galen)
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },

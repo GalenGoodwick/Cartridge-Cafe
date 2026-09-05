@@ -1031,7 +1031,7 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], canBack: giRef.current > 0,
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], canBack: giRef.current > 0 || connectOpen || uiSet === 'create',
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
@@ -1039,7 +1039,7 @@ export default function TheGrid() {
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
-          back: () => { if (giRef.current > 0) window.history.back() },
+          back: () => { if (connectOpen) { setConnectOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (uiSet === 'create') { setUiSet('games'); setPhase('browse') } },
           edit: () => { setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           create: () => { setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
