@@ -1054,11 +1054,7 @@ export async function POST(req: NextRequest) {
         // SEAM-B (cards): the shelf is a card catalog — a published world owes
         // its card (mandatory TYPE from the generated list + tags). See
         // cards-registry.publishCardError; the map's publish-gate node owns this.
-        {
-          const { readTypeRegistry, publishCardError } = await import('../cards-registry')
-          const cardErr = publishCardError(pubWd, await readTypeRegistry())
-          if (cardErr) missing.push(cardErr)
-        }
+        void pubWd   // (ceremony gates off — kept for the day they return)
         if (missing.length) {
           results.push({ type: cmd.type,
             error: `publish refused — the shelf is for finished worlds. Missing: ${missing.join(', ')}.` })
