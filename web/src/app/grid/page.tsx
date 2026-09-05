@@ -1217,7 +1217,10 @@ export default function TheGrid() {
             className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
               selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
             style={{ boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
-            <img src="/cartridge-cup.svg" alt="" className="w-7 h-7" />
+            <span className="flex flex-col items-center leading-none">
+              <img src="/cartridge-cup.svg" alt="" className="w-6 h-6" />
+              <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
+            </span>
           </button>
           {/* RIGHT ZONE */}
           <div className="absolute inset-y-0 right-0 flex items-center justify-start gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 38px)' }}>
@@ -1256,6 +1259,13 @@ export default function TheGrid() {
                 {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
               </button>
             )}
+            {/* ⚿ CONNECT AI — THE GREEN DOOR (Galen, Sep 5: "big green, always
+                accessible"). Rightmost, every UI set; opens the connect modal
+                (build-key prompt). Narrow keeps it, compacted. */}
+            <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
+              className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]">
+              {narrow ? '⚿ AI' : '⚿ CONNECT AI'}
+            </button>
           </div>
         </div>
       </div>

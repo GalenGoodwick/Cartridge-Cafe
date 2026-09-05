@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Source_Serif_4, Libre_Franklin, IBM_Plex_Mono, Fraunces } from 'next/font/google'
 import './globals.css'
 import Beacon from './Beacon'
+import ConnectAiBar from './ConnectAiBar'
 import { Providers } from './providers'
 import SupportGate from './SupportGate'
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         <Providers><SupportGate>{children}</SupportGate></Providers>
         <Beacon />
+        <ConnectAiBar />
         <ServiceWorkerRegistration />
         <ErrorNet />
       </body>

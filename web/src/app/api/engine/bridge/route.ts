@@ -896,22 +896,43 @@ export async function POST(req: NextRequest) {
             const twin = await findOwnWorldByName(auth.playerId, name)
             if (twin) { results.push({ type: cmd.type, error: `You already own a world named "${twin.name}" (/space/${twin.slug}). Edit it with use_world {"slug":"${twin.slug}"}, or create with a different name.`, existingSlug: twin.slug }); continue }
           }
-          // race-safe: the DB unique constraint arbitrates the slug, not a prior read
-          // PUBLISH PIPELINE: AI-created worlds are born PRIVATE. The public
-          // shelf is for finished worlds — publish_world (gated on vision +
-          // instructions + brief_done) is the explicit act that shelves one.
-          const space = await createSpaceUniqueSlug(slugify(name), (slug) => ({ name, slug, ownerId: auth.playerId!, isPublic: false }))
-          // BORN WITH ITS SLOTS (Galen's law): every new world seeds the blank
-          // placeholder nodes — the sandbox is alive from frame one (no
-          // first-hook reload seam, ever) and the world's anatomy is already
-          // named: player/world/entities/rules/hud/net, each a dockable node.
-          for (const seed of placeholderSeedCommands(Date.now())) {
-            await applyCommandToSnapshot(space.id, seed).catch(() => {})
+          // ONE CREATION, ONE PRICE (Galen, Sep 5: "the world build credit
+          // taker as a tool call for ai"). The AI door was the LAST free side
+          // door — every human create path spends a $5 build credit; now this
+          // one does too, with the same law: keeper demos free, spend AFTER
+          // all validation (a refused create never charges), a failed birth
+          // refunds. The AI gets a machine-readable broke answer (needPayment)
+          // it can relay to its human, and creditsLeft on success.
+          const { isAdminUserId } = await import('@/lib/adminAuth')
+          const { spendGenCredit, refundGenCredit, stripeConfigured, GEN_PRICE_USD } = await import('@/lib/stripe')
+          const isKeeper = await isAdminUserId(auth.playerId)
+          let creditsLeft: number | null = null
+          if (!isKeeper) {
+            creditsLeft = await spendGenCredit(auth.playerId)
+            if (creditsLeft === null) {
+              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy build credits on the ACCOUNT page (cartridge.cafe/account) — bundles are cheaper — then create again. Check the balance anytime with {"type":"credits_read"}.`,
+                needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD, credits: 0 })
+              continue
+            }
           }
-          const worldToken = await mintWorldToken(space.id, 'created via player key')
+          // THE ONE BIRTH PIPELINE (universal-pipelines law): this door used to
+          // hand-roll creation (slug + seeds + token) and silently missed what
+          // birthWorld gives every other door — the backdrop, born-strict, the
+          // first build key. One pipeline now.
+          let space: { id: string; slug: string }, worldToken: string
+          try {
+            const { birthWorld } = await import('@/lib/world-create')
+            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: false })
+            space = born.space; worldToken = born.token
+          } catch (e) {
+            if (!isKeeper) { await refundGenCredit(auth.playerId!).catch(() => {}) }
+            results.push({ type: cmd.type, error: 'world birth failed — nothing was charged (your credit was refunded)' })
+            continue
+          }
           // The platform speaks on its own bus: world births announce themselves.
           commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
           results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: true,
+            ...(creditsLeft !== null ? { creditsLeft } : {}),
             next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. The world is PRIVATE until you send {"type":"publish_world"} (requires vision + instructions + brief_done) — the shelf is for finished worlds.` })
           continue
         }
@@ -924,8 +945,19 @@ export async function POST(req: NextRequest) {
             next: `POST build commands with Authorization: Bearer ${worldToken} to edit "${sp.name}".` })
           continue
         }
+        if (cmd.type === 'credits_read') {
+          // THE CREDIT TOOL (Galen, Sep 5): the AI reads its human's build-credit
+          // balance + prices in one call, so "can I create?" is answerable
+          // before a create is refused — and the broke answer is relayable.
+          const { readGenCredits, GEN_PRICE_USD, GEN_BUNDLES, stripeConfigured } = await import('@/lib/stripe')
+          results.push({ ok: true, type: 'credits_read', credits: await readGenCredits(auth.playerId),
+            priceUsd: GEN_PRICE_USD, bundles: GEN_BUNDLES, buyable: stripeConfigured(),
+            buyAt: 'https://cartridge.cafe/account',
+            next: 'create_world {name} spends ONE credit (the keeper is exempt). Bundles are cheaper per credit — your human buys them on the account page.' })
+          continue
+        }
         if (cmd.type !== 'main_say' && cmd.type !== 'main_read') {
-          results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, main_say, main_read. Build a world with the uc_st_ token those return.' })
+          results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, credits_read, main_say, main_read. Build a world with the uc_st_ token those return.' })
           continue
         }
       }
