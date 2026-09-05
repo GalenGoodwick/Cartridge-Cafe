@@ -73,7 +73,7 @@ const FLOW: Btn[] = [
   { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
-  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '✎ EDIT', glyph: () => '✎', testId: 'edit' },
+  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
@@ -115,6 +115,20 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
         ◂
       </button>
     )
+    // edit wears a BIG LONG pen (Galen) — the ✎ glyph rendered large beside
+    // the word, alone and larger still when condensed
+    if (b.id === 'edit') {
+      const condensed = ctx.narrow || ctx.glyphs
+      return (
+        <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
+          className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[typeof b.tone === 'function' ? b.tone(ctx) : b.tone](active)}`}>
+          <span className="inline-flex items-center gap-1">
+            <span className={`leading-none ${condensed ? 'text-[24px]' : 'text-[19px]'}`} style={{ transform: 'scaleX(1.35)' }}>✎</span>
+            {!condensed && <span className="ml-1">EDIT</span>}
+          </span>
+        </button>
+      )
+    }
     const body = b.id === 'nav'
       ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={(ctx.narrow || ctx.glyphs) ? 'w-6 h-6' : 'w-5 h-5'} />{!(ctx.narrow || ctx.glyphs) && <span>NAV</span>}</span>)
       : text
