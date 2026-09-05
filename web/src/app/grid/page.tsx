@@ -328,6 +328,9 @@ export default function TheGrid() {
   const engineSet = uiSet === 'engine'
   const createSet = uiSet === 'create'
   const narrow = win.w < 700                      // the dock becomes a BOTTOM SHEET on narrow screens
+  // BAR SIZING (Galen, Sep 5: 'much bigger icons on mobile'): narrow buttons
+  // are real 44px touch targets (Apple HIG floor), desktop keeps the compact chips.
+  const bsz = narrow ? 'h-11 min-w-[44px] px-3 text-[16px] tracking-normal grid place-items-center' : 'px-3.5 py-2 text-[12px] tracking-[0.18em]'
   const dockBottomH = 168                          // narrow engine dock height
   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout — except a
   // CREATE PLAYTEST (phase 'play' inside create), which goes full-frame at the
@@ -1183,22 +1186,19 @@ export default function TheGrid() {
             the world/menu no longer shows through between the buttons */}
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
         <div className="absolute inset-x-0 top-0" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-          {/* LEFT ZONE */}
+          {/* LEFT ZONE — priority order (Galen, Sep 5: share flows left next
+              to edit and title): ◂ · ⚡EDIT · title · ↗SHARE always visible;
+              set-specific controls take the clip when space runs out. */}
           <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
-            {/* ◂ BACK — the bar's own back button (walks the same history the
-                browser back walks) */}
             <button data-grid-back aria-label="back"
               onClick={() => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } }}
               title="back — at the start, opens the dockstar"
-              className="font-mono text-[14px] w-9 h-9 grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0">
+              className={`font-mono ${narrow ? 'w-11 h-11 text-[18px]' : 'w-9 h-9 text-[14px]'} grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0`}>
               ◂
             </button>
-            {/* ⚡ EDIT — THE GOLD DOOR (Galen, Sep 5: "always have an edit
-                button unless it is premium... gets the AI editing the world").
-                Opens the same copyable one-command modal, world-focused. */}
             {!cfgStable?.premium && (
               <button data-grid-edit onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
-                className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]">
+                className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 ${bsz} bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]`}>
                 {narrow ? '⚡' : '⚡ EDIT'}
               </button>
             )}
@@ -1209,20 +1209,27 @@ export default function TheGrid() {
             </button>
             ) : uiSet !== 'engine' ? (
             <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
-              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-full truncate">
+              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-[38%] truncate">
               {selected?.name ?? spc?.name ?? '—'}
             </button>
             ) : null)}
+            <button data-grid-share onClick={async () => {
+              const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
+              try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
+              catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+              if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+            }}
+              className={`font-mono rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0 ${bsz}`}>
+              {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
+            </button>
             <span className="flex-1" />
-            {/* ◉ COMMONS — immediately left of the dockstar (MAIN) */}
             {uiSet === 'main' && (
               <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
                   chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                ◉ COMMONS
+                {narrow ? '◉' : '◉ COMMONS'}
               </button>
             )}
-            {/* ● REC — GAMES-play, desktop only (Galen: not needed on mobile) */}
             {!narrow && uiSet === 'games' && phase === 'play' && (
               <button data-grid-rec onClick={() => cmd('rec')}
                 title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
@@ -1232,36 +1239,19 @@ export default function TheGrid() {
                 {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
               </button>
             )}
-            {/* ⟲ RESET — only for worlds that declare R-reset; sits left of the
-                dockstar and always confirms first (Galen). Fires the same 'r'
-                the keyboard path handles. */}
             {uiSet === 'games' && phase === 'play' && (cfgStable?.rReset || spc?.rReset) && (
               <button data-grid-reset onClick={() => setResetConfirm(true)}
                 title="restart this world"
-                className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5">
+                className={`font-mono rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5 ${bsz}`}>
                 ⟲ {!narrow && 'RESET'}
               </button>
             )}
-            {/* ⚿ SIGN IN — only when signed OUT (tri-state: undefined = still
-                checking, no flash), left of the dockstar (Galen, Sep 5). */}
             {me === null && (
               <button data-grid-signin onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) }}
-                className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 transition-all shrink-0 shadow-[0_0_14px_rgba(245,176,76,0.45)]">
+                className={`font-mono font-bold rounded-xl border-2 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 transition-all shrink-0 shadow-[0_0_14px_rgba(245,176,76,0.45)] ${bsz}`}>
                 {narrow ? '⚿' : 'SIGN IN'}
               </button>
             )}
-            {/* ↗ SHARE — ALWAYS in the bar, left of the NAV cup (Galen, Sep 5).
-                The payload is ONLY the MCP one-liner + the site — the setup
-                gate itself; the server guides everything from there. */}
-            <button data-grid-share onClick={async () => {
-              const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
-              try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
-              catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-              if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-            }}
-              className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
-              {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
-            </button>
           </div>
           {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
           <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
@@ -1274,44 +1264,39 @@ export default function TheGrid() {
               <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
             </span>
           </button>
-          {/* RIGHT ZONE */}
-          <div className="absolute inset-y-0 right-0 flex items-center justify-start gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 38px)' }}>
-            {/* ◆ BREW ICON — immediately right of the dockstar (MAIN) */}
-            {uiSet === 'main' && (
-              <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
-                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                ◆ BREW ICON
-              </button>
+          {/* RIGHT ZONE — flex-row-reverse (Galen, Sep 5: 'CONNECT AI is
+              going off the edge'): the FIRST child pins to the RIGHT edge and
+              overflow clips on the LEFT — the green door can never fall off. */}
+          <div className="absolute inset-y-0 right-0 flex flex-row-reverse items-center gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 38px)' }}>
+            {uiSet !== 'engine' && (
+            <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
+              className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${bsz} ${
+                aiLive ? 'bg-emerald-400 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
+                       : 'bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]'}`}>
+              {aiLive && <span className="inline-block w-2 h-2 rounded-full bg-black/80 animate-pulse" />}
+              {aiLive ? (narrow ? 'AI ⚡' : 'AI LIVE') : (narrow ? '⚿' : '⚿ CONNECT AI')}
+            </button>
             )}
-            <span className="flex-1" />
-            {/* ✉ CONTACT — the teams door (terms: "contact for teams"). GAMES only. */}
-            {uiSet === 'games' && (
-            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`} target="_blank" rel="noopener"
-              className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 bg-black/70 border-white/25 text-white/85 hover:text-white">
-              {narrow ? '✉' : '✉ CONTACT'}
-            </a>
-            )}
-            {/* ? INSTRUCTIONS — GAMES only (not MAIN, not ENGINE, not CREATE) */}
             {uiSet === 'games' && (
             <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
-              className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+              className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
                 instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
               {narrow ? '?' : '? INSTRUCTIONS'}
             </button>
             )}
-
-            {/* ⚿ CONNECT AI — THE GREEN DOOR (Galen, Sep 5: "big green, always
-                accessible"). Rightmost, every UI set; opens the connect modal
-                (build-key prompt). Narrow keeps it, compacted. */}
-            {uiSet !== 'engine' && (
-            <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
-              className={`font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${
-                aiLive ? 'bg-emerald-400 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
-                       : 'bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]'}`}>
-              {aiLive && <span className="inline-block w-2 h-2 rounded-full bg-black/80 animate-pulse" />}
-              {aiLive ? (narrow ? 'AI ⚡' : 'AI LIVE') : (narrow ? '⚿ AI' : '⚿ CONNECT AI')}
-            </button>
+            {uiSet === 'games' && !narrow && (
+            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`} target="_blank" rel="noopener"
+              className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 bg-black/70 border-white/25 text-white/85 hover:text-white">
+              ✉ CONTACT
+            </a>
+            )}
+            <span className="flex-1" />
+            {uiSet === 'main' && (
+              <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
+                className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
+                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+                {narrow ? '◆' : '◆ BREW ICON'}
+              </button>
             )}
           </div>
         </div>
