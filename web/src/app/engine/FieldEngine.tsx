@@ -26,6 +26,7 @@ import PromptPanel from './PromptPanel'
 import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
 import SpritesPanel from './SpritesPanel'
+import LineagePanel from './LineagePanel'   // ⑂ family tree + edits-by-user
 import type { TerminalEntry } from './AgentTerminalPanel'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
@@ -304,6 +305,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // world's shelf bubble (same copy-prompt-to-AI flow as CONNECT AI / brew)
   const [mkIconOpen, setMkIconOpen] = useState(false)
   const [spritesOpen, setSpritesOpen] = useState(false)   // ◲ SPRITES — upload/view/rip (owner)
+  const [lineageOpen, setLineageOpen] = useState(false)   // ⑂ LINEAGE — family tree + edits by user
   const [mkIconDesc, setMkIconDesc] = useState('')
   const [mkIconCopied, setMkIconCopied] = useState(false)
   const [mkIconSet, setMkIconSet] = useState(false)
@@ -7162,6 +7164,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             })()}
             {/* (⚡ CONNECT AI removed from the engine chrome — Galen, Sep 5:
                 the gold ⚡ EDIT is the one door.) */}
+            {!isHub && spaceSlug && (
+              <button
+                onClick={() => setLineageOpen(true)}
+                title="this world's family tree — forked from, forks of, and who built what"
+                className="px-2.5 py-1.5 rounded-lg text-[14px] tracking-[0.15em] font-mono bg-black/60 backdrop-blur border border-white/10 text-white/70 hover:text-white hover:bg-black/80 transition-colors"
+              >
+                ⑂ LINEAGE
+              </button>
+            )}
             {(isOwner || !spaceId) && spaceSlug && (
               <button
                 onClick={async () => {
@@ -7556,6 +7567,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
           {spritesOpen && spaceSlug && (
             <SpritesPanel slug={spaceSlug} onClose={() => setSpritesOpen(false)} />
+          )}
+
+          {lineageOpen && spaceSlug && (
+            <LineagePanel slug={spaceSlug}
+              worldData={simulationRef.current?.worldData as Record<string, unknown> | undefined}
+              onClose={() => setLineageOpen(false)} />
           )}
 
           {mkIconOpen && (() => {

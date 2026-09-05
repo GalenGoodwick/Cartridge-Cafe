@@ -12,7 +12,7 @@ on session state. No absolute zones, no sibling divs, ever again.
 |---|---|---|---|---|---|---|
 | back | ◂ | — | LEFT 1 | always | 0 | history back; at start opens NAV |
 | edit | ⚡ | EDIT | LEFT 2 | world not premium | 0 | the gold door — copy text that sets YOUR AI editing this world (modal) |
-| title | — | Cartridge.Cafe / world name | LEFT 3 | not engine set | 1 | main: UI selector · games: attribution |
+| title | — | Cartridge.Cafe | LEFT 3 | main set ONLY (in games/engine the world is already selected — name is redundant; attribution lives in the engine's ⑂ LINEAGE tab) | 1 | UI selector |
 | share | ↗ | SHARE | LEFT 4 | always | 0 | copies the MCP one-liner (the whole invitation) |
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |

@@ -62,7 +62,8 @@ type Btn = {
 const LEFT: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
   { id: 'edit', tier: 0, tone: 'gold', show: c => !c.premium, label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
-  { id: 'title', tier: 1, tone: 'chip', show: c => c.set !== 'engine', label: c => c.title, glyph: c => c.title, testId: 'title' },
+  // title only on MAIN — in games/engine the world is already selected (Galen)
+  { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: () => true, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },
 ]
 const LEFT_INNER: Btn[] = [
