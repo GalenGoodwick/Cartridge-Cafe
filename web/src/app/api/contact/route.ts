@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { ensureContactTable } from '@/lib/contact-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: 'a real email address is required — it is how we reply' }, { status: 400 })
   if (message.length < 10) return NextResponse.json({ error: 'tell us a little more (10+ characters)' }, { status: 400 })
 
+  await ensureContactTable(prisma)
   await prisma.contactMessage.create({ data: { email, message, context } })
   return NextResponse.json({ ok: true })
 }

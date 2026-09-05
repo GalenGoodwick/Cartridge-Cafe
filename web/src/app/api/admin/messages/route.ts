@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/adminAuth'
 import prisma from '@/lib/prisma'
+import { ensureContactTable } from '@/lib/contact-table'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,7 @@ export async function GET(req: NextRequest) {
   if (!(await isAdmin(req.headers.get('authorization')))) {
     return NextResponse.json({ error: 'not the keeper' }, { status: 403 })
   }
+  await ensureContactTable(prisma)
   const messages = await prisma.contactMessage.findMany({
     orderBy: { createdAt: 'desc' },
     take: 200,
