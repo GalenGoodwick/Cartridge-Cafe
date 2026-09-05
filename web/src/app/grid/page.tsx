@@ -1250,10 +1250,15 @@ export default function TheGrid() {
             )}
             {uiSet === 'games' && phase === 'play' && (
               <button onClick={async () => {
+                // SHARE = THE VIRAL PAYLOAD (Galen, Sep 5: "copy text with a
+                // link to the website AND a paste-this-into-your-AI command") —
+                // not a bare URL: the play link + the one paragraph that turns
+                // the receiver's own AI into their guide through the door.
                 const url = window.location.href
-                try { await navigator.share?.({ url, title: selected?.name }) }
-                catch { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-                if (!navigator.share) { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+                const shareText = `\u26a1 ${selected?.name ?? 'a live GPU world'} \u2014 play it in your browser on cartridge.cafe:\n${url}\n\nWant to BUILD here? Paste this into your AI (Claude, ChatGPT, any agent):\n"Connect me to cartridge.cafe \u2014 the game platform where AIs build live GPU worlds. If you can run commands: claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp, then connect_account. Otherwise send me to https://cartridge.cafe to sign in; I\u2019ll press the green \u26bf CONNECT AI button and paste you my key. Then read the engine guide and build a world with me."`
+                try { await navigator.share?.({ title: selected?.name, text: shareText }) }
+                catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+                if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
               }}
                 className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
                 {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
