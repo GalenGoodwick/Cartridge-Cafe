@@ -4,7 +4,9 @@
 // all icons... wipe the bottom bar... do it from scratch"). The registry below
 // IS the pathway log (see DESIGN-bottom-bar.md — keep them together).
 //
-// ONE flex row, ONE div: [ main flow …spacer… toggles at the right edge ].
+// ONE flex row, ONE div: [ …spacer… MAIN FLOW …spacer… toggles at the right
+// edge ] — matched spacers grow equally, so the main flow FLOWS FROM CENTER
+// (Galen, Sep 5), condensing symmetrically as the window shrinks.
 // Main flow = back edit title share instructions [SIGN IN⇄NAV] connect;
 // toggles = commons rec reset brewicon. Everything shares a single flex
 // context so it condenses together. The IDENTITY SLOT is SIGN IN when signed
@@ -118,6 +120,7 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
           edge. RIGHT is written outer→inner in the registry so we reverse it
           into reading order. Contact lives on the NAV page, not here. */}
       <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 overflow-hidden" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
+        <span className="flex-1" />
         {LEFT.map(render)}
         {[...RIGHT].reverse().map(render)}
         <span className="flex-1" />

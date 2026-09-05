@@ -1,8 +1,8 @@
 # THE BOTTOM BAR — the complete pathway log (Sep 5, the from-scratch rebuild)
 
 One fixed bar, ONE div, one flex row:
-`back edit title share instructions [SIGN IN⇄NAV] connect …spacer… commons rec reset brewicon`.
-The MAIN FLOW reads left→right off share; the TOGGLES cluster rides the right edge.
+`…spacer… back edit title share instructions [SIGN IN⇄NAV] connect …spacer… commons rec reset brewicon`.
+The MAIN FLOW floats CENTERED (matched spacers either side); the TOGGLES cluster rides the right edge.
 Every button lives in the same flex context. The IDENTITY SLOT swaps SIGN IN ⇄ NAV
 on session state. No absolute zones, no sibling divs, ever again.
 
@@ -27,8 +27,9 @@ on session state. No absolute zones, no sibling divs, ever again.
 - **Tiers, not clipping**: tier 0 = phone essentials · 1 = ≥700px · 2 = ≥1040px.
   A button either exists whole or not at all. overflow-hidden is the last-resort
   guard, never the mechanism.
-- **Edge pins**: back opens the row; connect closes the main flow (RIGHT array
-  renders reversed into reading order); toggles pin the right screen edge.
+- **Center flow**: the main cluster floats centered and condenses symmetrically;
+  only the toggles cluster pins an edge (right). back opens the flow, connect
+  closes it (RIGHT array renders reversed into reading order).
 - **Touch floor**: narrow = 44×44px minimum targets, 16px glyphs.
 - **Glyph mode**: under 1280px every button sheds its word and keeps its icon
   (still ≥40px click boxes); full labels only when the whole row honestly fits.
