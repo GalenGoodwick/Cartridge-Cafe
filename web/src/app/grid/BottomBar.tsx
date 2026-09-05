@@ -85,12 +85,13 @@ const FLOW: Btn[] = [
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
+  // record rides right of the green door in-game (Galen)
+  { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   // the person — icon only, even wide; right of the green door (Galen)
-  { id: 'account', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: () => '👤', glyph: () => '👤', testId: 'account' },   // not on the create flow (Galen)
+  { id: 'account', tier: 0, tone: 'chip', show: c => c.set !== 'create' && !c.playing, label: () => '👤', glyph: () => '👤', testId: 'account' },   // not on create or IN-game (Galen)
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
-  { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
 ]
