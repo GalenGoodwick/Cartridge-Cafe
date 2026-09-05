@@ -125,8 +125,12 @@ export async function GET(req: Request) {
   // THE 3 TABS (Galen, Sep 5): MOBILE EDITABLE · DESKTOP EDITABLE · PREMIUM.
   // The sandbox law makes every non-premium world member-buildable, so the two
   // editable tabs are simply the free shelf split by device fit.
-  if (tab === 'mobile') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && !r.unfinished && r.fit === 'mobile')).cards, url))
-  if (tab === 'desktop') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && !r.unfinished && r.fit === 'desktop')).cards, url))
+  // ONE POOL (Galen, Sep 5: "unfinished, free, and live editing all pooled
+  // into one and then divided by device type") — everything public and free
+  // (finished, unfinished, open-editing alike) shares the two editable tabs;
+  // only blank worlds (slots but zero fields) and premium stay off them.
+  if (tab === 'mobile') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && r.hasContent && r.fit === 'mobile')).cards, url))
+  if (tab === 'desktop') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && r.hasContent && r.fit === 'desktop')).cards, url))
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
   // ⑄ FORKS (Galen, Aug 30): the games-shelf lineage tab — every PUBLIC world
