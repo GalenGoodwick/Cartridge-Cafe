@@ -4,11 +4,11 @@
 // all icons... wipe the bottom bar... do it from scratch"). The registry below
 // IS the pathway log (see DESIGN-bottom-bar.md — keep them together).
 //
-// ONE flex row, ONE div: [ LEFT …spacer… INNER cluster …spacer… RIGHT ].
-// Everything shares a single flex context so it condenses together. The
-// IDENTITY SLOT (beside the green door) is SIGN IN when signed out and TURNS
-// INTO the NAV cup when signed in. Tiers drop WHOLE buttons; edge pins
-// (back / connect) sit at the flex extremes and cannot clip.
+// ONE flex row, ONE div: [ main flow …spacer… toggles at the right edge ].
+// Main flow = back edit title share contact instructions [SIGN IN⇄NAV] connect;
+// toggles = commons rec reset brewicon. Everything shares a single flex
+// context so it condenses together. The IDENTITY SLOT is SIGN IN when signed
+// out and TURNS INTO the NAV cup when signed in. Tiers drop WHOLE buttons.
 
 export type BarCtx = {
   set: string                 // 'main' | 'games' | 'engine' | ...
@@ -112,18 +112,17 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
   return (
     <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))` }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
-      {/* ONE div, ONE flex context (Galen, Sep 5: 'right and left are on
-          different divs. so move all into left') — every button negotiates
-          space with every other. Spacers split it into edge clusters + a
-          center cluster; RIGHT is written outer→inner so we reverse it here
-          to keep connect pinned to the physical right edge. */}
+      {/* ONE div, ONE flex context. Main flow reads left→right off share
+          (Galen, Sep 5: 'move contact to right of share, instructions nav and
+          connect ai also to the right of share'); the toggles cluster
+          (commons/rec/reset/brewicon) rides the right edge. RIGHT is written
+          outer→inner in the registry so we reverse it into reading order. */}
       <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 overflow-hidden" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
         {LEFT.map(render)}
+        {[...RIGHT].reverse().map(render)}
         <span className="flex-1" />
         {LEFT_INNER.map(render)}
         {RIGHT_INNER.map(render)}
-        <span className="flex-1" />
-        {[...RIGHT].reverse().map(render)}
       </div>
     </div>
   )

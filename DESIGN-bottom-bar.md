@@ -1,9 +1,10 @@
 # THE BOTTOM BAR — the complete pathway log (Sep 5, the from-scratch rebuild)
 
-One fixed bar, ONE div, one flex row: `[ LEFT …spacer… INNER …spacer… RIGHT ]`.
-Every button lives in the same flex context (Sep 5: "move all into left") — spacers
-make the edge clusters, RIGHT is rendered reversed so `connect` pins the right edge.
-The IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. No absolute zones, no sibling divs, ever again.
+One fixed bar, ONE div, one flex row:
+`back edit title share contact instructions [SIGN IN⇄NAV] connect …spacer… commons rec reset brewicon`.
+The MAIN FLOW reads left→right off share; the TOGGLES cluster rides the right edge.
+Every button lives in the same flex context. The IDENTITY SLOT swaps SIGN IN ⇄ NAV
+on session state. No absolute zones, no sibling divs, ever again.
 
 ## Every pathway (the registry in grid/BottomBar.tsx implements THIS table)
 
@@ -27,8 +28,8 @@ The IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. No absolute zones, no 
 - **Tiers, not clipping**: tier 0 = phone essentials · 1 = ≥700px · 2 = ≥1040px.
   A button either exists whole or not at all. overflow-hidden is the last-resort
   guard, never the mechanism.
-- **Edge pins**: LEFT 1 (back) and RIGHT 1 (connect) can never be clipped —
-  they sit at the extremes of the ONE flex row (RIGHT array renders reversed).
+- **Edge pins**: back opens the row; connect closes the main flow (RIGHT array
+  renders reversed into reading order); toggles pin the right screen edge.
 - **Touch floor**: narrow = 44×44px minimum targets, 16px glyphs.
 - **Tones**: gold = "your AI acts" (EDIT, SIGN IN) · green = "AI presence"
   (CONNECT/LIVE, COMMONS active) · neutral chips = everything else. Premium
