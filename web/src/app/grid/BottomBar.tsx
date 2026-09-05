@@ -66,7 +66,7 @@ const FLOW: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
-  { id: 'share', tier: 0, tone: 'chip', show: () => true, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },
+  { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on the create flow (Galen)
   // THE IDENTITY SLOT: one position, two faces — a stranger sees gold SIGN IN;
   // signing in TURNS IT INTO the NAV cup. Never disappears.
   { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
@@ -99,10 +99,12 @@ const TONES: Record<Tone, (active: boolean) => string> = {
 }
 
 export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarActions; barH: number }) {
+  // PIXEL heights, deliberately (the cafe's root font-size is enlarged, so
+  // rem-based h-9/h-11 blew past the bar row — the 'icons flow out' bug)
   const size = ctx.narrow
-    ? 'h-11 min-w-[44px] px-3 text-[16px] tracking-normal'
+    ? 'h-[44px] min-w-[44px] px-3 text-[16px] tracking-normal'
     : ctx.glyphs
-      ? 'h-9 min-w-[40px] px-2.5 text-[14px] tracking-normal'
+      ? 'h-[36px] min-w-[40px] px-2.5 text-[14px] tracking-normal'
       : 'px-3.5 py-2 text-[12px] tracking-[0.16em]'
   const render = (b: Btn) => {
     if (!b.show(ctx) || b.tier > ctx.tier) return null
