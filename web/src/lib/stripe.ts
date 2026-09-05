@@ -11,14 +11,14 @@
 //
 // Products are env-mapped, never hardcoded: a product exists exactly when its
 // STRIPE_PRICE_<KEY> env var holds a Stripe price id. Planned first wave
-// (see memory/monetization notes): ads ($10/mo, system already built), protect
-// (pay-to-protect a world), slots (pro world-slots tier).
+// (see memory/monetization notes): ads ($10/mo, system already built),
+// slots (pro world-slots tier).
 import crypto from 'crypto'
 import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
 
 const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; label: string }> = {
   ads: { env: 'STRIPE_PRICE_ADS', mode: 'subscription', label: 'contained ad slot ($/mo)' },
-  protect: { env: 'STRIPE_PRICE_PROTECT', mode: 'payment', label: 'pay-to-protect a world' },
+  // protect: RETIRED Sep 5 (challenger-overturn paradigm gone; voting stays server-side)
   slots: { env: 'STRIPE_PRICE_SLOTS', mode: 'subscription', label: 'pro world slots' },
   // one-time $10 to publish a cafe page to permanent hosting at /p/<slug>.
   // Scoped to the slug (Entitlement.slug) so a purchase buys exactly one address.
