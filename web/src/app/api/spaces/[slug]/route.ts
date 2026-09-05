@@ -215,7 +215,8 @@ export async function DELETE(
   // can close building or unpublish first (both reversible), then delete.
   {
     const wd = ((space.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-    if (space.isPublic && policyOf(wd).build === 'anyone') {
+    const { effectiveBuild } = await import('@/lib/world-policy')
+    if (space.isPublic && effectiveBuild(wd, await hasIpControl(user.id)) === 'anyone') {
       const [memberTokens, foreignVersions] = await Promise.all([
         prisma.spaceToken.count({ where: { spaceId: space.id, revokedAt: null, name: { startsWith: 'member:' } } }),
         prisma.spaceVersion.count({ where: { spaceId: space.id, authorId: { not: user.id } } }),

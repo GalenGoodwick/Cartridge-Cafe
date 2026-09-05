@@ -83,9 +83,14 @@ export async function POST(
       const joiner = await prisma.user.findUnique({ where: { email }, select: { id: true } })
       const sp = await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, ownerId: true } })
       if (sp && joiner) {
-        const rows = await prisma.$queryRaw<{ policy: unknown }[]>`
-          SELECT snapshot->'worldData'->'policy' AS policy FROM "PlayerSpace" WHERE id = ${sp.id}`
+        const rows = await prisma.$queryRaw<{ policy: unknown; premium: unknown }[]>`
+          SELECT snapshot->'worldData'->'policy' AS policy, snapshot->'worldData'->'premium' AS premium FROM "PlayerSpace" WHERE id = ${sp.id}`
         const policy = policyOf({ policy: rows[0]?.policy })
+        // THE SANDBOX LAW: membership build access resolves open on every world
+        // except premium games and a proprietary owner's worlds
+        const { hasIpControl } = await import('@/lib/stripe')
+        const { effectiveBuild } = await import('@/lib/world-policy')
+        const buildAccess = effectiveBuild({ policy: rows[0]?.policy, premium: rows[0]?.premium }, await hasIpControl(sp.ownerId))
         const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
         const { isBanned } = await import('@/lib/world-bans')
         if (await isBanned(sp.id, handle)) {
@@ -104,7 +109,7 @@ export async function POST(
             return NextResponse.json({ error: 'an editing membership ($10/mo) is the seat to join open build flows — play stays free' }, { status: 402 })
           }
         }
-        if (policy.build === 'anyone') {
+        if (buildAccess === 'anyone') {
           memberHandle = handle
           owned = { userId: sp.ownerId, spaceId: sp.id }
         } else {

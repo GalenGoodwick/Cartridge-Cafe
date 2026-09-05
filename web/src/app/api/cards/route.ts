@@ -53,6 +53,7 @@ export interface FeedRow {
   kind: CardKind                     // toy · world · game (Galen's taxonomy)
   perf: number | null                // measured frame ms (publish stress test, else the live tabs' EMA)
   premium: number | null             // $ price — worldData.premium.usd (PREMIUM GAMES)
+  fit: 'mobile' | 'desktop'          // device fit — the 3-tab shelf split
   unfinished: boolean                // worldData.unfinished — the ⚒ UNFINISHED shelf (Galen, Aug 28)
   hasNodes: boolean                  // proper node foundations (__nodes registry) → dockable / live-editable
   hasContent: boolean                // has ≥1 field — a BLANK world (0 fields) is not a live-editable game (Galen: "blanks are not live editing")
@@ -121,6 +122,11 @@ export async function GET(req: Request) {
   // setting build→owner "didn't move the world out of live editing".
   if (tab === 'live') return NextResponse.json(serve(feedPublished(rows.filter(r => r.buildMode === 'anyone' && r.hasContent)).cards, url))
   // PREMIUM (Galen, Aug 24 — Tideglass Act 1 first): the paid-game shelf
+  // THE 3 TABS (Galen, Sep 5): MOBILE EDITABLE · DESKTOP EDITABLE · PREMIUM.
+  // The sandbox law makes every non-premium world member-buildable, so the two
+  // editable tabs are simply the free shelf split by device fit.
+  if (tab === 'mobile') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && !r.unfinished && r.fit === 'mobile')).cards, url))
+  if (tab === 'desktop') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium === null && !r.unfinished && r.fit === 'desktop')).cards, url))
   if (tab === 'premium') return NextResponse.json(serve(feedPublished(rows.filter(r => r.premium !== null)).cards, url))
   if (tab === 'forkable') return NextResponse.json(serve(feedForkable(rows).cards, url))
   // ⑄ FORKS (Galen, Aug 30): the games-shelf lineage tab — every PUBLIC world
@@ -317,6 +323,13 @@ function stripRows(spaces: Array<{ snapshot: unknown; owner: { name: string | nu
       hasNodes,
       hasContent,
       premium: typeof premRec?.usd === 'number' && premRec.usd > 0 ? premRec.usd : null,
+      // THE 3 TABS (Galen, Sep 5): the shelf splits by DEVICE FIT — a world is
+      // mobile when it declares so (worldData.fit / deviceConfig) or was born a
+      // portrait rect; everything else is desktop.
+      fit: (() => { const wp = (sn as { worldParams?: { deviceConfig?: string; gridW?: number; gridH?: number } } | null)?.worldParams
+        if (wd.fit === 'mobile' || wp?.deviceConfig === 'mobile') return 'mobile'
+        if (typeof wp?.gridW === 'number' && typeof wp?.gridH === 'number' && wp.gridH > wp.gridW) return 'mobile'
+        return 'desktop' })(),
       unfinished: wd.unfinished === true,
       updatedAt: updatedAt.getTime(),
       maker: { handle: isGuest ? null : handleOf(email), name: owner?.name ?? null },

@@ -24,7 +24,7 @@ import { MembershipBanner } from '@/app/cards/MembershipBanner'
 type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
-type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine'
+type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'mobile' | 'desktop'
 type Entry = { slug: string; name: string; scene: string; maker?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
@@ -52,7 +52,7 @@ export default function TheGrid() {
   const [win, setWin] = useState({ w: 1280, h: 800 })
   const [uiSet, setUiSet] = useState<UiSet>('games')
   const [phase, setPhase] = useState<Phase>('browse')
-  const [tab, setTab] = useState<Tab>('published')
+  const [tab, setTab] = useState<Tab>(() => (typeof window !== 'undefined' && window.innerWidth < 700 ? 'mobile' : 'desktop'))
   const [q, setQ] = useState('')
   const [entries, setEntries] = useState<Entry[]>(LOCAL)
   const prevTabRef = useRef<Tab | null>(null)   // tab-switch detection (a tab is a context)
@@ -220,7 +220,7 @@ export default function TheGrid() {
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         const list = Array.isArray(d.cards) && d.cards.length
           ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined }))
-          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
+          : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' || feed === 'mobile' || feed === 'desktop' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
         // tab's game — if the frame's world isn't ON this shelf, the shelf's
@@ -230,7 +230,7 @@ export default function TheGrid() {
         }
         prevTabRef.current = tab
       })
-      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' || tab === 'forked' ? [] : LOCAL); prevTabRef.current = tab })
+      .catch(() => { setEntries(tab === 'mine' || tab === 'premium' || tab === 'unfinished' || tab === 'forked' || tab === 'mobile' || tab === 'desktop' ? [] : LOCAL); prevTabRef.current = tab })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
   useEffect(() => {
@@ -647,7 +647,7 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['live', '◉ LIVE EDITING'], ['published', 'FREE GAMES'], ['premium', '✦ PREMIUM'], ['unfinished', '⚒ UNFINISHED'], ['forked', '⑄ FORKS'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/50 hover:text-white/70'}`}>
@@ -1210,6 +1210,18 @@ export default function TheGrid() {
                 ⟲ {!narrow && 'RESET'}
               </button>
             )}
+            {/* ↗ SHARE — ALWAYS in the bar, left of the NAV cup (Galen, Sep 5).
+                The payload is ONLY the MCP one-liner + the site — the setup
+                gate itself; the server guides everything from there. */}
+            <button data-grid-share onClick={async () => {
+              const shareText = `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nhttps://cartridge.cafe`
+              try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
+              catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+              if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+            }}
+              className="font-mono text-[12px] tracking-[0.18em] px-3 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
+              {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
+            </button>
           </div>
           {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
           <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
@@ -1248,22 +1260,7 @@ export default function TheGrid() {
               {narrow ? '?' : '? INSTRUCTIONS'}
             </button>
             )}
-            {uiSet === 'games' && phase === 'play' && (
-              <button onClick={async () => {
-                // SHARE = THE VIRAL PAYLOAD (Galen, Sep 5: "copy text with a
-                // link to the website AND a paste-this-into-your-AI command") —
-                // not a bare URL: the play link + the one paragraph that turns
-                // the receiver's own AI into their guide through the door.
-                const url = window.location.href
-                const shareText = `⚡ ${selected?.name ?? 'a live GPU world'} — play it in your browser:\n${url}\n\nBuild your own — add the cafe to your AI:\nclaude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell it: "set up cartridge.cafe with me."`
-                try { await navigator.share?.({ title: selected?.name, text: shareText }) }
-                catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-                if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-              }}
-                className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0">
-                {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
-              </button>
-            )}
+
             {/* ⚿ CONNECT AI — THE GREEN DOOR (Galen, Sep 5: "big green, always
                 accessible"). Rightmost, every UI set; opens the connect modal
                 (build-key prompt). Narrow keeps it, compacted. */}

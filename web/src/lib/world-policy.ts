@@ -84,3 +84,20 @@ export function canForkWorld(
 ): { ok: true } | { ok: false; error: string } {
   return forkGate(wd, ownerHasIpControl)
 }
+
+/** THE SANDBOX LAW (Galen, Sep 5: "make all worlds open buildable for
+ *  membership. its the only way. Except for premium games... and proprietary.
+ *  Kids have to share the sandbox."). Build access RESOLVES open for every
+ *  world; only two doors stay under their declared contract: PREMIUM games
+ *  (worldData.premium.usd — sellable only by IP-control holders) and a
+ *  PROPRIETARY (IP-control) owner's worlds. Play is free everywhere either
+ *  way; the OG creator keeps governance (publish/policy/delete) regardless. */
+export function effectiveBuild(
+  wd: Record<string, unknown> | null | undefined,
+  ownerHasIp: boolean,
+): 'anyone' | 'invited' | 'owner' {
+  const prem = (wd?.premium as { usd?: number } | undefined)?.usd
+  const isPremium = typeof prem === 'number' && prem > 0
+  if (!isPremium && !ownerHasIp) return 'anyone'
+  return policyOf(wd).build
+}

@@ -1013,7 +1013,25 @@ export async function POST(req: NextRequest) {
       // instructions + brief_done (which itself requires a WORKING visual via
       // the render check). unpublish_world takes a world back off the shelf —
       // still editable by its owner, still readable in the library.
+      // PREMIUM COMES OUT OF PROPRIETARY ONLY (Galen, Sep 5): pricing a world
+      // (worldData.premium) takes the \u25c6 IP-control membership. Anyone else's
+      // premium write is refused here at the chokepoint, not silently ignored.
+      if (cmd.type === 'set_world_data' && isSpaceScoped && (cmd.data as Record<string, unknown> | undefined)?.premium !== undefined) {
+        const { hasIpControl } = await import('@/lib/stripe')
+        const ownerRow = await prisma.playerSpace.findUnique({ where: { id: auth.spaceId! }, select: { ownerId: true } })
+        if (!ownerRow || !(await hasIpControl(ownerRow.ownerId))) {
+          results.push({ type: cmd.type, error: 'premium pricing is a \u25c6 IP-control (proprietary) feature \u2014 the suite at cartridge.cafe/suite. The rest of your set_world_data was NOT applied; resend it without \u201cpremium\u201d.' })
+          continue
+        }
+      }
       if ((cmd.type === 'publish_world' || cmd.type === 'unpublish_world') && isSpaceScoped) {
+        // OG CREATOR CONTROLS (Galen, Sep 5): the sandbox opened every world to
+        // member building — governance did NOT open with it. A member build key
+        // can never shelve or un-shelve someone's world.
+        if (auth.memberHandle) {
+          results.push({ type: cmd.type, error: 'only the world\u2019s creator publishes or unpublishes — members build, the OG governs' })
+          continue
+        }
         if (cmd.type === 'unpublish_world') {
           await prisma.playerSpace.update({ where: { id: auth.spaceId! }, data: { isPublic: false } })
           results.push({ type: cmd.type, ok: true, private: true,
