@@ -147,33 +147,7 @@ export default function TheGrid() {
   useEffect(() => {
     fetch('/api/admin/worlds').then(r => setIsAdmin(r.ok)).catch(() => {})
   }, [])
-  // ✚/⚡ COMMERCE — build credits + live-edit membership, read fresh each time
-  // the dockstar opens (Galen: buy credits anytime, membership on the menu)
-  const [wallet, setWallet] = useState<{ credits: number; genUsd: number; bundles: Record<number, number>; free: boolean; member: boolean; memUsd: number; buyable: boolean } | null>(null)
-  const [buying, setBuying] = useState<'' | 'credit' | 'member'>('')
-  const [buyQty, setBuyQty] = useState(1)
-  useEffect(() => {
-    if (!selOpen) return
-    Promise.all([
-      fetch('/api/generate').then(r => (r.ok ? r.json() : null)).catch(() => null),
-      fetch('/api/membership').then(r => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([g, m]) => setWallet({
-      credits: g?.credits ?? 0, genUsd: g?.priceUsd ?? 5, bundles: g?.bundles ?? { 1: 5, 3: 12, 5: 18, 10: 30 },
-      free: !!g?.free, member: !!m?.member, memUsd: m?.usd ?? 10, buyable: !!(g?.buyable || m?.buyable),
-    }))
-  }, [selOpen])
-  const startCheckout = async (kind: 'credit' | 'member') => {
-    setBuying(kind)
-    try {
-      const r = await fetch(kind === 'credit' ? '/api/generate/buy' : '/api/membership', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: kind === 'credit' ? JSON.stringify({ qty: buyQty }) : '{}',
-      })
-      const d = await r.json().catch(() => null)
-      if (d?.url) { window.location.href = d.url; return }
-    } catch { /* fall through */ }
-    setBuying('')
-  }
+  // (commerce wallet moved to /account — Galen, Sep 5)
 
   const [spaceInfo, setSpaceInfo] = useState<{ slug: string; id: string; name: string; ownerName?: string; ownerId: string; isOwner: boolean; forkable: boolean; device?: 'mobile' | 'desktop' | null; rReset?: boolean; gridSize?: number | null } | null | undefined>(undefined)
   useEffect(() => {
@@ -786,77 +760,7 @@ export default function TheGrid() {
                 </span>
               </a>
             )}
-            {/* ✚ BUILD CREDITS — count + buy anytime (Galen). Signed-out → sign in. */}
-            <div data-grid-credits
-              className="text-left rounded-2xl border border-white/12 bg-black/40 p-4 flex flex-col justify-between">
-              <div>
-                <div className="font-mono text-[12px] tracking-[0.2em] text-white/70">✚ BUILD CREDITS</div>
-                <div className="font-mono text-[20px] text-amber-100 mt-1 tabular-nums">
-                  {wallet ? (wallet.free ? '∞' : wallet.credits) : '·'}
-                  <span className="text-[11px] text-white/50 ml-1.5">{wallet?.free ? 'keeper' : 'world births'}</span>
-                </div>
-              </div>
-              {me ? (wallet?.buyable && !wallet.free && (
-                <div className="mt-3">
-                  <div className="flex gap-1 mb-2">
-                    {[1, 3, 5, 10].map(q => (
-                      <button key={q} onClick={() => setBuyQty(q)}
-                        className={`flex-1 py-1 rounded-lg border font-mono text-[11px] tabular-nums transition-colors ${
-                          buyQty === q ? 'border-amber-300/60 bg-amber-400/15 text-amber-100' : 'border-white/10 text-white/55 hover:border-white/25'}`}>
-                        ×{q}
-                      </button>
-                    ))}
-                  </div>
-                  {(() => {
-                    const total = wallet.bundles[buyQty] ?? wallet.genUsd * buyQty
-                    const saved = wallet.genUsd * buyQty - total
-                    return (
-                      <button onClick={() => startCheckout('credit')} disabled={buying !== ''}
-                        className="w-full py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 font-mono text-[12px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors disabled:opacity-50">
-                        {buying === 'credit' ? 'OPENING…' : (
-                          <>BUY {buyQty} · ${total}{saved > 0 && <span className="text-emerald-200/90 tracking-normal"> · save ${saved}</span>}</>
-                        )}
-                      </button>
-                    )
-                  })()}
-                  <div className="font-mono text-[10px] text-white/45 mt-1.5 text-center">bring your own AI to build · credits never expire</div>
-                </div>
-              )) : (
-                <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
-                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
-                  SIGN IN TO BUY
-                </a>
-              )}
-            </div>
-            {/* ⚡ LIVE EDIT — the $10/mo membership behind the live edit button */}
-            <div data-grid-membership
-              className="text-left rounded-2xl border border-white/12 bg-black/40 p-4 flex flex-col justify-between">
-              <div>
-                <div className="font-mono text-[12px] tracking-[0.2em] text-white/70">⚡ LIVE EDIT</div>
-                <div className={`font-mono text-[14px] mt-1.5 ${wallet?.member ? 'text-emerald-200' : 'text-white/80'}`}>
-                  {wallet ? (wallet.member ? '✓ MEMBER' : 'build on open worlds') : '·'}
-                </div>
-              </div>
-              {wallet?.member ? (
-                <a href="/account"
-                  className="mt-3 w-full py-2 rounded-xl border border-emerald-300/40 bg-emerald-400/10 text-emerald-100 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-emerald-400/20 transition-colors">
-                  MANAGE
-                </a>
-              ) : me ? (wallet?.buyable && (
-                <div className="mt-3">
-                  <button onClick={() => startCheckout('member')} disabled={buying !== ''}
-                    className="w-full py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 font-mono text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors disabled:opacity-50">
-                    {buying === 'member' ? 'OPENING…' : `JOIN · $${wallet.memUsd}/mo`}
-                  </button>
-                  <div className="font-mono text-[10px] text-white/45 mt-1.5 text-center">bring your own AI to build</div>
-                </div>
-              )) : (
-                <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
-                  className="mt-3 w-full py-2 rounded-xl border border-white/15 bg-white/5 text-white/70 font-mono text-[12px] tracking-[0.15em] text-center hover:bg-white/10 transition-colors">
-                  SIGN IN TO JOIN
-                </a>
-              )}
-            </div>
+            {/* (BUILD CREDITS + LIVE EDIT cards moved to /account — Galen, Sep 5) */}
             {me ? (
             <a href="/account" data-grid-account
               className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
@@ -877,17 +781,6 @@ export default function TheGrid() {
               </span>
             </a>
             )}
-            {/* ✉ CONTACT — moved off the bottom bar (it tier-vanished there);
-                the nav page is its home now */}
-            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`}
-              target="_blank" rel="noopener" data-grid-contact
-              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
-              <span className="text-[20px] text-white/70">✉</span>
-              <span>
-                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block">CONTACT</span>
-                <span className="font-mono text-[11px] text-white/50">reach the keeper — teams · questions · trouble</span>
-              </span>
-            </a>
           </div>
           </div>
         </div>
@@ -1229,7 +1122,8 @@ export default function TheGrid() {
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
-          nav: () => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) },
+          nav: () => { setSelOpen(false); if (uiSet === 'engine') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
+          account: () => { window.location.href = '/account' },
           connect: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           instructions: () => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) },
           brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) },

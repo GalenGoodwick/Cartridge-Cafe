@@ -56,6 +56,20 @@ export default function AccountClient(p: {
   const [promoNote, setPromoNote] = useState('')
   const [minted, setMinted] = useState<string | null>(null)
   const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number; permanent?: boolean }>>([])
+  // ✚ BUILD CREDITS — moved here from the dockstar (Galen, Sep 5)
+  const [buyQty, setBuyQty] = useState(1)
+  const [bundle, setBundle] = useState<{ bundles: Record<number, number>; genUsd: number; free: boolean; buyable: boolean; credits: number } | null>(null)
+  useEffect(() => {
+    fetch('/api/generate').then(r => (r.ok ? r.json() : null))
+      .then(g => g && setBundle({ bundles: g.bundles ?? { 1: 5, 3: 12, 5: 18, 10: 30 }, genUsd: g.priceUsd ?? 5, free: !!g.free, buyable: !!g.buyable, credits: g.credits ?? 0 }))
+      .catch(() => {})
+  }, [])
+  const buyCredits = async () => {
+    setBusy('credits'); setNote('')
+    const { ok, data } = await post('/api/generate/buy', { qty: buyQty })
+    if (ok && data.url) { window.location.href = data.url; return }
+    setNote(data.error || 'could not open checkout'); setBusy(null)
+  }
   useEffect(() => {
     if (!p.isAdmin) return
     fetch('/api/promo').then(r => (r.ok ? r.json() : null))
@@ -212,6 +226,46 @@ export default function AccountClient(p: {
                 </p>
               )}
             </div>
+          </section>
+
+          {/* ✚ BUILD CREDITS — count + buy (moved from the dockstar, Sep 5) */}
+          <section className={box}>
+            <h2 className={h2}>BUILD CREDITS</h2>
+            <div className="text-[20px] text-amber-100 tabular-nums mb-1">
+              {bundle ? (bundle.free ? '∞' : bundle.credits) : p.genCredits}
+              <span className="text-[12px] text-white/50 ml-2">{bundle?.free ? 'keeper' : 'world births'}</span>
+            </div>
+            <div className="text-[13px] text-white/55 mb-3">every world your AI creates spends one · membership months grant two each · credits never expire</div>
+            {bundle?.buyable && !bundle.free && (
+              <>
+                <div className="flex gap-1.5 mb-2 max-w-[300px]">
+                  {[1, 3, 5, 10].map(q => (
+                    <button key={q} onClick={() => setBuyQty(q)}
+                      className={`flex-1 py-1.5 rounded-lg border font-mono text-[13px] tabular-nums transition-colors ${
+                        buyQty === q ? 'border-amber-300/60 bg-amber-400/15 text-amber-100' : 'border-white/10 text-white/55 hover:border-white/25'}`}>
+                      ×{q}
+                    </button>
+                  ))}
+                </div>
+                {(() => {
+                  const total = bundle.bundles[buyQty] ?? bundle.genUsd * buyQty
+                  const saved = bundle.genUsd * buyQty - total
+                  return (
+                    <button onClick={buyCredits} disabled={busy !== null}
+                      className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
+                      {busy === 'credits' ? '…' : <>BUY {buyQty} · ${total}{saved > 0 && <span className="text-emerald-200/90"> · save ${saved}</span>}</>}
+                    </button>
+                  )
+                })()}
+              </>
+            )}
+          </section>
+
+          {/* ✉ CONTACT — moved from the dockstar (Sep 5) */}
+          <section className={box}>
+            <h2 className={h2}>CONTACT</h2>
+            <p className="text-[13px] text-white/55 mb-3">reach the keeper — teams · questions · trouble.</p>
+            <a href="/contact" className={`${btn} inline-block border-white/20 text-white/80 hover:bg-white/10`}>✉ OPEN CONTACT</a>
           </section>
 
           {/* PROMO CODES — redeem for everyone; mint + roster for the keeper */}

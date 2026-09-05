@@ -67,8 +67,11 @@ export async function createCheckoutSession(
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return { error: 'payments not configured yet', status: 501 }
   const product = PRODUCTS[productKey]
+  // ◆ IP control works WITHOUT a pre-created price (ad-hoc $100/mo, same as
+  // the editor checkout) — STRIPE_PRICE_IP overrides when set (prod's live
+  // price). Everything else still requires its configured price.
   const price = product ? process.env[product.env] : undefined
-  if (!product || !price) return { error: `unknown or unconfigured product "${productKey}"`, status: 400 }
+  if (!product || (!price && productKey !== 'ip')) return { error: `unknown or unconfigured product "${productKey}"`, status: 400 }
 
   // A page purchase returns to the composer, which polls until the webhook has
   // flipped it live; other products land on the front door. (Paid EXPERIENCES
@@ -79,9 +82,17 @@ export async function createCheckoutSession(
   const cancel = productKey === 'page'
     ? `${origin}/pages?paycancel=page`
     : `${origin}/?paycancel=${productKey}`
+  const priceFields: Record<string, string> = price
+    ? { 'line_items[0][price]': price }
+    : {
+      'line_items[0][price_data][currency]': 'usd',
+      'line_items[0][price_data][unit_amount]': String(IP_PRICE_USD * 100),
+      'line_items[0][price_data][recurring][interval]': 'month',
+      'line_items[0][price_data][product_data][name]': '◆ IP control — closed-source worlds + company space',
+    }
   const form = new URLSearchParams({
     mode: product.mode,
-    'line_items[0][price]': price,
+    ...priceFields,
     'line_items[0][quantity]': '1',
     success_url: success,
     cancel_url: cancel,

@@ -18,10 +18,11 @@ on session state. No absolute zones, no sibling divs, ever again.
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
 | reset | ⟲ | RESET | LEFT inner | games + playing + world declares R-reset | 1 | confirm-then-restart |
-| signin→nav | ⚿/☕ | SIGN IN ⇄ NAV | RIGHT 2 — THE IDENTITY SLOT | signed out = gold SIGN IN; signing in TURNS IT INTO the NAV cup (never disappears) | 0 | signin: /auth/signin · nav: the dockstar selector |
+| signin→nav | ⚿/⚙/▶ | SIGN IN ⇄ ENGINE/GAMES | THE IDENTITY SLOT | signed out = gold SIGN IN; signed in = gold-OUTLINE toggle labeled with its destination (⚙ ENGINE ⇄ ▶ GAMES) | 0 | signin: /auth/signin · toggle: set switch |
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | IN-game only (playing) | 0 | the world's ? card |
-| brewicon | ◆ | BREW ICON | RIGHT inner (near cup) | main set | 1 | icon author panel |
+| brewicon | ◆ | BREW ICON | RIGHT inner | main set | 1 | icon author panel |
+| account | 👤 | ACCOUNT | FAR RIGHT (last toggle) | always | 0 | /account — credits · membership · contact all live there now |
 
 ## The laws
 

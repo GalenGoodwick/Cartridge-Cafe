@@ -42,12 +42,13 @@ export type BarActions = {
   reset: () => void
   signIn: () => void
   nav: () => void
+  account: () => void
   connect: () => void
   instructions: () => void
   brewIcon: () => void
 }
 
-type Tone = 'gold' | 'blue' | 'green' | 'chip' | 'rec'
+type Tone = 'gold' | 'goldline' | 'blue' | 'green' | 'chip' | 'rec'
 type Btn = {
   id: keyof BarActions
   show: (c: BarCtx) => boolean
@@ -67,10 +68,11 @@ const FLOW: Btn[] = [
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on the create flow (Galen)
-  // THE IDENTITY SLOT: one position, two faces — a stranger sees gold SIGN IN;
-  // signing in TURNS IT INTO the NAV cup. Never disappears.
+  // THE IDENTITY SLOT: a stranger sees gold SIGN IN; signing in turns it into
+  // the GAMES⇄ENGINE toggle (Galen, Sep 5: 'nav = a button that goes to the
+  // engine and on engine it goes back to the games. labeled correctly').
   { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
-  { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
+  { id: 'nav', tier: 0, tone: 'goldline', show: c => !c.signedOut, label: c => c.set === 'engine' ? '▶ GAMES' : '⚙ ENGINE', glyph: c => c.set === 'engine' ? '▶' : '⚙', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
   // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
@@ -87,11 +89,14 @@ const TOGGLES: Btn[] = [
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
+  // the person, far right (Galen)
+  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤 ACCOUNT', glyph: () => '👤', testId: 'account' },
 ]
 
 const TONES: Record<Tone, (active: boolean) => string> = {
   gold: () => 'font-bold bg-amber-400 border-2 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]',
   blue: () => 'font-bold bg-sky-400 border-2 border-sky-200/80 text-black hover:bg-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.5)]',
+  goldline: () => 'font-bold bg-black/60 border-2 border-amber-300/70 text-amber-200 hover:bg-amber-400/15 shadow-[0_0_10px_rgba(245,176,76,0.25)]',
   green: (a) => a
     ? 'font-bold bg-emerald-400 border-2 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
     : 'font-bold bg-emerald-500 border-2 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]',
@@ -132,9 +137,7 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
         </button>
       )
     }
-    const body = b.id === 'nav'
-      ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={(ctx.narrow || ctx.glyphs) ? 'w-6 h-6' : 'w-5 h-5'} />{!(ctx.narrow || ctx.glyphs) && <span>NAV</span>}</span>)
-      : text
+    const body = text
     return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
         className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[typeof b.tone === 'function' ? b.tone(ctx) : b.tone](active)} ${b.id === 'title' ? 'max-w-[22%] truncate' : ''}`}>
