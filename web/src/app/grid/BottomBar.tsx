@@ -69,6 +69,7 @@ const LEFT_INNER: Btn[] = [
 const RIGHT: Btn[] = [   // rendered row-reversed: index 0 pins the RIGHT edge
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: c => c.aiLive ? '⚡' : '⚿', testId: 'connect' },
+  { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.set === 'games', active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },
   { id: 'contact', tier: 2, tone: 'chip', show: c => c.set === 'games', label: () => '✉ CONTACT', glyph: () => '✉', testId: 'contact' },
 ]
@@ -109,25 +110,18 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
           <span className="flex-1" />
           {LEFT_INNER.map(render)}
         </div>
-        {/* CENTER — identity-aware (Galen, Sep 5): a stranger's one move is
-            SIGN IN; a member's is NAV. One slot, the same registry system. */}
-        {ctx.signedOut ? (
-          <button onClick={act.signIn} data-bar="signin" aria-label="sign in"
-            className={`shrink-0 font-mono grid place-items-center rounded-2xl transition-all z-10 ${ctx.narrow ? 'h-12 px-4 text-[14px]' : 'h-12 px-5 text-[13px] tracking-[0.16em]'} ${TONES.gold(false)}`}>
-            ⚿ SIGN IN
-          </button>
-        ) : (
-          <button onClick={act.nav} aria-label="ui selector" data-bar="nav"
-            title="the dockstar — choose your UI"
-            className={`shrink-0 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
-              ctx.navOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-            style={{ boxShadow: ctx.navOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
-            <span className="flex flex-col items-center leading-none">
-              <img src="/cartridge-cup.svg" alt="" className="w-6 h-6" />
-              <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
-            </span>
-          </button>
-        )}
+        {/* CENTER — the NAV cup, always (Galen: 'other way around' — SIGN IN
+            lives in the right group instead). */}
+        <button onClick={act.nav} aria-label="ui selector" data-bar="nav"
+          title="the dockstar — choose your UI"
+          className={`shrink-0 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
+            ctx.navOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
+          style={{ boxShadow: ctx.navOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
+          <span className="flex flex-col items-center leading-none">
+            <img src="/cartridge-cup.svg" alt="" className="w-6 h-6" />
+            <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
+          </span>
+        </button>
         <div className="flex-1 basis-0 min-w-0 flex flex-row-reverse items-center gap-2 overflow-hidden">
           {RIGHT.map(render)}
           <span className="flex-1" />

@@ -14,8 +14,8 @@ Equal flex-basis keeps the cup mathematically centered. No absolute zones, ever 
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
 | reset | ⟲ | RESET | LEFT inner | games + playing + world declares R-reset | 1 | confirm-then-restart |
-| nav | ☕ | NAV | CENTER | signed IN | 0 | the dockstar — UI-set selector + account |
-| signin | ⚿ | SIGN IN | CENTER (gold) | signed OUT (tri-state: unknown shows NAV, no flash) | 0 | /auth/signin with callback — a stranger's ONE move owns the center |
+| nav | ☕ | NAV | CENTER | always | 0 | the dockstar — UI-set selector + account |
+| signin | ⚿ | SIGN IN | RIGHT 2 (gold, beside the green door) | signed OUT (tri-state: unknown hides it, no flash) | 0 | /auth/signin with callback |
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | games set | 0 | the world's ? card |
 | contact | ✉ | CONTACT | RIGHT 3 | games set | 2 | /contact teams door |
