@@ -1873,6 +1873,28 @@ function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
   const [err, setErr] = useState('')
   const [flowOpen, setFlowOpen] = useState(false)   // the FULL /create flow, embedded (Galen: "all plugged in")
   const nameOk = name.trim().length >= 2
+  // THE DEAL (Galen, Sep 5): open source (the cafe deal) vs ◆ proprietary.
+  // Proprietary rides the ◆ IP-control membership — choosing it without the
+  // membership opens the $100/mo checkout; holding the $10 editing seat is
+  // fine, the webhook SWAPS it out (IP control includes the build seat).
+  const [deal, setDeal] = useState<'open' | 'ip'>('open')
+  const [ipCtl, setIpCtl] = useState<boolean | null>(null)
+  const [ipBusy, setIpBusy] = useState(false)
+  useEffect(() => {
+    fetch('/api/company/claim', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+      .then(d => setIpCtl(!!d?.ipControl)).catch(() => setIpCtl(false))
+  }, [])
+  const buyIp = async () => {
+    if (ipBusy) return
+    setIpBusy(true)
+    try {
+      const r = await fetch('/api/pay/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: 'ip' }) })
+      const d = await r.json().catch(() => null)
+      if (d?.url) { window.location.assign(d.url); return }
+      setErr(d?.error || 'checkout unavailable — sign in first?')
+    } catch { setErr('checkout unavailable') }
+    finally { setIpBusy(false) }
+  }
   const fork = async () => {
     if (!baseSlug || !nameOk || busy) return
     setBusy(true); setErr('')
@@ -1906,6 +1928,35 @@ function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
   return (
     <div className="w-full max-w-[640px] font-mono text-[12px]">
       <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">✧ CREATE</div>
+
+      {/* THE DEAL — open source or ◆ proprietary, chosen before the birth */}
+      <div className="rounded-2xl border border-white/12 bg-black/40 p-4 mb-3">
+        <div className="text-[13px] tracking-[0.18em] text-white/90 mb-2">THE DEAL</div>
+        <div className="flex gap-2 mb-2">
+          <button onClick={() => setDeal('open')}
+            className={`flex-1 px-3 py-2 rounded-xl border text-[12px] tracking-[0.15em] transition-colors ${deal === 'open' ? 'border-emerald-300/60 bg-emerald-400/15 text-emerald-100' : 'border-white/15 text-white/60 hover:border-white/30'}`}>
+            ⚘ OPEN SOURCE
+          </button>
+          <button onClick={() => setDeal('ip')}
+            className={`flex-1 px-3 py-2 rounded-xl border text-[12px] tracking-[0.15em] transition-colors ${deal === 'ip' ? 'border-amber-300/60 bg-amber-400/15 text-amber-100' : 'border-white/15 text-white/60 hover:border-white/30'}`}>
+            ◆ PROPRIETARY
+          </button>
+        </div>
+        {deal === 'open' ? (
+          <div className="text-white/60 leading-relaxed text-[11.5px]">the cafe deal — your world&apos;s source is readable and forkable within the cafe; lineage carries your credit.</div>
+        ) : ipCtl ? (
+          <div className="text-amber-100/90 leading-relaxed text-[11.5px]">◆ IP control active — every world you create is born private, closed source, unforkable, shielded for life.</div>
+        ) : (
+          <div>
+            <div className="text-white/65 leading-relaxed text-[11.5px] mb-2">closed source · born private · shielded for life. Proprietary work rides the ◆ IP control membership — $100/mo.</div>
+            <button onClick={() => void buyIp()} disabled={ipBusy || ipCtl === null}
+              className="px-4 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+              {ipBusy ? 'OPENING…' : '◆ GET IP CONTROL — $100/MO'}
+            </button>
+            <div className="mt-1.5 text-[11px] text-white/45">already an editing member? the $10 seat is swapped out automatically — IP control includes it.</div>
+          </div>
+        )}
+      </div>
 
       {/* fork the world in the frame */}
       <div className="rounded-2xl border border-white/12 bg-black/40 p-4 mb-3">

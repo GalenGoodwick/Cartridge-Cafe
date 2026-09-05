@@ -288,7 +288,8 @@ export async function hasEditingMembership(userId: string): Promise<boolean> {
   const { isAdminUserId } = await import('@/lib/adminAuth')
   if (await isAdminUserId(userId)) return true
   const ents = await readEntitlements(userId)
-  return ents.some((e) => entitlementLive(e) && (e.product === 'editor' || e.product === 'editor_pro'))
+  // ◆ IP control INCLUDES the build seat (the $100 covers the $10 — the swap law)
+  return ents.some((e) => entitlementLive(e) && (e.product === 'editor' || e.product === 'editor_pro' || e.product === 'ip'))
 }
 
 /** When a TIMED membership (promo grant) runs out, or null if the seat is

@@ -53,6 +53,17 @@ export async function POST(req: NextRequest) {
     // the Sep 1 'membership gives 1'). Signup month grants 2 here (idempotent
     // per checkout session); each RENEWAL month grants 2 via the invoice
     // branch below.
+    if (meta.product === 'ip') {
+      // THE SWAP (Galen, Sep 5): ◆ IP control includes the build seat — cancel
+      // the $10 editing sub at period end so nobody pays twice. Best-effort;
+      // the account-page portal remains the manual door.
+      try {
+        const { findActiveSubscriptions, cancelSubscriptionAtPeriodEnd } = await import('@/lib/stripe')
+        for (const sub of await findActiveSubscriptions(meta.userId)) {
+          if (sub.product === 'editor' || sub.product === 'editor_pro') await cancelSubscriptionAtPeriodEnd(sub.id)
+        }
+      } catch { /* swap is best-effort */ }
+    }
     if (meta.product === 'editor') {
       const { grantGenCredits } = await import('@/lib/stripe')
       await grantGenCredits(meta.userId, obj.id, 2)
