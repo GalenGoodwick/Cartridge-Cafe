@@ -89,13 +89,19 @@ export async function POST(
   // resolve candidate versions — default: the two most recent save points.
   // If the live world is newer than the last save point, freeze it as a version first
   // so "what's there right now" is always one of the candidates.
-  const latest = await prisma.spaceVersion.findFirst({
+  const all = await prisma.spaceVersion.findMany({
     where: { spaceId: space.id },
     orderBy: { version: 'desc' },
     select: { version: true, snapshot: true },
   })
-  let latestVersion = latest?.version ?? 0
-  if (space.snapshot && (!latest || JSON.stringify(latest.snapshot) !== JSON.stringify(space.snapshot))) {
+  let latestVersion = all[0]?.version ?? 0
+  // NO SPAM (Galen, Sep 5): identical to ANY existing version = already frozen —
+  // reference that rung rather than minting a duplicate.
+  const curStr = space.snapshot ? JSON.stringify(space.snapshot) : null
+  const frozen = curStr ? all.find(v => JSON.stringify(v.snapshot) === curStr) : undefined
+  if (frozen) {
+    latestVersion = frozen.version
+  } else if (space.snapshot) {
     latestVersion += 1
     await prisma.spaceVersion.create({
       data: {

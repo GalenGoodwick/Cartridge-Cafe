@@ -98,17 +98,29 @@ export async function POST(
   })
   let savedAs: number | null = null
   if (live?.snapshot) {
-    const maxV = await prisma.spaceVersion.aggregate({
-      where: { spaceId: space.id }, _max: { version: true },
+    // NO SPAM (Galen, Sep 5): a state byte-identical to ANY existing version is
+    // already saved — point at that rung instead of minting a duplicate. This
+    // was the version-spam hole: every restore auto-saved, so stepping through
+    // history minted an identical copy per hop.
+    const all = await prisma.spaceVersion.findMany({
+      where: { spaceId: space.id },
+      orderBy: { version: 'desc' },
+      select: { version: true, snapshot: true },
     })
-    savedAs = (maxV._max.version ?? 0) + 1
-    await prisma.spaceVersion.create({
-      data: {
-        spaceId: space.id, version: savedAs, authorId: user.id,
-        snapshot: live.snapshot as Prisma.InputJsonValue,
-        note: `auto-saved before restoring v${versionNum}`,
-      },
-    })
+    const liveStr = JSON.stringify(live.snapshot)
+    const match = all.find(v => JSON.stringify(v.snapshot) === liveStr)
+    if (match) {
+      savedAs = match.version
+    } else {
+      savedAs = (all[0]?.version ?? 0) + 1
+      await prisma.spaceVersion.create({
+        data: {
+          spaceId: space.id, version: savedAs, authorId: user.id,
+          snapshot: live.snapshot as Prisma.InputJsonValue,
+          note: `auto-saved before restoring v${versionNum}`,
+        },
+      })
+    }
   }
 
   await prisma.playerSpace.update({
