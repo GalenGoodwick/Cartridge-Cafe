@@ -4,9 +4,10 @@
 // all icons... wipe the bottom bar... do it from scratch"). The registry below
 // IS the pathway log (see DESIGN-bottom-bar.md — keep them together).
 //
-// One flex row: [ LEFT flex-1 | NAV cup | RIGHT flex-1 row-reversed ].
-// Equal flex-basis centers the cup mathematically. Tiers drop WHOLE buttons.
-// Edge pins (back / connect) sit outermost in flex order and cannot clip.
+// One flex row: [ LEFT flex-1 | RIGHT flex-1 row-reversed ] — no floating
+// center. The right group's IDENTITY SLOT is SIGN IN when signed out and
+// TURNS INTO the NAV cup when signed in. Tiers drop WHOLE buttons; edge pins
+// (back / connect) sit outermost in flex order and cannot clip.
 
 export type BarCtx = {
   set: string                 // 'main' | 'games' | 'engine' | ...
@@ -69,7 +70,10 @@ const LEFT_INNER: Btn[] = [
 const RIGHT: Btn[] = [   // rendered row-reversed: index 0 pins the RIGHT edge
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: c => c.aiLive ? '⚡' : '⚿', testId: 'connect' },
+  // THE IDENTITY SLOT (Galen, Sep 5): one position, two faces — a stranger
+  // sees gold SIGN IN; signing in TURNS IT INTO the NAV cup. Never disappears.
   { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
+  { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.set === 'games', active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },
   { id: 'contact', tier: 2, tone: 'chip', show: c => c.set === 'games', label: () => '✉ CONTACT', glyph: () => '✉', testId: 'contact' },
 ]
@@ -94,10 +98,13 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
     if (!b.show(ctx) || b.tier > ctx.tier) return null
     const active = b.active?.(ctx) ?? (b.id === 'rec' ? ctx.recOn : false)
     const text = ctx.narrow ? b.glyph(ctx) : b.label(ctx)
+    const body = b.id === 'nav'
+      ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={ctx.narrow ? 'w-6 h-6' : 'w-5 h-5'} />{!ctx.narrow && <span>NAV</span>}</span>)
+      : text
     return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
         className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[b.tone](active)} ${b.id === 'title' ? 'max-w-[34%] truncate' : ''}`}>
-        {text}
+        {body}
       </button>
     )
   }
@@ -110,18 +117,8 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
           <span className="flex-1" />
           {LEFT_INNER.map(render)}
         </div>
-        {/* CENTER — the NAV cup, always (Galen: 'other way around' — SIGN IN
-            lives in the right group instead). */}
-        <button onClick={act.nav} aria-label="ui selector" data-bar="nav"
-          title="the dockstar — choose your UI"
-          className={`shrink-0 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
-            ctx.navOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-          style={{ boxShadow: ctx.navOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
-          <span className="flex flex-col items-center leading-none">
-            <img src="/cartridge-cup.svg" alt="" className="w-6 h-6" />
-            <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
-          </span>
-        </button>
+        {/* (no center element — Galen, Sep 5: 'remove the floating nav icon';
+            NAV lives in the right group's identity slot beside the green door) */}
         <div className="flex-1 basis-0 min-w-0 flex flex-row-reverse items-center gap-2 overflow-hidden">
           {RIGHT.map(render)}
           <span className="flex-1" />

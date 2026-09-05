@@ -1,7 +1,7 @@
 # THE BOTTOM BAR — the complete pathway log (Sep 5, the from-scratch rebuild)
 
-One fixed bar, one flex row: `[ LEFT flex-1 | NAV cup | RIGHT flex-1 (row-reversed) ]`.
-Equal flex-basis keeps the cup mathematically centered. No absolute zones, ever again.
+One fixed bar, one flex row: `[ LEFT flex-1 | RIGHT flex-1 (row-reversed) ]` — no floating
+center. The right group's IDENTITY SLOT swaps SIGN IN ⇄ NAV on session state. No absolute zones, ever again.
 
 ## Every pathway (the registry in grid/BottomBar.tsx implements THIS table)
 
@@ -14,8 +14,7 @@ Equal flex-basis keeps the cup mathematically centered. No absolute zones, ever 
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
 | reset | ⟲ | RESET | LEFT inner | games + playing + world declares R-reset | 1 | confirm-then-restart |
-| nav | ☕ | NAV | CENTER | always | 0 | the dockstar — UI-set selector + account |
-| signin | ⚿ | SIGN IN | RIGHT 2 (gold, beside the green door) | signed OUT (tri-state: unknown hides it, no flash) | 0 | /auth/signin with callback |
+| signin→nav | ⚿/☕ | SIGN IN ⇄ NAV | RIGHT 2 — THE IDENTITY SLOT | signed out = gold SIGN IN; signing in TURNS IT INTO the NAV cup (never disappears) | 0 | signin: /auth/signin · nav: the dockstar selector |
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | games set | 0 | the world's ? card |
 | contact | ✉ | CONTACT | RIGHT 3 | games set | 2 | /contact teams door |
