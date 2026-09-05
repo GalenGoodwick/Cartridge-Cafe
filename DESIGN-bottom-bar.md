@@ -1,7 +1,7 @@
 # THE BOTTOM BAR — the complete pathway log (Sep 5, the from-scratch rebuild)
 
 One fixed bar, ONE div, one flex row:
-`…spacer… back edit title share instructions [SIGN IN⇄NAV] connect …spacer… commons rec reset brewicon`.
+`…spacer… back (title) share [SIGN IN⇄NAV] edit create (instructions) connect …spacer… commons rec reset brewicon`.
 The MAIN FLOW floats CENTERED (matched spacers either side); the TOGGLES cluster rides the right edge.
 Every button lives in the same flex context. The IDENTITY SLOT swaps SIGN IN ⇄ NAV
 on session state. No absolute zones, no sibling divs, ever again.

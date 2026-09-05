@@ -4,11 +4,10 @@
 // all icons... wipe the bottom bar... do it from scratch"). The registry below
 // IS the pathway log (see DESIGN-bottom-bar.md — keep them together).
 //
-// ONE flex row, ONE div: [ …spacer… MAIN FLOW …spacer… toggles at the right
-// edge ] — matched spacers grow equally, so the main flow FLOWS FROM CENTER
-// (Galen, Sep 5), condensing symmetrically as the window shrinks.
-// Main flow = back edit title share create instructions [SIGN IN⇄NAV] connect;
-// toggles = commons rec reset brewicon. Everything shares a single flex
+// ONE flex row, ONE div: [ …spacer… FLOW …spacer… TOGGLES at the right edge ]
+// — matched spacers grow equally, so the flow FLOWS FROM CENTER, condensing
+// symmetrically. Flow order (Galen, Sep 5): back share [SIGN IN⇄NAV] edit
+// create connect (+ title on main, instructions in-game). Everything shares a single flex
 // context so it condenses together. The IDENTITY SLOT is SIGN IN when signed
 // out and TURNS INTO the NAV cup when signed in. Tiers drop WHOLE buttons.
 
@@ -60,34 +59,31 @@ type Btn = {
   testId: string
 }
 
-// ── THE REGISTRY — outer→inner per side; this table IS the design log ────────
-const LEFT: Btn[] = [
+// ── THE REGISTRY — FLOW is the main run in exact visual order (Galen, Sep 5:
+// 'order is back button, share, nav, edit, create, connect ai'); TOGGLES ride
+// the right screen edge. This table IS the design log. ─────────────────────────
+const FLOW: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
-  // EDIT (Galen, Sep 5): BLUE on the main grid (the general edit door),
-  // GOLD in-world (edits THIS world); premium worlds hide it in-game
-  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: () => true, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },
-  // ✚ CREATE — the product's core promise, one tap from anywhere (Galen, Sep 5);
-  // gold = 'your AI acts', the birth half of the EDIT/CREATE pair
-  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },   // never IN-game (Galen)
+  // THE IDENTITY SLOT: one position, two faces — a stranger sees gold SIGN IN;
+  // signing in TURNS IT INTO the NAV cup. Never disappears.
+  { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
+  { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
+  // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
+  // THIS world); premium worlds hide it in-game
+  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
+  // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
+  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
+  { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
+  { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine', active: c => c.aiLive,
+    label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: c => c.aiLive ? '⚡' : '⚿', testId: 'connect' },
 ]
-const LEFT_INNER: Btn[] = [
+const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
-]
-const RIGHT: Btn[] = [   // rendered row-reversed: index 0 pins the RIGHT edge
-  { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine', active: c => c.aiLive,
-    label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: c => c.aiLive ? '⚡' : '⚿', testId: 'connect' },
-  // THE IDENTITY SLOT (Galen, Sep 5): one position, two faces — a stranger
-  // sees gold SIGN IN; signing in TURNS IT INTO the NAV cup. Never disappears.
-  { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
-  { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
-  { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only, never on the main grid (Galen)
-]
-const RIGHT_INNER: Btn[] = [
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
 ]
 
@@ -131,17 +127,13 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
   return (
     <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))` }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
-      {/* ONE div, ONE flex context. Main flow reads left→right off share;
-          the toggles cluster (commons/rec/reset/brewicon) rides the right
-          edge. RIGHT is written outer→inner in the registry so we reverse it
-          into reading order. Contact lives on the NAV page, not here. */}
+      {/* ONE div, ONE flex context. FLOW renders in exact visual order; the
+          toggles cluster rides the right edge. Contact lives on the NAV page. */}
       <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3 overflow-hidden" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
         <span className="flex-1" />
-        {LEFT.map(render)}
-        {[...RIGHT].reverse().map(render)}
+        {FLOW.map(render)}
         <span className="flex-1" />
-        {LEFT_INNER.map(render)}
-        {RIGHT_INNER.map(render)}
+        {TOGGLES.map(render)}
       </div>
     </div>
   )
