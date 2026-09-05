@@ -865,14 +865,23 @@ export default function TheGrid() {
         <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setConnectOpen(false)}>
-          <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚡ GET YOUR AI EDITING THIS WORLD</div>
-            <p className="text-[12px] text-white/60 leading-relaxed mb-3">Run this in your terminal (Claude Code / any MCP client). Your AI gets the whole cafe: it creates your account with you, your first registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>, and it sets up its own eye.</p>
-            <button onClick={async () => { try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-              className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2.5 text-left text-[13.5px] text-black font-bold break-all transition-all mb-3">
-              {copied ? '✓ COPIED' : 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'}
-            </button>
-            <p className="text-[12px] text-white/55 leading-relaxed">then tell your AI: <span className="text-emerald-200/80 select-all">connect_account, then use_world {'{'}"slug":"{(selected?.slug ?? spc?.slug ?? '')}"{'}'}</span> — and build this world together.</p>
+          <div className="w-full max-w-[560px] rounded-2xl border border-amber-300/30 bg-[#12100a]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            {(() => {
+              const slug = scene.startsWith('space:') ? scene.slice(6) : (selected?.slug ?? '')
+              const wname = selected?.name || spc?.name || slug || 'this world'
+              const editText = slug
+                ? `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell your AI: connect_account, read_guide, use_world {"slug":"${slug}"} — and edit "${wname}" with me.`
+                : `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell your AI: set up cartridge.cafe with me.`
+              return (<>
+                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">⚡ GET YOUR AI EDITING {slug ? `"${wname.toUpperCase()}"` : 'WITH YOU'}</div>
+                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI. First-ever registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>.</p>
+                <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{editText}</div>
+                <button onClick={async () => { try { await navigator.clipboard.writeText(editText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                  className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-[13px] tracking-[0.16em] text-black font-bold transition-all">
+                  {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY'}
+                </button>
+              </>)
+            })()}
           </div>
         </div>
       )}

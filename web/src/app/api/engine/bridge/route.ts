@@ -944,11 +944,39 @@ export async function POST(req: NextRequest) {
         }
         if (cmd.type === 'use_world') {
           const slug = typeof cmd.slug === 'string' ? cmd.slug.trim() : ''
-          const sp = slug ? await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, name: true, ownerId: true } }) : null
-          if (!sp || sp.ownerId !== auth.playerId) { results.push({ type: cmd.type, error: `no world "${slug}" that you own` }); continue }
-          const worldToken = await mintWorldToken(sp.id, 'checked out via player key')
-          results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken,
-            next: `POST build commands with Authorization: Bearer ${worldToken} to edit "${sp.name}".` })
+          const sp = slug ? await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, name: true, ownerId: true, snapshot: true } }) : null
+          if (!sp) { results.push({ type: cmd.type, error: `no world "${slug}"` }); continue }
+          if (sp.ownerId === auth.playerId) {
+            const worldToken = await mintWorldToken(sp.id, 'checked out via player key')
+            results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken,
+              next: `POST build commands with Authorization: Bearer ${worldToken} to edit "${sp.name}".` })
+            continue
+          }
+          // THE SANDBOX JOIN, REGISTERED (Galen, Sep 5: "register the user with
+          // an edit slug on the world? So we can investigate mischief"). A
+          // non-owner joins through the SAME law + the SAME attribution the
+          // browser join door uses: sandbox-open world only, the membership
+          // seat, the ban list — and the token is minted AS member:<handle>,
+          // so every push lands in __provenance / __nodeHist / the roster
+          // under a HUMAN-READABLE identity. Mischief → read the trail →
+          // ban the handle (world-bans) + revoke the key.
+          const wdJ = ((sp.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
+          const { effectiveBuild } = await import('@/lib/world-policy')
+          const { hasIpControl, hasEditingMembership } = await import('@/lib/stripe')
+          if (effectiveBuild(wdJ, await hasIpControl(sp.ownerId)) !== 'anyone') {
+            results.push({ type: cmd.type, error: `"${sp.name}" is not open to sandbox building (premium or proprietary — its creator's contract holds)` }); continue
+          }
+          if (!(await hasEditingMembership(auth.playerId))) {
+            results.push({ type: cmd.type, error: 'joining another creator\u2019s world takes the editing membership ($10/mo; a first-ever AI pairing gifts 30 days) \u2014 your human can join on the ACCOUNT page', needPayment: true }); continue
+          }
+          const joiner = await prisma.user.findUnique({ where: { id: auth.playerId }, select: { email: true } })
+          const { handleOf } = await import('@/lib/notify')
+          const handle = (joiner?.email ? handleOf(joiner.email) : null) || 'member'
+          const { isBanned } = await import('@/lib/world-bans')
+          if (await isBanned(sp.id, handle)) { results.push({ type: cmd.type, error: 'you are banned from this world' }); continue }
+          const worldToken = await mintWorldToken(sp.id, `member:${handle}`)
+          results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken, member: handle,
+            next: `You are REGISTERED on "${sp.name}" as member:${handle} \u2014 every push you land is attributed (provenance, node history, the roster). Build in NODES beside the existing work; the OG creator governs. POST build commands with Authorization: Bearer ${worldToken}.` })
           continue
         }
         if (cmd.type === 'credits_read') {
