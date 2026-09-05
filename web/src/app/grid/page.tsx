@@ -1060,7 +1060,7 @@ export default function TheGrid() {
       {/* ◆ BREW YOUR ICON — describe it, copy the prompt, your AI authors the
           avatar (set_player_icon over the bridge; the icon token rides the
           prompt). Field-bounded like everything else. */}
-      {brewIconOpen && uiSet === 'main' && (
+      {brewIconOpen && (uiSet === 'main' || uiSet === 'engine') && (
         <BrewIconPanel bounds={inset} onClose={() => setBrewIconOpen(false)} />
       )}
 
@@ -1242,6 +1242,16 @@ export default function TheGrid() {
                 className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                   brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 ◆ BREW ICON
+              </button>
+            )}
+            {/* ◆ SET VISUAL (Galen, Sep 5: "in engine need a button to set
+                visual for games on games page") — the ENGINE set's door to the
+                same icon/card visual author the MAIN set calls BREW ICON. */}
+            {uiSet === 'engine' && (
+              <button data-grid-setvisual onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
+                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
+                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
+                {narrow ? '◆' : '◆ SET VISUAL'}
               </button>
             )}
             <span className="flex-1" />
