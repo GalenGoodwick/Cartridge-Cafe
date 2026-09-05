@@ -78,6 +78,7 @@ export default function TheGrid() {
 
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
+  const [visMsg, setVisMsg] = useState('')   // ◆ SET VISUAL feedback (the EYE pane)
   // the green door's AI-ALIVE light — fed by the engine's cc:ai-live beacon
   const [aiLive, setAiLive] = useState(false)
   useEffect(() => {
@@ -865,7 +866,7 @@ export default function TheGrid() {
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setConnectOpen(false)}>
           <div className="w-full max-w-[560px] rounded-2xl border border-emerald-300/25 bg-[#0d120d]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI — ONE COMMAND</div>
+            <div className="text-[13px] tracking-[0.25em] text-emerald-200/80 mb-2">⚡ GET YOUR AI EDITING THIS WORLD</div>
             <p className="text-[12px] text-white/60 leading-relaxed mb-3">Run this in your terminal (Claude Code / any MCP client). Your AI gets the whole cafe: it creates your account with you, your first registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>, and it sets up its own eye.</p>
             <button onClick={async () => { try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
               className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2.5 text-left text-[13.5px] text-black font-bold break-all transition-all mb-3">
@@ -908,7 +909,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['crew', '⛭ CO-BUILD'], ['brain', '◧ BRAIN'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -940,6 +941,25 @@ export default function TheGrid() {
                         eyeData?.inspect?.on ? 'bg-sky-500/25 border-sky-400/60 text-sky-100' : 'border-white/15 bg-black/40 text-white/70 hover:text-white'}`}>
                       {eyeData?.inspect?.on ? '◉ INSPECT ON' : '◎ INSPECT'}
                     </button>
+                    {/* ◆ SET VISUAL (Galen, Sep 5): the EYE's current shot
+                        becomes the games-page card — a direct snapshot of the
+                        game, not an authored icon. Writes the world_icon slot. */}
+                    <button onClick={async () => {
+                      const shot = eyeData?.shot
+                      const slug = scene.startsWith('space:') ? scene.slice(6) : null
+                      const note = (t: string) => { setVisMsg(t); setTimeout(() => setVisMsg(''), 2500) }
+                      if (!shot || !slug) { note(shot ? 'no world framed' : 'take an EYE shot first'); return }
+                      try {
+                        const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/card-shot`, {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ png_b64: shot }) })
+                        const d = await r.json().catch(() => null)
+                        note(r.ok ? '◆ set — this exact frame is the card' : (d?.error || 'could not set the visual'))
+                      } catch { note('could not set — offline?') }
+                    }}
+                      className="px-3 py-1.5 rounded-lg border text-[12px] tracking-[0.15em] transition-colors border-amber-300/40 bg-black/40 text-amber-100/85 hover:text-amber-100 hover:border-amber-300/70">
+                      ◆ SET VISUAL
+                    </button>
+                    {visMsg && <span className="text-[11.5px] text-amber-200/85">{visMsg}</span>}
                     <button onClick={() => { try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'snapshot' })) } catch { /* ssr */ } }}
                       className="px-3.5 py-1.5 rounded-lg border border-sky-300/50 bg-sky-400/10 text-sky-100 text-[12px] tracking-[0.15em] hover:bg-sky-400/20 transition-colors">
                       {eyeData?.shot === 'sending' ? '…' : eyeData?.shot === 'sent' ? '✓ SENT TO THE AI' : '📸 SNAPSHOT → AI'}
@@ -996,7 +1016,21 @@ export default function TheGrid() {
               </div>
             )}
             {tool === 'nodes' && <NodesViewM graph={eyeData?.graph ?? null} />}
-            {tool === 'assets' && <AssetsViewM cfg={cfgStable} />}
+            {tool === 'assets' && (() => {
+              const slug = scene.startsWith('space:') ? scene.slice(6) : ''
+              const assetText = `I want to add assets to my cartridge.cafe world "${selected?.name || slug}". I'm dropping the files into this chat — upload each one into the world over the bridge: read_guide {"section":"sprites"} first, then use_world {"slug":"${slug}"} and define_sprite {name, png} per image (define_sheet {cols,rows,fps} for animation strips). Caps: 4MB/sheet, 24MB/world. Confirm each upload by name.`
+              return (
+                <div className="w-full h-full overflow-y-auto p-4 font-mono">
+                  <div className="text-[11.5px] tracking-[0.2em] text-amber-200/80 mb-2">◲ ASSETS — YOUR AI UPLOADS THEM</div>
+                  <p className="text-[12px] text-white/70 leading-relaxed mb-3">Copy this, paste it to your AI, then <b>drop your images/files into the same chat</b> — it uploads them into this world.</p>
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(assetText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
+                    className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-left text-[12.5px] text-black font-bold transition-all mb-2">
+                    {copied ? '✓ COPIED — PASTE TO YOUR AI, THEN DROP THE FILES' : '⧉ COPY THE ASSET INSTRUCTIONS'}
+                  </button>
+                  <div className="rounded-xl bg-black/50 border border-white/10 p-3 text-[12px] text-white/60 leading-relaxed select-all whitespace-pre-wrap">{assetText}</div>
+                </div>
+              )
+            })()}
             {tool === 'crew' && <CrewViewM icons={icons} current={scene} onJoin={crewJoin} />}
             {tool === 'versions' && <VersionsViewM cfg={cfgStable} />}
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
@@ -1007,17 +1041,6 @@ export default function TheGrid() {
             )}
             {tool === 'chat' && (
               <GridChat inline slotKey={'world-chat:' + (scene.startsWith('space:') ? scene.slice(6).toUpperCase() : scene)} title={selected?.name ?? 'THIS WORLD'} />
-            )}
-            {tool === 'connect' && (
-              <div className="w-full h-full overflow-y-auto p-4 font-mono">
-                <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/80 mb-2">⚿ CONNECT YOUR AI — ONE COMMAND</div>
-                <p className="text-[12px] text-white/70 leading-relaxed mb-3">The ONE door is the MCP server. Run this once (Claude Code / any MCP client) — your AI creates your account with you, your first registration gifts 30 days + 2 builds, and use_world opens this world.</p>
-                <button onClick={async () => { try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                  className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2.5 text-left text-[13px] text-black font-bold break-all transition-all mb-2">
-                  {copied ? '✓ COPIED' : 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'}
-                </button>
-                <p className="text-[12px] text-white/55 leading-relaxed">then: <span className="text-emerald-200/80 select-all">connect_account · use_world {'{'}"slug":"{(scene.startsWith('space:') ? scene.slice(6) : '')}"{'}'}</span></p>
-              </div>
             )}
           </div>
         </div>
@@ -1141,6 +1164,15 @@ export default function TheGrid() {
               className="font-mono text-[14px] w-9 h-9 grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0">
               ◂
             </button>
+            {/* ⚡ EDIT — THE GOLD DOOR (Galen, Sep 5: "always have an edit
+                button unless it is premium... gets the AI editing the world").
+                Opens the same copyable one-command modal, world-focused. */}
+            {!cfgStable?.premium && (
+              <button data-grid-edit onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
+                className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]">
+                {narrow ? '⚡' : '⚡ EDIT'}
+              </button>
+            )}
             {!narrow && (uiSet === 'main' ? (
             <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
               className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
@@ -1221,16 +1253,6 @@ export default function TheGrid() {
                 className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
                   brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 ◆ BREW ICON
-              </button>
-            )}
-            {/* ◆ SET VISUAL (Galen, Sep 5: "in engine need a button to set
-                visual for games on games page") — the ENGINE set's door to the
-                same icon/card visual author the MAIN set calls BREW ICON. */}
-            {uiSet === 'engine' && (
-              <button data-grid-setvisual onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 ${
-                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                {narrow ? '◆' : '◆ SET VISUAL'}
               </button>
             )}
             <span className="flex-1" />
