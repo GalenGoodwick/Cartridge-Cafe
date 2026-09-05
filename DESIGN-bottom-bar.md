@@ -13,7 +13,7 @@ on session state. No absolute zones, no sibling divs, ever again.
 | back | ◂ | — | LEFT 1 | always | 0 | history back; at start opens NAV |
 | edit | ⚡ | EDIT | LEFT 2 | main grid (BLUE) + in-world (GOLD, not premium) | 0 | copy text that sets YOUR AI editing (modal) |
 | title | — | Cartridge.Cafe | LEFT 3 | main set ONLY (in games/engine the world is already selected — name is redundant; attribution lives in the engine's ⑂ LINEAGE tab) | 1 | UI selector |
-| share | ↗ | SHARE | LEFT 4 | always | 0 | copies the MCP one-liner (the whole invitation) |
+| share | (share svg) | SHARE | LEFT 4 | always | 0 | copies the MCP one-liner (the whole invitation) |
 | create | ✚ | CREATE | LEFT 5 (gold) | not in create set, never IN-game | 0 | the birth half of the EDIT/CREATE pair — switches to the create set |
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
@@ -22,7 +22,7 @@ on session state. No absolute zones, no sibling divs, ever again.
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | IN-game only (playing) | 0 | the world's ? card |
 | brewicon | ◆ | BREW ICON | RIGHT inner | main set | 1 | icon author panel |
-| account | 👤 | ACCOUNT | FLOW, right of create | always | 0 | /account — credits · membership · contact all live there now |
+| account | 👤 | (icon only, even wide) | FLOW, right of the green door | always | 0 | /account — credits · membership · contact all live there now |
 
 ## The laws
 

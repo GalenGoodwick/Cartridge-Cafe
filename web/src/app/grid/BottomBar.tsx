@@ -80,12 +80,12 @@ const FLOW: Btn[] = [
   { id: 'edit', tier: 0, tone: 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
-  // the person, right of create (Galen)
-  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤 ACCOUNT', glyph: () => '👤', testId: 'account' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
+  // the person — icon only, even wide; right of the green door (Galen)
+  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤', glyph: () => '👤', testId: 'account' },
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
@@ -124,6 +124,22 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
         ◂
       </button>
     )
+    // share wears the PROPER share icon (Galen) — connected dots, inline svg
+    if (b.id === 'share') {
+      const condensed = ctx.narrow || ctx.glyphs
+      const icon = ctx.copied ? <span>✓</span> : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={condensed ? 'w-[20px] h-[20px]' : 'w-[15px] h-[15px]'}>
+          <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+          <line x1="8.7" y1="10.6" x2="15.3" y2="6.4" /><line x1="8.7" y1="13.4" x2="15.3" y2="17.6" />
+        </svg>
+      )
+      return (
+        <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
+          className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES.chip(false)}`}>
+          <span className="inline-flex items-center gap-1.5">{icon}{!condensed && <span>{ctx.copied ? 'COPIED' : 'SHARE'}</span>}</span>
+        </button>
+      )
+    }
     // edit wears a BIG LONG pen (Galen) — the ✎ glyph rendered large beside
     // the word, alone and larger still when condensed
     if (b.id === 'edit') {
