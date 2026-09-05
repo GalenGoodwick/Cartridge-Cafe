@@ -23,19 +23,25 @@ function ago(t: number): string {
   return `${Math.round(s / 86400)}d ago`
 }
 
-export default function LineagePanel({ slug, worldData, onClose }: {
+type SrvEditor = { who: string; created: number; edits: number; lastAt: number; things: string[] }
+
+export default function LineagePanel({ slug, worldData, onClose, inline }: {
   slug: string
   worldData: Record<string, unknown> | undefined
-  onClose: () => void
+  onClose?: () => void
+  /** the engine-tab face — fills its container instead of floating as a modal */
+  inline?: boolean
 }) {
-  const [tree, setTree] = useState<{ self: Kin; ancestors: Kin[]; forks: Kin[] } | null>(null)
+  const [tree, setTree] = useState<{ self: Kin; ancestors: Kin[]; forks: Kin[]; editors?: SrvEditor[] } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
-    fetch(`/api/spaces/${encodeURIComponent(slug)}/lineage`, { cache: 'no-store' })
+    // no client worldData (the inline tab) → ask the route to aggregate editors
+    const q = worldData ? '' : '?editors=1'
+    fetch(`/api/spaces/${encodeURIComponent(slug)}/lineage${q}`, { cache: 'no-store' })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then(setTree)
       .catch(() => setErr('lineage unavailable'))
-  }, [slug])
+  }, [slug, worldData])
 
   // EDITS BY USER — aggregate route-stamped identity over every thing
   const editors = useMemo(() => {
@@ -61,9 +67,12 @@ export default function LineagePanel({ slug, worldData, onClose }: {
       }
     }
     return [...acc.entries()]
-      .map(([who, e]) => ({ who, ...e }))
+      .map(([who, e]) => ({ who, createdCount: e.created.length, things: e.created.slice(0, 6), edits: e.edits, lastAt: e.lastAt }))
       .sort((a, b) => b.lastAt - a.lastAt)
   }, [worldData])
+  const shown = worldData
+    ? editors
+    : (tree?.editors ?? []).map(e => ({ who: e.who, createdCount: e.created, things: e.things, edits: e.edits, lastAt: e.lastAt }))
 
   const kinRow = (k: Kin, tag: string, self?: boolean) => (
     <div key={`${tag}-${k.slug}`} className={`flex items-baseline gap-2 py-1 ${self ? 'text-amber-100' : 'text-white/80'}`}>
@@ -76,13 +85,8 @@ export default function LineagePanel({ slug, worldData, onClose }: {
     </div>
   )
 
-  return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="max-w-lg w-[92%] max-h-[80%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[14px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[16px] tracking-[0.25em] text-white/60">⑂ LINEAGE</div>
-          <button className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white px-2 py-1" onClick={onClose}>CLOSE</button>
-        </div>
+  const body = (
+    <>
 
         {err && <div className="text-white/50 mb-3">{err}</div>}
         {tree && (
@@ -101,20 +105,38 @@ export default function LineagePanel({ slug, worldData, onClose }: {
 
         <div className="pt-3 border-t border-white/10">
           <div className="text-white/40 text-[12px] tracking-[0.2em] mb-2">EDITS BY USER · route-verified attribution</div>
-          {editors.length === 0 && <div className="text-white/45 text-[13px]">no attributed edits yet — provenance starts stamping with the next bridge push</div>}
-          {editors.map(e => (
+          {shown.length === 0 && <div className="text-white/45 text-[13px]">no attributed edits yet — provenance starts stamping with the next bridge push</div>}
+          {shown.map(e => (
             <div key={e.who} className="py-1.5 border-b border-white/5 last:border-0">
               <div className="flex items-baseline gap-2">
                 <span className={e.who === 'owner' ? 'text-amber-100' : 'text-emerald-200/90'}>{e.who}</span>
-                <span className="text-white/45 text-[12px]">{e.created.length} created · {e.edits} revs</span>
+                <span className="text-white/45 text-[12px]">{e.createdCount} created · {e.edits} revs</span>
                 {e.lastAt > 0 && <span className="text-white/30 text-[12px] ml-auto shrink-0">{ago(e.lastAt)}</span>}
               </div>
-              {e.created.length > 0 && (
-                <div className="text-white/35 text-[11px] truncate">{e.created.slice(0, 6).join(' · ')}{e.created.length > 6 ? ` · +${e.created.length - 6}` : ''}</div>
+              {e.things.length > 0 && (
+                <div className="text-white/35 text-[11px] truncate">{e.things.join(' · ')}{e.createdCount > 6 ? ` · +${e.createdCount - 6}` : ''}</div>
               )}
             </div>
           ))}
         </div>
+    </>
+  )
+  if (inline) {
+    return (
+      <div className="w-full h-full overflow-y-auto p-4 font-mono text-[14px] leading-relaxed text-white/85">
+        <div className="text-[11.5px] tracking-[0.2em] text-amber-200/70 mb-2">⑂ LINEAGE</div>
+        {body}
+      </div>
+    )
+  }
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="max-w-lg w-[92%] max-h-[80%] overflow-y-auto rounded-xl border border-white/15 bg-black/85 backdrop-blur p-5 font-mono text-[14px] leading-relaxed text-white/85" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[16px] tracking-[0.25em] text-white/60">⑂ LINEAGE</div>
+          <button className="text-[14px] tracking-[0.15em] text-white/60 hover:text-white px-2 py-1" onClick={onClose}>CLOSE</button>
+        </div>
+        {body}
       </div>
     </div>
   )

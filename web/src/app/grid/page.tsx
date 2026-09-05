@@ -16,6 +16,7 @@ import FieldEngine from '@/app/engine/FieldEngine'
 import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
+import LineagePanel from '@/app/engine/LineagePanel'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import BottomBar, { type BarCtx, type BarActions } from './BottomBar'
@@ -67,7 +68,7 @@ export default function TheGrid() {
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -846,7 +847,7 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -955,6 +956,9 @@ export default function TheGrid() {
             })()}
             {tool === 'crew' && <CrewViewM icons={icons} current={scene} onJoin={crewJoin} />}
             {tool === 'versions' && <VersionsViewM cfg={cfgStable} />}
+            {tool === 'lineage' && (sceneIsSpace
+              ? <LineagePanel inline slug={scene.slice(6)} worldData={undefined} />
+              : <div className="p-4 font-mono text-[13px] text-white/50">house cartridge — lineage lives on real worlds</div>)}
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
             {tool === 'brain' && <BrainViewM />}

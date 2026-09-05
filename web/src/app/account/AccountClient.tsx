@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
+import AccountBar from './AccountBar'
 
 const box = 'rounded-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-5'
 const h2 = 'font-mono text-[13px] tracking-[0.3em] text-amber-200/70 mb-3'
@@ -130,20 +131,21 @@ export default function AccountClient(p: {
   if (delResult) {
     return (
       <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
-        <div className="mx-auto max-w-xl px-6 py-24 font-mono text-white/80">
+        <div className="mx-auto max-w-xl px-6 py-24 pb-28 font-mono text-white/80">
           <h1 className="cafe-sign text-3xl text-glow mb-4">account deleted</h1>
           <p className="text-[15px] leading-relaxed mb-3">Your subscription is canceled, your sign-in methods are erased, and your personal data is gone.</p>
           {delResult.deletedWorlds.length > 0 && <p className="text-[14px] text-white/60 mb-2">worlds deleted: {delResult.deletedWorlds.join(', ')}</p>}
           {delResult.preservedWorlds.length > 0 && <p className="text-[14px] text-white/60 mb-2">preserved for their co-builders (no longer linked to you): {delResult.preservedWorlds.join(', ')}</p>}
           <p className="text-[14px] text-white/50 mt-6">signing you out…</p>
         </div>
-      </main>
+        <AccountBar signedOut={false} />
+    </main>
     )
   }
 
   return (
     <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
-      <div className="mx-auto max-w-2xl px-6 py-14 font-mono">
+      <div className="mx-auto max-w-2xl px-6 py-14 pb-28 font-mono">
         <a href="/" className="text-[14px] tracking-[0.2em] text-amber-200/60 hover:text-amber-200">◂ cartridge.cafe</a>
         <h1 className="cafe-sign text-4xl text-glow mt-4 mb-8">account</h1>
 
@@ -396,6 +398,7 @@ export default function AccountClient(p: {
           </div>
         </div>
       )}
+      <AccountBar signedOut={false} />
     </main>
   )
 }

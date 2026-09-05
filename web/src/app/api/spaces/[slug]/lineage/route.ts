@@ -10,7 +10,7 @@ type Kin = { slug: string; name: string; owner: string; at: number; isPublic: bo
  *  (root first); forks = direct children. Deliberately snapshot-free — this
  *  route never touches the jsonb blob (the detoast law); the EDITS side of
  *  the panel reads __provenance from the client's already-loaded worldData. */
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const clean = slug.trim().toLowerCase()
   const sel = {
@@ -39,9 +39,45 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
     ancestors.unshift(toKin(up))   // root ends up first
     upId = up.forkOfId
   }
+  // ?editors=1 → aggregate route-stamped attribution server-side. This DOES
+  // read the snapshot — through the 30s getSpaceSnapshot cache (detoast law),
+  // never a raw jsonb subpath query.
+  let editors: Array<{ who: string; created: number; edits: number; lastAt: number; things: string[] }> | undefined
+  if (req.nextUrl.searchParams.get('editors') === '1') {
+    try {
+      const { getSpaceSnapshot } = await import('@/app/api/engine/space-store')
+      const snap = await getSpaceSnapshot(space.id) as { worldData?: Record<string, unknown> } | null
+      const wd = snap?.worldData ?? {}
+      const prov = (wd.__provenance ?? {}) as Record<string, { by: string; at: number; lastBy: string; lastAt: number }>
+      const hist = (wd.__nodeHist ?? {}) as Record<string, Array<{ at?: number; by?: string }>>
+      const acc = new Map<string, { created: string[]; edits: number; lastAt: number }>()
+      const bump = (who: string) => {
+        const w = who || 'anon'
+        let e = acc.get(w)
+        if (!e) { e = { created: [], edits: 0, lastAt: 0 }; acc.set(w, e) }
+        return e
+      }
+      for (const [key, pr] of Object.entries(prov)) {
+        if (!pr || typeof pr !== 'object') continue
+        const c = bump(pr.by); c.created.push(key); c.lastAt = Math.max(c.lastAt, pr.at || 0)
+        const l = bump(pr.lastBy); l.lastAt = Math.max(l.lastAt, pr.lastAt || 0)
+      }
+      for (const chain of Object.values(hist)) {
+        if (!Array.isArray(chain)) continue
+        for (const rev of chain) {
+          const e = bump(String(rev?.by ?? '') || 'anon')
+          e.edits++; e.lastAt = Math.max(e.lastAt, Number(rev?.at) || 0)
+        }
+      }
+      editors = [...acc.entries()]
+        .map(([who, e]) => ({ who, created: e.created.length, edits: e.edits, lastAt: e.lastAt, things: e.created.slice(0, 6) }))
+        .sort((a, b) => b.lastAt - a.lastAt)
+    } catch { /* editors stay undefined — the tree still serves */ }
+  }
   return NextResponse.json({
     self: toKin(space),
     ancestors,                                        // root → … → direct parent
     forks: space.forks.map(toKin),                    // direct children, oldest first
+    ...(editors ? { editors } : {}),
   })
 }
