@@ -1122,7 +1122,7 @@ export default function TheGrid() {
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
-          nav: () => { setSelOpen(false); if (uiSet === 'engine') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
+          nav: () => { setSelOpen(false); if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
           account: () => { window.location.href = '/account' },
           connect: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           instructions: () => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) },

@@ -72,7 +72,8 @@ const FLOW: Btn[] = [
   // the GAMES⇄ENGINE toggle (Galen, Sep 5: 'nav = a button that goes to the
   // engine and on engine it goes back to the games. labeled correctly').
   { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
-  { id: 'nav', tier: 0, tone: 'goldline', show: c => !c.signedOut, label: c => c.set === 'engine' ? '▶ GAMES' : '⚙ ENGINE', glyph: c => c.set === 'engine' ? '▶' : '⚙', testId: 'nav' },
+  // from games/main → ⚙ ENGINE; from engine OR the create window → ▶ GAMES
+  { id: 'nav', tier: 0, tone: 'goldline', show: c => !c.signedOut, label: c => (c.set === 'engine' || c.set === 'create') ? '▶ GAMES' : '⚙ ENGINE', glyph: c => (c.set === 'engine' || c.set === 'create') ? '▶' : '⚙', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
   // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
