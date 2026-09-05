@@ -80,6 +80,8 @@ const FLOW: Btn[] = [
   { id: 'edit', tier: 0, tone: 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
+  // the person, right of create (Galen)
+  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤 ACCOUNT', glyph: () => '👤', testId: 'account' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
@@ -90,8 +92,6 @@ const TOGGLES: Btn[] = [
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
-  // the person, far right (Galen)
-  { id: 'account', tier: 0, tone: 'chip', show: () => true, label: () => '👤 ACCOUNT', glyph: () => '👤', testId: 'account' },
 ]
 
 const TONES: Record<Tone, (active: boolean) => string> = {

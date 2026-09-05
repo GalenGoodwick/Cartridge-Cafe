@@ -22,7 +22,7 @@ on session state. No absolute zones, no sibling divs, ever again.
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | IN-game only (playing) | 0 | the world's ? card |
 | brewicon | ◆ | BREW ICON | RIGHT inner | main set | 1 | icon author panel |
-| account | 👤 | ACCOUNT | FAR RIGHT (last toggle) | always | 0 | /account — credits · membership · contact all live there now |
+| account | 👤 | ACCOUNT | FLOW, right of create | always | 0 | /account — credits · membership · contact all live there now |
 
 ## The laws
 
