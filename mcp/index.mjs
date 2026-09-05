@@ -254,6 +254,18 @@ server.tool(
 )
 
 server.tool(
+  'build_credits',
+  'Read your human\'s world-build credit balance + prices. brew_world / create_world spends ONE credit per world (the keeper is exempt); when the balance is 0 the create is refused with needPayment. Call this BEFORE creating to know, and relay the buy pointer (the ACCOUNT page, bundles are cheaper) to your human when they\'re out.',
+  {},
+  async () => {
+    if (!account?.playerToken) return text({ error: 'no paired account — run connect_account first (credits belong to the account)' })
+    const out = await bridgeFor(account.playerToken).bridgeSend({ type: 'credits_read' }, { normalize: false })
+    const r = (out && out.results && out.results[0]) || out || {}
+    return text(r)
+  },
+)
+
+server.tool(
   'playthrough',
   'PLAY the world headless — the honest test for anything INTERACTIVE. Runs the world\'s REAL step-hooks on THIS machine\'s local eye (same warm Deno renderer as render_probe — there is no cloud sandbox), ticking them over TIME while pressing a scripted input, and returns stateTrace: the game state (numbers/bools from the world\'s state holder) at each sampled tick. Catches play-over-time bugs a single frame cannot — can\'t-enter, softlocks, a trigger that never fires, a fight that can\'t be won. Read the trace to confirm the world plays the way the code claims; drive a specific input timeline to reproduce a bug, then re-run after your fix.',
   {
