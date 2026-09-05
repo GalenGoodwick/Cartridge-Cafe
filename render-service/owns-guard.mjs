@@ -37,7 +37,19 @@ export function snapshotUni(uni) {
  * A whole-array rebuild that changes an out-of-range slot is caught here — that
  * IS the weapons clobber (base rebuilds the frame and stomps u69–79).
  */
-export function ownershipDiff(prev, next, ownsUni, nodeId, frame) {
+/** Union of OTHER nodes' declared ranges — a violation must land in one.
+ *  (Galen, Sep 5: unowned slots are free ground; only trespass is flagged.) */
+export function foreignRangesOf(nodes, nodeId) {
+  const out = [];
+  for (const id in nodes) {
+    if (id === nodeId) continue;
+    const o = nodes[id] && nodes[id].owns && nodes[id].owns.uni;
+    if (o && o.length) for (const r of o) out.push(r);
+  }
+  return out;
+}
+
+export function ownershipDiff(prev, next, ownsUni, nodeId, frame, foreignUni) {
   const out = [];
   const pn = prev ? prev.length : 0;
   const nn = next ? next.length : 0;
@@ -50,7 +62,10 @@ export function ownershipDiff(prev, next, ownsUni, nodeId, frame) {
     const after = i < nn ? next[i] : 0;
     // NaN !== NaN, so guard it: NaN→NaN is not a write.
     const changed = before !== after && !(Number.isNaN(before) && Number.isNaN(after));
-    if (changed && !inRanges(i, ownsUni)) out.push({ node: nodeId, index: i, frame });
+    // trespass only: outside YOUR lane AND inside someone else's (foreignUni
+    // omitted = legacy behavior for old callers)
+    const trespass = foreignUni === undefined ? !inRanges(i, ownsUni) : (!inRanges(i, ownsUni) && inRanges(i, foreignUni));
+    if (changed && trespass) out.push({ node: nodeId, index: i, frame });
   }
   return out;
 }
@@ -62,8 +77,8 @@ export function ownershipDiff(prev, next, ownsUni, nodeId, frame) {
  * not thousands. Returns the map. (The probe runner's render_probe.ownershipViolations
  * is `[...map.values()]`.)
  */
-export function recordViolations(map, prev, next, ownsUni, nodeId, frame) {
-  const v = ownershipDiff(prev, next, ownsUni, nodeId, frame);
+export function recordViolations(map, prev, next, ownsUni, nodeId, frame, foreignUni) {
+  const v = ownershipDiff(prev, next, ownsUni, nodeId, frame, foreignUni);
   for (let i = 0; i < v.length; i++) {
     const e = v[i], k = e.node + '|' + e.index;
     let r = map.get(k);

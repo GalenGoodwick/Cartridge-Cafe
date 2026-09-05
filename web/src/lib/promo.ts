@@ -11,6 +11,7 @@ export interface PromoCode {
   code: string
   credits: number          // build credits granted per redemption
   memberDays: number       // days of editing membership granted per redemption
+  permanent?: boolean      // LIFETIME: the seat is granted untimed (forever, until revoked)
   maxUses: number | null   // null = unlimited redeemers
   uses: Array<{ userId: string; at: number }>
   createdBy: string
@@ -30,6 +31,7 @@ export async function createPromoCode(opts: {
   credits?: number
   memberDays?: number
   maxUses?: number | null
+  permanent?: boolean
   createdBy: string
 }): Promise<PromoCode> {
   const promo: PromoCode = {
@@ -37,6 +39,7 @@ export async function createPromoCode(opts: {
     credits: Math.max(0, Math.floor(opts.credits ?? 2)),
     memberDays: Math.max(0, Math.floor(opts.memberDays ?? 30)),
     maxUses: opts.maxUses == null ? null : Math.max(1, Math.floor(opts.maxUses)),
+    ...(opts.permanent ? { permanent: true } : {}),
     uses: [],
     createdBy: opts.createdBy,
     at: Date.now(),
@@ -76,7 +79,12 @@ export async function redeemPromoCode(userId: string, rawCode: string): Promise<
   if (promo.credits > 0) await addGenCredits(userId, promo.credits, `promo:${code}`)
 
   let memberUntil: number | null = null
-  if (promo.memberDays > 0) {
+  if (promo.permanent) {
+    // LIFETIME (Galen, Sep 5: "give someone permanent free. like I have") —
+    // an UNTIMED editor grant: entitlementLive forever, revocable only by the
+    // keeper. Upgrades any timer; idempotent per product.
+    await grantEntitlement(userId, { product: 'editor', sessionId: `promo:${code}` })
+  } else if (promo.memberDays > 0) {
     const ents = await readEntitlements(userId)
     const editor = ents.find((e) => e.active && (e.product === 'editor' || e.product === 'editor_pro'))
     if (editor && !editor.until) {
@@ -92,5 +100,5 @@ export async function redeemPromoCode(userId: string, rawCode: string): Promise<
     ...promo,
     uses: [...uses, { userId, at: Date.now() }],
   } as unknown as Record<string, unknown>)
-  return { ok: true, credits: promo.credits, memberDays: promo.memberDays, memberUntil }
+  return { ok: true, credits: promo.credits, memberDays: promo.permanent ? -1 : promo.memberDays, memberUntil }
 }

@@ -202,6 +202,14 @@ self.onmessage = function (ev) {
     const __guard = __strict || __sample;
     __gframe++;
     const __viol = __guard ? new Map() : null;
+    // FOREIGN LANES (Galen, Sep 5: '/admin owns violations' — 89 of 100 were
+    // noise): a violation is ONLY a write into a slot ANOTHER node declared.
+    // Unowned slots are free ground (the node-gate's own law); dynamic-index
+    // writers whose auto-inferred owns under-declare are no longer flagged
+    // for touching nobody's land.
+    const __allOwns = [];
+    if (__guard) { for (const __id in __nodes) { const __o = __nodes[__id] && __nodes[__id].owns && __nodes[__id].owns.uni; if (__o && __o.length) __allOwns.push([__id, __o]); } }
+    const __inForeign = (__id, __i) => { for (let __x = 0; __x < __allOwns.length; __x++) { if (__allOwns[__x][0] === __id) continue; const __rs = __allOwns[__x][1]; for (let __r = 0; __r < __rs.length; __r++) { if (__i >= __rs[__r][0] && __i <= __rs[__r][1]) return true; } } return false; };
     let __benchEvents = null;   // nodes benched THIS tick → main surfaces + bridges them
     // UI PROVENANCE: watch wd.ui BETWEEN hooks — the hook that (re)assigns the
     // tree owns it; INSPECT names it for any clicked UI text. Syncs via __-key.
@@ -210,11 +218,11 @@ self.onmessage = function (ev) {
       if (__strict && __benched[h.id]) continue;   // benched node: hook does not run (zero cost)
       const __ht0 = __now();   // node-level cost attribution: time the WHOLE per-hook body (fn + guard scan)
       const __ownsRaw = __guard && __nodes[h.id] && __nodes[h.id].owns && __nodes[h.id].owns.uni;
-      // EMPTY owns = "unknown / unclaimed range" — never guarded (a claim_node'd or
-      // zero-write node has owns:[]; guarding it would flag every legit write).
       const __owns = (__ownsRaw && __ownsRaw.length > 0) ? __ownsRaw : null;
-      const __u = __owns && __sim.worldData && __sim.worldData.gpuUniforms;
-      const __before = (__owns && __u && __u.length != null) ? __u.slice() : null;
+      // guard whenever OTHER nodes have declared lanes — even an owns-less hook
+      // must not stomp them (that IS the veilfire weapons clobber)
+      const __u = __guard && __allOwns.length > 0 && __sim.worldData && __sim.worldData.gpuUniforms;
+      const __before = (__u && __u.length != null) ? __u.slice() : null;
       try { h.fn(__sim, msg.dt); }
       catch (e) {   // keep running the rest; capture WHERE (source-doc) for the first throw
         const __em = String((e && e.message) || e);
@@ -235,9 +243,9 @@ self.onmessage = function (ev) {
           const __a = __i < __before.length ? __before[__i] : 0;
           const __b = __i < __after.length ? __after[__i] : 0;
           if (__a !== __b && !(Number.isNaN(__a) && Number.isNaN(__b))) {
-            let __inr = false;
-            for (let __r = 0; __r < __owns.length; __r++) { if (__i >= __owns[__r][0] && __i <= __owns[__r][1]) { __inr = true; break; } }
-            if (!__inr) {
+            let __inr = !__owns;   // no declared owns of your own = nothing is 'outside' it
+            if (__owns) { for (let __r = 0; __r < __owns.length; __r++) { if (__i >= __owns[__r][0] && __i <= __owns[__r][1]) { __inr = true; break; } } }
+            if ((!__inr || !__owns) && __inForeign(h.id, __i)) {
               const __k = h.id + '|' + __i; const __e = __viol.get(__k); if (__e) __e.count++; else __viol.set(__k, { node: h.id, index: __i, count: 1, reverted: __strict });
               if (__strict && __i < __after.length) { __after[__i] = __a; }   // rung E: REVERT the stomp to its pre-hook value
               if (__strict) {

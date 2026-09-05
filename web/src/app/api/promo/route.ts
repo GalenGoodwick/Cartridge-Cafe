@@ -25,7 +25,7 @@ export async function GET() {
   const codes = await listPromoCodes()
   return NextResponse.json({
     codes: codes.map((c) => ({
-      code: c.code, credits: c.credits, memberDays: c.memberDays,
+      code: c.code, credits: c.credits, memberDays: c.memberDays, permanent: !!c.permanent,
       maxUses: c.maxUses, used: c.uses.length, at: c.at, disabled: !!c.disabled,
     })),
   })
@@ -34,10 +34,11 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const user = await adminUser()
   if (!user) return NextResponse.json({ error: 'admin only' }, { status: 403 })
-  const body = (await req.json().catch(() => ({}))) as { credits?: number; memberDays?: number; maxUses?: number | null }
+  const body = (await req.json().catch(() => ({}))) as { credits?: number; memberDays?: number; maxUses?: number | null; permanent?: boolean }
   const promo = await createPromoCode({
     credits: body.credits, memberDays: body.memberDays, maxUses: body.maxUses ?? null,
+    permanent: body.permanent === true,
     createdBy: user.id,
   })
-  return NextResponse.json({ ok: true, code: promo.code, credits: promo.credits, memberDays: promo.memberDays, maxUses: promo.maxUses }, { status: 201 })
+  return NextResponse.json({ ok: true, code: promo.code, credits: promo.credits, memberDays: promo.memberDays, permanent: !!promo.permanent, maxUses: promo.maxUses }, { status: 201 })
 }

@@ -55,7 +55,7 @@ export default function AccountClient(p: {
   const [inviteCopied, setInviteCopied] = useState('')
   const [promoNote, setPromoNote] = useState('')
   const [minted, setMinted] = useState<string | null>(null)
-  const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number }>>([])
+  const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number; permanent?: boolean }>>([])
   useEffect(() => {
     if (!p.isAdmin) return
     fetch('/api/promo').then(r => (r.ok ? r.json() : null))
@@ -238,6 +238,19 @@ export default function AccountClient(p: {
                   <button onClick={mint} disabled={busy !== null}
                     className={`${btn} border-emerald-300/50 text-emerald-100 hover:bg-emerald-400/15 disabled:opacity-40`}>
                     {busy === 'mint' ? '…' : '✚ GENERATE CODE'}
+                  </button>
+                  <button onClick={async () => {
+                    if (!window.confirm('Mint a LIFETIME code? One redemption = permanent free membership (revocable only by you).')) return
+                    setBusy('mint'); setPromoNote('')
+                    try {
+                      const r = await fetch('/api/promo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permanent: true, maxUses: 1, credits: 2 }) })
+                      const d = await r.json()
+                      if (r.ok && d?.code) { setMinted(d.code); fetch('/api/promo').then(x => x.json()).then(x => setCodes(Array.isArray(x?.codes) ? x.codes : [])).catch(() => {}) } else setPromoNote(d?.error || 'mint failed')
+                    } catch { setPromoNote('mint failed — offline?') }
+                    setBusy(null)
+                  }} disabled={busy !== null}
+                    className={`${btn} border-amber-300/60 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
+                    {busy === 'mint' ? '…' : '∞ LIFETIME CODE'}
                   </button>
                 </div>
                 {minted && (

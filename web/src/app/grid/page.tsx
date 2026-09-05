@@ -1319,6 +1319,7 @@ export default function TheGrid() {
             {/* ⚿ CONNECT AI — THE GREEN DOOR (Galen, Sep 5: "big green, always
                 accessible"). Rightmost, every UI set; opens the connect modal
                 (build-key prompt). Narrow keeps it, compacted. */}
+            {uiSet !== 'engine' && (
             <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
               className={`font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${
                 aiLive ? 'bg-emerald-400 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
@@ -1326,6 +1327,7 @@ export default function TheGrid() {
               {aiLive && <span className="inline-block w-2 h-2 rounded-full bg-black/80 animate-pulse" />}
               {aiLive ? (narrow ? 'AI ⚡' : 'AI LIVE') : (narrow ? '⚿ AI' : '⚿ CONNECT AI')}
             </button>
+            )}
           </div>
         </div>
       </div>
