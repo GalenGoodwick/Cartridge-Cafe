@@ -333,3 +333,15 @@ model LedgerEntry {
   @@index([credit])
   @@index([kind])
 }
+
+// ── contact: the teams door (terms "Contact for teams", Sep 5 2026) ──
+model ContactMessage {
+  id        String   @id @default(cuid())
+  email     String
+  message   String
+  context   String? // where the form was opened from (world slug, page)
+  status    String   @default("NEW") // NEW | READ
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+}

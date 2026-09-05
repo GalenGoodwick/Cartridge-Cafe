@@ -22,9 +22,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       out.push({ url: `${base}/hub/${encodeURIComponent(name)}`, changeFrequency: 'weekly', priority: 0.8 })
     }
     const { prisma } = await import('@/lib/prisma')
-    const spaces = await prisma.playerSpace.findMany({ where: { isPublic: true }, select: { slug: true, owner: { select: { email: true } } } })
+    const spaces = await prisma.playerSpace.findMany({ where: { isPublic: true }, select: { slug: true, ownerId: true, owner: { select: { email: true } } } })
+    // /source/<slug> — the SEO surface: every public world's readable source page.
+    // IP-control holders are excluded (closed source never leaks, sitemap included);
+    // owners are deduped so the entitlement check runs once per maker, not per world.
+    const { hasIpControl } = await import('@/lib/stripe')
+    const ownerClosed = new Map<string, boolean>()
     for (const sp of spaces) {
       out.push({ url: `${base}/space/${sp.slug}`, changeFrequency: 'weekly', priority: 0.6 })
+      if (!ownerClosed.has(sp.ownerId)) {
+        ownerClosed.set(sp.ownerId, await hasIpControl(sp.ownerId).catch(() => true))
+      }
+      if (!ownerClosed.get(sp.ownerId)) {
+        out.push({ url: `${base}/source/${sp.slug}`, changeFrequency: 'weekly', priority: 0.7 })
+      }
       const handle = sp.owner?.email?.split('@')[0].replace(/[^a-z0-9_-]/gi, '')
       if (handle) makers.add(handle)
     }

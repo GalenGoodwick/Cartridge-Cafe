@@ -1230,6 +1230,13 @@ export default function TheGrid() {
               </button>
             )}
             <span className="flex-1" />
+            {/* ✉ CONTACT — the teams door (terms: "contact for teams"). GAMES only. */}
+            {uiSet === 'games' && (
+            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`} target="_blank" rel="noopener"
+              className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 bg-black/70 border-white/25 text-white/85 hover:text-white">
+              {narrow ? '✉' : '✉ CONTACT'}
+            </a>
+            )}
             {/* ? INSTRUCTIONS — GAMES only (not MAIN, not ENGINE, not CREATE) */}
             {uiSet === 'games' && (
             <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
