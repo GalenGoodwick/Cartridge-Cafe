@@ -871,6 +871,17 @@ export default function TheGrid() {
               </span>
             </a>
             )}
+            {/* ✉ CONTACT — moved off the bottom bar (it tier-vanished there);
+                the nav page is its home now */}
+            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`}
+              target="_blank" rel="noopener" data-grid-contact
+              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
+              <span className="text-[20px] text-white/70">✉</span>
+              <span>
+                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block">CONTACT</span>
+                <span className="font-mono text-[11px] text-white/50">reach the keeper — teams · questions · trouble</span>
+              </span>
+            </a>
           </div>
           </div>
         </div>
@@ -1214,7 +1225,6 @@ export default function TheGrid() {
           nav: () => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) },
           connect: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           instructions: () => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) },
-          contact: () => { window.open(`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`, '_blank', 'noopener') },
           brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) },
         } satisfies BarActions}
       />
