@@ -19,6 +19,7 @@ import { makeClient } from './bridge-client.mjs'
 import * as localEye from './local-eye.mjs'
 import { enrichReport, shapeSnapshot, probeContent } from './probe-format.mjs'
 import { loadWorlds, saveWorlds } from './worlds-store.mjs'
+import { bakeMesh } from './mesh-bake.mjs'
 
 const BASE = process.env.CAFE_BASE || 'https://cartridge.cafe'
 const bridgeFor = (tok) => makeClient({ base: BASE, token: tok, timeoutMs: 150_000, headers: { Origin: BASE } })
@@ -314,6 +315,54 @@ server.tool(
     return text({
       error: 'account required — the guest door is closed',
       next: `To open "${slug}": either the owner pastes its access key — call use_world {slug:"${slug}", key:"uc_st_… or uc_pt_…"} — or run connect_account to pair your human's account (one click, persists across sessions), then retry.`,
+    })
+  },
+)
+
+server.tool(
+  'import_mesh',
+  'ACTUAL 3D MESH import — hand it a .glb (file path or URL) and it bakes the mesh into a signed-distance volume (res³ voxels, sign by ray parity), uploads it through the world\'s sprite pipeline as tiled slices, and returns ready-to-paste WGSL: a trilinear `<name>_sdf(p)` you raymarch in any visual (p in the 0..1 unit cube, y = glTF up). The mesh becomes a first-class SDF citizen — light it, smin-blend it into terrain, turntable it. Best for chunky watertight models; features thinner than ~3 voxels soften (raise resolution). Verify in a LIVE TAB — the headless eye has no sprite() bindings. Defaults to your latest brewed world.',
+  {
+    source: z.string().describe('.glb file path or https URL'),
+    name: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/).describe('Sheet name (lowercase; becomes the WGSL fn prefix <name>_sdf). Sheets sort by name — pick a name that sorts AFTER existing sheets or their slot bases reshuffle.'),
+    resolution: z.number().optional().describe('Voxel resolution per axis, 24..96. Default 64. Thin features need more.'),
+    token: z.string().optional().describe('World token (uc_st_). Defaults to your latest brewed world.'),
+  },
+  async ({ source, name, resolution, token }) => {
+    const tok = token || mine[mine.length - 1]?.token
+    if (!tok) return text({ error: 'no world token — brew_world first, or pass one' })
+
+    let buf
+    try {
+      if (/^https?:\/\//.test(source)) {
+        const r = await fetch(source, { signal: AbortSignal.timeout(30_000) })
+        if (!r.ok) return text({ error: `fetch failed: ${r.status} ${source}` })
+        buf = Buffer.from(await r.arrayBuffer())
+      } else {
+        buf = fs.readFileSync(source)
+      }
+    } catch (e) { return text({ error: `could not read source: ${e.message}` }) }
+
+    let baked
+    try {
+      baked = bakeMesh(buf, { res: resolution || 64, prefix: name })
+    } catch (e) { return text({ error: `bake failed: ${e.message}` }) }
+
+    const up = await bridgeFor(tok).bridgeSend({
+      type: 'define_sheet', name, png: baked.png.toString('base64'),
+      cols: baked.cols, rows: baked.rows, fps: 0,
+    }, { normalize: false })
+    const r = (up && up.results && up.results[0]) || up || {}
+    const slots = (r.slots || []).filter((s) => s.name.startsWith(`${name}.`))
+    if (!slots.length) return text({ error: r.error || 'upload failed — define_sheet returned no slots', bridge: up })
+    const base = Math.min(...slots.map((s) => s.i))
+
+    return text({
+      imported: true, name, base, sliceCount: slots.length,
+      res: baked.res, cols: baked.cols, rows: baked.rows, band: baked.band,
+      stats: baked.stats,
+      wgsl: baked.wgsl(base),
+      next: `Paste the wgsl fns into a visual and raymarch ${name}_sdf(p) — p in the 0..1 cube, y up (flip your screen y). Then LOOK at it in a live tab; the headless eye cannot compile sprite-fed visuals. If a later sheet's name sorts before "${name}", re-read worldData.sprites for the fresh base.`,
     })
   },
 )

@@ -1199,6 +1199,41 @@ Caps: 64 sheets · 4096 slots · 4MB/sheet · 24MB/world. Metadata lives in
 KNOWN BLIND SPOT: the headless eye does not yet bind sprite atlases —
 verify sprite visuals in a live tab.
 
+### MESH IMPORT — actual 3D models through the sprite pipe
+
+A real glTF mesh (`.glb`) can stand in a world as a **first-class SDF citizen**:
+light it, smin-blend it into terrain, turntable it. The conversion runs on the
+AI's side (the `import_mesh` tool in cartridge-cafe-mcp — one call does all of
+this); the engine only ever receives a `define_sheet` upload. If you are
+building without the MCP, the formula is reproducible by hand:
+
+1. **Bake** the mesh to a res³ signed-distance volume (64 default; 80+ for thin
+   features — anything under ~3 voxels dissolves). Sign by z-column ray parity
+   (odd crossings below = inside; tolerates small holes), unsigned distance
+   from an area-weighted surface point cloud. Clamp to **±4 voxels** — and only
+   compute exact distance *within* that band; everything else IS ±band by sign
+   (the difference between minutes and seconds).
+2. **Pack** the z-slices as near-square tiles in ONE png, **distance in the
+   ALPHA channel** — never rgb: `sprite()` linearizes rgb (sRGB→linear) which
+   corrupts encoded data; alpha passes through raw. rgb is free for future
+   baked albedo. Encoding: `a = (d/band)*0.5 + 0.5`.
+3. **Upload** via `define_sheet {name, png, cols, rows, fps: 0}` — slice index
+   = slot index within the sheet. Sheets sort by NAME: a later sheet whose name
+   sorts before yours reshuffles your base — re-read `worldData.sprites`.
+4. **Reconstruct** in any visual: sample 8 neighboring texels via
+   `sprite(base + z, cellUv).a`, trilinear-interpolate → `mesh_sdf(p)` for p in
+   the 0..1 cube (y = glTF up). Raymarch it: slab-test the cube, ~80–96 steps,
+   step `0.8·d`, hit ~0.004, normals from six taps. `import_mesh` returns this
+   sampler pre-generated with your real base slot.
+5. **Verify in a LIVE TAB** — the headless eye has no `sprite()` bindings, so a
+   sprite-fed visual only compiles where a player is. A CPU raymarch from the
+   packed png (same math) is the honest pre-flight.
+
+Known limits, stated so you can design around them: materials reduce to one
+color for now; skeletal animation would be per-pose bakes; 8-bit distance
+quantization is fine at these bands. Proof worlds: `/space/first-mesh`
+(Khronos Duck 4212 tris + Fox with thin legs intact at res 80).
+
 ### Entity Populations — the flock buffer
 
 For a POPULATION of entities (flocks, bullets, crowds, particles-with-gameplay), do NOT
