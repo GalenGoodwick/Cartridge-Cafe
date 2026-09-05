@@ -79,16 +79,6 @@ export default function TheGrid() {
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
   const [visMsg, setVisMsg] = useState('')   // ◆ SET VISUAL feedback (the EYE pane)
-  // THE LAPSE OFFER (Galen, Sep 5): when a once-held seat has expired, offer
-  // the rejoin ONCE per lapse (dismiss persists in localStorage).
-  const [lapseOffer, setLapseOffer] = useState(false)
-  const [lapseBusy, setLapseBusy] = useState(false)
-  useEffect(() => {
-    if (!me) return
-    fetch('/api/membership').then(r => r.json()).then(d => {
-      if (d?.lapsed && localStorage.getItem('cafe-lapse-offer') !== 'dismissed') setLapseOffer(true)
-    }).catch(() => {})
-  }, [me])
   // the green door's AI-ALIVE light — fed by the engine's cc:ai-live beacon
   const [aiLive, setAiLive] = useState(false)
   useEffect(() => {
@@ -103,6 +93,16 @@ export default function TheGrid() {
     fetch('/api/auth/session').then(r => (r.ok ? r.json() : null))
       .then(d => setMe(d?.user ?? null)).catch(() => setMe(null))
   }, [])
+  // THE LAPSE OFFER (Galen, Sep 5): when a once-held seat has expired, offer
+  // the rejoin ONCE per lapse (dismiss persists in localStorage).
+  const [lapseOffer, setLapseOffer] = useState(false)
+  const [lapseBusy, setLapseBusy] = useState(false)
+  useEffect(() => {
+    if (!me) return
+    fetch('/api/membership').then(r => r.json()).then(d => {
+      if (d?.lapsed && localStorage.getItem('cafe-lapse-offer') !== 'dismissed') setLapseOffer(true)
+    }).catch(() => {})
+  }, [me])
   // ✕ CLEAR on the eye image: a local dismissal watermark — images at or before
   // it stay hidden; the next probe/shot (newer `at`) reappears on its own.
   const [eyeCleared, setEyeCleared] = useState(0)
