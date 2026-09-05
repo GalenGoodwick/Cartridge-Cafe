@@ -576,7 +576,7 @@ export default function TheGrid() {
   const cfgStable = useMemo(() => eyeData?.config ?? null, [cfgKey])
 
   const sceneIsSpace = scene.startsWith('space:')
-  const crewJoin = useCallback((sc: string) => { setScene(sc); setTool('connect') }, [])
+  const crewJoin = useCallback((sc: string) => { setScene(sc); setConnectOpen(true) }, [])
   const openAssets = useCallback(() => setTool('assets'), [])
   const pickScene = useCallback((sc: string) => setScene(sc), [])
 
@@ -935,11 +935,7 @@ export default function TheGrid() {
                 {label}
               </button>
             ))}
-            <button onClick={() => setTool('connect')}
-              className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                tool === 'connect' ? 'bg-emerald-400/20 border-emerald-300/70 text-emerald-100' : 'border-emerald-300/50 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20'}`}>
-              ⚿ CONNECT AI
-            </button>
+            {/* (⚿ CONNECT AI tab removed — Galen, Sep 5: the gold ⚡ EDIT is the one door) */}
           </div>
           {/* LIVE-EDIT worlds carry the EDITING MEMBERSHIP box (Galen): open
               building = $10/mo seat; play is always free. The banner shows the
