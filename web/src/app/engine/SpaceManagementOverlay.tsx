@@ -49,11 +49,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
   const [nameValue, setNameValue] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // Token generation
-  const [showTokenForm, setShowTokenForm] = useState(false)
-  const [tokenName, setTokenName] = useState('')
-  const [newToken, setNewToken] = useState<string | null>(null)
-  const [tokenCopied, setTokenCopied] = useState(false)
 
   // Pay — the OWN step of the funnel (renders only when the rail is configured)
   const [pay, setPay] = useState<{ configured: boolean; products: Array<{ key: string; label: string }>; mine: Array<{ product: string; slug?: string; active: boolean }> } | null>(null)
@@ -119,27 +114,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
     setEditingName(false)
     if (nameValue.trim() && nameValue !== space?.name) {
       patchSpace({ name: nameValue.trim() })
-    }
-  }
-
-  const generateToken = async () => {
-    if (!tokenName.trim()) return
-    const res = await fetch(`/api/spaces/${spaceSlug}/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: window.location.origin },
-      body: JSON.stringify({ name: tokenName.trim() }),
-    })
-    if (res.ok) {
-      const { token } = await res.json()
-      setNewToken(token)
-      setTokenName('')
-      setShowTokenForm(false)
-      // Refresh token list
-      const tokenRes = await fetch(`/api/spaces/${spaceSlug}/token`, { headers: { Origin: window.location.origin } })
-      if (tokenRes.ok) {
-        const { tokens: t } = await tokenRes.json()
-        setTokens(t)
-      }
     }
   }
 
@@ -267,60 +241,23 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
               </div>
             )}
 
-            {/* Tokens */}
+            {/* KEYS & SEATS (Galen, Sep 5: 'keep the function but leave out the
+                ui') — hand-minting is gone: every key now arrives through an
+                automated, ATTRIBUTED pathway (green door / EDIT text, use_world
+                member seats, MAKE ICON). What remains is governance: WHO holds
+                a seat on this world, and the revoke hammer. */}
             <div className="px-3 py-2 border-b border-border">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-muted">tokens ({tokens.length})</span>
-                <button
-                  onClick={() => { setShowTokenForm(!showTokenForm); setNewToken(null) }}
-                  className="text-accent hover:text-accent-hover transition-colors"
-                >
-                  {showTokenForm ? 'cancel' : '+ generate'}
-                </button>
+                <span className="text-muted">keys &amp; seats on {spaceSlug} ({tokens.length})</span>
               </div>
-
-              {/* New token display */}
-              {newToken && (
-                <div className="mb-1.5 p-1.5 bg-success/10 border border-success/30 rounded">
-                  <div className="text-success mb-1">new token (shown once):</div>
-                  <div className="flex items-center gap-1">
-                    <code className="text-foreground break-all flex-1 select-all">{newToken}</code>
-                    <button
-                      onClick={() => copyToClipboard(newToken, setTokenCopied)}
-                      className="px-1.5 py-0.5 bg-success/20 text-success border border-success/30 rounded hover:bg-success/30 transition-colors flex-shrink-0"
-                    >
-                      {tokenCopied ? 'ok' : 'copy'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Token generation form */}
-              {showTokenForm && (
-                <div className="flex items-center gap-1 mb-1.5">
-                  <input
-                    value={tokenName}
-                    onChange={e => setTokenName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') generateToken() }}
-                    placeholder="token name..."
-                    className="flex-1 bg-background border border-border rounded px-2 py-1 text-foreground text-[14px] font-mono outline-none focus:border-accent/50"
-                    autoFocus
-                  />
-                  <button
-                    onClick={generateToken}
-                    className="px-2 py-1 bg-accent/15 text-accent border border-accent/30 rounded hover:bg-accent/30 transition-colors"
-                  >
-                    create
-                  </button>
-                </div>
-              )}
-
               {/* Token list */}
               <div className="space-y-1">
                 {tokens.map(t => (
                   <div key={t.id} className="flex items-center gap-1.5 group">
                     <code className="text-muted-light flex-shrink-0">{t.tokenPrefix}</code>
-                    <span className="text-foreground truncate flex-1">{t.name}</span>
+                    {t.name?.startsWith('member:')
+                      ? <span className="truncate flex-1"><span className="text-success">@{t.name.slice(7)}</span><span className="text-muted"> — member seat</span></span>
+                      : <span className="text-foreground truncate flex-1">{t.name || 'unnamed key'}</span>}
                     {t.lastUsedAt && (
                       <span className="text-muted-light flex-shrink-0">{timeAgo(t.lastUsedAt)}</span>
                     )}
