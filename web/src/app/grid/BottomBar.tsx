@@ -15,6 +15,7 @@ export type BarCtx = {
   set: string                 // 'main' | 'games' | 'engine' | ...
   playing: boolean            // games set, play phase
   narrow: boolean
+  canBack: boolean            // history exists — no back button when there's nothing to go back to
   glyphs: boolean             // window shrunk — every button condenses to its icon
   tier: 0 | 1 | 2
   signedOut: boolean          // tri-state resolved: true ONLY when known signed out
@@ -64,7 +65,7 @@ type Btn = {
 // 'order is back button, share, nav, edit, create, connect ai'); TOGGLES ride
 // the right screen edge. This table IS the design log. ─────────────────────────
 const FLOW: Btn[] = [
-  { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
+  { id: 'back', tier: 0, tone: 'chip', show: c => c.canBack, label: () => '◂', glyph: () => '◂', testId: 'back' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on the create flow (Galen)

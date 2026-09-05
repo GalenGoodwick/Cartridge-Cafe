@@ -60,7 +60,6 @@ export default function TheGrid() {
   const prevTabRef = useRef<Tab | null>(null)   // tab-switch detection (a tab is a context)
   const [icons, setIcons] = useState<Map<string, string>>(new Map())
   const [scene, setScene] = useState<string>(LOCAL[0].scene)
-  const [selOpen, setSelOpen] = useState(false)
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
@@ -712,80 +711,8 @@ export default function TheGrid() {
         </div>
       )}
 
-      {/* THE UI SELECTOR — field-bounded overlay; + ACCOUNT (Galen). z ABOVE
-          the commons window: opening the menu layers over it, closing returns
-          to it (Galen: dockstar must not kill the commons). */}
-      {selOpen && (
-        // items-start + overflow-y-auto: on a phone the option cards are taller
-        // than the frame — center-align clipped them (Galen: "menu options
-        // overwhelm space"). Now the menu SCROLLS from the top instead.
-        <div className="fixed z-[128] flex items-start justify-center overflow-y-auto backdrop-blur-sm"
-          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.86)', borderRadius: 10 }}
-          onClick={() => setSelOpen(false)}>
-          <div className="p-3 sm:p-4 w-full max-w-[520px] my-auto" onClick={e => e.stopPropagation()}>
-          {/* THE BRAND — the real sign (the cup + the cafe-sign wordmark, same
-              as the masthead) + the line that says what this place IS (Galen) */}
-          <div className="flex flex-col items-center mb-3 sm:mb-4">
-            <div className="flex items-center justify-center gap-2.5">
-              <img src="/cartridge-cup.svg" alt="" className="w-8 h-8 sm:w-9 sm:h-9 -mt-0.5" />
-              <h1 className="cafe-sign text-[22px] sm:text-[24px] leading-none">cartridge<span className="not-italic font-mono text-[15px] sm:text-[16px] text-brass">.cafe</span></h1>
-            </div>
-            <div className="font-mono text-[9.5px] sm:text-[10.5px] tracking-[0.18em] text-white/55 mt-1.5 sm:mt-2 text-center px-2">INSTANT NATURAL LANGUAGE TO GAME WORLD FRAMEWORK</div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {/* (CREATE card lives on the BAR now, not here — Galen, Sep 5:
-                'remove create from nav pop up'; ✚ CREATE in the bottom bar is
-                the one door to the create set) */}
-            {/* (MAIN card removed too — Galen, Sep 5; the commons set survives
-                in code, unlinked from the dockstar) */}
-            {([
-              ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
-              ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
-            ] as const).map(([k, icon, label, sub]) => (
-              <button key={k}
-                onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
-                className={`text-left rounded-2xl border p-3 sm:p-4 transition-colors active:bg-white/10 ${
-                  uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
-                <div className={`text-[18px] sm:text-[22px] mb-0.5 sm:mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
-                <div className={`font-mono text-[13px] sm:text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
-                <div className="font-mono text-[10px] sm:text-[11px] text-white/50 mt-0.5 sm:mt-1 leading-snug">{sub}</div>
-              </button>
-            ))}
-            {isAdmin && (
-              <a href="/admin" data-grid-admin
-                className="col-span-2 text-left rounded-2xl border border-amber-300/25 bg-black/40 hover:border-amber-300/50 p-4 transition-colors flex items-center gap-3">
-                <span className="text-[20px] text-amber-200/80">⛨</span>
-                <span>
-                  <span className="font-mono text-[14px] tracking-[0.2em] text-amber-100/95 block">ADMIN</span>
-                  <span className="font-mono text-[11px] text-white/50">every world (private too) · visibility · analytics</span>
-                </span>
-              </a>
-            )}
-            {/* (BUILD CREDITS + LIVE EDIT cards moved to /account — Galen, Sep 5) */}
-            {me ? (
-            <a href="/account" data-grid-account
-              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
-              <span className="text-[20px] text-emerald-300/80">◐</span>
-              <span className="min-w-0 flex-1">
-                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block truncate">{me.name ?? me.email ?? 'SIGNED IN'}</span>
-                <span className="font-mono text-[11px] text-white/50">account page — membership · purchases · sign out</span>
-              </span>
-              <span className="font-mono text-[14px] text-white/50 shrink-0">▸</span>
-            </a>
-            ) : (
-            <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')} data-grid-account
-              className="col-span-2 text-left rounded-2xl border border-white/12 bg-black/40 hover:border-white/25 p-4 transition-colors flex items-center gap-3">
-              <span className="text-[20px] text-white/70">◐</span>
-              <span>
-                <span className="font-mono text-[14px] tracking-[0.2em] text-white/90 block">ACCOUNT</span>
-                <span className="font-mono text-[11px] text-white/50">sign in · membership</span>
-              </span>
-            </a>
-            )}
-          </div>
-          </div>
-        </div>
-      )}
+      {/* (the dockstar overlay is RETIRED — Galen, Sep 5: the identity-slot
+          toggle + 👤 ACCOUNT replaced it; /admin is a direct door now) */}
 
       {/* CONNECT AI — ONLY MCP (Galen, Sep 5): the one-liner is the whole door;
           the server carries onboarding, the first-pair gift, and this world's
@@ -1104,33 +1031,33 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'],
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], canBack: giRef.current > 0,
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
-          navOpen: selOpen, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
+          navOpen: false, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
-          back: () => { if (selOpen) { setSelOpen(false); return } if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } },
-          edit: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
-          create: () => { setUiSet('create'); setPhase('browse'); setSelOpen(false); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
-          title: () => { if (uiSet === 'main') { setSelOpen(o => !o); setAttribOpen(false) } else { setAttribOpen(o => !o); setSelOpen(false) } },
+          back: () => { if (giRef.current > 0) window.history.back() },
+          edit: () => { setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          create: () => { setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
+          title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
           share: async () => {
             const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
             try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
             catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
             if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
           },
-          commons: () => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) },
+          commons: () => { setChatOpen(o => !o); setBrewIconOpen(false); setInstrOpen(false) },
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
-          nav: () => { setSelOpen(false); if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
+          nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
           account: () => { window.location.href = '/account' },
-          connect: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
-          instructions: () => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) },
-          brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) },
+          connect: () => { setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          instructions: () => { setInstrOpen(o => !o); setConnectOpen(false) },
+          brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setInstrOpen(false) },
         } satisfies BarActions}
       />
     </div>

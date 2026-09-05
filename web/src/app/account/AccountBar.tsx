@@ -26,7 +26,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
     <>
       <BottomBar barH={64}
         ctx={{
-          set: 'account', playing: false, narrow, glyphs: win < 1280, tier,
+          set: 'account', playing: false, narrow, glyphs: win < 1280, tier, canBack: true,
           signedOut, premium: false, rReset: false, aiLive: false, recOn: false,
           recSecs: 0, copied, navOpen: false, commonsOpen: false,
           instructionsOpen: false, brewIconOpen: false, title: '',

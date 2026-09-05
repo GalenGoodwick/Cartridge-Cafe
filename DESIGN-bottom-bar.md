@@ -10,7 +10,7 @@ on session state. No absolute zones, no sibling divs, ever again.
 
 | id | icon | label | side (outer→inner) | shows when | tier | action |
 |---|---|---|---|---|---|---|
-| back | ◂ | — | LEFT 1 | always | 0 | history back; at start opens NAV |
+| back | ◂ | — | LEFT 1 | ONLY when history exists (nothing to go back to = no button) | 0 | history back |
 | edit | ⚡ | EDIT | LEFT 2 | main grid (BLUE) + in-world (GOLD, not premium) | 0 | copy text that sets YOUR AI editing (modal) |
 | title | — | Cartridge.Cafe | LEFT 3 | main set ONLY (in games/engine the world is already selected — name is redundant; attribution lives in the engine's ⑂ LINEAGE tab) | 1 | UI selector |
 | share | (share svg) | SHARE | LEFT 4 | always | 0 | copies the MCP one-liner (the whole invitation) |
@@ -43,5 +43,5 @@ on session state. No absolute zones, no sibling divs, ever again.
   worlds hide gold EDIT (their contract).
 - **The bar reaches the physical bottom**: backing extends through
   env(safe-area-inset-bottom).
-- Anything not in this table does NOT belong in the bar — it belongs in the NAV cup.
+- Anything not in this table does NOT belong in the bar — it belongs on /account.
   (contact lived here once, tier-vanished, and moved to the nav page — the precedent.)

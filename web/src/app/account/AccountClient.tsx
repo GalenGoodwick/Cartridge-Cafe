@@ -146,7 +146,6 @@ export default function AccountClient(p: {
   return (
     <main className="min-h-screen" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #17100b 0%, #0b0908 60%)' }}>
       <div className="mx-auto max-w-2xl px-6 py-14 pb-28 font-mono">
-        <a href="/" className="text-[14px] tracking-[0.2em] text-amber-200/60 hover:text-amber-200">◂ cartridge.cafe</a>
         <h1 className="cafe-sign text-4xl text-glow mt-4 mb-8">account</h1>
 
         <div className="flex flex-col gap-5">
