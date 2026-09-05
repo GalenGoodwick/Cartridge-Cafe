@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import prisma from '@/lib/prisma'
 import { getSpaceSnapshot } from '@/app/api/engine/space-store'
-import { hasIpControl } from '@/lib/stripe'
+import { hasIpShield } from '@/lib/stripe'
 
 export const revalidate = 3600   // ISR: crawls hit the cache, never the hot path
 
@@ -28,7 +28,7 @@ async function loadPublicWorld(slug: string) {
     select: { id: true, slug: true, name: true, isPublic: true, ownerId: true },
   })
   if (!space || !space.isPublic) return null
-  if (await hasIpControl(space.ownerId)) return null   // closed source never leaks
+  if (await hasIpShield(space.ownerId)) return null   // closed source never leaks
   const snap = (await getSpaceSnapshot(space.id)) as Snap | null
   if (!snap) return null
   return { space, snap }

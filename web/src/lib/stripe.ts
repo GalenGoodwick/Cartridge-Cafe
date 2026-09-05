@@ -261,12 +261,22 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
 export const EDITOR_PRICE_USD = 10        // the ONE membership
 export const IP_PRICE_USD = 100           // ◆ IP control (Galen, Sep 4: $100/mo)
 
-/** IP CONTROL (the premium tier): the holder's worlds are closed source —
- *  the platform's open-source-within-the-cafe deal does not apply to them.
- *  Read by the library before serving any world's code. */
+/** IP CONTROL (the premium tier), ACTIVE: gates the live-membership PERKS —
+ *  the company door, media imports, premium selling. */
 export async function hasIpControl(userId: string): Promise<boolean> {
   const ents = await readEntitlements(userId)
   return ents.some((e) => e.active && e.product === 'ip')
+}
+
+/** THE LIFETIME SHIELD (Galen, Sep 5: "no. it doesnt fall to open source"):
+ *  IP PROTECTION never lapses. Once an account has EVER held ◆ IP control,
+ *  its worlds stay closed-source, unforkable, out of the open sandbox, and
+ *  born private — forever, active subscription or not. Revocation keeps the
+ *  entitlement row (active:false), so ever-held is durable. Perks lapse;
+ *  the shield doesn't. */
+export async function hasIpShield(userId: string): Promise<boolean> {
+  const ents = await readEntitlements(userId)
+  return ents.some((e) => e.product === 'ip')
 }
 
 /** Does this account hold the editing membership? The build gate.

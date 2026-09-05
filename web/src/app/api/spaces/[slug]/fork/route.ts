@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug } from '@/lib/world-create'
 import { canForkWorld, normalizePolicy } from '@/lib/world-policy'
-import { GEN_PRICE_USD, hasIpControl, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import { GEN_PRICE_USD, hasIpShield, refundGenCredit, spendGenCredit, stripeConfigured } from '@/lib/stripe'
 import { isAdminUserId } from '@/lib/adminAuth'
 import type { Prisma } from '@prisma/client'
 
@@ -42,7 +42,7 @@ export async function POST(
   // so we look it up and pass it into the one gate.
   {
     const wd = (source.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
-    const forkGate = canForkWorld(wd, await hasIpControl(source.ownerId))
+    const forkGate = canForkWorld(wd, await hasIpShield(source.ownerId))
     if (!forkGate.ok) return NextResponse.json({ error: forkGate.error }, { status: 403 })
   }
 

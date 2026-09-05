@@ -88,9 +88,9 @@ export async function POST(
         const policy = policyOf({ policy: rows[0]?.policy })
         // THE SANDBOX LAW: membership build access resolves open on every world
         // except premium games and a proprietary owner's worlds
-        const { hasIpControl } = await import('@/lib/stripe')
+        const { hasIpShield } = await import('@/lib/stripe')
         const { effectiveBuild } = await import('@/lib/world-policy')
-        const buildAccess = effectiveBuild({ policy: rows[0]?.policy, premium: rows[0]?.premium }, await hasIpControl(sp.ownerId))
+        const buildAccess = effectiveBuild({ policy: rows[0]?.policy, premium: rows[0]?.premium }, await hasIpShield(sp.ownerId))
         const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
         const { isBanned } = await import('@/lib/world-bans')
         if (await isBanned(sp.id, handle)) {

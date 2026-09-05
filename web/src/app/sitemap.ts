@@ -26,12 +26,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // /source/<slug> — the SEO surface: every public world's readable source page.
     // IP-control holders are excluded (closed source never leaks, sitemap included);
     // owners are deduped so the entitlement check runs once per maker, not per world.
-    const { hasIpControl } = await import('@/lib/stripe')
+    const { hasIpShield } = await import('@/lib/stripe')
     const ownerClosed = new Map<string, boolean>()
     for (const sp of spaces) {
       out.push({ url: `${base}/space/${sp.slug}`, changeFrequency: 'weekly', priority: 0.6 })
       if (!ownerClosed.has(sp.ownerId)) {
-        ownerClosed.set(sp.ownerId, await hasIpControl(sp.ownerId).catch(() => true))
+        ownerClosed.set(sp.ownerId, await hasIpShield(sp.ownerId).catch(() => true))
       }
       if (!ownerClosed.get(sp.ownerId)) {
         out.push({ url: `${base}/source/${sp.slug}`, changeFrequency: 'weekly', priority: 0.7 })

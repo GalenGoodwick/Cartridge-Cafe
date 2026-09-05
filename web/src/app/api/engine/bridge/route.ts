@@ -927,8 +927,8 @@ export async function POST(req: NextRequest) {
           let space: { id: string; slug: string }, worldToken: string
           try {
             const { birthWorld } = await import('@/lib/world-create')
-            const { hasIpControl } = await import('@/lib/stripe')
-            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: !(await hasIpControl(auth.playerId)) })
+            const { hasIpShield } = await import('@/lib/stripe')
+            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: !(await hasIpShield(auth.playerId)) })
             space = born.space; worldToken = born.token
           } catch (e) {
             if (!isKeeper) { await refundGenCredit(auth.playerId!).catch(() => {}) }
@@ -962,8 +962,8 @@ export async function POST(req: NextRequest) {
           // ban the handle (world-bans) + revoke the key.
           const wdJ = ((sp.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
           const { effectiveBuild } = await import('@/lib/world-policy')
-          const { hasIpControl, hasEditingMembership } = await import('@/lib/stripe')
-          if (effectiveBuild(wdJ, await hasIpControl(sp.ownerId)) !== 'anyone') {
+          const { hasIpShield, hasEditingMembership } = await import('@/lib/stripe')
+          if (effectiveBuild(wdJ, await hasIpShield(sp.ownerId)) !== 'anyone') {
             results.push({ type: cmd.type, error: `"${sp.name}" is not open to sandbox building (premium or proprietary — its creator's contract holds)` }); continue
           }
           const joiner = await prisma.user.findUnique({ where: { id: auth.playerId }, select: { email: true } })

@@ -161,8 +161,8 @@ export async function GET(req: NextRequest) {
       // SOURCE even when public — playable on the shelf, never readable here.
       // Their own people (owner/member/admin) still read; everyone else gets
       // the same 403 shape regardless of which world it is.
-      const { hasIpControl } = await import('@/lib/stripe')
-      if (space.isPublic && !mayRead(viewer, space) && await hasIpControl(space.ownerId)) {
+      const { hasIpShield } = await import('@/lib/stripe')
+      if (space.isPublic && !mayRead(viewer, space) && await hasIpShield(space.ownerId)) {
         return NextResponse.json({ error: 'closed source — this maker holds IP control' }, { status: 403 })
       }
       const s = (space.snapshot as unknown as Sceneish) || {}

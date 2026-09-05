@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { policyOf } from '@/lib/world-policy'
 import { worldIsForkable } from '@/lib/fork-policy'
-import { hasIpControl } from '@/lib/stripe'
+import { hasIpShield } from '@/lib/stripe'
 import { invalidateSpaceCache, getSpaceSnapshot, setSpaceSnapshot } from '../../engine/space-store'
 import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes } from '../../engine/store'
 import { getLineage } from '../../engine/lineage'
@@ -85,7 +85,7 @@ export async function GET(
     rReset = wd['rResetKey'] === true   // ⟲ RESET button gate — the grid reads this in play mode (eye cfg is engine-only)
     // canFork reads the AUTHORITATIVE worldData directly (the cached snapshot IS
     // the real object now — no need to rebuild a minimal copy from string extracts)
-    forkable = worldIsForkable(wd, await hasIpControl(space.ownerId))
+    forkable = worldIsForkable(wd, await hasIpShield(space.ownerId))
   } catch { /* absent = desktop default, forkable stays true (the default) */ }
 
   return NextResponse.json({ space: { ...space, deviceConfig, forkable, rReset, gridSize } })
@@ -216,7 +216,7 @@ export async function DELETE(
   {
     const wd = ((space.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
     const { effectiveBuild } = await import('@/lib/world-policy')
-    if (space.isPublic && effectiveBuild(wd, await hasIpControl(user.id)) === 'anyone') {
+    if (space.isPublic && effectiveBuild(wd, await hasIpShield(user.id)) === 'anyone') {
       const [memberTokens, foreignVersions] = await Promise.all([
         prisma.spaceToken.count({ where: { spaceId: space.id, revokedAt: null, name: { startsWith: 'member:' } } }),
         prisma.spaceVersion.count({ where: { spaceId: space.id, authorId: { not: user.id } } }),
