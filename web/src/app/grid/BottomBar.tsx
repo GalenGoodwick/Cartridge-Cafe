@@ -7,7 +7,7 @@
 // ONE flex row, ONE div: [ …spacer… MAIN FLOW …spacer… toggles at the right
 // edge ] — matched spacers grow equally, so the main flow FLOWS FROM CENTER
 // (Galen, Sep 5), condensing symmetrically as the window shrinks.
-// Main flow = back edit title share instructions [SIGN IN⇄NAV] connect;
+// Main flow = back edit title share create instructions [SIGN IN⇄NAV] connect;
 // toggles = commons rec reset brewicon. Everything shares a single flex
 // context so it condenses together. The IDENTITY SLOT is SIGN IN when signed
 // out and TURNS INTO the NAV cup when signed in. Tiers drop WHOLE buttons.
@@ -35,6 +35,7 @@ export type BarCtx = {
 export type BarActions = {
   back: () => void
   edit: () => void
+  create: () => void
   title: () => void
   share: () => void
   commons: () => void
@@ -61,10 +62,14 @@ type Btn = {
 // ── THE REGISTRY — outer→inner per side; this table IS the design log ────────
 const LEFT: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
-  { id: 'edit', tier: 0, tone: 'gold', show: c => !c.premium, label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
+  // EDIT only IN-WORLD (Galen, Sep 5) — on the grid there's nothing selected to edit
+  { id: 'edit', tier: 0, tone: 'gold', show: c => c.playing && !c.premium, label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: () => true, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },
+  // ✚ CREATE — the product's core promise, one tap from anywhere (Galen, Sep 5);
+  // gold = 'your AI acts', the birth half of the EDIT/CREATE pair
+  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create', label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
 ]
 const LEFT_INNER: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },

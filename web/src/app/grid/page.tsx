@@ -1215,6 +1215,7 @@ export default function TheGrid() {
         act={{
           back: () => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } },
           edit: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          create: () => { setUiSet('create'); setPhase('browse'); setSelOpen(false); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet === 'main') { setSelOpen(o => !o); setAttribOpen(false) } else { setAttribOpen(o => !o); setSelOpen(false) } },
           share: async () => {
             const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
