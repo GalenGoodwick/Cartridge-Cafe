@@ -963,20 +963,7 @@ export default function TheGrid() {
                     {/* ◆ SET VISUAL (Galen, Sep 5): the EYE's current shot
                         becomes the games-page card — a direct snapshot of the
                         game, not an authored icon. Writes the world_icon slot. */}
-                    <button onClick={async () => {
-                      // the EYE's photo is eyeData.eye.png — .shot is the
-                      // SNAPSHOT→AI send STATUS, not an image (the 'no shot' bug)
-                      const shot = eyeData?.eye?.png
-                      const slug = scene.startsWith('space:') ? scene.slice(6) : null
-                      const note = (t: string) => { setVisMsg(t); setTimeout(() => setVisMsg(''), 2500) }
-                      if (!shot || !slug) { note(shot ? 'no world framed' : 'no eye photo yet — 📸 SNAPSHOT first, then set'); return }
-                      try {
-                        const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/card-shot`, {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ png_b64: shot }) })
-                        const d = await r.json().catch(() => null)
-                        note(r.ok ? '◆ set — this exact frame is the card' : (d?.error || 'could not set the visual'))
-                      } catch { note('could not set — offline?') }
-                    }}
+                    <button onClick={() => { cmd('seticon'); setVisMsg('capturing this frame…'); setTimeout(() => setVisMsg(''), 2000) }}
                       className="px-3 py-1.5 rounded-lg border text-[12px] tracking-[0.15em] transition-colors border-amber-300/40 bg-black/40 text-amber-100/85 hover:text-amber-100 hover:border-amber-300/70">
                       ◆ SET VISUAL
                     </button>

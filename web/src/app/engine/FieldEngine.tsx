@@ -1361,6 +1361,25 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     } catch { setHumanShot('err'); showToast('snapshot failed — try again', 'error'); setTimeout(() => setHumanShot('idle'), 2500) }
   }, [spaceId, playScene, spaceSlug])
   sendHumanShotRef.current = sendHumanShot
+  // ◆ SET VISUAL (Galen, Sep 5: "TO SET THE ICON ON MAIN. it is different
+  // from snapshot and send to ai") — capture the exact on-screen frame and
+  // make it the world's MAIN-shelf icon (world_icon slot via card-shot).
+  const setMainIconRef = useRef<() => void>(() => {})
+  setMainIconRef.current = async () => {
+    if (!spaceSlug) { showToast('no world to set an icon for', 'error'); return }
+    try {
+      const rr = rendererRef.current as unknown as { requestFrameCapture?: (m?: number, q?: number) => Promise<string | null>; captureCanvasJpeg?: (m?: number, q?: number) => Promise<string | null> }
+      const png = await Promise.race([
+        rr?.requestFrameCapture?.(512, 0.9) ?? rr?.captureCanvasJpeg?.(512, 0.9) ?? Promise.resolve(null),
+        new Promise<null>((res) => setTimeout(() => res(null), 1500)),
+      ])
+      if (!png) { showToast('could not capture a frame — is the world paused?', 'error'); return }
+      const r = await fetch(`/api/spaces/${encodeURIComponent(spaceSlug)}/card-shot`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ png_b64: png }) })
+      const d = await r.json().catch(() => null)
+      showToast(r.ok ? '◆ icon set — this exact frame is the world\u2019s face on MAIN' : (d?.error || 'could not set the icon'), r.ok ? 'success' : 'error')
+    } catch { showToast('could not set the icon — offline?', 'error') }
+  }
   // which space version is on the glass, CLIENT-side — starts at the server
   // prop, then the ⏱ scrubber hot-swaps it in place (no reload). Because ctx.view
   // derives from THIS, hot-swapping to an old version flips can(ctx,'editLaw') &c.
@@ -2020,6 +2039,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     else if (cmd === 'chat') setWorldChatOpen(v => !v)    // the HUMAN chat (world commons), builderbox-free
     else if (cmd === 'eye') { setEyeSolo(true); setAiViewDismissed(false) }     // host EYE watching (idempotent on; closepanels offs)
     else if (cmd === 'snapshot') sendHumanShotRef.current()                     // ◈ the snapshot tool: canvas → the AI's eye slot (bridge)
+    else if (cmd === 'seticon') setMainIconRef.current()                        // ◆ SET VISUAL: canvas → the world's MAIN-shelf icon
     else if (cmd === 'inspect') { setInspectOn(v => { inspectOnRef.current = !v; return !v }); setInspectLog([]) }  // ◎ click-telling for the AI (game paused)
     else if (cmd === 'rec') { if (recording) stopRecording(); else startRecording() }  // ● canvas → video file, host button
     else if (cmd.startsWith('ver:')) {                                          // ⏱ VERSIONS — owner hot-swaps in place, no reload
