@@ -762,15 +762,15 @@ export default function TheGrid() {
             {/* (CREATE card lives on the BAR now, not here — Galen, Sep 5:
                 'remove create from nav pop up'; ✚ CREATE in the bottom bar is
                 the one door to the create set) */}
+            {/* (MAIN card removed too — Galen, Sep 5; the commons set survives
+                in code, unlinked from the dockstar) */}
             {([
               ['games', '▶', 'GAMES', 'browse the shelf — click the frame to play'],
-              ['main', '◉', 'MAIN', 'the commons + social space'],
               ['engine', '⚙', 'ENGINE', 'builderbox · connect your AI · world tools'],
             ] as const).map(([k, icon, label, sub]) => (
               <button key={k}
                 onClick={() => { setUiSet(k); if (k === 'games') setPhase('browse'); setSelOpen(false) }}
                 className={`text-left rounded-2xl border p-3 sm:p-4 transition-colors active:bg-white/10 ${
-                  k === 'engine' ? 'col-span-2 ' : ''}${
                   uiSet === k ? 'border-amber-300/60 bg-amber-400/10' : 'border-white/12 bg-black/40 hover:border-white/25'}`}>
                 <div className={`text-[18px] sm:text-[22px] mb-0.5 sm:mb-1 ${uiSet === k ? 'text-amber-200' : 'text-white/70'}`}>{icon}</div>
                 <div className={`font-mono text-[13px] sm:text-[14px] tracking-[0.2em] ${uiSet === k ? 'text-amber-100' : 'text-white/90'}`}>{label}</div>
