@@ -331,6 +331,10 @@ export default function TheGrid() {
   // BAR SIZING (Galen, Sep 5: 'much bigger icons on mobile'): narrow buttons
   // are real 44px touch targets (Apple HIG floor), desktop keeps the compact chips.
   const bsz = narrow ? 'h-11 min-w-[44px] px-3 text-[16px] tracking-normal grid place-items-center' : 'px-3.5 py-2 text-[12px] tracking-[0.18em]'
+  // CONDENSING TIERS (Galen, Sep 5: 'condensing is not happening as needed'):
+  // WHOLE buttons drop by width tier — never a half-clipped chip. tier 0 =
+  // phone (essentials only) · 1 = medium (+title/commons/reset/?) · 2 = wide (all).
+  const tier = win.w < 700 ? 0 : win.w < 1040 ? 1 : 2
   const dockBottomH = 168                          // narrow engine dock height
   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout — except a
   // CREATE PLAYTEST (phase 'play' inside create), which goes full-frame at the
@@ -1181,7 +1185,7 @@ export default function TheGrid() {
         </div>
       )}
 
-      <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: BAR_H }}>
+      <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${BAR_H}px + env(safe-area-inset-bottom, 0px))` }}>
         {/* solid black backing under the bar (Galen: "bottom bar not black") —
             the world/menu no longer shows through between the buttons */}
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
@@ -1189,7 +1193,7 @@ export default function TheGrid() {
           {/* LEFT ZONE — priority order (Galen, Sep 5: share flows left next
               to edit and title): ◂ · ⚡EDIT · title · ↗SHARE always visible;
               set-specific controls take the clip when space runs out. */}
-          <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 38px)' }}>
+          <div className="absolute inset-y-0 left-0 flex items-center gap-2 pl-3 overflow-hidden" style={{ right: 'calc(50% + 52px)' }}>
             <button data-grid-back aria-label="back"
               onClick={() => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } }}
               title="back — at the start, opens the dockstar"
@@ -1223,14 +1227,14 @@ export default function TheGrid() {
               {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
             </button>
             <span className="flex-1" />
-            {uiSet === 'main' && (
+            {uiSet === 'main' && tier >= 1 && (
               <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
                 className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
                   chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
                 {narrow ? '◉' : '◉ COMMONS'}
               </button>
             )}
-            {!narrow && uiSet === 'games' && phase === 'play' && (
+            {tier >= 2 && uiSet === 'games' && phase === 'play' && (
               <button data-grid-rec onClick={() => cmd('rec')}
                 title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
                 className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 shrink-0 ${
@@ -1239,7 +1243,7 @@ export default function TheGrid() {
                 {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
               </button>
             )}
-            {uiSet === 'games' && phase === 'play' && (cfgStable?.rReset || spc?.rReset) && (
+            {tier >= 1 && uiSet === 'games' && phase === 'play' && (cfgStable?.rReset || spc?.rReset) && (
               <button data-grid-reset onClick={() => setResetConfirm(true)}
                 title="restart this world"
                 className={`font-mono rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5 ${bsz}`}>
@@ -1267,7 +1271,7 @@ export default function TheGrid() {
           {/* RIGHT ZONE — flex-row-reverse (Galen, Sep 5: 'CONNECT AI is
               going off the edge'): the FIRST child pins to the RIGHT edge and
               overflow clips on the LEFT — the green door can never fall off. */}
-          <div className="absolute inset-y-0 right-0 flex flex-row-reverse items-center gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 38px)' }}>
+          <div className="absolute inset-y-0 right-0 flex flex-row-reverse items-center gap-2 pr-3 overflow-hidden" style={{ left: 'calc(50% + 52px)' }}>
             {uiSet !== 'engine' && (
             <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
               className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${bsz} ${
@@ -1284,14 +1288,14 @@ export default function TheGrid() {
               {narrow ? '?' : '? INSTRUCTIONS'}
             </button>
             )}
-            {uiSet === 'games' && !narrow && (
+            {uiSet === 'games' && tier >= 2 && (
             <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`} target="_blank" rel="noopener"
               className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 bg-black/70 border-white/25 text-white/85 hover:text-white">
               ✉ CONTACT
             </a>
             )}
             <span className="flex-1" />
-            {uiSet === 'main' && (
+            {uiSet === 'main' && tier >= 1 && (
               <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
                 className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
                   brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
