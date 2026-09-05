@@ -1214,7 +1214,7 @@ export default function TheGrid() {
                 The payload is ONLY the MCP one-liner + the site — the setup
                 gate itself; the server guides everything from there. */}
             <button data-grid-share onClick={async () => {
-              const shareText = `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nhttps://cartridge.cafe`
+              const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
               try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
               catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
               if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
