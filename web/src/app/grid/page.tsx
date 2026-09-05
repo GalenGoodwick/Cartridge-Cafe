@@ -18,6 +18,7 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
+import BottomBar, { type BarCtx, type BarActions } from './BottomBar'
 import { startCafeAudio } from '@/app/engine/cafe-audio'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
@@ -1185,126 +1186,38 @@ export default function TheGrid() {
         </div>
       )}
 
-      <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${BAR_H}px + env(safe-area-inset-bottom, 0px))` }}>
-        {/* solid black backing under the bar (Galen: "bottom bar not black") —
-            the world/menu no longer shows through between the buttons */}
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
-        <div className="absolute inset-x-0 top-0 flex items-center gap-2 px-3" style={{ bottom: 'max(env(safe-area-inset-bottom), 6px)' }}>
-          {/* LEFT ZONE — priority order (Galen, Sep 5: share flows left next
-              to edit and title): ◂ · ⚡EDIT · title · ↗SHARE always visible;
-              set-specific controls take the clip when space runs out. */}
-          <div className="flex-1 basis-0 min-w-0 flex items-center gap-2 overflow-hidden">
-            <button data-grid-back aria-label="back"
-              onClick={() => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } }}
-              title="back — at the start, opens the dockstar"
-              className={`font-mono ${narrow ? 'w-11 h-11 text-[18px]' : 'w-9 h-9 text-[14px]'} grid place-items-center rounded-xl border bg-black/60 border-white/20 text-white/75 hover:text-white hover:border-white/40 transition-colors shrink-0`}>
-              ◂
-            </button>
-            {!cfgStable?.premium && (
-              <button data-grid-edit onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
-                className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 ${bsz} bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]`}>
-                {narrow ? '⚡' : '⚡ EDIT'}
-              </button>
-            )}
-            {!narrow && (uiSet === 'main' ? (
-            <button data-grid-title onClick={() => { setSelOpen(o => !o); setAttribOpen(false) }}
-              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-amber-100/95 hover:border-amber-300/50 transition-colors shrink-0">
-              Cartridge.Cafe
-            </button>
-            ) : uiSet !== 'engine' ? (
-            <button data-grid-title onClick={() => { setAttribOpen(o => !o); setSelOpen(false) }}
-              className="font-mono text-[13px] tracking-[0.16em] px-3.5 py-2 rounded-xl border bg-black/60 border-white/20 text-white/90 hover:border-amber-300/50 transition-colors shrink-0 max-w-[38%] truncate">
-              {selected?.name ?? spc?.name ?? '—'}
-            </button>
-            ) : null)}
-            <button data-grid-share onClick={async () => {
-              const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
-              try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
-              catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-              if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
-            }}
-              className={`font-mono rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white transition-colors shrink-0 ${bsz}`}>
-              {narrow ? (copied ? '✓' : '↗') : (copied ? '✓ COPIED' : '↗ SHARE')}
-            </button>
-            <span className="flex-1" />
-            {uiSet === 'main' && tier >= 1 && (
-              <button data-grid-commons onClick={() => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
-                  chatOpen ? 'bg-emerald-400/25 border-emerald-300/60 text-emerald-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                {narrow ? '◉' : '◉ COMMONS'}
-              </button>
-            )}
-            {tier >= 2 && uiSet === 'games' && phase === 'play' && (
-              <button data-grid-rec onClick={() => cmd('rec')}
-                title={rec.on ? 'stop & download the recording' : 'record this world to a video file — nothing is uploaded'}
-                className={`font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors inline-flex items-center gap-2 shrink-0 ${
-                  rec.on ? 'bg-red-500/25 border-red-400/60 text-red-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                <span className={`inline-block w-2 h-2 rounded-full bg-red-500 ${rec.on ? 'animate-pulse' : ''}`} />
-                {rec.on ? `${Math.floor(rec.secs / 60)}:${String(rec.secs % 60).padStart(2, '0')}` : 'REC'}
-              </button>
-            )}
-            {tier >= 1 && uiSet === 'games' && phase === 'play' && (cfgStable?.rReset || spc?.rReset) && (
-              <button data-grid-reset onClick={() => setResetConfirm(true)}
-                title="restart this world"
-                className={`font-mono rounded-xl border bg-black/70 border-white/25 text-white/85 hover:text-white hover:border-amber-300/50 transition-colors shrink-0 inline-flex items-center gap-1.5 ${bsz}`}>
-                ⟲ {!narrow && 'RESET'}
-              </button>
-            )}
-            {me === null && (
-              <button data-grid-signin onClick={() => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) }}
-                className={`font-mono font-bold rounded-xl border-2 bg-amber-400 border-amber-200/80 text-black hover:bg-amber-300 transition-all shrink-0 shadow-[0_0_14px_rgba(245,176,76,0.45)] ${bsz}`}>
-                {narrow ? '⚿' : 'SIGN IN'}
-              </button>
-            )}
-          </div>
-          {/* THE DOCKSTAR — absolutely centered; nothing can move it */}
-          <button onClick={() => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) }} aria-label="ui selector"
-            title="the dockstar — choose your UI"
-            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 grid place-items-center rounded-2xl border transition-all z-10 ${
-              selOpen ? 'bg-amber-400/25 border-amber-300/70 scale-105' : 'bg-black/60 border-white/20 hover:border-amber-300/50 hover:bg-black/80'}`}
-            style={{ boxShadow: selOpen ? '0 0 18px rgba(245,176,76,0.35)' : '0 2px 8px rgba(0,0,0,0.5)' }}>
-            <span className="flex flex-col items-center leading-none">
-              <img src="/cartridge-cup.svg" alt="" className="w-6 h-6" />
-              <span className="font-mono text-[8px] tracking-[0.24em] text-white/80 mt-0.5">NAV</span>
-            </span>
-          </button>
-          {/* RIGHT ZONE — flex-row-reverse (Galen, Sep 5: 'CONNECT AI is
-              going off the edge'): the FIRST child pins to the RIGHT edge and
-              overflow clips on the LEFT — the green door can never fall off. */}
-          <div className="flex-1 basis-0 min-w-0 flex flex-row-reverse items-center gap-2 overflow-hidden">
-            {uiSet !== 'engine' && (
-            <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
-              className={`font-mono font-bold rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${bsz} ${
-                aiLive ? 'bg-emerald-400 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
-                       : 'bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]'}`}>
-              {aiLive && <span className="inline-block w-2 h-2 rounded-full bg-black/80 animate-pulse" />}
-              {aiLive ? (narrow ? 'AI ⚡' : 'AI LIVE') : (narrow ? '⚿' : '⚿ CONNECT AI')}
-            </button>
-            )}
-            {uiSet === 'games' && (
-            <button onClick={() => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) }}
-              className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
-                instrOpen ? 'bg-white/20 border-white/40 text-white' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-              {narrow ? '?' : '? INSTRUCTIONS'}
-            </button>
-            )}
-            {uiSet === 'games' && tier >= 2 && (
-            <a href={`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`} target="_blank" rel="noopener"
-              className="font-mono text-[12px] tracking-[0.18em] px-3.5 py-2 rounded-xl border transition-colors shrink-0 bg-black/70 border-white/25 text-white/85 hover:text-white">
-              ✉ CONTACT
-            </a>
-            )}
-            <span className="flex-1" />
-            {uiSet === 'main' && tier >= 1 && (
-              <button data-grid-brewicon onClick={() => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) }}
-                className={`font-mono rounded-xl border transition-colors shrink-0 ${bsz} ${
-                  brewIconOpen ? 'bg-amber-400/25 border-amber-300/60 text-amber-100' : 'bg-black/70 border-white/25 text-white/85 hover:text-white'}`}>
-                {narrow ? '◆' : '◆ BREW ICON'}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* ═ THE BOTTOM BAR ═ rebuilt from scratch (Galen, Sep 5) — the registry
+          in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
+      <BottomBar barH={BAR_H}
+        ctx={{
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, tier: tier as BarCtx['tier'],
+          signedOut: me === null, premium: !!cfgStable?.premium,
+          rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
+          recOn: rec.on, recSecs: rec.secs, copied,
+          navOpen: selOpen, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
+          title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
+        }}
+        act={{
+          back: () => { if (giRef.current > 0) window.history.back(); else { setSelOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) } },
+          edit: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          title: () => { if (uiSet === 'main') { setSelOpen(o => !o); setAttribOpen(false) } else { setAttribOpen(o => !o); setSelOpen(false) } },
+          share: async () => {
+            const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
+            try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
+            catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+            if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
+          },
+          commons: () => { setChatOpen(o => !o); setBrewIconOpen(false); setSelOpen(false); setInstrOpen(false) },
+          rec: () => cmd('rec'),
+          reset: () => setResetConfirm(true),
+          signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
+          nav: () => { setSelOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setAttribOpen(false); setBrewIconOpen(false) },
+          connect: () => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          instructions: () => { setInstrOpen(o => !o); setSelOpen(false); setConnectOpen(false) },
+          contact: () => { window.open(`/contact${selected?.name ? `?from=${encodeURIComponent(selected.name)}` : ''}`, '_blank', 'noopener') },
+          brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setSelOpen(false); setInstrOpen(false) },
+        } satisfies BarActions}
+      />
     </div>
   )
 }
