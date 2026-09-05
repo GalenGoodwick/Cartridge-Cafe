@@ -30,6 +30,29 @@ export default function CreateWorld() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [gen, setGen] = useState<{ buyable: boolean; credits: number; priceUsd: number; free: boolean; signedIn: boolean } | null>(null)
+  // 3 · THE DEAL (Galen, Sep 5): open source (the cafe deal) vs ◆ proprietary.
+  // Proprietary rides the ◆ IP-control membership — choosing it without one
+  // opens the $100/mo checkout; an existing $10 editing seat is SWAPPED out by
+  // the webhook (IP control includes the seat).
+  const [deal, setDeal] = useState<'open' | 'ip'>('open')
+  const [ipCtl, setIpCtl] = useState<boolean | null>(null)
+  const [ipBusy, setIpBusy] = useState(false)
+  useEffect(() => {
+    fetch('/api/company/claim', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+      .then(d => setIpCtl(!!d?.ipControl)).catch(() => setIpCtl(false))
+  }, [])
+  const buyIp = async () => {
+    if (ipBusy) return
+    setIpBusy(true)
+    try {
+      localStorage.setItem(STASH, brief)   // survive the checkout round-trip
+      const r = await fetch('/api/pay/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ product: 'ip' }) })
+      const d = await r.json().catch(() => null)
+      if (d?.url) { window.location.assign(d.url); return }
+      setNote(d?.error || 'checkout unavailable — sign in first?')
+    } catch { setNote('checkout unavailable') }
+    finally { setIpBusy(false) }
+  }
   const [bases, setBases] = useState<Array<{ slug: string; name: string }>>([])   // THE FORMATS — public base worlds
   const paidReturn = useRef(false)
 
@@ -146,6 +169,33 @@ export default function CreateWorld() {
             </button>
           ))}
         </div>
+
+        <div className="text-[13px] tracking-[0.25em] text-white/55 mb-2">3 · THE DEAL</div>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <button className={`${card} ${deal === 'open' ? on : off}`} onClick={() => setDeal('open')}>
+            <div className="text-[14px] mb-0.5">⚘ OPEN SOURCE</div>
+            <div className="text-[12px] opacity-70 leading-snug">the cafe deal — source readable + forkable within the cafe; lineage carries your credit</div>
+          </button>
+          <button className={`${card} ${deal === 'ip' ? on : off}`} onClick={() => setDeal('ip')}>
+            <div className="text-[14px] mb-0.5">◆ PROPRIETARY</div>
+            <div className="text-[12px] opacity-70 leading-snug">closed source · born private · shielded for life — rides ◆ IP control</div>
+          </button>
+        </div>
+        {deal === 'ip' ? (
+          <div className="mb-5">
+            {ipCtl ? (
+              <p className="text-[12px] text-amber-200/80">◆ IP control active — this world is born private and shielded for life.</p>
+            ) : (
+              <div>
+                <button onClick={() => void buyIp()} disabled={ipBusy || ipCtl === null}
+                  className="w-full px-4 py-2.5 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[13px] tracking-[0.18em] hover:bg-amber-400/25 disabled:opacity-40 transition-colors">
+                  {ipBusy ? 'OPENING…' : '◆ GET IP CONTROL — $100/MO'}
+                </button>
+                <p className="text-[12px] text-white/40 mt-1.5">already an editing member? the $10 seat is swapped out automatically — IP control includes it.</p>
+              </div>
+            )}
+          </div>
+        ) : <div className="mb-4" />}
 
         {err && <p className="text-red-400 text-[14px] mb-3">{err}</p>}
         {note && <p className="text-amber-200/80 text-[14px] mb-3">{note}</p>}
