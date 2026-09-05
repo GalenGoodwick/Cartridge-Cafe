@@ -11,16 +11,16 @@ on session state. No absolute zones, no sibling divs, ever again.
 | id | icon | label | side (outer→inner) | shows when | tier | action |
 |---|---|---|---|---|---|---|
 | back | ◂ | — | LEFT 1 | always | 0 | history back; at start opens NAV |
-| edit | ⚡ | EDIT | LEFT 2 | IN-WORLD only (playing) + not premium | 0 | the gold door — copy text that sets YOUR AI editing this world (modal) |
+| edit | ⚡ | EDIT | LEFT 2 | main grid (BLUE) + in-world (GOLD, not premium) | 0 | copy text that sets YOUR AI editing (modal) |
 | title | — | Cartridge.Cafe | LEFT 3 | main set ONLY (in games/engine the world is already selected — name is redundant; attribution lives in the engine's ⑂ LINEAGE tab) | 1 | UI selector |
 | share | ↗ | SHARE | LEFT 4 | always | 0 | copies the MCP one-liner (the whole invitation) |
-| create | ✚ | CREATE | LEFT 5 (gold) | not already in create set | 0 | the birth half of the EDIT/CREATE pair — switches to the create set |
+| create | ✚ | CREATE | LEFT 5 (gold) | not in create set, never IN-game | 0 | the birth half of the EDIT/CREATE pair — switches to the create set |
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
 | reset | ⟲ | RESET | LEFT inner | games + playing + world declares R-reset | 1 | confirm-then-restart |
 | signin→nav | ⚿/☕ | SIGN IN ⇄ NAV | RIGHT 2 — THE IDENTITY SLOT | signed out = gold SIGN IN; signing in TURNS IT INTO the NAV cup (never disappears) | 0 | signin: /auth/signin · nav: the dockstar selector |
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
-| instructions | ? | INSTRUCTIONS | RIGHT 2 | games set | 0 | the world's ? card |
+| instructions | ? | INSTRUCTIONS | RIGHT 2 | IN-game only (playing) | 0 | the world's ? card |
 | brewicon | ◆ | BREW ICON | RIGHT inner (near cup) | main set | 1 | icon author panel |
 
 ## The laws
@@ -36,7 +36,8 @@ on session state. No absolute zones, no sibling divs, ever again.
   (still ≥40px click boxes); full labels only when the whole row honestly fits.
   Condensing is graded: labels → icons (1280) → drop tier-2 (1040) → drop
   tier-1 + touch sizing (700).
-- **Tones**: gold = "your AI acts" (EDIT, SIGN IN) · green = "AI presence"
+- **Tones**: gold = "your AI acts" (CREATE, in-world EDIT, SIGN IN) · blue =
+  the main grid's edit door (EDIT at browse) · green = "AI presence"
   (CONNECT/LIVE, COMMONS active) · neutral chips = everything else. Premium
   worlds hide gold EDIT (their contract).
 - **The bar reaches the physical bottom**: backing extends through

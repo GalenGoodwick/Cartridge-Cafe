@@ -48,11 +48,12 @@ export type BarActions = {
   brewIcon: () => void
 }
 
+type Tone = 'gold' | 'blue' | 'green' | 'chip' | 'rec'
 type Btn = {
   id: keyof BarActions
   show: (c: BarCtx) => boolean
   tier: 0 | 1 | 2
-  tone: 'gold' | 'green' | 'chip' | 'rec'
+  tone: Tone | ((c: BarCtx) => Tone)
   label: (c: BarCtx) => string           // wide label
   glyph: (c: BarCtx) => string           // narrow glyph
   active?: (c: BarCtx) => boolean
@@ -62,14 +63,15 @@ type Btn = {
 // ── THE REGISTRY — outer→inner per side; this table IS the design log ────────
 const LEFT: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: () => true, label: () => '◂', glyph: () => '◂', testId: 'back' },
-  // EDIT only IN-WORLD (Galen, Sep 5) — on the grid there's nothing selected to edit
-  { id: 'edit', tier: 0, tone: 'gold', show: c => c.playing && !c.premium, label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
+  // EDIT (Galen, Sep 5): BLUE on the main grid (the general edit door),
+  // GOLD in-world (edits THIS world); premium worlds hide it in-game
+  { id: 'edit', tier: 0, tone: c => c.playing ? 'gold' : 'blue', show: c => c.playing ? !c.premium : c.set === 'games', label: () => '⚡ EDIT', glyph: () => '⚡', testId: 'edit' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: () => true, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },
   // ✚ CREATE — the product's core promise, one tap from anywhere (Galen, Sep 5);
   // gold = 'your AI acts', the birth half of the EDIT/CREATE pair
-  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create', label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
+  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },   // never IN-game (Galen)
 ]
 const LEFT_INNER: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
@@ -83,14 +85,15 @@ const RIGHT: Btn[] = [   // rendered row-reversed: index 0 pins the RIGHT edge
   // sees gold SIGN IN; signing in TURNS IT INTO the NAV cup. Never disappears.
   { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
   { id: 'nav', tier: 0, tone: 'chip', show: c => !c.signedOut, active: c => c.navOpen, label: () => 'NAV', glyph: () => 'NAV', testId: 'nav' },
-  { id: 'instructions', tier: 0, tone: 'chip', show: c => c.set === 'games', active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },
+  { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only, never on the main grid (Galen)
 ]
 const RIGHT_INNER: Btn[] = [
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
 ]
 
-const TONES: Record<Btn['tone'], (active: boolean) => string> = {
+const TONES: Record<Tone, (active: boolean) => string> = {
   gold: () => 'font-bold bg-amber-400 border-2 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]',
+  blue: () => 'font-bold bg-sky-400 border-2 border-sky-200/80 text-black hover:bg-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.5)]',
   green: (a) => a
     ? 'font-bold bg-emerald-400 border-2 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
     : 'font-bold bg-emerald-500 border-2 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]',
@@ -111,7 +114,7 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
     // back's arrow reads tiny at chip font size — render it bigger, same box
     if (b.id === 'back') return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
-        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center leading-none ${size} ${ctx.narrow ? 'text-[24px]' : 'text-[20px]'} ${TONES[b.tone](active)}`}>
+        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center leading-none ${size} ${ctx.narrow ? 'text-[24px]' : 'text-[20px]'} ${TONES[typeof b.tone === 'function' ? b.tone(ctx) : b.tone](active)}`}>
         ◂
       </button>
     )
@@ -120,7 +123,7 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
       : text
     return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}
-        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[b.tone](active)} ${b.id === 'title' ? 'max-w-[22%] truncate' : ''}`}>
+        className={`font-mono rounded-xl transition-all shrink-0 grid place-items-center ${size} ${TONES[typeof b.tone === 'function' ? b.tone(ctx) : b.tone](active)} ${b.id === 'title' ? 'max-w-[22%] truncate' : ''}`}>
         {body}
       </button>
     )
