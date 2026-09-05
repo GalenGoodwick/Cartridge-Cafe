@@ -128,13 +128,6 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
     }
   }
 
-  const copyToClipboard = async (text: string, setter: (v: boolean) => void) => {
-    if (await copyText(text)) {
-      setter(true)
-      setTimeout(() => setter(false), 2000)
-    }
-  }
-
   // Collapsed state — gear button (standalone mode only; embedded is always open)
   if (!open && !embedded) {
     return (
