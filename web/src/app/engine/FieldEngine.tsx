@@ -5600,6 +5600,21 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => window.removeEventListener('cafe:ai-log-pull', publish)
   }, [terminalLog])
   const [agentConnected, setAgentConnected] = useState(false)
+  // AI-ALIVE BEACON (Galen, Sep 5: "how do we know if AI is alive and warm?")
+  // — broadcast the HONEST liveness signal to the host chrome (the grid's
+  // green door lights up): a live SSE agent, or the server-stamped
+  // __ai_last_cmd heartbeat (key-authed commands in the last 25s). Never just
+  // a minted key.
+  useEffect(() => {
+    const beat = () => {
+      const hb = Number(simulationRef.current?.worldData?.__ai_last_cmd ?? 0)
+      const live = agentConnected || (hb > 0 && Date.now() - hb < 25000)
+      try { window.dispatchEvent(new CustomEvent('cc:ai-live', { detail: { live } })) } catch { /* ssr */ }
+    }
+    beat()
+    const iv = setInterval(beat, 5000)
+    return () => clearInterval(iv)
+  }, [agentConnected])
 
   // Cafe-wide AI presence: is ANY connected AI live on the commons right now?
   // The agentConnected flag above is per-tab, per-world (this browser's SSE to

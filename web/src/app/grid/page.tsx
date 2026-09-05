@@ -78,6 +78,13 @@ export default function TheGrid() {
 
   const [aiLog, setAiLog] = useState<Array<{ type: string; summary: string; author: string | null; t: number }>>([])
   const [copied, setCopied] = useState(false)
+  // the green door's AI-ALIVE light — fed by the engine's cc:ai-live beacon
+  const [aiLive, setAiLive] = useState(false)
+  useEffect(() => {
+    const on = (e: Event) => setAiLive(!!(e as CustomEvent).detail?.live)
+    window.addEventListener('cc:ai-live', on)
+    return () => window.removeEventListener('cc:ai-live', on)
+  }, [])
   const [rec, setRec] = useState<{ on: boolean; secs: number }>({ on: false, secs: 0 })
   // who's signed in — the dockstar menu's ACCOUNT block reads this
   const [me, setMe] = useState<{ name?: string | null; email?: string | null } | null | undefined>(undefined)
@@ -1247,8 +1254,11 @@ export default function TheGrid() {
                 accessible"). Rightmost, every UI set; opens the connect modal
                 (build-key prompt). Narrow keeps it, compacted. */}
             <button data-grid-connect onClick={() => { setConnectOpen(true); setSelOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) }}
-              className="font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]">
-              {narrow ? '⚿ AI' : '⚿ CONNECT AI'}
+              className={`font-mono text-[12px] font-bold tracking-[0.16em] px-3.5 py-2 rounded-xl border-2 transition-all shrink-0 inline-flex items-center gap-2 ${
+                aiLive ? 'bg-emerald-400 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
+                       : 'bg-emerald-500 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]'}`}>
+              {aiLive && <span className="inline-block w-2 h-2 rounded-full bg-black/80 animate-pulse" />}
+              {aiLive ? (narrow ? 'AI ⚡' : 'AI LIVE') : (narrow ? '⚿ AI' : '⚿ CONNECT AI')}
             </button>
           </div>
         </div>
