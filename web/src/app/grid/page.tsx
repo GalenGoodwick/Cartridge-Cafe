@@ -336,6 +336,10 @@ export default function TheGrid() {
   // WHOLE buttons drop by width tier — never a half-clipped chip. tier 0 =
   // phone (essentials only) · 1 = medium (+title/commons/reset/?) · 2 = wide (all).
   const tier = win.w < 700 ? 0 : win.w < 1040 ? 1 : 2
+  // GLYPH MODE (Galen, Sep 5: 'condense into icon [when] window is shrunk'):
+  // below full width every bar button drops its word and keeps its icon —
+  // labels reappear only when there's honestly room for all of them
+  const barGlyphs = win.w < 1280
   const dockBottomH = 168                          // narrow engine dock height
   // GAMES-browse, ENGINE and CREATE share the shrink-to-top layout — except a
   // CREATE PLAYTEST (phase 'play' inside create), which goes full-frame at the
@@ -1201,7 +1205,7 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, tier: tier as BarCtx['tier'],
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'],
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,

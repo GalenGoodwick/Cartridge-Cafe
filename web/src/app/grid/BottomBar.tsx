@@ -14,6 +14,7 @@ export type BarCtx = {
   set: string                 // 'main' | 'games' | 'engine' | ...
   playing: boolean            // games set, play phase
   narrow: boolean
+  glyphs: boolean             // window shrunk — every button condenses to its icon
   tier: 0 | 1 | 2
   signedOut: boolean          // tri-state resolved: true ONLY when known signed out
   premium: boolean
@@ -92,13 +93,15 @@ const TONES: Record<Btn['tone'], (active: boolean) => string> = {
 export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarActions; barH: number }) {
   const size = ctx.narrow
     ? 'h-11 min-w-[44px] px-3 text-[16px] tracking-normal'
-    : 'px-3.5 py-2 text-[12px] tracking-[0.16em]'
+    : ctx.glyphs
+      ? 'h-9 min-w-[40px] px-2.5 text-[14px] tracking-normal'
+      : 'px-3.5 py-2 text-[12px] tracking-[0.16em]'
   const render = (b: Btn) => {
     if (!b.show(ctx) || b.tier > ctx.tier) return null
     const active = b.active?.(ctx) ?? (b.id === 'rec' ? ctx.recOn : false)
-    const text = ctx.narrow ? b.glyph(ctx) : b.label(ctx)
+    const text = (ctx.narrow || ctx.glyphs) ? b.glyph(ctx) : b.label(ctx)
     const body = b.id === 'nav'
-      ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={ctx.narrow ? 'w-6 h-6' : 'w-5 h-5'} />{!ctx.narrow && <span>NAV</span>}</span>)
+      ? (<span className="inline-flex items-center gap-1.5"><img src="/cartridge-cup.svg" alt="" className={(ctx.narrow || ctx.glyphs) ? 'w-6 h-6' : 'w-5 h-5'} />{!(ctx.narrow || ctx.glyphs) && <span>NAV</span>}</span>)
       : text
     return (
       <button key={b.id} data-bar={b.testId} onClick={act[b.id]}

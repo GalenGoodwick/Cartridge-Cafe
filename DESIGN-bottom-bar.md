@@ -30,6 +30,10 @@ on session state. No absolute zones, no sibling divs, ever again.
 - **Edge pins**: back opens the row; connect closes the main flow (RIGHT array
   renders reversed into reading order); toggles pin the right screen edge.
 - **Touch floor**: narrow = 44×44px minimum targets, 16px glyphs.
+- **Glyph mode**: under 1280px every button sheds its word and keeps its icon
+  (still ≥40px click boxes); full labels only when the whole row honestly fits.
+  Condensing is graded: labels → icons (1280) → drop tier-2 (1040) → drop
+  tier-1 + touch sizing (700).
 - **Tones**: gold = "your AI acts" (EDIT, SIGN IN) · green = "AI presence"
   (CONNECT/LIVE, COMMONS active) · neutral chips = everything else. Premium
   worlds hide gold EDIT (their contract).
