@@ -29,6 +29,18 @@ function recordDeletion(slot: string, deleted: boolean, via: string): void {
   } catch { /* the delete already happened; a logging failure must not 500 it */ }
 }
 
+/** RESERVED SLOTS (audit, Sep 5 — F1/F2): the EngineSlot KV also backs
+ *  BILLING state (entitlements/credits/promo), company doors, world icons,
+ *  playtime and tournament docs. Those are SERVER-written only — an
+ *  unauthenticated GET could read every promo code, and any signed-in
+ *  session could write itself credits or the $100 ip entitlement. Non-admin
+ *  callers may neither read nor write them here; server code goes through
+ *  lib functions, not this route. */
+const RESERVED_SLOT = /^(entitlements:|gencredits:|promo:|company:|world_icon:|icon-token:|playtime:|tournament:|ledger)/i
+function isReservedSlot(key: string | null): boolean {
+  return !!key && RESERVED_SLOT.test(key)
+}
+
 /** Same posture as the scene route: dev keeps the frictionless local workflow;
  *  production requires a session or the engine agent token. */
 async function writeAllowed(req: NextRequest): Promise<boolean> {
@@ -137,6 +149,10 @@ async function userScopedSlot(slot: string, anon: string | null): Promise<string
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   if (searchParams.get('action') === 'list') {
+    // the full slot list enumerates user ids + billing docs — admin only (F1)
+    if (!isAdminToken(req.headers.get('authorization'))) {
+      return NextResponse.json({ error: 'admin only' }, { status: 403 })
+    }
     return NextResponse.json({ slots: await listGameSlots() })
   }
   const slot = searchParams.get('slot')
@@ -149,6 +165,9 @@ export async function GET(req: NextRequest) {
   // (only a hard reload bypasses the browser cache). Declare it explicitly.
   const noStore = { 'Cache-Control': 'no-store, max-age=0' }
   if (key === null) return NextResponse.json({ slot, data: null, unscoped: true }, { headers: noStore })  // weak guest token → no shared bucket
+  if (isReservedSlot(key) && !isAdminToken(req.headers.get('authorization'))) {
+    return NextResponse.json({ error: 'reserved slot' }, { status: 403 })   // F1: billing/company/icon docs never read raw
+  }
   const data = await loadGameSlot(key)
   return NextResponse.json({ slot, data: data ?? null }, { headers: noStore })
 }
@@ -207,6 +226,9 @@ export async function POST(req: NextRequest) {
       // never the client's — so a player's save can't land in another's slot
       const key = body.scope === 'user' ? userWrite : body.slot
       if (key === null) return NextResponse.json({ ok: true, saved: false, unscoped: true })  // weak guest token → drop, don't pool
+      if (isReservedSlot(key) && !isAdminToken(req.headers.get('authorization'))) {
+        return NextResponse.json({ error: 'reserved slot' }, { status: 403 })   // F2: billing state is server-written only
+      }
       await saveGameSlot(key, body.data)
       return NextResponse.json({ ok: true })
     }

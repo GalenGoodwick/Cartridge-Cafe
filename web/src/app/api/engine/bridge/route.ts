@@ -630,6 +630,7 @@ const NODE_CMDS = new Set(['add_step_hook', 'update_step_hook', 'claim_node', 'r
 // destructive verbs also carry the identity stamps: the persist chokepoint
 // enforces holder/owner-only removal (grief gate — a crew builds, never wipes)
 const GRIEF_CMDS = new Set(['remove_step_hook', 'delete_field', 'reset', 'destroy_render_target'])
+// (put_world + set_world_data ALSO get the identity stamps — they read them in the store)
 
 export async function POST(req: NextRequest) {
   { const _auth = req.headers.get('authorization')
@@ -767,14 +768,14 @@ export async function POST(req: NextRequest) {
         const wd = (snap?.worldData ?? {}) as Record<string, unknown>
         if (!wd.__built_ua) {
           const ua = (req.headers.get('user-agent') || 'unknown').slice(0, 200)
-          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __built_ua: ua, __built_at: Date.now() } })
+          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { __built_ua: ua, __built_at: Date.now() } })
         }
         // AI HEARTBEAT (Galen, Aug 26: "no indication on if you are connected") —
         // stamp the last AI-command time so the world page can say, truthfully,
         // "an AI is working here". Unspoofed (server-side, key-authed), throttled
         // to one write per 10s so chatty builders don't double every batch.
         if (Number(wd.__ai_last_cmd ?? 0) < Date.now() - 10_000) {
-          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __ai_last_cmd: Date.now() } })
+          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { __ai_last_cmd: Date.now() } })
         }
       } catch { /* provenance is best-effort */ }
     }
@@ -795,11 +796,16 @@ export async function POST(req: NextRequest) {
         await new Promise(r => setTimeout(r, 100))
       }
 
+      // UNIVERSAL __ STRIP (audit, Sep 5 — the put_world forgery): NO client may
+      // supply route-owned __ stamps on ANY verb. Strip first; the stampers
+      // below re-add route truth. (put_world read cmd.__admin/__holder verbatim
+      // — a member key could forge admin override + another builder's identity.)
+      for (const k of Object.keys(cmd)) { if (k.startsWith('__')) delete (cmd as Record<string, unknown>)[k] }
       // NODE-GATE identity: stamp the un-spoofable builder id onto node-mutating
       // commands (holderOf = SHA-256 of the bearer token). This is what lets the
       // persist chokepoint enforce "you may only overwrite a node YOU hold." Admin
       // tokens carry an override. Overwrites any client-supplied __ value.
-      if (NODE_CMDS.has(cmd.type as string) || GRIEF_CMDS.has(cmd.type as string)) {
+      if (NODE_CMDS.has(cmd.type as string) || GRIEF_CMDS.has(cmd.type as string) || cmd.type === 'put_world' || cmd.type === 'set_world_data') {
         const authHeader = req.headers.get('authorization') || ''
         cmd.__holder = holderOf(authHeader.slice(7))
         cmd.__now = Date.now()
@@ -1041,7 +1047,7 @@ export async function POST(req: NextRequest) {
         if (m.base && typeof m.base === 'object') manifest.base = m.base
         if (Array.isArray(m.persist)) manifest.persist = m.persist.filter(x => typeof x === 'string')
         if (Array.isArray(m.keepOnDeath)) manifest.keepOnDeath = m.keepOnDeath.filter(x => typeof x === 'string')
-        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __state: manifest } })
+        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { __state: manifest } })
         results.push({ type: 'define_state', ok: true, manifest,
           next: `game state declared under "${holder}". The engine now seeds it from base at load and restores it on R/reset_world. Bake the true start with set_original.` })
         continue
@@ -1066,6 +1072,10 @@ export async function POST(req: NextRequest) {
       // (worldData.premium) takes the \u25c6 IP-control membership. Anyone else's
       // premium write is refused here at the chokepoint, not silently ignored.
       if (cmd.type === 'set_world_data' && isSpaceScoped && (cmd.data as Record<string, unknown> | undefined)?.premium !== undefined) {
+        if (auth.memberHandle) {   // audit: pricing is the OWNER's pen, never a crew key's
+          results.push({ type: cmd.type, error: 'premium pricing is owner-only — a member key may not set or change a world\u2019s price' })
+          continue
+        }
         const { hasIpControl } = await import('@/lib/stripe')
         const ownerRow = await prisma.playerSpace.findUnique({ where: { id: auth.spaceId! }, select: { ownerId: true } })
         if (!ownerRow || !(await hasIpControl(ownerRow.ownerId))) {
@@ -1125,7 +1135,7 @@ export async function POST(req: NextRequest) {
               const frameMs = Number.isFinite(measured) && measured > 0
                 ? measured
                 : Math.round(((Date.now() - t0) / 90) * 10) / 10   // wall-clock per tick — the honest fallback
-              await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { __perf: { frameMs, at: Date.now(), by: 'publish-stress' } } })
+              await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { __perf: { frameMs, at: Date.now(), by: 'publish-stress' } } })
             }
           } catch { /* the rating is a bonus — publish stands */ }
         })()
@@ -1380,7 +1390,9 @@ export async function POST(req: NextRequest) {
       // reset: clear server-side store alongside browser reset. NEVER for a
       // branch token — resetStore() wipes the GLOBAL engine; a scoped 'reset'
       // clears only this scene's snapshot, handled by applyCommandToScene below.
-      if (cmd.type === 'reset' && !isSceneScoped) {
+      // …and NEVER for a space token either (audit F3): any world key could
+      // durably wipe the GLOBAL store. Only the unscoped admin path resets it.
+      if (cmd.type === 'reset' && !isSceneScoped && !isSpaceScoped) {
         resetStore()
       }
 

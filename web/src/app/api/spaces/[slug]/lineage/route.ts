@@ -26,6 +26,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     select: { ...sel, id: true, forks: { select: sel, orderBy: { createdAt: 'asc' } } },
   })
   if (!space) return NextResponse.json({ error: 'not found' }, { status: 404 })
+  // PRIVATE WORLDS ARE INVISIBLE (audit F8) — same 404 the versions routes give:
+  // existence, owner, fork tree and editor handles never leak to non-owners.
+  if (!space.isPublic) {
+    const { getServerSession } = await import('next-auth')
+    const { authOptions } = await import('@/lib/auth')
+    const session = await getServerSession(authOptions)
+    const me = session?.user?.email
+      ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+      : null
+    const { isAdminUserId } = await import('@/lib/adminAuth')
+    const ownerRow = await prisma.playerSpace.findUnique({ where: { slug: clean }, select: { ownerId: true } })
+    if (!me || (ownerRow?.ownerId !== me.id && !(await isAdminUserId(me.id)))) {
+      return NextResponse.json({ error: 'not found' }, { status: 404 })
+    }
+  }
 
   // walk the forkOf chain up — bounded, cycle-safe
   const ancestors: Kin[] = []

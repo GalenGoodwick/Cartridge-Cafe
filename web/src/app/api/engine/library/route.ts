@@ -188,7 +188,9 @@ export async function GET(req: NextRequest) {
     const spaces = await prisma.playerSpace.findMany({
       select: { id: true, ownerId: true, slug: true, name: true, snapshot: true, isPublic: true },
     })
-    const { hasIpControl: hasIp } = await import('@/lib/stripe')
+    // the SHIELD, not the live sub (audit, Sep 5): search snippets were an
+      // extraction oracle for a LAPSED ip holder's closed source
+      const { hasIpShield: hasIp } = await import('@/lib/stripe')
     const ipCache = new Map<string, boolean>()
     const ownerClosed = async (ownerId: string) => {
       if (!ipCache.has(ownerId)) ipCache.set(ownerId, await hasIp(ownerId))

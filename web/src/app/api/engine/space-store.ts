@@ -805,10 +805,30 @@ export function applyCommandToSnapshotObject(
     }
 
     case 'set_world_data': {
+      // PLATFORM KEYS ARE ROUTE-OWNED (audit, Sep 5): __nodes/__provenance/
+      // __nodeHist/__budget/… must never arrive from a client — forging them
+      // clears holds, frames builders, and dodges the perf gate. Strip every
+      // __ key from the payload for non-admin callers (mirrors put_world).
+      // (__internal marks ROUTE-COMPOSED beacon writes — __ai_last_cmd/__state/
+      // __perf/__built_ua. Unforgeable: the command loop strips every __ key
+      // from client commands before anything else runs.)
+      if (cmd.data && typeof cmd.data === 'object' && cmd.__admin !== true && cmd.__internal !== true) {
+        for (const k of Object.keys(cmd.data as Record<string, unknown>)) {
+          if (k.startsWith('__')) delete (cmd.data as Record<string, unknown>)[k]
+        }
+      }
       if (cmd.data) {
         // THE SOCIAL CONTRACT IS IMMUTABLE (world-policy): policy lands once —
         // at fork/creation — and never changes after, not even for the owner.
         const dataIn = { ...(cmd.data as Record<string, unknown>) }
+        if ('policy' in dataIn) {
+          // …and a MEMBER key may never be the first writer of the IMMUTABLE
+          // contract (audit, Sep 5): it would lock the owner's own world forever.
+          if (cmd.__member === true && cmd.__admin !== true) {
+            delete dataIn.policy
+            result.warnings = [...((result.warnings as string[] | undefined) ?? []), 'policy refused: the social contract is authored by the owner, not a crew key']
+          }
+        }
         if ('policy' in dataIn) {
           const verdict = mayWritePolicy(snap.worldData as Record<string, unknown>, dataIn.policy)
           if (verdict.ok) dataIn.policy = verdict.policy
@@ -1011,6 +1031,14 @@ export function applyCommandToSnapshotObject(
       // gate refuses the whole put while any node is held by another fresh
       // builder, and platform-owned worldData keys can never be spoofed in.
       // ATOMIC: every validation and the gate run BEFORE the first mutation.
+      // MEMBER KEYS BUILD, NEVER DEMOLISH (audit, Sep 5): put_world replaces
+      // sections wholesale — one call could wipe fields/hooks the grief gate
+      // protects verb-by-verb. Crew keys use the additive verbs.
+      if (cmd.__member === true && cmd.__admin !== true) {
+        result.ok = false
+        result.error = 'put_world is owner-only — member keys build additively (add_step_hook / create_field / define_visual beside the existing work)'
+        break
+      }
       const worldRaw = cmd.world
       if (!worldRaw || typeof worldRaw !== 'object' || Array.isArray(worldRaw)) {
         result.ok = false

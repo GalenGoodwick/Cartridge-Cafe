@@ -136,6 +136,12 @@ export async function POST(
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
+  // ATTRIBUTION IS ROUTE TRUTH (audit, Sep 5): an owner-chosen name may not
+  // wear the member: prefix — a forged member:<victim> key would frame an
+  // innocent handle in __provenance / the roster / the ban trail.
+  if (!memberHandle && /^member:/i.test(String(name).trim())) {
+    return NextResponse.json({ error: 'the member: prefix is minted only by the join path — name the key something else' }, { status: 400 })
+  }
 
   // NO CAP (Galen, Aug 28: "remove the key cap") — instead ONE LIVE KEY PER
   // SEAT: re-minting a name (member:<handle>, 'AI agent', …) retires that
