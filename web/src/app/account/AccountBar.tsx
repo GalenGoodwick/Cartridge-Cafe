@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import BottomBar from '@/app/grid/BottomBar'
 import ConnectPanel from '@/app/ConnectPanel'
+import { inviteText } from '@/lib/invite'
 
 export default function AccountBar({ signedOut }: { signedOut: boolean }) {
   const [copied, setCopied] = useState(false)
@@ -36,7 +37,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           edit: () => go('/grid'),
           title: () => {},
           share: async () => {
-            try { await navigator.clipboard.writeText('claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ }
+            try { await navigator.clipboard.writeText(inviteText()); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ }
           },
           commons: () => {},
           rec: () => {},

@@ -17,6 +17,7 @@ import GridChat from './GridChat'
 import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import LineagePanel from '@/app/engine/LineagePanel'
+import { inviteText } from '@/lib/invite'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import BottomBar, { type BarCtx, type BarActions } from './BottomBar'
@@ -730,10 +731,7 @@ export default function TheGrid() {
               // EDIT face: world-focused. CONNECT face: GENERIC (Galen, Sep 5) —
               // and NOT Claude-locked: the mcp server is standard, any MCP
               // client runs it; below MCP the bridge is plain HTTP.
-              const text = isEdit
-                ? `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell your AI: connect_account, read_guide, use_world {"slug":"${slug}"} — and edit "${wname}" with me.`
-                : `claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp\nThen tell your AI: set up cartridge.cafe with me.`
-              const universal = `{"command": "npx", "args": ["-y", "cartridge-cafe-mcp"]}`
+              const text = isEdit ? inviteText(slug, wname) : inviteText()
               return (<>
                 <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : '⚿ CONNECT YOUR AI'}</div>
                 <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI. First-ever registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>.</p>
@@ -742,11 +740,7 @@ export default function TheGrid() {
                   className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-[13px] tracking-[0.16em] text-black font-bold transition-all">
                   {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY'}
                 </button>
-                {!isEdit && (
-                  <div className="mt-3 text-[11px] text-white/45 leading-relaxed">
-                    <span className="text-white/60">not Claude?</span> any MCP-capable AI (Cursor · Windsurf · Cline · Gemini CLI …) runs the same server — add <span className="select-all text-white/70">{universal}</span> to its MCP config. No MCP at all? the whole engine is plain HTTP: your AI reads <span className="select-all text-white/70">cartridge.cafe/api/engine/guide</span> and builds over the bridge.
-                  </div>
-                )}
+                <div className="mt-3 text-[11px] text-white/45 leading-relaxed">works with ANY AI — Claude, Cursor, Windsurf, Gemini, or anything that can read a URL; the text carries every road in.</div>
               </>)
             })()}
           </div>
@@ -1055,7 +1049,7 @@ export default function TheGrid() {
           create: () => { setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
           share: async () => {
-            const shareText = 'claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp'
+            const shareText = inviteText()
             try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
             catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
             if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
