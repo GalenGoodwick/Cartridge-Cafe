@@ -793,6 +793,16 @@ export async function POST(req: NextRequest) {
       return truth && base !== String(truth) ? `${base} ⋄ ${truth}` : base
     }
     for (const cmd of commands) {
+      // LEGACY TRAP CLOSED (Galen, Sep 5 'one-time migration sweep' — the sweep
+      // found 0 live victims, so this is prevention): register_glsl_mod writes
+      // ONLY the global store — a space world leaning on it breaks whenever the
+      // global registry changes (the mod_cf_sky class; the Aug 9 dragon-wing
+      // lesson). Space-scoped builders are taught the persistent verb instead.
+      if (isSpaceScoped && (cmd.type === 'register_glsl_mod' || cmd.type === 'register_wgsl_mod')) {
+        results.push({ ok: false, type: cmd.type, error: 'register_glsl_mod is GLOBAL-store only — it does not persist with your world and breaks later. Use define_module {name, wgsl}: it lives in your world\u2019s snapshot forever.' })
+        continue
+      }
+
       // ── HELP — the per-verb contract card (any authed caller, any scope).
       // The bridge is one tool with ~100 verbs and no per-verb schema; this
       // closes the gap: ask BEFORE guessing a shape. bridge {type:'help'}
