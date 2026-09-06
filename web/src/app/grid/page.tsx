@@ -264,8 +264,10 @@ export default function TheGrid() {
       // ENGINE WINDOW — engine set, worlds tool, listing the company's line
       const co = u.searchParams.get('co')
       if (co) {
-        setCompanyScope(co); setUiSet('engine'); setTool('mine')
-        u.searchParams.delete('co'); window.history.replaceState(null, '', u.toString())
+        // SELF-CONTAINED (Galen, Sep 5): the param STAYS in the URL so the
+        // scope survives reloads, and the frame drops whatever public world
+        // was last open — a company window never shows foreign work.
+        setCompanyScope(co); setUiSet('engine'); setTool('mine'); setScene('BLANK')
       }
       if (u.searchParams.get('connect') === '1') {
         setUiSet('engine'); setConnectMode('edit'); setConnectOpen(true)   // fresh world → the EDIT face
@@ -787,7 +789,12 @@ export default function TheGrid() {
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).map(([k, label]) => (
+            {companyScope && (
+              <div className="w-full mb-1.5 px-3 py-1.5 rounded-lg border border-amber-300/40 bg-amber-400/10 font-mono text-[11px] tracking-[0.18em] text-amber-100">
+                ◆ {companyScope.toUpperCase()} — THE COMPANY&apos;S PRIVATE SPACE · closed source · nothing here touches the public cafe
+              </div>
+            )}
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -1044,7 +1051,7 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create',
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create',
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
