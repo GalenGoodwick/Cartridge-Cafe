@@ -77,6 +77,21 @@ function clip(s: unknown, n: number): string | undefined {
   return s.length > n ? s.slice(0, n) + '…[truncated]' : s
 }
 
+
+// THROTTLE (audit F5/F6): these are UNAUTHENTICATED telemetry doors that can
+// trigger auto-reverts — un-throttled, an attacker loops a victim's world
+// back forever. Per IP+target: 6 reports/min; excess is acknowledged (200)
+// but DROPPED so real tabs never see errors.
+const __reportHits: Map<string, { n: number; at: number }> = ((globalThis as unknown as { __ccReportHits?: Map<string, { n: number; at: number }> }).__ccReportHits ??= new Map())
+function reportThrottled(ip: string, target: string): boolean {
+  const k = ip + '|' + target
+  const now = Date.now()
+  const h = __reportHits.get(k)
+  if (!h || now - h.at > 60_000) { __reportHits.set(k, { n: 1, at: now }); return false }
+  h.n++
+  return h.n > 6
+}
+
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>
   try {
@@ -85,6 +100,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
+  const ipQ = req.headers.get('x-forwarded-for')?.split(',')[0] || 'local'
+  if (reportThrottled(ipQ, String(body.url ?? body.phase ?? 'q'))) return NextResponse.json({ ok: true, dropped: true })
   const rawHazards = Array.isArray(body.hazards) ? body.hazards : []
   const hazards: Hazard[] = rawHazards.slice(0, MAX_HAZARDS).map((h) => {
     const o = (h ?? {}) as Record<string, unknown>

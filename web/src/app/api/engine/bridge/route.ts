@@ -985,6 +985,11 @@ export async function POST(req: NextRequest) {
           const joiner = await prisma.user.findUnique({ where: { id: auth.playerId }, select: { email: true } })
           const { handleOf } = await import('@/lib/notify')
           const handle = (joiner?.email ? handleOf(joiner.email) : null) || 'member'
+          // handle binds to its first claimer (audit: local-part collision)
+          const { claimMemberHandle } = await import('@/lib/member-identity')
+          if (!(await claimMemberHandle(sp.id, handle, auth.playerId))) {
+            results.push({ type: cmd.type, error: `the handle "${handle}" belongs to another member on this world` }); continue
+          }
           // RE-ENTRY IS FREE (mirror of the browser join door): an existing
           // member of THIS world is never stranded by a lapsed seat — the
           // membership gates NEW joins only.
@@ -1720,34 +1725,21 @@ export async function POST(req: NextRequest) {
         }
         const args = (cmd.args || {}) as Record<string, unknown>
         for (const step of customCmd.macro) {
-          // Substitute {{arg}} placeholders
-          const resolved = Object.keys(args).length > 0
-            ? JSON.parse(JSON.stringify(step).replace(/\{\{(\w+)\}\}/g, (_, k) =>
-                String(args[k] ?? `{{${k}}}`)))
-            : step
+          // Substitute {{arg}} placeholders — JSON-ESCAPED (audit: a quote in an
+          // arg injected structure / threw outside the batch contract)
+          let resolved = step
+          if (Object.keys(args).length > 0) {
+            try {
+              resolved = JSON.parse(JSON.stringify(step).replace(/\{\{(\w+)\}\}/g, (_, k) =>
+                JSON.stringify(String(args[k] ?? `{{${k}}}`)).slice(1, -1)))
+            } catch {
+              results.push({ error: `macro arg substitution failed for "${cmd.name}" — args must be plain strings` })
+              break
+            }
+          }
           const stepResult = await pushToAgent(resolved, req, auth.spaceId)
           results.push(stepResult)
           await new Promise(r => setTimeout(r, 100))
-        }
-        continue
-      }
-
-      // Branch-scoped: apply ONLY to this scene's file-store snapshot and stop.
-      // No pushToAgent — a branch token is headless and isolated by design, so it
-      // never relays over the shared SSE bus (that is what let one AI's build land
-      // on main and another branch). The eye/versioning happens inside saveScene.
-      if (isSceneScoped) {
-        try {
-          const sceneResult = applyCommandToScene(auth.sceneName!, cmd)
-          if (sceneResult.fieldId) cmd.fieldId = sceneResult.fieldId
-          results.push({ ...sceneResult, scene: auth.sceneName })
-          // advance the branch's authored revision — a tab standing in this
-          // branch adopts the edit live (branches never push, so there is no
-          // clobber to prevent; the poll is purely so no refresh is needed)
-          bumpWorldRev(sceneKey(auth.sceneName!))
-        } catch (e) {
-          batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
-          break   // stop the batch; we roll the scene back below
         }
         continue
       }
@@ -1770,6 +1762,26 @@ export async function POST(req: NextRequest) {
             continue
           }
         }
+      }
+
+      // Branch-scoped: apply ONLY to this scene's file-store snapshot and stop.
+      // No pushToAgent — a branch token is headless and isolated by design, so it
+      // never relays over the shared SSE bus (that is what let one AI's build land
+      // on main and another branch). The eye/versioning happens inside saveScene.
+      if (isSceneScoped) {
+        try {
+          const sceneResult = applyCommandToScene(auth.sceneName!, cmd)
+          if (sceneResult.fieldId) cmd.fieldId = sceneResult.fieldId
+          results.push({ ...sceneResult, scene: auth.sceneName })
+          // advance the branch's authored revision — a tab standing in this
+          // branch adopts the edit live (branches never push, so there is no
+          // clobber to prevent; the poll is purely so no refresh is needed)
+          bumpWorldRev(sceneKey(auth.sceneName!))
+        } catch (e) {
+          batchAbort = { cmd: cmd.type, error: (e as Error)?.message || String(e) }
+          break   // stop the batch; we roll the scene back below
+        }
+        continue
       }
 
       // RENDER CHECK — brief_done means "the world is done"; refuse it while the

@@ -144,7 +144,11 @@ export async function GET(req: NextRequest) {
     // house scene first (exact name, as listed in the catalogue)
     try {
       const scene = loadScene(want) as unknown as Sceneish | null
-      if (scene) return NextResponse.json({ world: sourceOf(want, 'house', scene) })
+      // __private scenes hide from the catalogue/search — the by-name read
+      // honors the same flag (audit: unlisted-but-readable)
+      const priv = !!((scene as { worldData?: { __private?: unknown } } | null)?.worldData?.__private)
+      if (scene && !priv) return NextResponse.json({ world: sourceOf(want, 'house', scene) })
+      if (scene && priv) return NextResponse.json({ error: 'World not found in the library' }, { status: 404 })
     } catch { /* not a house scene — fall through to spaces */ }
 
     // then a space by slug or name — PRIVATE ones only for their own people.

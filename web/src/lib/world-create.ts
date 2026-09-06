@@ -234,7 +234,10 @@ export async function resolveBirthExtras(userId: string, body: Record<string, un
   forkOfId?: string
 }> {
   const targets = body.targets === 'desktop' || body.targets === 'mobile' ? body.targets : undefined  // universal = undeclared
-  const access = body.access === 'invite' || body.access === 'open' ? body.access : undefined         // solo = undeclared
+  // INVITE-ONLY RETIRED (Galen, Sep 5: the sandbox law makes build access
+  // open on every non-premium world anyway; crews ride member seats). PEOPLE
+  // is now WHEN the world goes public: solo = launch private, open = launch public.
+  const access = body.access === 'open' ? body.access : undefined         // solo = undeclared
   const birthData: Record<string, unknown> = {
     ...(targets ? { fit: targets } : {}),
     ...(access ? { access } : {}),

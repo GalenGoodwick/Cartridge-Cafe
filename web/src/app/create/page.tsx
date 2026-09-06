@@ -25,7 +25,7 @@ export default function CreateWorld() {
   const [brief, setBrief] = useState('')
   const [base, setBase] = useState('')
   const [targets, setTargets] = useState<'universal' | 'desktop' | 'mobile'>('desktop')
-  const [access, setAccess] = useState<'solo' | 'invite' | 'open'>('solo')
+  const [access, setAccess] = useState<'solo' | 'open'>('solo')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
@@ -89,7 +89,7 @@ export default function CreateWorld() {
 
   const facets = () => ({
     targets: targets === 'universal' ? undefined : targets,
-    access: access === 'solo' ? undefined : access,
+    access: access === 'solo' ? undefined : access,   // open = launch public
   })
 
   // ONE CREATION, ONE PRICE (Galen, Aug 27: "birth and generate are the same
@@ -161,8 +161,10 @@ export default function CreateWorld() {
           : 'honest defaults protect players: the declaration drives the catalog badge + the door notice.'}</p>
 
         <div className="text-[13px] tracking-[0.25em] text-white/55 mb-2">2 · PEOPLE</div>
-        <div className="grid grid-cols-3 gap-2 mb-6">
-          {([['solo', '● SOLO', 'you and your AI only'], ['invite', '◐ INVITE-ONLY', 'people you invite may build'], ['open', '○ OPEN WORLD', 'any member may build here (live editing) — co-built work becomes protected']] as const).map(([k, t, d]) => (
+        {/* invite-only RETIRED (Galen, Sep 5) — the sandbox law opens building on
+            every non-premium world; PEOPLE is WHEN it goes public */}
+        <div className="grid grid-cols-2 gap-2 mb-6">
+          {([['solo', '● SOLO', 'launch PRIVATE — build with your AI, release it when ready'], ['open', '○ OPEN WORLD', 'launch PUBLIC — on the shelf from birth; any member may build beside you']] as const).map(([k, t, d]) => (
             <button key={k} className={`${card} ${access === k ? on : off}`} onClick={() => setAccess(k)}>
               <div className="text-[14px] mb-0.5">{t}</div>
               <div className="text-[12px] opacity-70 leading-snug">{d}</div>

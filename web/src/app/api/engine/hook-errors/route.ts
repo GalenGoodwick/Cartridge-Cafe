@@ -44,6 +44,21 @@ export async function readHookErrors(key: string): Promise<HookError[]> {
   return Array.isArray(buf) ? buf : []
 }
 
+
+// THROTTLE (audit F5/F6): these are UNAUTHENTICATED telemetry doors that can
+// trigger auto-reverts — un-throttled, an attacker loops a victim's world
+// back forever. Per IP+target: 6 reports/min; excess is acknowledged (200)
+// but DROPPED so real tabs never see errors.
+const __reportHits: Map<string, { n: number; at: number }> = ((globalThis as unknown as { __ccReportHits?: Map<string, { n: number; at: number }> }).__ccReportHits ??= new Map())
+function reportThrottled(ip: string, target: string): boolean {
+  const k = ip + '|' + target
+  const now = Date.now()
+  const h = __reportHits.get(k)
+  if (!h || now - h.at > 60_000) { __reportHits.set(k, { n: 1, at: now }); return false }
+  h.n++
+  return h.n > 6
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null) as
     | { slug?: string; scene?: string; error?: { hookId?: string; phase?: string; error?: string; at?: number } }
@@ -53,6 +68,8 @@ export async function POST(req: NextRequest) {
   if (!key || !e || typeof e.error !== 'string') {
     return NextResponse.json({ error: 'need slug|scene and error{}' }, { status: 400 })
   }
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'local'
+  if (reportThrottled(ip, key)) return NextResponse.json({ ok: true, dropped: true })
 
   const entry: HookError = {
     hookId: String(e.hookId ?? 'sandbox'),

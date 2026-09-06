@@ -92,6 +92,12 @@ export async function POST(
         const { effectiveBuild } = await import('@/lib/world-policy')
         const buildAccess = effectiveBuild({ policy: rows[0]?.policy, premium: rows[0]?.premium }, await hasIpShield(sp.ownerId))
         const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') || 'member'
+        // the handle BINDS to the first account that claims it on this world
+        // (audit: email local-part collision = seat takeover + fee skip)
+        const { claimMemberHandle } = await import('@/lib/member-identity')
+        if (!(await claimMemberHandle(sp.id, handle, joiner.id))) {
+          return NextResponse.json({ error: `the handle "${handle}" belongs to another member on this world` }, { status: 403 })
+        }
         const { isBanned } = await import('@/lib/world-bans')
         if (await isBanned(sp.id, handle)) {
           return NextResponse.json({ error: 'you are banned from this world' }, { status: 403 })

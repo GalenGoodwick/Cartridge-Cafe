@@ -32,7 +32,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ scenes: names })
   }
 
+  // __private scenes: the same non-admin 404 the list applies (audit F13 —
+  // by-name reads and version history served hidden scenes)
+  const privGate = (n: string) =>
+    !isAdminToken(req.headers.get('authorization')) &&
+    !!(loadScene(n) as { worldData?: { __private?: boolean } } | undefined)?.worldData?.__private
+
   if (action === 'versions' && name) {
+    if (privGate(name)) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
     return NextResponse.json({ name, versions: listSceneVersions(name) })
   }
 
@@ -45,6 +52,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (action === 'version' && name) {
+    if (privGate(name)) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
     const ts = parseInt(searchParams.get('timestamp') || '')
     const scene = loadSceneVersion(name, ts)
     if (!scene) return NextResponse.json({ error: 'Version not found' }, { status: 404 })
@@ -54,7 +62,7 @@ export async function GET(req: NextRequest) {
   if (name) {
     await hydrateScene(name)
     const scene = loadScene(name)
-    if (!scene) {
+    if (!scene || privGate(name)) {
       return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
     }
     return NextResponse.json({ scene })

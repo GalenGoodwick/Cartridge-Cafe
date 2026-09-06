@@ -127,6 +127,9 @@ export async function POST(req: NextRequest) {
       name,
       baseSlug,
       description: brief.slice(0, 140),
+      // PEOPLE (Galen, Sep 5): OPEN WORLD launches public; SOLO launches
+      // private — release later from CONFIG when it's ready
+      isPublic: (birthData as { access?: string }).access === 'open',
       worldData: birthData,
       ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
       ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),

@@ -139,6 +139,19 @@ export async function POST(req: NextRequest) {
   if (typeof id !== 'string' || id.length > 64) {
     return NextResponse.json({ error: 'bad beat' }, { status: 400 })
   }
+  // RESERVED prefixes (audit F7): ai:<slug> is written server-side by the
+  // bridge; a public beat wearing it fakes the 'developer live' badge (and a
+  // spoofed leave kicks the real marker). dev:<slug> takes a signed-in session.
+  if (id.startsWith('ai:')) {
+    return NextResponse.json({ error: 'reserved presence id' }, { status: 403 })
+  }
+  if (id.startsWith('dev:')) {
+    const { getServerSession } = await import('next-auth')
+    const { authOptions } = await import('@/lib/auth')
+    if (!(await getServerSession(authOptions))?.user?.email) {
+      return NextResponse.json({ error: 'reserved presence id' }, { status: 403 })
+    }
+  }
   if (!leave && (typeof scene !== 'string' || scene.length > 64)) {
     return NextResponse.json({ error: 'bad beat' }, { status: 400 })
   }
