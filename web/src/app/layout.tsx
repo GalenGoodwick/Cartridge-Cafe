@@ -5,6 +5,7 @@ import Beacon from './Beacon'
 import ConnectAiBar from './ConnectAiBar'
 import { Providers } from './providers'
 import SupportGate from './SupportGate'
+import TermsConsent from './TermsConsent'
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
 import { ErrorNet } from '@/components/ErrorNet'
 
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers><SupportGate>{children}</SupportGate></Providers>
         <Beacon />
         <ConnectAiBar />
+        <TermsConsent />
         <ServiceWorkerRegistration />
         <ErrorNet />
       </body>
