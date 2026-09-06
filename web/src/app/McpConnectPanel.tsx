@@ -20,7 +20,7 @@ export default function McpConnectPanel() {
   return (
     <>
         <div className="text-[14px] text-glow/45 leading-relaxed mb-2">
-          Add cartridge.cafe to <b>Claude Code</b> / Cursor as an MCP server. Your AI gets the guide, the bridge, and <b>the eye</b> — then one click of connect_account and every world it brews is born owned by you.
+          Add cartridge.cafe to <b>any MCP-capable AI</b> — Claude Code, Cursor, Windsurf, Gemini CLI …. Your AI gets the guide, the bridge, and <b>the eye</b> — then one click of connect_account and every world it brews is born owned by you.
         </div>
         <div className="text-[14px] text-emerald-300/80 leading-relaxed mb-3 rounded-md border border-emerald-400/25 bg-emerald-400/[0.06] px-2.5 py-2">
           One command adds it — then just ask your AI to <b>“brew me a world where…”</b>. Sign in later and everything it made transfers to you.
@@ -35,6 +35,10 @@ export default function McpConnectPanel() {
           className="w-full rounded-md border border-brass/30 px-3 py-2 text-left text-[13px] text-steamer/80 hover:text-glow break-all transition-colors">
           {copied === 'json' ? 'copied ✓' : copied === 'fail:json' ? '⚠ copy blocked' : JSON_CFG}
         </button>
+        <div className="mt-3 text-[12px] text-glow/35 leading-relaxed">
+          no MCP at all? the engine is plain HTTP — your AI reads{' '}
+          <span className="select-all text-glow/60">cartridge.cafe/api/engine/guide</span> and builds over the bridge. ANY AI walks in.
+        </div>
     </>
   )
 }
