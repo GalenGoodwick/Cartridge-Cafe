@@ -539,55 +539,93 @@ export function worldgenPriceUsd(qty: number): number {
 
 const genSlot = (userId: string) => 'gencredits:' + userId
 
-export async function readGenCredits(userId: string): Promise<number> {
-  const doc = (await loadGameSlot(genSlot(userId))) as { n?: number } | undefined
-  return typeof doc?.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+// ── THE ATOMIC LEDGER (Sep 5, audit follow-through) ──────────────────────────
+// Credits were a JSON doc in a KV slot: load → check → save. Two parallel
+// spends both read n=1 and both passed — two worlds for one credit; a racing
+// grant could be overwritten entirely. Now the DATABASE does the arithmetic:
+// `UPDATE ... SET n = n - 1 WHERE n >= 1` succeeds atomically or not at all,
+// and grants land through a unique-keyed table so a Stripe retry physically
+// cannot double-credit. Legacy KV wallets seed the row once (ON CONFLICT DO
+// NOTHING — the seed itself is race-safe); the old doc is kept as a record.
+async function ensureCreditTables(): Promise<void> {
+  const g = globalThis as unknown as { __ccCreditTables?: boolean }
+  if (g.__ccCreditTables) return
+  const { prisma } = await import('@/lib/prisma')
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS cc_credits (
+    user_id TEXT PRIMARY KEY, n INT NOT NULL DEFAULT 0)`)
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS cc_credit_grants (
+    grant_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, qty INT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())`)
+  g.__ccCreditTables = true
 }
 
-/** Webhook-side: +qty credits, idempotent per checkout sessionId. */
+async function seedCreditRow(userId: string): Promise<void> {
+  await ensureCreditTables()
+  const { prisma } = await import('@/lib/prisma')
+  const legacy = (await loadGameSlot(genSlot(userId))) as { n?: number; grants?: string[] } | undefined
+  const n = typeof legacy?.n === 'number' && legacy.n > 0 ? Math.floor(legacy.n) : 0
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO cc_credits (user_id, n) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING`, userId, n)
+}
+
+/** legacy KV grant ids still dedupe (a Stripe retry for a pre-ledger purchase) */
+async function legacyGrantExists(userId: string, grantId: string): Promise<boolean> {
+  const doc = (await loadGameSlot(genSlot(userId))) as { grants?: string[] } | undefined
+  return Array.isArray(doc?.grants) && doc.grants.includes(grantId)
+}
+
+export async function readGenCredits(userId: string): Promise<number> {
+  await seedCreditRow(userId)
+  const { prisma } = await import('@/lib/prisma')
+  const rows = await prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT n FROM cc_credits WHERE user_id = $1`, userId)
+  return Math.max(0, Number(rows[0]?.n ?? 0))
+}
+
+/** Webhook-side: +qty credits, idempotent per checkout sessionId — the grant
+ *  row's PRIMARY KEY is the idempotency: a retry's INSERT conflicts and adds 0. */
 export async function grantGenCredits(userId: string, sessionId: string | undefined, qty = GEN_CREDITS_PER_PURCHASE): Promise<number> {
-  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
-  const grants = Array.isArray(doc.grants) ? doc.grants : []
-  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
-  if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
-  const next = n + Math.max(1, Math.min(20, Math.floor(qty)))
-  await saveGameSlotStrict(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })   // PAID state: throw > silent loss
-  return next
+  await seedCreditRow(userId)
+  const { prisma } = await import('@/lib/prisma')
+  const q = Math.max(1, Math.min(20, Math.floor(qty)))
+  if (sessionId && (await legacyGrantExists(userId, sessionId))) return readGenCredits(userId)
+  const gid = sessionId ?? `nosession:${userId}:${Date.now()}`
+  const inserted = await prisma.$executeRawUnsafe(
+    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id) DO NOTHING`, gid, userId, q)
+  if (inserted > 0) {
+    await prisma.$executeRawUnsafe(`UPDATE cc_credits SET n = n + $1 WHERE user_id = $2`, q, userId)
+  }
+  return readGenCredits(userId)
 }
 
 /** Grant N credits under an idempotency id (promo redemptions, comps). The
  *  credits are ordinary build credits — they never expire. */
 export async function addGenCredits(userId: string, n: number, grantId: string): Promise<number> {
-  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
-  const grants = Array.isArray(doc.grants) ? doc.grants : []
-  const cur = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
-  if (grants.includes(grantId)) return cur
-  const next = cur + Math.max(0, Math.floor(n))
-  await saveGameSlotStrict(genSlot(userId), { n: next, grants: [...grants, grantId].slice(-50) })
-  return next
+  return grantGenCredits(userId, grantId, Math.max(1, Math.floor(n)))   // every caller grants ≥1
 }
 
 /** Refund clawback: remove up to n UNSPENT credits (floor 0), idempotent per refund id. */
 export async function clawbackGenCredits(userId: string, n: number, refundId: string): Promise<void> {
-  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
-  const grants = Array.isArray(doc.grants) ? doc.grants : []
-  if (grants.includes(refundId)) return
-  const cur = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
-  await saveGameSlotStrict(genSlot(userId), { n: Math.max(0, cur - Math.max(0, Math.floor(n))), grants: [...grants, refundId].slice(-50) })
+  await seedCreditRow(userId)
+  const { prisma } = await import('@/lib/prisma')
+  const inserted = await prisma.$executeRawUnsafe(
+    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id) DO NOTHING`, refundId, userId, -Math.max(0, Math.floor(n)))
+  if (inserted > 0) {
+    await prisma.$executeRawUnsafe(`UPDATE cc_credits SET n = GREATEST(0, n - $1) WHERE user_id = $2`, Math.max(0, Math.floor(n)), userId)
+  }
 }
 
 /** Generate-side: put ONE credit back (world creation failed after the spend). */
 export async function refundGenCredit(userId: string): Promise<void> {
-  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
-  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
-  await saveGameSlot(genSlot(userId), { ...doc, n: n + 1 })
+  await seedCreditRow(userId)
+  const { prisma } = await import('@/lib/prisma')
+  await prisma.$executeRawUnsafe(`UPDATE cc_credits SET n = n + 1 WHERE user_id = $1`, userId)
 }
 
-/** Generate-side: spend one credit. Returns the remaining count, or null if broke. */
+/** Generate-side: spend one credit — THE database does the check-and-decrement
+ *  in one atomic statement; parallel spends of a last credit: exactly one wins. */
 export async function spendGenCredit(userId: string): Promise<number | null> {
-  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
-  const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
-  if (n < 1) return null
-  await saveGameSlot(genSlot(userId), { ...doc, n: n - 1 })
-  return n - 1
+  await seedCreditRow(userId)
+  const { prisma } = await import('@/lib/prisma')
+  const rows = await prisma.$queryRawUnsafe<{ n: number }[]>(
+    `UPDATE cc_credits SET n = n - 1 WHERE user_id = $1 AND n >= 1 RETURNING n`, userId)
+  return rows.length ? Number(rows[0].n) : null
 }

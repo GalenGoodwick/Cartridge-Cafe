@@ -1667,17 +1667,45 @@ export async function applyCommandToSnapshot(
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   eyeOnSpace(spaceId).catch(() => {})   // burst boundary? version the settled world first
-  const snap = (await getSpaceSnapshot(spaceId, true)) ?? emptySnapshot()   // fresh: never mutate a stale cache
-  const result = applyCommandToSnapshotObject(snap, cmd)
-  // Bridge revision: a monotonic counter every bridge write bumps. A tab's own
-  // 2s sync round-trips it unchanged, so `server rev > tab rev` means exactly
-  // one thing: an AI wrote something this tab never ingested. The tab's
-  // auto-load watcher polls it (snapshot?rev=1) and hot-reloads the world —
-  // no more stale tab silently syncing an old world back over a fresh build.
-  const wd = (snap.worldData ??= {}) as Record<string, unknown>
-  wd.__bridge_rev = (Number(wd.__bridge_rev) || 0) + 1
-  await setSpaceSnapshot(spaceId, snap)
-  return result
+  // SERIALIZED PER SPACE (Sep 5, the co-build correctness fix): read→apply→
+  // write runs under a pg advisory lock inside ONE transaction, so two AIs'
+  // commands can never lost-update each other (B reading pre-A state and
+  // writing over A's landed node). NON-BLOCKING BY DESIGN: writers queue for
+  // the milliseconds a command takes; lock_timeout('4s') means a stuck holder
+  // yields a RETRYABLE error, never a hang. Tab syncs (state route) stay on
+  // their own lease + skip-identical path.
+  try {
+    const out = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '4000ms'`)
+      await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, spaceId)
+      const rows = await tx.$queryRawUnsafe<Array<{ snapshot: unknown }>>(
+        `SELECT snapshot FROM "PlayerSpace" WHERE id = $1`, spaceId)
+      const snap = (rows[0]?.snapshot as SceneSnapshot | null) ?? emptySnapshot()
+      const result = applyCommandToSnapshotObject(snap, cmd)
+      // Bridge revision: a monotonic counter every bridge write bumps. A tab's
+      // own 2s sync round-trips it unchanged, so `server rev > tab rev` means
+      // an AI wrote something this tab never ingested (auto-load watcher).
+      const wd = (snap.worldData ??= {}) as Record<string, unknown>
+      wd.__bridge_rev = (Number(wd.__bridge_rev) || 0) + 1
+      // SANDBOX INVARIANT — same chokepoint rule as setSpaceSnapshot
+      if (snap?.stepHooks?.length) {
+        ;(snap.worldData as Record<string, unknown>) = { ...(snap.worldData || {}), __sandbox: true }
+      }
+      const updated = await tx.$executeRawUnsafe(
+        `UPDATE "PlayerSpace" SET snapshot = $1::jsonb, "updatedAt" = now() WHERE id = $2`,
+        JSON.stringify(snap), spaceId)
+      if (updated === 0) throw new Error('space row missing')
+      return { result, snap }
+    }, { maxWait: 6000, timeout: 20000 })
+    cache.set(spaceId, { snapshot: out.snap, lastLoaded: Date.now() })   // warm cache = the just-committed truth
+    return out.result
+  } catch (e) {
+    const msg = (e as Error)?.message || String(e)
+    if (/lock_timeout|canceling statement|deadlock|Transaction.*timeout|maxWait/i.test(msg)) {
+      return { ok: false, error: 'the world is busy — another builder is mid-write. Resend this command in a moment.', retryable: true }
+    }
+    throw e
+  }
 }
 
 /** SCENE path: a branch lives in the file scene-store (no DB row), so it can't
