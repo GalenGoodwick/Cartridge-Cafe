@@ -85,7 +85,7 @@ THE LAWS (breaking these ships broken worlds):
 
 FETCH INDEX — the engine does far more than this card; read_guide {section} the moment a task touches one (each section is the full working recipe): audio (sfx/music) · films & cutscenes · multiplayer (arena) · GPU solvers & render-to-texture (fluids/CA) · sprites (uploads, animated sheets) · components · macros · world UI (HUD, meters, buttons) · 3D kit (world3/anim3, raymarching) · first-person · triggers & chapters · save states · performance · the grid & camera · swarm (many AIs, one world) · the commons (cafe-wide chat: main_say / main_read).`
 
-const server = new McpServer({ name: 'cartridge-cafe', version: '0.6.3' }, { instructions: PROTOCOL })
+const server = new McpServer({ name: 'cartridge-cafe', version: '0.6.7' }, { instructions: PROTOCOL })
 
 server.tool(
   'connect_account',
