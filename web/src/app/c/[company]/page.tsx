@@ -88,28 +88,32 @@ export default async function CompanyPage({ params }: { params: Promise<{ compan
     )
   }
 
+  // THE COMPANY SPACE IS THE ENGINE ROOM (Galen, Sep 5: 'only the engine view,
+  // visibility on private worlds only') — shipped/public work lives on the main
+  // shelf; <handle>.cartridge.cafe is where the company's PRIVATE dev happens.
   const worlds = await prisma.playerSpace.findMany({
-    where: { ownerId: owner.id },
-    select: { slug: true, name: true, description: true, isPublic: true, updatedAt: true },
+    where: { ownerId: owner.id, isPublic: false },
+    select: { slug: true, name: true, description: true, updatedAt: true },
     orderBy: { updatedAt: 'desc' },
   })
 
   return shell(
     <>
-      <div className="text-[14px] tracking-[0.2em] text-amber-200/60 mb-4">cartridge.cafe · private dev</div>
+      <div className="text-[14px] tracking-[0.2em] text-amber-200/60 mb-4">{handle}.cartridge.cafe · the engine room</div>
       <h1 className="cafe-sign text-4xl text-glow mb-1">◆ {companyName}</h1>
-      <p className="text-[14px] text-white/50 mb-8">{worlds.length} app{worlds.length === 1 ? '' : 's'} · closed source · member access</p>
+      <p className="text-[14px] text-white/50 mb-8">{worlds.length} private world{worlds.length === 1 ? '' : 's'} · closed source · member seats only · each opens in the ENGINE</p>
       <div className="flex flex-col gap-3">
-        {worlds.length === 0 && <p className="text-[14px] text-white/55">no apps yet — brew one and it appears here.</p>}
+        {worlds.length === 0 && <p className="text-[14px] text-white/55">no private worlds yet — create_world births them private under ◆ IP control, and they appear here.</p>}
         {worlds.map(w => (
-          <a key={w.slug} href={`/space/${w.slug}`}
+          <a key={w.slug} href={`/grid?w=space:${encodeURIComponent(w.slug)}&ui=engine`}
             className="rounded-xl border border-[#b97a2a]/25 bg-[#0d0906]/70 p-4 hover:border-amber-300/50 transition-colors">
-            <div className="text-[15px] text-white/85">{w.name}</div>
+            <div className="text-[15px] text-white/85">⚙ {w.name}</div>
             {w.description && <div className="text-[13px] text-white/50 mt-1">{w.description}</div>}
-            <div className="text-[12px] text-white/40 mt-2">{w.isPublic ? 'on the shelf' : 'private dev'} · updated {w.updatedAt.toLocaleDateString()}</div>
+            <div className="text-[12px] text-white/40 mt-2">private dev · updated {w.updatedAt.toLocaleDateString()}</div>
           </a>
         ))}
       </div>
+      <p className="text-[12px] text-white/35 mt-8">shipped work lives on the main shelf — this room is the private line only.</p>
     </>,
   )
 }
