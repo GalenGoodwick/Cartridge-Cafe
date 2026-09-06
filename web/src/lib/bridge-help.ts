@@ -42,7 +42,21 @@ export const CONTRACTS: Record<string, Contract> = {
     example: { type: 'update_step_hook', hookId: 'my-enemies', code: '/* new body */' },
     law: 'claim_node {id} first if your claim lapsed; foreign nodes are refused',
   },
-  claim_node: { params: 'id (hookId)', example: { type: 'claim_node', id: 'my-enemies' }, law: 'take or refresh a node; release_node when done' },
+  claim_node: {
+    params: 'id (hookId) — take or refresh the hold (auto-creates the node record if absent)',
+    example: { type: 'claim_node', id: 'my-enemies' },
+    law: 'holds are PER-NODE and go stale after 15 idle minutes; a push refreshes yours. Done? release_node. Hopping? release_node A + claim_node B (or dock_node B).',
+  },
+  release_node: { params: 'id — give up your hold so another builder may take the node (holder-only)', example: { type: 'release_node', id: 'my-enemies' } },
+  dock_node: {
+    params: 'id — the co-build unit of work: takes the hold AND returns the record + version history + current code in one call',
+    example: { type: 'dock_node', id: 'my-enemies' },
+    law: 'work it, then undock_node {id, code, note} to SUBMIT (new version, hold released) or undock_node {id} to abandon',
+  },
+  undock_node: {
+    params: 'id · code? · note? — with code: submit through the same gate as a push, then release; without: abandon + release',
+    example: { type: 'undock_node', id: 'my-enemies', code: '/* final body */', note: 'volcano parallax' },
+  },
   register_node: {
     params: 'id · owns? ({uni: [[start,end]…]} — your gpuUniforms lanes)',
     example: { type: 'register_node', id: 'my-fx', owns: { uni: [[40, 47]] } },
