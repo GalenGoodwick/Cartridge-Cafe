@@ -70,7 +70,7 @@ export default function TheGrid() {
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
   const [companyScope, setCompanyScope] = useState<string | null>(null)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'audio' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'audio' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'export' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -794,7 +794,7 @@ export default function TheGrid() {
                 ◆ {companyScope.toUpperCase()} — THE COMPANY&apos;S PRIVATE SPACE · closed source · nothing here touches the public cafe
               </div>
             )}
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['audio', '♪ MUSIC/SFX'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['audio', '♪ MUSIC/SFX'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['export', '⬇ EXPORT'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -923,6 +923,31 @@ export default function TheGrid() {
               ? <LineagePanel inline slug={scene.slice(6)} worldData={undefined} />
               : <div className="p-4 font-mono text-[13px] text-white/50">house cartridge — lineage lives on real worlds</div>)}
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
+            {tool === 'export' && (() => {
+              const slug = scene.startsWith('space:') ? scene.slice(6) : null
+              if (!slug) return <div className="w-full h-full grid place-items-center p-6 font-mono text-[12px] text-white/55">exports live on real worlds — pick one first.</div>
+              return (
+                <div className="w-full h-full overflow-y-auto p-4 font-mono text-[12px]">
+                  <div className="text-[11.5px] tracking-[0.2em] text-white/60 mb-3">⬇ EXPORT — take your game out</div>
+                  <div className="flex flex-col gap-3 max-w-[560px]">
+                    <a href={`/api/spaces/${encodeURIComponent(slug)}/export?format=itch`} download
+                      className="rounded-xl border border-emerald-300/40 bg-emerald-400/10 p-3.5 hover:bg-emerald-400/20 transition-colors">
+                      <div className="text-emerald-100 text-[13px] tracking-[0.15em] mb-1">🕹 ITCH.IO BUILD (HTML5)</div>
+                      <div className="text-white/60 leading-relaxed">downloads index.html — zip it, upload to itch.io as an HTML5 game. It runs the LIVE world (always your latest build, multiplayer included).</div>
+                    </a>
+                    <a href={`/api/spaces/${encodeURIComponent(slug)}/export?format=cartridge`} download
+                      className="rounded-xl border border-white/15 bg-black/40 p-3.5 hover:border-white/30 transition-colors">
+                      <div className="text-white/85 text-[13px] tracking-[0.15em] mb-1">◫ .CARTRIDGE (full source)</div>
+                      <div className="text-white/60 leading-relaxed">the whole world as data — every field, hook, shader, and worldData. Your backup, your property, re-importable.</div>
+                    </a>
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-3.5">
+                      <div className="text-white/50 text-[13px] tracking-[0.15em] mb-1">⌂ DESKTOP BUILD (Electron) — coming</div>
+                      <div className="text-white/45 leading-relaxed">a true offline standalone for Steam — on the roadmap; the runtime bundling isn\u2019t built yet.</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} co={companyScope} />}
             {tool === 'brain' && <BrainViewM />}
             {tool === 'config' && (
@@ -1067,7 +1092,7 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create',
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create' || !!companyScope,
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
@@ -1075,7 +1100,7 @@ export default function TheGrid() {
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
-          back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (uiSet === 'create') { setUiSet('games'); setPhase('browse') } },
+          back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create') { setUiSet('games'); setPhase('browse') } },
           edit: () => { setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           create: () => { setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
@@ -1695,6 +1720,13 @@ function PublishView({ cfg }: { cfg: GridCfg | null }) {
         <Btn label="⚒ PUBLISH — UNFINISHED" onClick={() => cmd('publish:unfinished')} disabled={openBuild}
           hint={openBuild ? 'an open live-editing world lives on LIVE EDITING only' : 'public on the ⚒ shelf, marked in-progress'}
           tone="border-white/25 bg-white/5 text-white/85 hover:bg-white/10" />
+        {/* ◆ PREMIUM — deliberately present and deliberately DISABLED (Galen,
+            Sep 5): the pricing machinery exists (worldData.premium under ◆ IP
+            control) but the maker-side PAYOUT pipeline + tax-info gathering
+            aren't built — selling before we can pay out would be dishonest. */}
+        <Btn label="◆ PUBLISH — PREMIUM ($)" onClick={() => {}} disabled
+          hint="coming — pricing works, but the payout pipeline + tax onboarding aren't built yet; no sales until makers can be PAID"
+          tone="border-amber-300/40 bg-amber-400/10 text-amber-200/60" />
         {!openBuild && (
           <Btn label="◉ OPEN LIVE EDITING…" onClick={() => setConfirmLive(true)}
             hint="declare the build contract open — THIS CANNOT BE TAKEN BACK"
