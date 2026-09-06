@@ -59,6 +59,13 @@ export default function AccountClient(p: {
   const [codes, setCodes] = useState<Array<{ code: string; credits: number; memberDays: number; maxUses: number | null; used: number; permanent?: boolean }>>([])
   // ✚ BUILD CREDITS — moved here from the dockstar (Galen, Sep 5)
   const [buyQty, setBuyQty] = useState(1)
+  // ◆ the company room link (Galen, Sep 5: 'on account page should be link to
+  // personal page if they have it')
+  const [myCompany, setMyCompany] = useState<{ handle: string; name?: string } | null>(null)
+  useEffect(() => {
+    fetch('/api/company/claim', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.company?.handle) setMyCompany(d.company) }).catch(() => {})
+  }, [])
   const [bundle, setBundle] = useState<{ bundles: Record<number, number>; genUsd: number; free: boolean; buyable: boolean; credits: number } | null>(null)
   useEffect(() => {
     fetch('/api/generate').then(r => (r.ok ? r.json() : null))
@@ -213,6 +220,12 @@ export default function AccountClient(p: {
               {p.ipControl ? (
                 <>
                   <div className="text-[14px] text-amber-200/90">◆ IP control — active</div>
+                  {myCompany && (
+                    <a href={`/company/${myCompany.handle}`}
+                      className={`${btn} inline-block mt-2 border-amber-300/50 text-amber-100 hover:bg-amber-400/15`}>
+                      ◆ OPEN {(myCompany.name || myCompany.handle).toUpperCase()} — THE PRIVATE ROOM
+                    </a>
+                  )}
                   <p className="text-[12.5px] leading-relaxed text-white/45 mt-1">
                     your worlds are closed source: playable on the shelf, never readable or reusable by others.
                     your company space (name it, claim your subdomain) lives in the <a href="/suite" className="text-amber-200/80 underline hover:text-amber-100">◆ suite</a>.

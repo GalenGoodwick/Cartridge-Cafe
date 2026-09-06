@@ -69,7 +69,7 @@ const FLOW: Btn[] = [
   { id: 'back', tier: 0, tone: 'chip', show: c => c.canBack, label: () => '◂', glyph: () => '◂', testId: 'back' },
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
-  { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create', label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on the create flow (Galen)
+  { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create' && !c.contained, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on create; not in a company room (contained)
   // THE IDENTITY SLOT: a stranger sees gold SIGN IN; signing in turns it into
   // the GAMES⇄ENGINE toggle (Galen, Sep 5: 'nav = a button that goes to the
   // engine and on engine it goes back to the games. labeled correctly').

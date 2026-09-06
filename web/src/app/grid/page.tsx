@@ -1490,6 +1490,22 @@ function MyWorldsView({ icons, current, onPick, co }: {
 }) {
   const [mine, setMine] = useState<Entry[] | null>(null)
   const [coName, setCoName] = useState<string | null>(null)
+  const [coNew, setCoNew] = useState('')
+  const [coBusy, setCoBusy] = useState(false)
+  const [coErr, setCoErr] = useState('')
+  const birthOnLine = async () => {
+    if (!co || coNew.trim().length < 2 || coBusy) return
+    setCoBusy(true); setCoErr('')
+    try {
+      const r = await fetch('/api/company/worlds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ handle: co, name: coNew.trim() }) })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setCoErr(d?.error || 'birth failed'); return }
+      setCoNew('')
+      setMine(m => [{ slug: d.slug, name: d.name, scene: 'space:' + d.slug }, ...(m ?? [])])
+      onPick('space:' + d.slug)   // straight into the frame
+    } catch { setCoErr('birth failed — offline?') }
+    finally { setCoBusy(false) }
+  }
   useEffect(() => {
     if (co) {
       // THE PRIVATE LINE (Galen, Sep 5): company scope lists the company's
@@ -1512,7 +1528,23 @@ function MyWorldsView({ icons, current, onPick, co }: {
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
       <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">{co ? `◆ ${(coName ?? co).toUpperCase()} — THE PRIVATE LINE` : '⌂ MY WORLDS — pick one into the frame'}</div>
       {mine === null && <div className="text-[12px] text-white/55">…</div>}
-      {mine?.length === 0 && <div className="text-[12px] text-white/55">{co ? 'no private worlds yet — create_world under ◆ IP control births them here.' : 'no worlds on your deed yet — sign in, or brew one at /create.'}</div>}
+      {co && (
+        <div className="mb-3">
+          <div className="flex gap-2">
+            <input value={coNew} onChange={e => setCoNew(e.target.value)} maxLength={60}
+              onKeyDown={e => { if (e.key === 'Enter') void birthOnLine() }}
+              placeholder="name a new private world…"
+              className="flex-1 px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-[13px] text-white/90 placeholder:text-white/40 outline-none focus:border-amber-300/50" />
+            <button onClick={() => void birthOnLine()} disabled={coNew.trim().length < 2 || coBusy}
+              className="px-4 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.15em] hover:bg-amber-400/25 disabled:opacity-35 transition-colors shrink-0">
+              {coBusy ? '…' : '✚ BIRTH ON THE LINE'}
+            </button>
+          </div>
+          {coErr && <div className="mt-1.5 text-[12px] text-amber-200/90">{coErr}</div>}
+          <div className="mt-1.5 text-[11px] text-white/40">born private under ◆ IP control — or your AI calls create_world and it lands here.</div>
+        </div>
+      )}
+      {mine?.length === 0 && <div className="text-[12px] text-white/55">{co ? 'no private worlds yet.' : 'no worlds on your deed yet — sign in, or brew one at /create.'}</div>}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
         {(mine ?? []).map(e => {
           const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())

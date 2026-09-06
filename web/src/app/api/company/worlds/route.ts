@@ -43,3 +43,36 @@ export async function GET(req: NextRequest) {
   })
   return NextResponse.json({ company: company.name, worlds })
 }
+
+/** POST /api/company/worlds {handle, name} — birth a PRIVATE world on the
+ *  company's line, from inside the room (Galen: 'how do I create a world
+ *  now?' — containment removed the public CREATE door without a room-internal
+ *  one). Owner or keeper only; born isPublic:false, credits untouched
+ *  (enterprise line — provisioning is the payment). */
+export async function POST(req: NextRequest) {
+  const body = (await req.json().catch(() => ({}))) as { handle?: string; name?: string }
+  const handle = String(body.handle ?? '').toLowerCase()
+  const name = String(body.name ?? '').trim().slice(0, 60)
+  if (!handle || name.length < 2) return NextResponse.json({ error: 'handle and name (2+ chars) required' }, { status: 400 })
+  const company = await getCompanyByHandle(handle)
+  if (!company) return NextResponse.json({ error: 'no such company' }, { status: 404 })
+
+  const session = await getServerSession(authOptions)
+  const me = session?.user?.email
+    ? await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true } })
+    : null
+  if (!me) return NextResponse.json({ error: 'sign in' }, { status: 401 })
+  let allowed = me.id === company.ownerId
+  if (!allowed) {
+    const { isAdminUserId } = await import('@/lib/adminAuth')
+    allowed = await isAdminUserId(me.id)
+  }
+  if (!allowed) return NextResponse.json({ error: 'the company line is born by its owner (or the keeper)' }, { status: 403 })
+
+  const { birthWorld } = await import('@/lib/world-create')
+  const { slugify } = await import('@/lib/slug')
+  const { space, token } = await birthWorld({
+    ownerId: company.ownerId, name, baseSlug: slugify(name), isPublic: false,
+  })
+  return NextResponse.json({ ok: true, slug: space.slug, name: space.name, token }, { status: 201 })
+}
