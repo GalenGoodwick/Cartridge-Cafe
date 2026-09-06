@@ -27,6 +27,7 @@ import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
 import SpritesPanel from './SpritesPanel'
 import LineagePanel from './LineagePanel'   // ⑂ family tree + edits-by-user
+import { fetchPulse } from './pulse'
 import type { TerminalEntry } from './AgentTerminalPanel'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
@@ -5930,7 +5931,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       try {
         // r.ok gates out 503-degraded + network errors → d is null → HOLD last
         // known (a build in progress must not flicker off on one bad read).
-        const d = await fetch(`/api/builds/status?spaceId=${encodeURIComponent(spaceId)}`, { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+        const d = await fetchPulse(spaceId).then(p => p ? p.build : null)   // rides THE PULSE (rung 3)
         if (stop || !d) return
         // Show the build window only when an AI is ACTUALLY on it — `live` (a
         // heartbeat in the last 2 min) — or a job is genuinely QUEUED (`pending`,
@@ -6071,9 +6072,18 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       const key = keyFor()
       if (!key) return
       try {
-        const r = await fetch(`/api/engine/world-rev?key=${encodeURIComponent(key)}`, { cache: 'no-store' })
-        if (!r.ok) return
-        const { rev } = await r.json() as { rev: number }
+        // THE PULSE (rung 3): rev + build status ride ONE shared request now
+        const pulse = spaceId ? await fetchPulse(spaceId) : null
+        if (!pulse) {
+          // non-space keys (scenes) keep the old road
+          const r = await fetch(`/api/engine/world-rev?key=${encodeURIComponent(key)}`, { cache: 'no-store' })
+          if (!r.ok) return
+          const { rev } = await r.json() as { rev: number }
+          if (seenRev < 0) { seenRev = rev; return }
+          if (rev > seenRev) { seenRev = rev; await pullAndAdopt() }
+          return
+        }
+        const rev = pulse.rev
         if (seenRev < 0) { seenRev = rev; return }   // baseline = our own load; don't re-adopt it
         const briefDone = !!simulationRef.current?.worldData?.brief_done
         // Hold adopts during an UNFINISHED build — every command bumps the rev,
