@@ -1659,6 +1659,19 @@ async function eyeOnSpace(spaceId: string): Promise<void> {
       note: 'the eye — settled burst',
     },
   })
+  // RETENTION RUNS HERE TOO (scalability audit, Sep 6): the keep-40 cap in the
+  // hand-save route never fires for bridge-built worlds — the NORMAL AI flow —
+  // so eye rungs grew 3-9MB/day per active world, uncapped. The eye prunes its
+  // own tail at the moment it grows it.
+  const eyeOldRows = await prisma.spaceVersion.findMany({
+    where: { spaceId, note: 'the eye — settled burst' },
+    orderBy: { version: 'desc' },
+    skip: 40,
+    select: { id: true },
+  })
+  if (eyeOldRows.length > 0) {
+    await prisma.spaceVersion.deleteMany({ where: { id: { in: eyeOldRows.map(v => v.id) } } })
+  }
 }
 
 /** SPACE path: load the PlayerSpace's DB snapshot → apply → persist. */
