@@ -81,7 +81,8 @@ const FLOW: Btn[] = [
   // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
   { id: 'edit', tier: 0, tone: 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
-  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing && !c.contained, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
+  // in a company room CREATE stays — it opens THE PRIVATE LINE's birth field
+  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,

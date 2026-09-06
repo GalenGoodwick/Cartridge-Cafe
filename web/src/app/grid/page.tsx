@@ -1119,7 +1119,7 @@ export default function TheGrid() {
         act={{
           back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create') { setUiSet('games'); setPhase('browse') } },
           edit: () => { setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
-          create: () => { setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
+          create: () => { if (companyScope) { setUiSet('engine'); setTool('mine'); return } setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
           share: async () => {
             const shareText = inviteText()
