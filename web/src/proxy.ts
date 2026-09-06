@@ -32,9 +32,10 @@ export function proxy(req: NextRequest) {
     if (sub && sub !== 'www' && sub !== 'api' &&
         !pathname.startsWith('/api/') && !pathname.startsWith('/_next') && !pathname.startsWith('/c/') &&
         req.method === 'GET' && !pathname.includes('.')) {
-      const url = req.nextUrl.clone()
-      url.pathname = `/c/${sub}${pathname === '/' ? '' : pathname}`
-      return NextResponse.rewrite(url)
+      // REDIRECT to the apex path, never rewrite (Galen, Sep 5): Google OAuth
+      // can't register wildcard callbacks, so auth on a subdomain always
+      // breaks — the session lives on cartridge.cafe. The path is the door.
+      return NextResponse.redirect(`https://cartridge.cafe/company/${sub}`, 307)
     }
   }
 
