@@ -4,6 +4,7 @@ const kv = new Map<string, Record<string, unknown>>()
 vi.mock('@/app/api/engine/store', () => ({
   loadGameSlot: async (k: string) => kv.get(k),
   saveGameSlot: async (k: string, v: Record<string, unknown>) => { kv.set(k, v) },
+  saveGameSlotStrict: async (k: string, v: Record<string, unknown>) => { kv.set(k, v) },
 }))
 
 import { canForkWorld } from '@/lib/world-policy'
