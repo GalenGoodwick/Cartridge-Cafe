@@ -38,18 +38,9 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient()
 globalForPrisma.prisma = prisma
 
 
-// Connection warmer: ping every 20s to prevent Neon cold starts
-const WARM_INTERVAL = 20_000
-const warmKey = '__prisma_warm_interval'
-const g = globalThis as unknown as { [key: string]: ReturnType<typeof setInterval> | undefined }
-if (!g[warmKey]) {
-  g[warmKey] = setInterval(async () => {
-    try {
-      await prisma.$queryRaw`SELECT 1`
-    } catch {
-      // silent — connection will reconnect on next real query
-    }
-  }, WARM_INTERVAL)
-}
+// (Connection warmer REMOVED — cost audit, Sep 6: a SELECT 1 every 20s per
+// warm lambda held a connection open forever and kept Neon compute billed
+// 24/7 even at zero traffic. The trade: the first query after an idle
+// autosuspend pays ~1s cold start — right trade until sustained traffic.)
 
 export default prisma

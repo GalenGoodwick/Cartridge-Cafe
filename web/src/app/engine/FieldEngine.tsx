@@ -5626,6 +5626,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => window.removeEventListener('cafe:ai-log-pull', publish)
   }, [terminalLog])
   const [agentConnected, setAgentConnected] = useState(false)
+  const sseOwnerRef = useRef(!!isOwner)
+  sseOwnerRef.current = !!isOwner   // render-synced: the SSE effect runs with [] deps
   // AI-ALIVE BEACON (Galen, Sep 5: "how do we know if AI is alive and warm?")
   // — broadcast the HONEST liveness signal to the host chrome (the grid's
   // green door lights up): a live SSE agent, or the server-stamped
@@ -5683,6 +5685,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
     function connect() {
       if (playScene) return   // play sessions are local-only — no shared queue
+      // COST (audit, Sep 6): the SSE stream pins a lambda for the tab's whole
+      // life, and for NON-OWNER space tabs it carries nothing they need (the
+      // 5s rev-poll adopts edits). Owners connect; visitors check back cheaply
+      // (a local timer — zero network) in case ownership resolves late.
+      if (spaceId && !sseOwnerRef.current) { retryTimeout = setTimeout(connect, 15_000); return }
       const sseUrl = spaceId
         ? `/api/engine/agent?spaceId=${encodeURIComponent(spaceId)}`
         : '/api/engine/agent'
