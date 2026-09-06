@@ -87,6 +87,16 @@ export async function POST(req: NextRequest) {
   } catch { /* table may not exist yet */ }
   await saveGameSlot('entitlements:' + user.id, {})
   await saveGameSlot('gencredits:' + user.id, {})
+  // DURABLE ABUSE GUARD (audit, Sep 5): the trial / first-pair-gift / promo
+  // guards were keyed to the user id, which delete→re-signup mints fresh —
+  // perpetual free months. Mark the EMAIL (hashed) as having consumed its
+  // one-time gifts; the grant paths check this mark on the resurrected email.
+  try {
+    const { createHash } = await import('crypto')
+    const mark = 'deletedid:' + createHash('sha256').update(String(user.email).trim().toLowerCase()).digest('hex').slice(0, 32)
+    const { saveGameSlotStrict } = await import('@/app/api/engine/store')
+    await saveGameSlotStrict(mark, { at: Date.now() })
+  } catch { /* guard is best-effort; deletion itself must proceed */ }
   try {
     if (await loadGameSlot('notifications:' + user.id)) await saveGameSlot('notifications:' + user.id, {})
   } catch { /* slot shape unknown — best effort */ }

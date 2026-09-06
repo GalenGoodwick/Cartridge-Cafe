@@ -18,8 +18,10 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
   if (!stripeConfigured()) return NextResponse.json({ error: 'payments not configured yet' }, { status: 501 })
 
-  const subs = await findActiveSubscriptions(user.id)
-  if (subs.length === 0) return NextResponse.json({ error: 'no active subscription to cancel' }, { status: 404 })
+  // the one-click cancel is the EDITING seat's button (audit: it used to end
+  // EVERY subscription — ads, ip control — in one click)
+  const subs = (await findActiveSubscriptions(user.id)).filter((s) => s.product === 'editor' || s.product === 'editor_pro')
+  if (subs.length === 0) return NextResponse.json({ error: 'no active editing membership to cancel — other subscriptions live in MANAGE SUBSCRIPTION' }, { status: 404 })
   const alreadyEnding = subs.every((s) => s.cancelAtPeriodEnd)
   if (alreadyEnding) return NextResponse.json({ ok: true, already: true, endsAt: subs[0].currentPeriodEnd })
 

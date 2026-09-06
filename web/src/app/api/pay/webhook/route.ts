@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (event.type === 'checkout.session.completed' && meta.userId && meta.product) {
+    // PAID STATE IS STRICT (audit, Sep 5): a swallowed DB failure here meant a
+    // buyer paid and got nothing, with no Stripe retry. Grants throw now; the
+    // catch returns 500 so Stripe re-delivers (every grant is idempotent).
+    try {
     await grantEntitlement(meta.userId, { product: meta.product, sessionId: obj.id, slug: meta.slug })
     // worldgen buys a COUNTER, not a boolean — credit the generation ledger
     // (idempotent per sessionId; Stripe retries must not double-credit)
@@ -55,18 +59,25 @@ export async function POST(req: NextRequest) {
     // branch below.
     if (meta.product === 'ip') {
       // THE SWAP (Galen, Sep 5): ◆ IP control includes the build seat — cancel
-      // the $10 editing sub at period end so nobody pays twice. Best-effort;
-      // the account-page portal remains the manual door.
-      try {
-        const { findActiveSubscriptions, cancelSubscriptionAtPeriodEnd } = await import('@/lib/stripe')
-        for (const sub of await findActiveSubscriptions(meta.userId)) {
-          if (sub.product === 'editor' || sub.product === 'editor_pro') await cancelSubscriptionAtPeriodEnd(sub.id)
+      // the $10 editing sub at period end so nobody pays twice. A FAILED swap
+      // now 500s (audit: silent failure = the exact double-billing the swap
+      // exists to prevent); Stripe retries the event, the grant is idempotent.
+      const { findActiveSubscriptions, cancelSubscriptionAtPeriodEnd } = await import('@/lib/stripe')
+      for (const sub of await findActiveSubscriptions(meta.userId)) {
+        if ((sub.product === 'editor' || sub.product === 'editor_pro') && !sub.cancelAtPeriodEnd) {
+          const ok = await cancelSubscriptionAtPeriodEnd(sub.id)
+          if (!ok) return NextResponse.json({ error: 'swap cancel failed, retry' }, { status: 500 })
         }
-      } catch { /* swap is best-effort */ }
+      }
     }
     if (meta.product === 'editor') {
-      const { grantGenCredits } = await import('@/lib/stripe')
-      await grantGenCredits(meta.userId, obj.id, 2)
+      // signup credits ride PAYMENT, not the $0 trial (audit: 'every month
+      // BOUGHT gives two' — the trial's 2 arrive when it converts, via the
+      // subscription_cycle invoice branch)
+      if (Number(obj.amount_total) > 0) {
+        const { grantGenCredits } = await import('@/lib/stripe')
+        await grantGenCredits(meta.userId, obj.id, 2)
+      }
     }
     // a PAID EXPERIENCE grants a seat at the workbench — mint the buyer a
     // co-program membership in the world they bought (idempotent)
@@ -121,6 +132,10 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'publish write failed, retry' }, { status: 500 })
       }
     }
+    } catch (e) {
+      if (e instanceof NextResponse || (e && typeof e === 'object' && 'status' in (e as object))) throw e
+      return NextResponse.json({ error: 'grant write failed, retry' }, { status: 500 })
+    }
     // the nervous system hears the till ring — platform news, no personal data
     void commonsBus({ kind: 'system', who: 'cafe', text: `✧ a "${meta.product}" purchase just completed — the cafe is earning` })
   } else if (
@@ -128,6 +143,13 @@ export async function POST(req: NextRequest) {
     meta.userId && meta.product
   ) {
     await revokeEntitlement(meta.userId, meta.product, meta.slug)
+    // a refunded credit purchase claws back UNSPENT credits (floor 0 — spent
+    // worlds stay; the refund covers the unused remainder)
+    if (event.type === 'charge.refunded' && meta.product === 'worldgen') {
+      const { clawbackGenCredits } = await import('@/lib/stripe')
+      const qty = Number(meta.qty)
+      await clawbackGenCredits(meta.userId, Number.isFinite(qty) && qty >= 1 ? qty : 1, 'refund:' + String((obj as { id?: string }).id ?? ''))
+    }
   }
 
   // 200 everything we understood or deliberately ignored — Stripe retries non-2xx

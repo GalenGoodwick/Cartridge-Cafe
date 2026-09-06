@@ -102,7 +102,15 @@ export async function POST(req: NextRequest) {
       const { readEntitlements, grantEntitlement, addGenCredits } = await import('@/lib/stripe')
       const { isAdminUserId } = await import('@/lib/adminAuth')
       const ents = await readEntitlements(me.id)
-      const had = ents.some((e) => e.sessionId === 'first-pair-month')
+      // durable marker (audit, Sep 5): the old marker rode the editor row's
+      // sessionId, which any later real subscription OVERWRITES (grantEntitlement
+      // replaces same-product rows) — making the gift re-farmable via
+      // subscribe→cancel cycles. A dedicated slot survives everything.
+      const { loadGameSlot } = await import('@/app/api/engine/store')
+      const giftSlot = 'firstpair:' + me.id
+      const { emailConsumedGifts } = await import('@/lib/stripe')
+      const durableHad = !!(await loadGameSlot(giftSlot)) || (await emailConsumedGifts(session.user.email))
+      const had = durableHad || ents.some((e) => e.sessionId === 'first-pair-month')
       // never clobber a PAID seat: grantEntitlement replaces same-product
       // records, so an already-member account keeps its record untouched and
       // just gets the credits half of the gift
@@ -112,6 +120,8 @@ export async function POST(req: NextRequest) {
           await grantEntitlement(me.id, { product: 'editor', sessionId: 'first-pair-month', until: Date.now() + 30 * 24 * 60 * 60 * 1000 })
         }
         await addGenCredits(me.id, 2, 'first-pair-credits')
+        const { saveGameSlotStrict } = await import('@/app/api/engine/store')
+        await saveGameSlotStrict(giftSlot, { at: Date.now() })
         firstPairGift = true
       }
     } catch { /* the pairing itself must never fail on the gift */ }

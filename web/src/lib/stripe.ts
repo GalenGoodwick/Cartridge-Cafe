@@ -14,7 +14,7 @@
 // (see memory/monetization notes): ads ($10/mo, system already built),
 // slots (pro world-slots tier).
 import crypto from 'crypto'
-import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
+import { loadGameSlot, saveGameSlot, saveGameSlotStrict } from '@/app/api/engine/store'
 
 const PRODUCTS: Record<string, { env: string; mode: 'subscription' | 'payment'; label: string }> = {
   ads: { env: 'STRIPE_PRICE_ADS', mode: 'subscription', label: 'contained ad slot ($/mo)' },
@@ -94,6 +94,13 @@ export async function createCheckoutSession(
     mode: product.mode,
     ...priceFields,
     'line_items[0][quantity]': '1',
+    // charge.refunded arrives with the CHARGE's metadata — mirror ours onto the
+    // PaymentIntent or the revocation branch reads empty (audit: dead code)
+    ...(product.mode === 'payment' ? {
+      'payment_intent_data[metadata][userId]': userId,
+      'payment_intent_data[metadata][product]': productKey,
+      ...(slug ? { 'payment_intent_data[metadata][slug]': slug } : {}),
+    } : {}),
     success_url: success,
     cancel_url: cancel,
     'metadata[userId]': userId,
@@ -138,6 +145,9 @@ export async function createExperienceCheckout(
     cancel_url: `${back}?paycancel=experience`,
     'metadata[userId]': opts.userId,
     'metadata[product]': 'experience',
+    'payment_intent_data[metadata][userId]': opts.userId,
+    'payment_intent_data[metadata][product]': 'experience',
+    'payment_intent_data[metadata][slug]': opts.slug,
     'metadata[slug]': opts.slug,
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -174,6 +184,9 @@ export async function createWorldgenCheckout(
     cancel_url: `${origin}/create?paycancel=worldgen`,
     'metadata[userId]': userId,
     'metadata[product]': 'worldgen',
+    'payment_intent_data[metadata][userId]': userId,
+    'payment_intent_data[metadata][product]': 'worldgen',
+    'payment_intent_data[metadata][qty]': String(n),
     'metadata[qty]': String(n),
   })
   const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -260,7 +273,12 @@ export async function grantEntitlement(userId: string, ent: Omit<Entitlement, 'a
   const ents = await readEntitlements(userId)
   // one active grant per product+slug — a renewal refreshes, not duplicates
   const rest = ents.filter((e) => !(e.product === ent.product && e.slug === ent.slug))
-  await saveGameSlot(entSlot(userId), { ents: [...rest, { ...ent, at: Date.now(), active: true }].slice(-50) })
+  const next = [...rest, { ...ent, at: Date.now(), active: true }]
+  // CAP ONLY THE SLUG-SCOPED rows (audit, Sep 5): a heavy pages/experiences
+  // buyer must never push the ip row — the LIFETIME SHIELD — off the end.
+  const durable = next.filter((e) => !e.slug)
+  const slugged = next.filter((e) => !!e.slug).slice(-50)
+  await saveGameSlotStrict(entSlot(userId), { ents: [...durable, ...slugged] })
 }
 
 // ---- EDITING MEMBERSHIP — ONE simple tier (Galen, Aug 26: "remove dockstar
@@ -313,6 +331,17 @@ export async function membershipUntil(userId: string): Promise<number | null> {
 
 /** Start the monthly editing-membership subscription — AD-HOC recurring price
  *  (no pre-created Stripe price; only STRIPE_SECRET_KEY). One tier, $10/mo. */
+/** Did a DELETED account with this email already consume its one-time gifts?
+ *  (audit, Sep 5: delete→re-signup reset every abuse guard) */
+export async function emailConsumedGifts(email: string | null | undefined): Promise<boolean> {
+  if (!email) return false
+  try {
+    const { createHash } = await import('crypto')
+    const mark = 'deletedid:' + createHash('sha256').update(String(email).trim().toLowerCase()).digest('hex').slice(0, 32)
+    return !!(await loadGameSlot(mark))
+  } catch { return false }
+}
+
 export async function createEditorCheckout(
   userId: string, origin: string,
 ): Promise<{ url: string } | { error: string; status: number }> {
@@ -323,6 +352,7 @@ export async function createEditorCheckout(
   // that have never held a seat — a gift month or any prior subscription
   // counts. Otherwise cancel→resubscribe cycles a free month forever.
   const priorSeats = (await readEntitlements(userId)).some((e) => e.product === 'editor' || e.product === 'editor_pro')
+    || (await (async () => { try { const { prisma } = await import('@/lib/prisma'); const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } }); return emailConsumedGifts(u?.email) } catch { return false } })())
   const form = new URLSearchParams({
     mode: 'subscription',
     'line_items[0][quantity]': '1',
@@ -364,7 +394,10 @@ export interface ActiveSub { id: string; customer: string; product: string; curr
 export async function findActiveSubscriptions(userId: string): Promise<ActiveSub[]> {
   const secret = process.env.STRIPE_SECRET_KEY
   if (!secret) return []
-  const q = encodeURIComponent(`metadata['userId']:'${userId}' AND status:'active'`)
+  // trialing INCLUDED (audit, Sep 5): every new membership starts as a 30-day
+  // trial — invisible here meant cancel/manage/delete/swap all missed it (a
+  // deleted account could be billed on trial conversion: the unforgivable bug)
+  const q = encodeURIComponent(`metadata['userId']:'${userId}' AND (status:'active' OR status:'trialing')`)
   const r = await fetch(`https://api.stripe.com/v1/subscriptions/search?query=${q}&limit=20`, {
     headers: { Authorization: 'Bearer ' + secret },
   })
@@ -475,7 +508,7 @@ export async function cancelSubscriptionNow(subId: string): Promise<boolean> {
 
 export async function revokeEntitlement(userId: string, product: string, slug?: string): Promise<void> {
   const ents = await readEntitlements(userId)
-  await saveGameSlot(entSlot(userId), {
+  await saveGameSlotStrict(entSlot(userId), {
     ents: ents.map((e) => (e.product === product && e.slug === slug ? { ...e, active: false } : e)),
   })
 }
@@ -518,7 +551,7 @@ export async function grantGenCredits(userId: string, sessionId: string | undefi
   const n = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
   if (sessionId && grants.includes(sessionId)) return n   // webhook retry — already granted
   const next = n + Math.max(1, Math.min(20, Math.floor(qty)))
-  await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })
+  await saveGameSlotStrict(genSlot(userId), { n: next, grants: [...grants, ...(sessionId ? [sessionId] : [])].slice(-50) })   // PAID state: throw > silent loss
   return next
 }
 
@@ -530,8 +563,17 @@ export async function addGenCredits(userId: string, n: number, grantId: string):
   const cur = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
   if (grants.includes(grantId)) return cur
   const next = cur + Math.max(0, Math.floor(n))
-  await saveGameSlot(genSlot(userId), { n: next, grants: [...grants, grantId].slice(-50) })
+  await saveGameSlotStrict(genSlot(userId), { n: next, grants: [...grants, grantId].slice(-50) })
   return next
+}
+
+/** Refund clawback: remove up to n UNSPENT credits (floor 0), idempotent per refund id. */
+export async function clawbackGenCredits(userId: string, n: number, refundId: string): Promise<void> {
+  const doc = ((await loadGameSlot(genSlot(userId))) ?? {}) as { n?: number; grants?: string[] }
+  const grants = Array.isArray(doc.grants) ? doc.grants : []
+  if (grants.includes(refundId)) return
+  const cur = typeof doc.n === 'number' && doc.n > 0 ? Math.floor(doc.n) : 0
+  await saveGameSlotStrict(genSlot(userId), { n: Math.max(0, cur - Math.max(0, Math.floor(n))), grants: [...grants, refundId].slice(-50) })
 }
 
 /** Generate-side: put ONE credit back (world creation failed after the spend). */

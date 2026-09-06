@@ -36,7 +36,7 @@ function recordDeletion(slot: string, deleted: boolean, via: string): void {
  *  session could write itself credits or the $100 ip entitlement. Non-admin
  *  callers may neither read nor write them here; server code goes through
  *  lib functions, not this route. */
-const RESERVED_SLOT = /^(entitlements:|gencredits:|promo:|company:|world_icon:|icon-token:|playtime:|tournament:|ledger)/i
+const RESERVED_SLOT = /^(entitlements:|gencredits:|promo:|company:|world_icon:|icon-token:|playtime:|tournament:|ledger|firstpair:|deletedid:)/i
 function isReservedSlot(key: string | null): boolean {
   return !!key && RESERVED_SLOT.test(key)
 }
