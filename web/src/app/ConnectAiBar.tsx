@@ -14,14 +14,16 @@ import ConnectPanel from '@/app/ConnectPanel'
 export default function ConnectAiBar() {
   const [open, setOpen] = useState(false)
   const path = usePathname() || '/'
-  // NOT over the game (Galen, Sep 5: "no connect AI button inside the game
-  // window") — world pages and the grid carry the bar's own green door; the
-  // floating pill is for the SITE pages (account, terms, suite, commons, …).
-  // /create too (Galen, Sep 5: 'no connect ai button inside create flow —
-  // bottom bar is only where it belongs')
-  // /account too (Galen, Sep 5): the bar's green door is the one invitation
-  // /pair too (Galen, Sep 5): mid-pairing IS connecting — no second door
-  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play') || path.startsWith('/create') || path.startsWith('/account') || path.startsWith('/pair') || path.startsWith('/company') || path.startsWith('/c/')) return null
+  // THE SWEEP (Galen, Sep 6: "this button keeps popping up — sweep the site").
+  // The old blacklist meant every NEW page grew the pill by default, and it
+  // kept surfacing where it didn't belong (/privacy, /terms, signin…). Flipped
+  // to a WHITELIST: the standing invitation speaks only on browse-and-consider
+  // pages; every other page — legal, auth, admin, account, worlds, create,
+  // pairing — stays quiet unless deliberately added here. (Grid and world
+  // pages carry their own green door on the bottom bar; Sep 5 rulings on
+  // /create, /account, /pair are all subsumed by the flip.)
+  const INVITE_PAGES = ['/feed', '/commons', '/suite', '/door', '/story', '/hub']
+  if (!INVITE_PAGES.some(p => path === p || path.startsWith(p + '/'))) return null
   const lifted = false
   return (
     <>

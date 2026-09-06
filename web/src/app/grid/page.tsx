@@ -647,9 +647,16 @@ export default function TheGrid() {
       </div>
 
       {/* ═ THE PLAQUE BAR — wordmark · slogan · the sign-in door. CONNECT AI
-          stays on the dockstar bar (Galen, Sep 5: one green door, never two). ═ */}
-      {miniTop && (
-        <div className="fixed inset-x-0 top-0 z-[111]" style={{ height: topH }}>
+          stays on the dockstar bar (Galen, Sep 5: one green door, never two).
+          Always mounted: it SLIDES away when full-frame play takes the top
+          (Galen, Sep 6: states flow, nothing pops). ═ */}
+      <div className="fixed inset-x-0 top-0 z-[111]"
+        style={{
+          height: mobileBar ? 74 : 56,
+          transform: miniTop ? 'translateY(0)' : 'translateY(-101%)',
+          transition: 'transform 0.32s ease-out',
+          pointerEvents: miniTop ? 'auto' : 'none',
+        }}>
           <div className="flex items-center gap-3.5 px-4 sm:px-5 border-b border-brass/25"
             style={{ height: mobileBar ? 50 : 56, background: 'linear-gradient(180deg, rgba(10,13,19,0.85), rgba(10,13,19,0.35))' }}>
             <a href="/" className="italic font-bold leading-none shrink-0"
@@ -679,8 +686,7 @@ export default function TheGrid() {
               make little game worlds with AI
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* CLICK THE FRAME TO PLAY (games·browse) */}
       {browsing && (
@@ -696,7 +702,7 @@ export default function TheGrid() {
       {/* ═ THE ICON SHELF (games·browse) ═ */}
       {browsing && (
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
-          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
@@ -780,7 +786,7 @@ export default function TheGrid() {
           Hidden during a CREATE PLAYTEST — the full frame owns the screen. ═ */}
       {createSet && phase !== 'play' && (
         <div className="fixed inset-x-0 z-[112] flex justify-center px-4 overflow-y-auto"
-          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           <CreateView
             baseName={selected?.name ?? scene}
             baseSlug={scene.startsWith('space:') ? scene.slice(6) : null}
@@ -855,7 +861,7 @@ export default function TheGrid() {
           content area — the GAMES-browse pattern, engine-flavored. ═ */}
       {engineSet && (
         <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
-          style={{ top: shelfTop, bottom: BAR_H + 6 }}>
+          style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {companyScope && (
               <div className="w-full mb-1.5 px-3 py-1.5 rounded-lg border border-amber-300/40 bg-amber-400/10 font-mono text-[11px] tracking-[0.18em] text-amber-100">
