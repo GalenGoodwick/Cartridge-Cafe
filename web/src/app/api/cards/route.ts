@@ -173,6 +173,12 @@ async function fetchMineRows(_kind: 'mine' | 'shared' = 'mine'): Promise<FeedRow
     email = session?.user?.email
   } catch { return null }   // no request scope (tests/SSG) = signed out
   if (!email) return null
+  // 20s per-user cache (audit F6): a 200-world maker detoasted every blob on
+  // each shelf-count request; staleness is fine for counts and cards
+  return cached('cards-mine', email, CARDS_TTL_MS, () => fetchMineRowsFresh(email!))
+}
+
+async function fetchMineRowsFresh(email: string): Promise<FeedRow[] | null> {
   const me = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   if (!me) return null
   const handle = email.split('@')[0].replace(/[^a-z0-9_-]/gi, '')

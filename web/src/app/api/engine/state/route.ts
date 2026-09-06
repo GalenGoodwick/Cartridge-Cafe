@@ -181,6 +181,17 @@ export async function POST(req: NextRequest) {
         // policy, no tab sync may alter or drop it (immutability law)
         if (normalizePolicy(curWd.policy)) inWd.policy = curWd.policy
       }
+      // WRITE ONLY ON CHANGE (audit, Sep 5 — the root TOAST churn): timestamp
+      // made every 2s sync byte-different, so an IDLE owner tab rewrote the
+      // full ~300KB row ~43,000×/day. Compare content minus the clock; skip
+      // identical. (This is the write-side half of the Sep 1 detoast fix.)
+      {
+        const a = JSON.stringify({ ...snapshot, timestamp: 0 })
+        const b = current ? JSON.stringify({ ...(current as unknown as Record<string, unknown>), timestamp: 0 }) : null
+        if (b !== null && a === b) {
+          return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId, unchanged: true })
+        }
+      }
       await setSpaceSnapshot(body.spaceId, snapshot)
       return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId })
     }

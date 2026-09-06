@@ -189,7 +189,13 @@ export async function GET(req: NextRequest) {
       const matches = searchScene(s, needle)
       if (matches.length) found.push({ name, kind: 'house', ...sizesOf(s), matches })
     }
+    // BOUNDED (audit, Sep 5): this used to detoast EVERY world in the DB —
+    // private included, filtered in JS after — per request. Public + the
+    // viewer's own, capped, newest first.
     const spaces = await prisma.playerSpace.findMany({
+      where: { OR: [{ isPublic: true }, ...(viewer?.userId ? [{ ownerId: viewer.userId }] : [])] },
+      orderBy: { updatedAt: 'desc' },
+      take: 400,
       select: { id: true, ownerId: true, slug: true, name: true, snapshot: true, isPublic: true },
     })
     // the SHIELD, not the live sub (audit, Sep 5): search snippets were an

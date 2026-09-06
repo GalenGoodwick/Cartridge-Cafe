@@ -662,6 +662,9 @@ export async function POST(req: NextRequest) {
         ? [body]
         : []
 
+    if (Array.isArray(body.commands) && body.commands.length > 100) {
+      return NextResponse.json({ error: `batch too large (${body.commands.length}) — send at most 100 commands per call and split the rest` }, { status: 413 })
+    }
     if (commands.length === 0) {
       return NextResponse.json({ error: 'No commands. Send {type:"paint",...} or {commands:[...]}' }, { status: 400 })
     }

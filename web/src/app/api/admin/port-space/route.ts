@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
     update: { name: data.name, snapshot: data.snapshot, description: data.description, isPublic: data.isPublic },
     create: { ...data, id: String(sp.id ?? '') || undefined, slug: String(sp.slug) },
   })
+  // the warm 30s cache must not serve the pre-port world (audit F10)
+  const { invalidateSpaceCache } = await import('@/app/api/engine/space-store')
+  invalidateSpaceCache(out.id)
   return NextResponse.json({ ok: true, slug: out.slug, isPublic: out.isPublic })
   } catch (e) {
     return NextResponse.json({ error: (e as Error)?.message || String(e) }, { status: 500 })

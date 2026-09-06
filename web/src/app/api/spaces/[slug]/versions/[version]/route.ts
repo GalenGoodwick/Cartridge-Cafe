@@ -106,6 +106,7 @@ export async function POST(
     const all = await prisma.spaceVersion.findMany({
       where: { spaceId: space.id },
       orderBy: { version: 'desc' },
+      take: 25,   // bounded — same law as the save-point dedup
       select: { version: true, snapshot: true },
     })
     const match = findIdenticalVersion(all, live.snapshot)

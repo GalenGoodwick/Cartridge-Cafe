@@ -15,7 +15,7 @@ export async function GET(
 
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
-    select: { id: true, ownerId: true, isPublic: true, snapshot: true },
+    select: { id: true, ownerId: true, isPublic: true },   // NO raw blob (detoast law)
   })
   if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 })
 
@@ -38,7 +38,10 @@ export async function GET(
   const lastSeen = latest?.lastUsedAt ?? null
   const secondsAgo = lastSeen ? (Date.now() - lastSeen.getTime()) / 1000 : null
 
-  const wd = (space.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData || {}
+  // one key, through the 30s cache — this is a poll-shaped endpoint (audit F8)
+  const { getSpaceSnapshot } = await import('@/app/api/engine/space-store')
+  const snap = await getSpaceSnapshot(space.id) as { worldData?: Record<string, unknown> } | null
+  const wd = snap?.worldData || {}
   return NextResponse.json({
     aiActive: secondsAgo !== null && secondsAgo < 45,
     lastSeen,

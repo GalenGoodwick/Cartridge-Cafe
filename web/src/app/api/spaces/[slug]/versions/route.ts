@@ -77,9 +77,14 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : null
 
+  // BOUNDED (audit, Sep 5): dedup compares the last 25 rungs, not all history
+  // — O(all versions × blob) per save grew forever (spam re-saves match the
+  // newest rungs anyway; a byte-identical state 50 versions back is a rebuild,
+  // which deserves its own rung)
   const all = await prisma.spaceVersion.findMany({
     where: { spaceId: space.id },
     orderBy: { version: 'desc' },
+    take: 25,
     select: { id: true, version: true, note: true, createdAt: true, snapshot: true },
   })
 
@@ -123,15 +128,24 @@ async function pruneBuggyVersions(spaceId: string, newestVersion: number): Promi
   })
   const wd = (newest?.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
   if (wd && wd['last_compile_error']) return   // newest is itself buggy — keep history
-  const olds = await prisma.spaceVersion.findMany({
-    where: { spaceId, version: { lt: newestVersion } },
-    select: { id: true, version: true, snapshot: true },
-  })
-  const buggy = olds.filter(v => {
-    const w = (v.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData
-    return !!(w && w['last_compile_error'])
-  })
+  // jsonb-path filter — never load every blob to find the buggy ones (audit)
+  const buggy = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "SpaceVersion"
+     WHERE "spaceId" = ${spaceId} AND version < ${newestVersion}
+       AND snapshot->'worldData' ? 'last_compile_error'`
   if (buggy.length > 0) {
     await prisma.spaceVersion.deleteMany({ where: { id: { in: buggy.map(b => b.id) } } })
+  }
+  // RETENTION (audit: no cap existed anywhere — the eye auto-cuts a version
+  // per settled burst, so history and every dedup/save slowed forever): keep
+  // the newest 40 automatic 'the eye' rungs; hand-saved points never pruned.
+  const eyeOld = await prisma.spaceVersion.findMany({
+    where: { spaceId, note: 'the eye — settled burst' },
+    orderBy: { version: 'desc' },
+    skip: 40,
+    select: { id: true },
+  })
+  if (eyeOld.length > 0) {
+    await prisma.spaceVersion.deleteMany({ where: { id: { in: eyeOld.map(v => v.id) } } })
   }
 }
