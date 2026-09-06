@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { findIdenticalVersion } from '@/lib/version-dedup'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,10 +84,8 @@ export async function POST(
   })
 
   // Dedupe: a save point byte-identical to ANY existing version is not a new
-  // version — you get the matching rung back. (Player save points ARE versions —
-  // but two identical ones are one, no matter how far apart they were saved.)
-  const currentStr = JSON.stringify(space.snapshot)
-  const match = all.find(v => JSON.stringify(v.snapshot) === currentStr)
+  // version — you get the matching rung back (ONE law: lib/version-dedup).
+  const match = findIdenticalVersion(all, space.snapshot)
   if (match) {
     const { snapshot: _omit, ...meta } = match
     return NextResponse.json({ version: meta, deduped: true })

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { findIdenticalVersion } from '@/lib/version-dedup'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -107,8 +108,7 @@ export async function POST(
       orderBy: { version: 'desc' },
       select: { version: true, snapshot: true },
     })
-    const liveStr = JSON.stringify(live.snapshot)
-    const match = all.find(v => JSON.stringify(v.snapshot) === liveStr)
+    const match = findIdenticalVersion(all, live.snapshot)
     if (match) {
       savedAs = match.version
     } else {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { findIdenticalVersion } from '@/lib/version-dedup'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -97,8 +98,7 @@ export async function POST(
   let latestVersion = all[0]?.version ?? 0
   // NO SPAM (Galen, Sep 5): identical to ANY existing version = already frozen —
   // reference that rung rather than minting a duplicate.
-  const curStr = space.snapshot ? JSON.stringify(space.snapshot) : null
-  const frozen = curStr ? all.find(v => JSON.stringify(v.snapshot) === curStr) : undefined
+  const frozen = space.snapshot ? findIdenticalVersion(all, space.snapshot) : null
   if (frozen) {
     latestVersion = frozen.version
   } else if (space.snapshot) {
