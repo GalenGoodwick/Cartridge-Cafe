@@ -28,6 +28,16 @@ type Stats = {
   users: { rows_nonGuest: number; guests: number; newRows_7d: number }
   worlds: { total: number; public: number; new_7d: number }
 }
+type Funnel = {
+  window: { hours: number }
+  visitors: number
+  play: { count: number; rate: number }
+  edit: { count: number; rate: number }
+  publish: { count: number; rate: number }
+  mcpLogins: number
+  shares: number
+  perWorld: { path: string; shares: number; newcomers: number; k: number }[]
+}
 type Hazard = { name?: string; reason?: string; phase?: string; line?: number; col?: number; snippet?: string; author?: string; gpuModel?: string; stack?: string }
 type FaultReport = { at: string; phase: string; url?: string; scene?: string; hazards: Hazard[] }
 // A non-house token doing more than this in 24h is worth a glance — well above
@@ -45,6 +55,7 @@ export default function AdminPage() {
   const [libOpen, setLibOpen] = useState(false)
   const [q, setQ] = useState('')
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [funnel, setFunnel] = useState<Funnel | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [faults, setFaults] = useState<FaultReport[] | null>(null)
   const [faultFilter, setFaultFilter] = useState('')
@@ -91,6 +102,10 @@ export default function AdminPage() {
   useEffect(() => {
     fetch('/api/admin/analytics?paths=1&alltime=1&refs=1&hours=24').then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setAnalytics(d) }).catch(() => {})
+    // the funnel is rare-event data (play/edit/publish/mcp/share), so it reads a
+    // 30-day window — a 24h one would sit empty even when things are happening.
+    fetch('/api/admin/analytics?funnel=1&hours=720').then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.funnel) setFunnel(d.funnel) }).catch(() => {})
     fetch('/api/admin/stats').then(r => r.ok ? r.json() : null)
       .then(d => { if (d && !d.error) setStats(d) }).catch(() => {})
     loadFaults()
@@ -318,6 +333,67 @@ export default function AdminPage() {
     )
   }
 
+  // ▽ THE FUNNEL — visitor → play → edit → publish, plus AI (MCP) logins and
+  // per-world virality. Owner + headless are already stripped server-side, so
+  // these are REAL users. Bars taper by % of visitors; a stage at 0 still shows
+  // a sliver so the row reads. Empty until the tracking has run in prod a while.
+  const FunnelPanel = () => {
+    const f = funnel
+    if (!f) return null
+    const days = Math.round((f.window?.hours ?? 720) / 24)
+    const stages = [
+      { label: 'VISITORS', count: f.visitors, rate: 100, tone: 'bg-white/70', text: 'text-white/85' },
+      { label: 'STARTED PLAYING', count: f.play.count, rate: f.play.rate, tone: 'bg-sky-400', text: 'text-sky-200' },
+      { label: 'CLICKED EDIT', count: f.edit.count, rate: f.edit.rate, tone: 'bg-amber-400', text: 'text-amber-200' },
+      { label: 'PUBLISHED', count: f.publish.count, rate: f.publish.rate, tone: 'bg-emerald-400', text: 'text-emerald-200' },
+    ]
+    const nothing = f.visitors === 0 && f.play.count === 0 && f.edit.count === 0 && f.publish.count === 0 && f.mcpLogins === 0
+    return (
+      <section className={`${box} p-4 mb-4`}>
+        <div className="font-mono text-[11.5px] tracking-[0.2em] text-amber-200/80 mb-1">▽ THE FUNNEL · VISITOR → PUBLISH · LAST {days}D</div>
+        <p className="font-mono text-[10.5px] text-white/50 mb-4">real users only — your own browsing and headless playtests are excluded. rates are % of visitors.</p>
+
+        {nothing ? (
+          <div className="font-mono text-[12px] text-white/50 mb-2">no real-user funnel activity in the window yet — stages fill once the tracking has been live in prod for a while.</div>
+        ) : (
+          <div className="flex flex-col gap-2 mb-4">
+            {stages.map(s => (
+              <div key={s.label} className="flex items-center gap-3">
+                <div className="w-32 shrink-0 font-mono text-[10.5px] tracking-[0.12em] text-white/55 text-right">{s.label}</div>
+                <div className="flex-1 h-7 rounded-lg bg-black/40 border border-white/8 overflow-hidden">
+                  <div className={`h-full ${s.tone} rounded-lg transition-all`} style={{ width: `${Math.max(2, Math.min(100, s.rate))}%` }} />
+                </div>
+                <div className="w-28 shrink-0 font-mono text-[12.5px] text-right">
+                  <span className={s.text}>{s.count.toLocaleString()}</span>
+                  {s.label !== 'VISITORS' && <span className="text-white/45 text-[11px]"> · {s.rate}%</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Stat label="MCP LOGINS · AI CONNECTS" value={f.mcpLogins} />
+          <Stat label="SHARES" value={f.shares} />
+        </div>
+
+        {f.perWorld.length > 0 && (
+          <>
+            <div className="font-mono text-[10.5px] tracking-[0.18em] text-white/50 mb-1.5">VIRALITY · NEW VISITORS PER SHARE (k)</div>
+            {f.perWorld.slice(0, 12).map(w => (
+              <div key={w.path} className="flex items-center gap-2.5 py-1 border-b border-white/5 font-mono text-[12.5px]">
+                <span className="flex-1 truncate text-amber-100/90">{w.path}</span>
+                <span className="text-emerald-300/90 w-16 text-right">{w.newcomers} new</span>
+                <span className="text-white/60 w-16 text-right">{w.shares} shr</span>
+                <span className="text-sky-200/90 w-14 text-right">{w.shares > 0 ? w.k + '×' : '·'}</span>
+              </div>
+            ))}
+          </>
+        )}
+      </section>
+    )
+  }
+
   const provision = async () => {
     if (!coForm.email.trim() || !coForm.handle.trim()) { setCoNote('email and handle are required'); return }
     setBusy('provision'); setCoNote('')
@@ -446,6 +522,7 @@ export default function AdminPage() {
         <p className="font-mono text-[12px] text-white/50 mb-5 ml-12">every world · visibility · the bridge · faults from the field. HIDDEN = unlisted everywhere.</p>
 
         <Overview />
+        <FunnelPanel />
         <BridgeWatch />
         <Migrate />
         <Companies />
