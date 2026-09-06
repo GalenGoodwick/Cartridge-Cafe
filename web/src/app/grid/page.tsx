@@ -61,7 +61,11 @@ export default function TheGrid() {
   const [entries, setEntries] = useState<Entry[]>(LOCAL)
   const prevTabRef = useRef<Tab | null>(null)   // tab-switch detection (a tab is a context)
   const [icons, setIcons] = useState<Map<string, string>>(new Map())
-  const [scene, setScene] = useState<string>(LOCAL[0].scene)
+  // MOBILE never defaults to cinderfell (Galen, Sep 6) — it's a desktop-fit
+  // raymarcher; phones boot on the mobile shelf's flagship until the cards
+  // load and pick their own first entry.
+  const [scene, setScene] = useState<string>(() =>
+    (typeof window !== 'undefined' && window.innerWidth < 700) ? 'space:nocturne-district' : LOCAL[0].scene)
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
@@ -131,8 +135,8 @@ export default function TheGrid() {
         // world. Only the DEFAULTS swap — a base the maker framed on purpose
         // stays put.
         setScene(prev => d.targets === 'mobile'
-          ? (prev === 'space:cinderfell' ? 'space:mobile-base' : prev)
-          : (prev === 'space:mobile-base' ? 'space:cinderfell' : prev))
+          ? (prev === 'space:cinderfell' ? 'space:nocturne-district' : prev)   // mobile-base is gone — nocturne is the live mobile flagship
+          : (prev === 'space:nocturne-district' ? 'space:cinderfell' : prev))
       }
       // BORN → THE PROVEN ROUTE (Galen, Aug 31: "find the route and rewire
       // it"): the standalone birth path navigates to /space/<slug>?connect=1,

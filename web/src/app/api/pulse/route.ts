@@ -28,19 +28,27 @@ export async function GET(req: NextRequest) {
         .catch(() => {})
     }
   }
-  const hit = memo.get(spaceId)
+  const chatKeyEarly = req.nextUrl.searchParams.get('chat')
+  const memoKey = spaceId + '|' + (chatKeyEarly ?? '')
+  const hit = memo.get(memoKey)
   const now = Date.now()
   if (hit && now - hit.at < 3000) return NextResponse.json(hit.body)
-  const [rev, job] = await Promise.all([
+  const chatKey = chatKeyEarly
+  const [rev, job, chatDoc] = await Promise.all([
     getWorldRev('space:' + spaceId),
     prisma.buildJob.findFirst({
       where: { spaceId, status: { in: ['pending', 'building'] } },
       orderBy: { updatedAt: 'desc' },
       select: { status: true, heartbeatAt: true, updatedAt: true },
     }).catch(() => null),
+    chatKey
+      ? import('@/app/api/engine/store').then(m => m.loadGameSlot('world-chat:' + chatKey)).catch(() => null)
+      : Promise.resolve(null),
   ])
   const stale = job?.status === 'pending' && !job.heartbeatAt && now - new Date(job.updatedAt).getTime() > 10 * 60_000
+  const msgs = (chatDoc as { msgs?: Array<{ at: number; ai?: boolean; who?: string }> } | null)?.msgs
   const body = {
+    ...(Array.isArray(msgs) ? { chat: msgs.slice(-60).map(m => ({ at: m.at, ...(m.ai ? { ai: true } : {}), who: m.who })) } : {}),
     rev,
     build: {
       active: !!job && !stale,
@@ -48,7 +56,7 @@ export async function GET(req: NextRequest) {
       live: !!(job?.heartbeatAt && now - new Date(job.heartbeatAt).getTime() < 120_000),
     },
   }
-  memo.set(spaceId, { at: now, body })
+  memo.set(memoKey, { at: now, body })
   if (memo.size > 2000) memo.clear()
   return NextResponse.json(body)
 }

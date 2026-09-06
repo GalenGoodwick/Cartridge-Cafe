@@ -27,7 +27,7 @@ import type { DialogEntry } from './AgentDialogPanel'
 import AgentTerminalPanel from './AgentTerminalPanel'
 import SpritesPanel from './SpritesPanel'
 import LineagePanel from './LineagePanel'   // ⑂ family tree + edits-by-user
-import { fetchPulse } from './pulse'
+import { fetchPulse, setPulseChatKey } from './pulse'
 import type { TerminalEntry } from './AgentTerminalPanel'
 import type { BrushState, Camera, Field, FieldEffect, SelectionState, GenerationState, CameraFollow, HudElement, SuperFieldGPU } from './types'
 import { DEFAULT_GRID_SIZE } from './types'
@@ -5959,7 +5959,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     }
     poll()
     const t = setInterval(poll, 6000)
-    return () => { stop = true; clearInterval(t) }
+    return () => { setPulseChatKey(null); stop = true; clearInterval(t) }
   }, [spaceId, playScene])
 
   // watching a build: the first progress line auto-opens the terminal so the
@@ -5984,10 +5984,17 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     const key = ((spaceId ? (spaceName || spaceSlug) : (lastSceneRef.current || playScene || '')) || '')
       .split(' ⑂ ')[0].trim().toUpperCase()
     if (!key) return
+    if (spaceId) setPulseChatKey(key)   // the pulse carries chat for space worlds
     const poll = async () => {
       try {
-        const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + key)).then(r => r.json())
-        const msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Array<{ at: number; ai?: boolean; who?: string }> : []
+        let msgs: Array<{ at: number; ai?: boolean; who?: string }> = []
+        if (spaceId) {
+          const pl = await fetchPulse(spaceId)
+          msgs = Array.isArray(pl?.chat) ? pl!.chat! : []
+        } else {
+          const j = await fetch('/api/engine/save?slot=' + encodeURIComponent('world-chat:' + key)).then(r => r.json())
+          msgs = Array.isArray(j?.data?.msgs) ? j.data.msgs as Array<{ at: number; ai?: boolean; who?: string }> : []
+        }
         const now = Date.now()
         // exclude YOUR OWN recent post — otherwise the door lights up green "1"
         // right after you comment on your own world (that 1 is you, not activity)
