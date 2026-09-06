@@ -13,6 +13,10 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim
  *  sendBeacon carries the same-origin session cookie, so we can tag WHO is
  *  looking (owner / signed-in account / headless playtest / anonymous). */
 export async function POST(req: NextRequest) {
+  // audit: an unthrottled Neon INSERT per anonymous beacon was the site's best
+  // write-amplification lever. 30 pageviews/min/IP is generous for humans.
+  const { ipThrottled } = await import('@/lib/ip-throttle')
+  if (ipThrottled(req, 't', 30)) return NextResponse.json({ ok: true, dropped: true })
   let body: { path?: string; ref?: string } = {}
   try { body = await req.json() } catch { /* sendBeacon may arrive as text */ }
   if (!body.path) return NextResponse.json({ ok: false }, { status: 400 })

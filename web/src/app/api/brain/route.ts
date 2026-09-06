@@ -68,10 +68,14 @@ async function respond(concept: string, writer: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const { ipThrottled } = await import('@/lib/ip-throttle')
+  if (ipThrottled(req, 'brain', 12)) return NextResponse.json({ error: 'slow down' }, { status: 429 })
   return respond(req.nextUrl.searchParams.get('concept') || '', req.nextUrl.searchParams.get('writer') || '')
 }
 
 export async function POST(req: NextRequest) {
+  const { ipThrottled } = await import('@/lib/ip-throttle')
+  if (ipThrottled(req, 'brain', 12)) return NextResponse.json({ error: 'slow down' }, { status: 429 })
   let body: { concept?: string; writer?: string } = {}
   try { body = await req.json() } catch { /* empty */ }
   return respond(body.concept || '', body.writer || '')

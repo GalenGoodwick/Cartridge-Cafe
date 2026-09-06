@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { iconSlotKey } from '@/lib/icon-bake'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -22,7 +23,9 @@ export async function GET() {
   const session = await getServerSession(authOptions).catch(() => null)
   const uid = session?.user?.id
   const payload = await cached('browse', uid || 'anon', BROWSE_TTL_MS, () => build(uid))
-  return NextResponse.json(payload)
+  // ANON responses are one shared payload — let the CDN absorb the hub's 30s
+  // loop (scalability audit: this feed was the site's single biggest faucet)
+  return NextResponse.json(payload, uid ? undefined : { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=120' } })
 }
 
 async function build(uid: string | undefined) {
@@ -44,7 +47,7 @@ async function build(uid: string | undefined) {
     take: 200,
   })
   // a world is BLANK until it holds something; only unblank worlds join the door
-  const out = spaces.map(({ snapshot, ...rest }) => {
+  const out = await Promise.all(spaces.map(async ({ snapshot, ...rest }) => {
     const sn = snapshot as { fields?: IconField[]; stepHooks?: unknown[]; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: Array<{ name?: string; wgsl?: string }>; worldData?: { icon_wgsl?: unknown; creation_brief?: unknown; brief_done?: unknown; __bridge_rev?: unknown } } | null
     const blank = !sn || (!(sn.fields?.length) && !(sn.stepHooks?.length) && !(sn.visualTypes?.length))
     // still being built by an AI: a creation_brief was set but never finished.
@@ -53,7 +56,13 @@ async function build(uid: string | undefined) {
     const hue = sn?.fields?.length ? dominantHue(sn.fields) : null
     // bespoke icon (MAKE ICON) wins; else the world's own composed visual; else
     // (null) the door falls back to the color emblem.
-    const iconWgsl = composeIcon(sn?.fields || [], sn?.visualTypes || [], sn?.worldData?.icon_wgsl, sn?.modules || [])
+    // the baked PHOTO wins in the client atlas anyway — when one exists, the
+    // composed shader is dead weight (audit: iconWgsl was 95% of this payload,
+    // one world's compose was 265KB). Bespoke MAKE-ICON shaders still ship.
+    const baked = await loadGameSlot(iconSlotKey(rest.slug)).catch(() => null) as { png_b64?: string } | null
+    const iconWgsl = (baked?.png_b64 && !sn?.worldData?.icon_wgsl)
+      ? null
+      : composeIcon(sn?.fields || [], sn?.visualTypes || [], sn?.worldData?.icon_wgsl, sn?.modules || [])
     // owner, resolved to a maker handle for the PLAYER WORLDS directory. A guest
     // account (@guest.cartridge.cafe) is UNCLAIMED — those worlds belong to the
     // house until someone signs up and claims them. Never leak the raw email.
@@ -64,7 +73,7 @@ async function build(uid: string | undefined) {
     // batch). updatedAt bumps on ANY row write (owner-tab sync, icon bake,
     // save states) — keying "reworked" on it made idle worlds cry rework.
     return { ...rest, owner, blank, building, hue, iconWgsl, rev: Number(sn?.worldData?.__bridge_rev) || 0 }
-  })
+  }))
 
   // MAKERS directory — one entry per player who has a real (non-blank) world,
   // carrying their BREWED ICON (avatar) so the PLAYER WORLDS bubbles wear it.

@@ -5598,7 +5598,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // list endpoint and also refresh on window focus.
   useEffect(() => {
     refreshSceneList()
-    const interval = setInterval(refreshSceneList, 4000)
+    const interval = setInterval(() => { if (!document.hidden) refreshSceneList() }, 15000)   // was 4s (audit): focus listener covers returns
     window.addEventListener('focus', refreshSceneList)
     return () => {
       clearInterval(interval)
@@ -5668,6 +5668,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   useEffect(() => {
     let es: EventSource | null = null
     let retryTimeout: ReturnType<typeof setTimeout>
+    let retryDelay = 5000   // backoff (scalability audit): signed-out tabs 401 forever — 5s→2min instead of a hard 5s loop
     // Command context for applyBridgeCommand — built ONCE at mount, inside this
     // effect's (intentionally empty-dep) closure, so every member keeps exactly
     // the identity the inline switch captured before the carve (spec §1c: the
@@ -5701,6 +5702,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           if (data.type === 'ping') return
           if (data.type === 'connected') {
             setAgentConnected(true)
+            retryDelay = 5000   // a real connection resets the backoff
             return
           }
 
@@ -5722,8 +5724,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       es.onerror = () => {
         setAgentConnected(false)
         es?.close()
-        // Retry in 5s
-        retryTimeout = setTimeout(connect, 5000)
+        retryTimeout = setTimeout(connect, retryDelay)
+        retryDelay = Math.min(retryDelay * 2, 120_000)   // exponential — a 401 loop settles at 2min
       }
       lastSSEMsgRef.current = Date.now()
     }
@@ -6077,7 +6079,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         if (rev > seenRev) { seenRev = rev; await pullAndAdopt() }
       } catch { /* offline / cold start — keep polling */ }
     }
-    const iv = setInterval(poll, 2500)
+    const iv = setInterval(() => { if (!document.hidden) void poll() }, 5000)   // was 2.5s (audit: highest-QPS Neon read on the site)
     poll()
     return () => { stopped = true; clearInterval(iv) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6127,6 +6129,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
   // Periodic snapshot — export canvas as PNG, save to disk for Claude Code
   useEffect(() => {
     const SNAPSHOT_INTERVAL = 30000 // every 30 seconds
+    if (typeof location !== 'undefined' && location.hostname !== 'localhost') return   // dev tool (audit: every PROD tab was POSTing a 100KB-2MB PNG every 30s)
     const interval = setInterval(async () => {
       const canvas = canvasRef.current
       if (!canvas) return

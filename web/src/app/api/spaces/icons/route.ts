@@ -33,7 +33,7 @@ export async function GET() {
   const session = await getServerSession(authOptions).catch(() => null)
   const uid = session?.user?.id
   const icons = await cached('icons', uid || 'anon', ICONS_TTL_MS, () => build(uid))
-  return NextResponse.json({ icons }, { headers: { 'Cache-Control': 'no-store' } })
+  return NextResponse.json({ icons }, { headers: { 'Cache-Control': uid ? 'no-store' : 'public, s-maxage=60, stale-while-revalidate=300' } })   // anon = one shared payload; CDN absorbs (audit)
 }
 
 async function build(uid: string | undefined) {
