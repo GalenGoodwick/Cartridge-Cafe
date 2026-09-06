@@ -9,17 +9,26 @@ export const runtime = 'nodejs'
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 
-/** POST /api/t — the page beacon. Body: { path, ref }. Fire-and-forget.
- *  sendBeacon carries the same-origin session cookie, so we can tag WHO is
- *  looking (owner / signed-in account / headless playtest / anonymous). */
+// The only kinds a BROWSER is trusted to assert. 'page' is the view beacon;
+// 'play'/'edit'/'share' are the client funnel stages. 'mcp'/'publish'/'agent'
+// are emitted server-side only — a client claiming them is dropped to 'page'.
+const CLIENT_KINDS = new Set(['page', 'play', 'edit', 'share'])
+
+/** POST /api/t — the page beacon + client funnel events. Body: { path, ref?,
+ *  kind? }. Fire-and-forget. sendBeacon carries the same-origin session cookie,
+ *  so we can tag WHO is looking (owner / signed-in account / headless playtest
+ *  / anonymous). `kind` defaults to 'page' and is whitelisted — the funnel
+ *  can't be spoofed into the trusted server-only kinds. */
 export async function POST(req: NextRequest) {
   // audit: an unthrottled Neon INSERT per anonymous beacon was the site's best
-  // write-amplification lever. 30 pageviews/min/IP is generous for humans.
+  // write-amplification lever. 30 events/min/IP is generous for humans (page
+  // beacons + funnel events share this budget; the client tracker dedups too).
   const { ipThrottled } = await import('@/lib/ip-throttle')
   if (ipThrottled(req, 't', 30)) return NextResponse.json({ ok: true, dropped: true })
-  let body: { path?: string; ref?: string } = {}
+  let body: { path?: string; ref?: string; kind?: string } = {}
   try { body = await req.json() } catch { /* sendBeacon may arrive as text */ }
   if (!body.path) return NextResponse.json({ ok: false }, { status: 400 })
+  const kind = (body.kind && CLIENT_KINDS.has(body.kind) ? body.kind : 'page') as 'page' | 'play' | 'edit' | 'share'
   const ua = req.headers.get('user-agent')
   let who: string | null = null
   if (isHeadlessUA(ua)) {
@@ -30,7 +39,7 @@ export async function POST(req: NextRequest) {
     // else null = an anonymous stranger — the number that means growth
   }
   await logVisit({
-    kind: 'page',
+    kind,
     path: body.path,
     ref: body.ref || null,
     ua,

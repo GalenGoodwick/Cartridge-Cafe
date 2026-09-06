@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/adminAuth'
 import { prisma } from '@/lib/prisma'
 import { clampHours, sceneWorldLabel } from '@/lib/analytics-window'
+import { computeFunnel, worldVirality } from '@/lib/funnel'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
   const wantPaths = searchParams.get('paths') === '1'
   const wantAll = searchParams.get('alltime') === '1'
   const wantRefs = searchParams.get('refs') === '1'
+  const wantFunnel = searchParams.get('funnel') === '1'
   const rawRef = searchParams.get('rawref')   // inspect raw rows for one referrer host (e.g. a Teams unfurl vs a real click)
   const hours = clampHours(searchParams.get('hours'))
   try {
@@ -137,6 +139,60 @@ export async function GET(req: NextRequest) {
            ORDER BY ts DESC LIMIT 50`, rawRef).catch(() => [] as RawRow[])
       : null
 
+    // ?funnel=1 — THE ACTIVATION FUNNEL over the window: distinct visitors at
+    // each stage (page → play → edit → publish), MCP logins, shares, and the
+    // per-world virality (new visitors per share). Owner + headless are excluded
+    // so my own dev browsing and playtests don't inflate the rates — this is the
+    // honest "real users" funnel. `hours` is a clamped integer (safe to inline).
+    type FunnelRow = { visitors: bigint; players: bigint; editors: bigint; publishers: bigint; mcp_logins: bigint; shares: bigint }
+    const [funnelCounts] = wantFunnel
+      ? await prisma.$queryRawUnsafe<FunnelRow[]>(`
+          SELECT count(DISTINCT vid) FILTER (WHERE kind='page')    AS visitors,
+                 count(DISTINCT vid) FILTER (WHERE kind='play')    AS players,
+                 count(DISTINCT vid) FILTER (WHERE kind='edit')    AS editors,
+                 count(DISTINCT vid) FILTER (WHERE kind='publish') AS publishers,
+                 count(*)            FILTER (WHERE kind='mcp')     AS mcp_logins,
+                 count(*)            FILTER (WHERE kind='share')   AS shares
+          FROM "Visit"
+          WHERE ts > now() - interval '${hours} hours'
+            AND who IS DISTINCT FROM 'owner' AND who IS DISTINCT FROM 'headless'`).catch(() => [undefined])
+      : [undefined]
+
+    type ViralRow = { path: string; shares: number; newcomers: number }
+    const viralRows: ViralRow[] = wantFunnel
+      ? await prisma.$queryRawUnsafe<ViralRow[]>(`
+          WITH firsts AS (
+            SELECT vid, min(ts) AS first_seen FROM "Visit"
+            WHERE kind='page' AND vid IS NOT NULL GROUP BY vid
+          )
+          SELECT v.path,
+                 count(*) FILTER (WHERE v.kind='share')::int AS shares,
+                 count(DISTINCT v.vid) FILTER (
+                   WHERE v.kind='page' AND f.first_seen > now() - interval '${hours} hours'
+                     AND v.who IS DISTINCT FROM 'owner' AND v.who IS DISTINCT FROM 'headless'
+                 )::int AS newcomers
+          FROM "Visit" v
+          LEFT JOIN firsts f ON f.vid = v.vid
+          WHERE v.ts > now() - interval '${hours} hours'
+            AND (v.path LIKE '/space/%' OR v.path LIKE '/hub/%')
+          GROUP BY v.path
+          HAVING count(*) FILTER (WHERE v.kind='share') > 0
+              OR count(DISTINCT v.vid) FILTER (WHERE v.kind='page' AND f.first_seen > now() - interval '${hours} hours') > 0
+          ORDER BY newcomers DESC, shares DESC
+          LIMIT 40`).catch(() => [] as ViralRow[])
+      : []
+
+    const funnel = wantFunnel
+      ? computeFunnel({
+          visitors: Number(funnelCounts?.visitors ?? 0),
+          players: Number(funnelCounts?.players ?? 0),
+          editors: Number(funnelCounts?.editors ?? 0),
+          publishers: Number(funnelCounts?.publishers ?? 0),
+          mcpLogins: Number(funnelCounts?.mcp_logins ?? 0),
+          shares: Number(funnelCounts?.shares ?? 0),
+        })
+      : null
+
     return NextResponse.json({
       summary: {
         pages: Number(summary?.pages ?? 0),
@@ -167,6 +223,18 @@ export async function GET(req: NextRequest) {
       } : {}),
       ...(wantRefs ? { referrers: (referrers ?? []).map(r => ({ source: r.source, hits: r.hits, visitors: r.visitors })) } : {}),
       ...(rawRef ? { rawRef, rawRows: (rawRows ?? []).map(r => ({ ts: r.ts.toISOString(), path: r.path, kind: r.kind, who: r.who, ua: r.ua })) } : {}),
+      ...(wantFunnel && funnel ? {
+        funnel: {
+          window: { hours },
+          visitors: funnel.visitors,
+          play: { count: funnel.players, rate: funnel.playRate },
+          edit: { count: funnel.editors, rate: funnel.editRate },
+          publish: { count: funnel.publishers, rate: funnel.publishRate },
+          mcpLogins: funnel.mcpLogins,
+          shares: funnel.shares,
+          perWorld: worldVirality(viralRows.map(r => ({ path: sceneWorldLabel(r.path.replace(/^\/space\//, 'main/players/space:')), shares: r.shares, newcomers: r.newcomers }))),
+        },
+      } : {}),
     })
   } catch {
     return NextResponse.json({ error: 'analytics unavailable' }, { status: 500 })

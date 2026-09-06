@@ -55,7 +55,15 @@ async function resyncSeq() {
 // flooding — one shout per minute is enough to notice in the dashboard.
 let lastLoggedErrAt = 0
 
-export async function logVisit(v: { kind: 'page' | 'agent' | 'mcp'; path: string; ref?: string | null; ua?: string | null; ip?: string | null; who?: string | null }) {
+/** Event kinds on the one Visit table. 'page'/'agent'/'mcp' are the traffic
+ *  kinds; 'play'/'edit'/'publish'/'share' are the ACTIVATION FUNNEL — the same
+ *  vid ties a stranger's page → play → edit → publish within a day, so the
+ *  funnel is a single self-joined query, no new table. mcp/publish are emitted
+ *  server-side (trusted); play/edit/share come from the client via /api/t
+ *  (whitelisted there — a browser can't forge mcp/publish/agent). */
+export type VisitKind = 'page' | 'agent' | 'mcp' | 'play' | 'edit' | 'publish' | 'share'
+
+export async function logVisit(v: { kind: VisitKind; path: string; ref?: string | null; ua?: string | null; ip?: string | null; who?: string | null }) {
   const insert = () => {
     const vid = visitorId(v.ip || '', v.ua || '')
     return prisma.$executeRaw`INSERT INTO "Visit" (kind, path, ref, ua, vid, who)

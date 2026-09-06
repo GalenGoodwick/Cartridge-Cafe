@@ -6,6 +6,7 @@ import { verifyChallengeCookie } from '@/lib/passkeys'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { mintPlayerToken, revokePlayerTokenByRaw } from '@/lib/player-token'
 import { createPairing, readPairing, approvePairing, pollPairing } from '@/lib/ai-pairing'
+import { logVisit } from '@/lib/visits'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,6 +126,17 @@ export async function POST(req: NextRequest) {
         firstPairGift = true
       }
     } catch { /* the pairing itself must never fail on the gift */ }
+    // FUNNEL: the MCP LOGIN — an AI just linked to this account. Trusted
+    // (server-side) so it lands as kind='mcp'. A first-ever pair (firstPairGift)
+    // is the true "new AI-native activation"; a re-pair is a returning connect.
+    void logVisit({
+      kind: 'mcp',
+      path: firstPairGift ? '/mcp/connect:first' : '/mcp/connect',
+      ref: pairing.aiName || null,
+      ua: req.headers.get('user-agent'),
+      ip: req.headers.get('x-forwarded-for')?.split(',')[0] || null,
+      who: 'account',
+    })
     return NextResponse.json({ ok: true, claimedWorlds, firstPairGift })
   }
 

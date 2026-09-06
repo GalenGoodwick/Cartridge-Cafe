@@ -10,6 +10,9 @@ import { loadGameSlot, saveGameSlot, listScenes, deleteScene, hydrateAllScenes }
 import { getLineage } from '../../engine/lineage'
 import { enqueueBake } from '@/lib/icon-bake-queue'
 import { warmSpaceOgCard } from '@/lib/og-card'
+import { logVisit } from '@/lib/visits'
+
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 
 export const dynamic = 'force-dynamic'
 
@@ -111,7 +114,7 @@ export async function PATCH(
 
   const space = await prisma.playerSpace.findUnique({
     where: { slug },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, isPublic: true },
   })
 
   if (!space || space.ownerId !== user.id) {
@@ -165,6 +168,18 @@ export async function PATCH(
   // re-bakes needlessly. Ongoing edits/drift are caught by the read-time staleness
   // check + the heal sweep; this just covers the publish moment promptly.
   if (update.isPublic === true) {
+    // FUNNEL: the PUBLISH stage — count only the real false→true transition, not
+    // an idempotent re-save of an already-public world. Trusted (server-side),
+    // so it lands as kind='publish' which the client can't forge.
+    if (space.isPublic === false) {
+      void logVisit({
+        kind: 'publish',
+        path: '/space/' + updated.slug,
+        ua: req.headers.get('user-agent'),
+        ip: req.headers.get('x-forwarded-for')?.split(',')[0] || null,
+        who: ADMIN_EMAILS.includes(session.user.email.toLowerCase()) ? 'owner' : 'account',
+      })
+    }
     getSpaceSnapshot(space.id, true)
       .then(snap => {
         if (!snap) return

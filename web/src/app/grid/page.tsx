@@ -18,6 +18,7 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import LineagePanel from '@/app/engine/LineagePanel'
 import { inviteText } from '@/lib/invite'
+import { track } from '@/lib/track'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import BottomBar, { type BarCtx, type BarActions } from './BottomBar'
@@ -331,13 +332,21 @@ export default function TheGrid() {
   // CREATE PLAYTEST (phase 'play' inside create), which goes full-frame at the
   // declared shape while keeping create's context and clean bar.
   const miniTop = browsing || engineSet || (createSet && phase !== 'play')
+  // THE PLAQUE BAR (Galen, Sep 6): the front door finally names the house — a
+  // slim topbar with the wordmark + slogan + the sign-in door. Browse/engine/
+  // create only; full-frame PLAY keeps every pixel (no chrome over the world).
+  // On phones the slogan drops to its own centered line under the bar.
+  const mobileBar = win.w < 640
+  const topH = miniTop ? (mobileBar ? 74 : 56) : 0
+  // a phone can't sit on the hidden DESKTOP tab (shrink/rotate lands here)
+  useEffect(() => { if (mobileBar && tab === 'desktop') setTab('mobile') }, [mobileBar, tab])
   const inset = useMemo<Inset>(() => {
-    const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + M + BAR_H + 10)
+    const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + topH + M + BAR_H + 10)
     // MOBILE IS MOBILE (Galen): a mobile-declared world wears a PHONE-SHAPED
     // frame on desktop too — full-frame play AND the mini frame. CREATE's
     // ▯ MOBILE facet declares the same shape while brewing.
     const mobileWorld = (createSet && createShape === 'mobile') || spc?.device === 'mobile'
-    const availH = H - M - BAR_H - 10
+    const availH = H - topH - M - BAR_H - 10
     if (!miniTop) {
       if (mobileWorld) {
         // full-frame play, portrait — the frame CONFORMS to the world's 9:16
@@ -350,9 +359,9 @@ export default function TheGrid() {
         const h = Math.min(availH, w * (16 / 9))
         const spare = Math.max(0, availH - h)
         const left = Math.max((W - w) / 2, M)
-        return { top: M + spare / 2, right: Math.max(W - left - w, M), bottom: BAR_H + 10 + spare / 2, left }
+        return { top: topH + M + spare / 2, right: Math.max(W - left - w, M), bottom: BAR_H + 10 + spare / 2, left }
       }
-      return { top: M, right: M, bottom: BAR_H + 10, left: M }
+      return { top: topH + M, right: M, bottom: BAR_H + 10, left: M }
     }
     const aspect = mobileWorld ? 9 / 16 : 16 / 10
     let w = (W - M * 2) * (aspect < 1 ? 0.18 : 0.42), h = w / aspect
@@ -360,8 +369,8 @@ export default function TheGrid() {
     if (h > hMax) { h = hMax; w = h * aspect }
     w = Math.max(w, MIN_W); h = Math.max(h, MIN_H)
     const left = Math.max((W - w) / 2, M)
-    return { top: M, right: Math.max(W - left - w, M), bottom: Math.max(H - M - h, BAR_H + 10), left }
-  }, [miniTop, win, createSet, createShape, spc])
+    return { top: topH + M, right: Math.max(W - left - w, M), bottom: Math.max(H - topH - M - h, BAR_H + 10), left }
+  }, [miniTop, topH, win, createSet, createShape, spc])
 
   // (the synthetic-resize ease loop is GONE — Galen: "why do we need a sizing
   // loop at all?" The engine now re-fits itself through a persistent
@@ -472,6 +481,9 @@ export default function TheGrid() {
         if (d?.premium && !d.owned) { setPremGate({ slug, usd: d.premium.usd, signedIn: !!d.signedIn, buyable: !!d.buyable }); return }
       } catch { /* gate slow/unreachable — open now; the belt effect re-gates */ }
     }
+    // FUNNEL: a real body entered a real world (past the gate). Not the create
+    // playtest above (that returns early) — this is the "started playing" stage.
+    if (scene.startsWith('space:')) track('play', '/space/' + scene.slice(6))
     setUiSet('games'); setPhase('play')
   }, [scene, uiSet])
   // BELT: a deep link straight to ?ph=play can't skip the gate. A CREATE
@@ -617,6 +629,42 @@ export default function TheGrid() {
         ))}
       </div>
 
+      {/* ═ THE PLAQUE BAR — wordmark · slogan · the sign-in door. CONNECT AI
+          stays on the dockstar bar (Galen, Sep 5: one green door, never two). ═ */}
+      {miniTop && (
+        <div className="fixed inset-x-0 top-0 z-[111]" style={{ height: topH }}>
+          <div className="flex items-center gap-3.5 px-4 sm:px-5 border-b border-brass/25"
+            style={{ height: mobileBar ? 50 : 56, background: 'linear-gradient(180deg, rgba(10,13,19,0.85), rgba(10,13,19,0.35))' }}>
+            <a href="/" className="italic font-bold leading-none shrink-0"
+              style={{ fontFamily: 'var(--font-display)', fontSize: mobileBar ? 17 : 21, color: '#FFB25A', textShadow: '0 0 18px rgba(255,178,90,0.35)' }}>
+              cartridge.cafe
+            </a>
+            {!mobileBar && <>
+              <span className="text-[14px] text-brass/70" aria-hidden>·</span>
+              <span className="font-mono text-[12.5px] tracking-[0.06em] text-crema truncate">make little game worlds with AI</span>
+            </>}
+            <span className="flex-1" />
+            {me === null && (
+              <a href={'/auth/signin?callbackUrl=' + encodeURIComponent('/grid')}
+                className="font-mono text-[11.5px] tracking-[0.2em] px-3 py-1.5 rounded-lg border border-brass/45 text-glow bg-glow/5 hover:bg-glow/10 transition-colors shrink-0 whitespace-nowrap">
+                COME IN →
+              </a>
+            )}
+            {!!me && (
+              <a href="/account"
+                className="font-mono text-[11.5px] tracking-[0.2em] px-3 py-1.5 rounded-lg border border-brass/30 text-steamer/70 hover:text-glow transition-colors truncate max-w-[180px]">
+                {(me.name || me.email?.split('@')[0] || 'ACCOUNT').toUpperCase()}
+              </a>
+            )}
+          </div>
+          {mobileBar && (
+            <div className="text-center font-mono text-[10.5px] tracking-[0.08em] text-crema pt-1.5">
+              make little game worlds with AI
+            </div>
+          )}
+        </div>
+      )}
+
       {/* CLICK THE FRAME TO PLAY (games·browse) */}
       {browsing && (
         <button aria-label={`play ${selected?.name ?? ''}`} onClick={() => void tryPlay()}
@@ -634,7 +682,10 @@ export default function TheGrid() {
           style={{ top: shelfTop, bottom: BAR_H + 6 }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
-            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM']] as const).map(([k, label]) => (
+            {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
+                always play — desktop-editable worlds have no seat there */}
+            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM']] as const)
+              .filter(([k]) => !(mobileBar && k === 'desktop')).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/50 hover:text-white/70'}`}>
@@ -1119,10 +1170,11 @@ export default function TheGrid() {
         }}
         act={{
           back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create' || uiSet === 'engine') { setUiSet('games'); setPhase('browse') } },
-          edit: () => { setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          edit: () => { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           create: () => { if (companyScope) { setUiSet('engine'); setTool('mine'); return } setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
           share: async () => {
+            track('share', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid')
             const shareText = inviteText()
             try { await navigator.share?.({ title: 'cartridge.cafe', text: shareText }) }
             catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
@@ -1132,7 +1184,7 @@ export default function TheGrid() {
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
-          nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { setUiSet('engine') } },
+          nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setUiSet('engine') } },
           account: () => { window.location.href = '/account' },
           connect: () => { setConnectMode('connect'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           instructions: () => { setInstrOpen(o => !o); setConnectOpen(false) },
