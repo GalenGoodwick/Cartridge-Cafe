@@ -554,7 +554,15 @@ async function ensureCreditTables(): Promise<void> {
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS cc_credits (
     user_id TEXT PRIMARY KEY, n INT NOT NULL DEFAULT 0)`)
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS cc_credit_grants (
-    grant_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, qty INT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())`)
+    grant_id TEXT NOT NULL, user_id TEXT NOT NULL, qty INT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (grant_id, user_id))`)
+  // COMPOSITE key migration (the unit suite caught it: promo codes reuse ONE
+  // grant id across USERS — a global PK let the first redeemer consume it for
+  // everyone). Idempotent: the ALTER fails harmlessly once migrated.
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE cc_credit_grants DROP CONSTRAINT cc_credit_grants_pkey`)
+    await prisma.$executeRawUnsafe(`ALTER TABLE cc_credit_grants ADD PRIMARY KEY (grant_id, user_id)`)
+  } catch { /* already composite */ }
   g.__ccCreditTables = true
 }
 
@@ -589,7 +597,7 @@ export async function grantGenCredits(userId: string, sessionId: string | undefi
   if (sessionId && (await legacyGrantExists(userId, sessionId))) return readGenCredits(userId)
   const gid = sessionId ?? `nosession:${userId}:${Date.now()}`
   const inserted = await prisma.$executeRawUnsafe(
-    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id) DO NOTHING`, gid, userId, q)
+    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id, user_id) DO NOTHING`, gid, userId, q)
   if (inserted > 0) {
     await prisma.$executeRawUnsafe(`UPDATE cc_credits SET n = n + $1 WHERE user_id = $2`, q, userId)
   }
@@ -607,7 +615,7 @@ export async function clawbackGenCredits(userId: string, n: number, refundId: st
   await seedCreditRow(userId)
   const { prisma } = await import('@/lib/prisma')
   const inserted = await prisma.$executeRawUnsafe(
-    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id) DO NOTHING`, refundId, userId, -Math.max(0, Math.floor(n)))
+    `INSERT INTO cc_credit_grants (grant_id, user_id, qty) VALUES ($1, $2, $3) ON CONFLICT (grant_id, user_id) DO NOTHING`, refundId, userId, -Math.max(0, Math.floor(n)))
   if (inserted > 0) {
     await prisma.$executeRawUnsafe(`UPDATE cc_credits SET n = GREATEST(0, n - $1) WHERE user_id = $2`, Math.max(0, Math.floor(n)), userId)
   }

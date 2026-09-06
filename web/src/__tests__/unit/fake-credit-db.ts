@@ -16,8 +16,9 @@ export function makeFakeCreditDb() {
       }
       if (sql.startsWith('INSERT INTO cc_credit_grants')) {
         const [gid, uid, qty] = args as [string, string, number]
-        if (grants.has(gid)) return 0
-        grants.set(gid, { userId: uid, qty }); return 1
+        const key = gid + '|' + uid   // composite (grant_id, user_id) — per-user idempotency
+        if (grants.has(key)) return 0
+        grants.set(key, { userId: uid, qty }); return 1
       }
       if (sql.includes('SET n = n + 1')) { const [uid] = args as [string]; credits.set(uid, (credits.get(uid) ?? 0) + 1); return 1 }
       if (sql.includes('SET n = n +')) { const [q, uid] = args as [number, string]; credits.set(uid, (credits.get(uid) ?? 0) + q); return 1 }
