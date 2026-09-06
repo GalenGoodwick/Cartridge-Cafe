@@ -191,6 +191,9 @@ export default function SpaceManagementOverlay({ spaceSlug, spaceId, embedded }:
                   ? 'on the shelf — anyone can play it; forks (if you allow them) carry your credit through lineage'
                   : 'yours alone — no one else can open or play it'}
               </div>
+              <div className="mt-1.5 text-[13px] leading-snug text-amber-200/45">
+                ◆ premium pricing (sell this world) — coming: the machinery exists, but no sales until the maker payout pipeline + tax onboarding can actually pay you.
+              </div>
             </div>
 
             {/* KEYS & SEATS (Galen, Sep 5: 'keep the function but leave out the

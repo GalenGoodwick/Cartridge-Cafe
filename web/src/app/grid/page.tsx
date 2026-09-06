@@ -794,13 +794,30 @@ export default function TheGrid() {
                 ◆ {companyScope.toUpperCase()} — THE COMPANY&apos;S PRIVATE SPACE · closed source · nothing here touches the public cafe
               </div>
             )}
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['audio', '♪ MUSIC/SFX'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['publish', '⬆ PUBLISH'], ['export', '⬇ EXPORT'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
-              <button key={k} onClick={() => setTool(k)}
-                className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
-                  tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
-                {label}
-              </button>
-            ))}
+            {/* PARTITIONED (Galen, Sep 5): build · track · ship · world — a
+                divider between families, not a 12-tab wall. Publish lives in
+                ⚙ CONFIG (visibility IS a config), not as its own tab. */}
+            {([
+              [['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['audio', '♪ MUSIC/SFX']],
+              [['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG']],
+              [['export', '⬇ EXPORT']],
+              [['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']],
+            ] as const).map((group, gi) => {
+              const tabs = group.filter(([k]) => !(companyScope && k === 'chat'))
+              if (!tabs.length) return null
+              return (
+                <span key={gi} className="inline-flex items-center gap-1.5">
+                  {gi > 0 && <span className="w-px h-4 bg-white/15 mx-1" />}
+                  {tabs.map(([k, label]) => (
+                    <button key={k} onClick={() => setTool(k)}
+                      className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
+                        tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </span>
+              )
+            })}
             {/* (⚿ CONNECT AI tab removed — Galen, Sep 5: the gold ⚡ EDIT is the one door) */}
           </div>
           {/* LIVE-EDIT worlds carry the EDITING MEMBERSHIP box (Galen): open
