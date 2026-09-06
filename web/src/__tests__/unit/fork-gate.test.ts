@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const kv = new Map<string, Record<string, unknown>>()
+import { makeFakeCreditDb } from './fake-credit-db'
+const fakeDb = makeFakeCreditDb()
+vi.mock('@/lib/prisma', () => ({ prisma: fakeDb.prisma }))
 vi.mock('@/app/api/engine/store', () => ({
   loadGameSlot: async (k: string) => kv.get(k),
   saveGameSlot: async (k: string, v: Record<string, unknown>) => { kv.set(k, v) },
@@ -48,7 +51,7 @@ describe('canForkWorld — FORK OFF BY DEFAULT (Galen, Aug 30)', () => {
 })
 
 describe('grantGenCredits with quantity (buy more than one)', () => {
-  beforeEach(() => kv.clear())
+  beforeEach(() => { kv.clear(); fakeDb.credits.clear(); fakeDb.grants.clear() })
 
   it('grants qty credits in one purchase', async () => {
     expect(await grantGenCredits('u1', 'cs_1', 5)).toBe(5)

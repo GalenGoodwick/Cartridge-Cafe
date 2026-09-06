@@ -8,7 +8,9 @@ vi.mock('@/app/api/engine/store', () => ({
   saveGameSlotStrict: async (k: string, v: Record<string, unknown>) => { kv.set(k, v) },
 }))
 vi.mock('@/lib/adminAuth', () => ({ isAdminUserId: async () => false }))
-vi.mock('@/lib/prisma', () => ({ prisma: {} }))
+import { makeFakeCreditDb } from './fake-credit-db'
+const fakeDb = makeFakeCreditDb()
+vi.mock('@/lib/prisma', () => ({ prisma: fakeDb.prisma }))
 
 import { createPromoCode, listPromoCodes, redeemPromoCode } from '@/lib/promo'
 import { hasEditingMembership, membershipUntil, readGenCredits, grantEntitlement, spendGenCredit } from '@/lib/stripe'
@@ -16,7 +18,7 @@ import { hasEditingMembership, membershipUntil, readGenCredits, grantEntitlement
 const DAY = 86400_000
 
 describe('promo codes', () => {
-  beforeEach(() => kv.clear())
+  beforeEach(() => { kv.clear(); fakeDb.credits.clear(); fakeDb.grants.clear() })
 
   it('mints the default gift: 2 credits + 30 days, unlimited redeemers', async () => {
     const c = await createPromoCode({ createdBy: 'galen' })
