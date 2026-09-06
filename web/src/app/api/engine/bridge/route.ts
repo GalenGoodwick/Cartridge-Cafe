@@ -1945,11 +1945,17 @@ export async function POST(req: NextRequest) {
             const crErr = typeof cr.error === 'string' ? cr.error : (cr.ok === false && typeof cr.message === 'string' ? cr.message : null)
             if (crErr) shaderErrors.push({ name: String(cmd.name ?? cmd.type), type: String(cmd.type), error: crErr })
           } else if ((result as Record<string, unknown>).listeners === 0) {
-            // headless truth: nobody compiled this shader. Say so, or the builder
-            // ships WGSL believing silence means success.
+            // headless truth: nobody compiled this shader HERE. But listeners is
+            // per-lambda (the split-brain) — check the durable tab heartbeat
+            // before claiming the tab is absent (audit: AIs were being LIED to
+            // about co-presence when the tab lived on another instance).
+            const seenAt = auth.slug ? Number((await (await import('@/app/api/engine/store')).loadGameSlot('tabseen:' + auth.slug).catch(() => 0)) as number | undefined) || 0 : 0
+            const tabElsewhere = Date.now() - seenAt < 15_000
             ;(result as Record<string, unknown>).compileResult = {
               unverified: true,
-              note: 'no live tab is open, so this shader was NOT compiled — only statically scanned. Keep it simple and standard; it will first compile when a player opens the world.',
+              note: tabElsewhere
+                ? 'a tab IS watching this world, but the live relay could not reach it (different server instance) — the shader was statically scanned only; the tab adopts your change within ~5s via the rev poll and will compile it then.'
+                : 'no live tab is open, so this shader was NOT compiled — only statically scanned. Keep it simple and standard; it will first compile when a player opens the world.',
             }
           }
         }

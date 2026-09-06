@@ -192,7 +192,33 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId, unchanged: true })
         }
       }
-      await setSpaceSnapshot(body.spaceId, snapshot)
+      // UNDER THE SAME LOCK AS BRIDGE WRITES (audit rung 3): a sync racing an
+      // AI's command between this handler's read and write erased the command
+      // (the last cross-instance lost-update path). The registry re-injection
+      // above used a read that may be stale by write time — re-check inside.
+      try {
+        const { prisma: db } = await import('@/lib/prisma')
+        await db.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '3000ms'`)
+          await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))::text`, body.spaceId)
+          const cur = await tx.$queryRawUnsafe<Array<{ wd: Record<string, unknown> | null }>>(
+            `SELECT snapshot->'worldData' AS wd FROM "PlayerSpace" WHERE id = $1`, body.spaceId)
+          const curWd2 = (cur[0]?.wd ?? {}) as Record<string, unknown>
+          const inWd2 = snapshot.worldData as Record<string, unknown>
+          for (const k of ['__nodes', '__nodeSeq', '__nodeHist', '__nodeStrict', '__provenance', '__bridge_rev']) {
+            if (curWd2[k] !== undefined) inWd2[k] = curWd2[k]   // bridge truth wins inside the lock
+          }
+          // SANDBOX INVARIANT — the setSpaceSnapshot chokepoint rule, preserved
+          // on this locked path too: hooks present ⇒ __sandbox, always
+          if (snapshot.stepHooks?.length) inWd2.__sandbox = true
+          await tx.$executeRawUnsafe(`UPDATE "PlayerSpace" SET snapshot = $1::jsonb, "updatedAt" = now() WHERE id = $2`, JSON.stringify(snapshot), body.spaceId)
+        }, { maxWait: 4000, timeout: 15000 })
+        const { invalidateSpaceCache } = await import('@/app/api/engine/space-store')
+        invalidateSpaceCache(body.spaceId)
+      } catch {
+        // world busy (an AI mid-write) — skip this beat; the next 2s sync carries it
+        return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId, deferred: true })
+      }
       return NextResponse.json({ ok: true, fieldCount: fields.length, spaceId: body.spaceId })
     }
 

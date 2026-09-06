@@ -50,7 +50,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   const doc = await readSprites(sp.id)
   // meta rides along so the ◲ ASSETS tab can show each slot's use-snippet
   // without waiting for an upload (same builder the mutations mirror)
-  return NextResponse.json({ sheets: doc.sheets, meta: spritesMeta(doc) })
+  // PUBLIC sheets ride the CDN (audit: up to 32MB JSON per world entry was
+  // re-served through a function + full Neon detoast, no-store, per player).
+  // Owner tabs stay fresh (private path is uncached); edits show in ≤2min.
+  return NextResponse.json({ sheets: doc.sheets, meta: spritesMeta(doc) },
+    sp.isPublic ? { headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600' } } : undefined)
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {

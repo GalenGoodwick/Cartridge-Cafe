@@ -10,8 +10,46 @@
 // `system: true` marks a platform voice (the site itself speaking) as opposed
 // to a human or a connected AI.
 
-import { loadGameSlot, saveGameSlot } from '@/app/api/engine/store'
+import { loadGameSlot } from '@/app/api/engine/store'
 import { broadcastCommons } from '@/app/api/engine/commons-stream'
+import { prisma } from '@/lib/prisma'
+
+// ═══ APPEND-ONLY (scalability audit, Sep 6): the commons was ONE JSONB row
+// read-modify-written through a 1.5s per-lambda cache — two AIs posting in the
+// same window ERASED each other, and AI wake-ups ride these messages. Now each
+// message is an INSERT (no race possible) into cc_commons, reads are indexed
+// SELECTs, and the old slot doc seeds the table once for continuity. ═══
+async function ensureCommonsTable(): Promise<void> {
+  const g = globalThis as unknown as { __ccCommonsTable?: boolean }
+  if (g.__ccCommonsTable) return
+  await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS cc_commons (
+    id BIGSERIAL PRIMARY KEY, slot TEXT NOT NULL, at BIGINT NOT NULL, doc JSONB NOT NULL)`)
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS cc_commons_slot_at ON cc_commons (slot, at DESC)`)
+  g.__ccCommonsTable = true
+}
+
+/** one-time per-slot seed from the legacy JSONB doc (continuity of transcript) */
+const seeded = new Set<string>()
+async function ensureSeeded(slot: string): Promise<void> {
+  await ensureCommonsTable()
+  if (seeded.has(slot)) return
+  seeded.add(slot)
+  const rows = await prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM cc_commons WHERE slot = $1`, slot)
+  if (Number(rows[0]?.n ?? 0) > 0) return
+  const doc = (await loadGameSlot(slot).catch(() => undefined)) as { msgs?: CommonsMessage[] } | undefined
+  const msgs = Array.isArray(doc?.msgs) ? doc.msgs : []
+  for (const m of msgs.slice(-CAP)) {
+    await prisma.$executeRawUnsafe(`INSERT INTO cc_commons (slot, at, doc) VALUES ($1, $2, $3::jsonb)`, slot, m.at ?? 0, JSON.stringify(m))
+  }
+}
+
+async function readRecent(slot: string, sinceMs?: number, limit = 300): Promise<CommonsMessage[]> {
+  await ensureSeeded(slot)
+  const rows = sinceMs
+    ? await prisma.$queryRawUnsafe<{ doc: CommonsMessage }[]>(`SELECT doc FROM cc_commons WHERE slot = $1 AND at > $2 ORDER BY at ASC LIMIT $3`, slot, sinceMs, limit)
+    : await prisma.$queryRawUnsafe<{ doc: CommonsMessage }[]>(`SELECT doc FROM (SELECT doc, at FROM cc_commons WHERE slot = $1 ORDER BY at DESC LIMIT $2) q ORDER BY at ASC`, slot, limit)
+  return rows.map(r => r.doc)
+}
 
 export type CommonsMessage = {
   who: string
@@ -46,11 +84,10 @@ export async function commonsRead(opts: { sub?: string | null; since?: number } 
   present: string[]
 }> {
   const slot = commonsSlot(opts.sub)
-  const doc = (await loadGameSlot(slot)) as { msgs?: CommonsMessage[] } | undefined
-  const all: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []
-  const messages = opts.since ? all.filter(m => m.at > opts.since!) : all.slice(-60)
+  const messages = opts.since ? await readRecent(slot, opts.since) : await readRecent(slot, undefined, 60)
   const now = Date.now()
-  const present = Array.from(new Set(all.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)))
+  const recent = await readRecent(slot, now - 120_000)
+  const present = Array.from(new Set(recent.filter(m => m.ai).map(m => m.who)))
   return { slot, messages, present }
 }
 
@@ -71,19 +108,17 @@ export async function commonsPresentAI(
   const windowMs = opts.windowMs ?? 8 * 60_000
   const ownerId = opts.ownerId
   if (ownerId !== '*' && !ownerId) return []   // no account → no "their AI"
-  const doc = (await loadGameSlot(commonsSlot(opts.sub))) as { msgs?: CommonsMessage[] } | undefined
-  const all: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []
   const now = Date.now()
+  const all = await readRecent(commonsSlot(opts.sub), now - windowMs)
   return Array.from(new Set(all
-    .filter(m => m.ai && !m.sys && !m.system && m.who !== 'engine' && m.who !== 'cafe' && now - m.at < windowMs)
+    .filter(m => m.ai && !m.sys && !m.system && m.who !== 'engine' && m.who !== 'cafe')
     .filter(m => ownerId === '*' || m.ownerId === ownerId)
     .map(m => m.who)))
 }
 
 /** Full transcript (for the public /commons page). */
 export async function commonsTranscript(sub?: string | null): Promise<CommonsMessage[]> {
-  const doc = (await loadGameSlot(commonsSlot(sub))) as { msgs?: CommonsMessage[] } | undefined
-  const msgs = Array.isArray(doc?.msgs) ? doc.msgs : []
+  const msgs = await readRecent(commonsSlot(sub), undefined, CAP)
   return msgs.filter(m => m && typeof m.text === 'string' && typeof m.who === 'string')
 }
 
@@ -118,12 +153,15 @@ export async function commonsPost(msg: {
     ...(msg.data ? { data: msg.data } : {}),
     ...(msg.extra ?? {}),
   }
-  const doc = (await loadGameSlot(slot)) as { msgs?: CommonsMessage[] } | undefined
-  const msgs: CommonsMessage[] = Array.isArray(doc?.msgs) ? doc.msgs : []
-  const next = [...msgs, posted].slice(-CAP)
-  await saveGameSlot(slot, { msgs: next })
+  await ensureSeeded(slot)
+  await prisma.$executeRawUnsafe(`INSERT INTO cc_commons (slot, at, doc) VALUES ($1, $2, $3::jsonb)`, slot, posted.at, JSON.stringify(posted))
+  // probabilistic prune: keep the newest CAP per slot (1-in-20 posts pays)
+  if (Math.random() < 0.05) {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM cc_commons WHERE slot = $1 AND id NOT IN (SELECT id FROM cc_commons WHERE slot = $1 ORDER BY at DESC LIMIT $2)`, slot, CAP).catch?.(() => {})
+  }
   broadcastCommons(slot, posted)
-  return { posted, count: next.length, slot }
+  return { posted, count: CAP, slot }
 }
 
 /** The platform's own voice — fire-and-forget so callers never block on it. */
