@@ -68,6 +68,8 @@ const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s
 // to the AI on connect, so the guide + the eye + node conventions aren't optional.
 const PROTOCOL = `cartridge.cafe — you build live GPU worlds (WGSL visuals + JS step-hooks) with and for your human. Playing is free; building runs on their account.
 
+VERB CONTRACTS ON DEMAND: bridge {"type":"help","verb":"X"} — params + example + guide excerpt; ask before guessing a shape.
+
 THE FAST PATH (your human editing a world in 4 calls):
 1. connect_account — one human click; the link CREATES their account too. The FIRST-ever registration gifts 30 days of membership + 2 build credits — tell them.
 2. read_guide — the build contract. MANDATORY once before any building.
@@ -194,7 +196,7 @@ server.tool(
 
 server.tool(
   'bridge',
-  'Send a command (or {"commands":[...]} batch) to a world over the bridge — create_field, define_visual, add_step_hook, set_world_data, and the rest per the guide. Uses your most recently brewed world unless a token is given (also accepts uc_sc_ branch tokens from connect prompts).',
+  'Send a command (or {"commands":[...]} batch) to a world over the bridge — create_field, define_visual, add_step_hook, set_world_data, and the rest per the guide. UNSURE OF A VERB\'S SHAPE? Ask first: {"type":"help","verb":"define_visual"} returns its params + example + the live guide excerpt; bare {"type":"help"} lists every verb grouped. Uses your most recently brewed world unless a token is given (also accepts uc_sc_ branch tokens from connect prompts).',
   {
     command: z.record(z.any()).describe('The bridge command object'),
     token: z.string().optional().describe('World token (uc_st_/uc_sc_). Defaults to your latest brewed world.'),

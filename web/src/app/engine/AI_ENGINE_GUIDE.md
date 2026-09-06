@@ -4,6 +4,8 @@ How to programmatically create fields, visuals, interactions, and effects via th
 
 ---
 
+> **Verb contracts on demand**: `bridge {"type":"help","verb":"X"}` returns X's params, a working example, and the guide excerpt for it; bare `{"type":"help"}` lists every verb grouped. Ask before guessing a shape.
+
 ## Quick Start <!-- core -->
 
 ```python

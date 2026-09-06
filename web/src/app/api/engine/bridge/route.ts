@@ -780,6 +780,16 @@ export async function POST(req: NextRequest) {
     }
 
     for (const cmd of commands) {
+      // ── HELP — the per-verb contract card (any authed caller, any scope).
+      // The bridge is one tool with ~100 verbs and no per-verb schema; this
+      // closes the gap: ask BEFORE guessing a shape. bridge {type:'help'}
+      // lists every verb; {type:'help', verb:'X'} returns the contract + the
+      // live guide excerpt. ──
+      if (cmd.type === 'help') {
+        const { bridgeHelp } = await import('@/lib/bridge-help')
+        results.push(await bridgeHelp(typeof cmd.verb === 'string' ? cmd.verb : undefined))
+        continue
+      }
       // Add delay between commands so the engine page can process each one
       if (results.length > 0) {
         await new Promise(r => setTimeout(r, 100))
