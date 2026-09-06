@@ -31,7 +31,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   if (png.startsWith('data:') && comma > 0) png = png.slice(comma + 1)   // accept data-URLs
   if (!png || png.length < 100) return NextResponse.json({ error: 'no shot — open the EYE and take one first' }, { status: 400 })
   if (png.length > 2_000_000) return NextResponse.json({ error: 'shot too large (2MB cap)' }, { status: 413 })
-  try { Buffer.from(png, 'base64') } catch { return NextResponse.json({ error: 'not valid base64 png' }, { status: 400 }) }
+  // Buffer.from never throws on bad base64 (audit: the old check was dead
+  // code) — validate the alphabet AND the decoded PNG magic bytes
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(png)) return NextResponse.json({ error: 'not valid base64' }, { status: 400 })
+  const decoded = Buffer.from(png, 'base64')
+  if (decoded.length < 8 || decoded[0] !== 0x89 || decoded[1] !== 0x50 || decoded[2] !== 0x4e || decoded[3] !== 0x47) {
+    return NextResponse.json({ error: 'not a png — SET VISUAL sends the eye\u2019s png capture' }, { status: 400 })
+  }
   // the CANONICAL IconRecord shape — hash of the current snapshot so
   // iconHealth serves it, manual so the auto-photographer never overwrites
   // the owner's chosen frame (only another SET VISUAL does)

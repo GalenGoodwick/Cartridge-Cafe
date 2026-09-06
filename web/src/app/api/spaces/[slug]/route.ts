@@ -121,8 +121,8 @@ export async function PATCH(
   const body = await req.json()
   const update: Record<string, unknown> = {}
 
-  if (body.name?.trim()) update.name = body.name.trim()
-  if (body.description !== undefined) update.description = body.description?.trim() || null
+  if (body.name?.trim()) update.name = body.name.trim().slice(0, 60)          // caps (audit): multi-MB strings rode into every card payload
+  if (body.description !== undefined) update.description = body.description?.trim().slice(0, 4000) || null
   if (typeof body.isPublic === 'boolean') update.isPublic = body.isPublic
 
   // wizard: once the world is truly named, trade the placeholder slug for a real one

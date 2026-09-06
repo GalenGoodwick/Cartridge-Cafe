@@ -137,7 +137,7 @@ export async function POST(
   const body = await req.json()
   // a self-minted member key is ALWAYS named member:<handle> — the caller
   // doesn't choose (the name is the roster + the kick target)
-  const name = memberHandle ? `member:${memberHandle}` : body.name
+  const name = memberHandle ? `member:${memberHandle}` : (typeof body.name === 'string' ? body.name.slice(0, 80) : body.name)
 
   if (!name?.trim()) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })

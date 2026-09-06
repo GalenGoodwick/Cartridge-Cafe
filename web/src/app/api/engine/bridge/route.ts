@@ -780,6 +780,15 @@ export async function POST(req: NextRequest) {
       } catch { /* provenance is best-effort */ }
     }
 
+    // DISPLAY IDENTITY CARRIES ROUTE TRUTH (audit, Sep 5): the commons/
+    // roundtable `from` was purely client-chosen — any token could speak as
+    // "the keeper". A chosen name that isn't the route-derived identity gets
+    // the real tag appended, so impersonation always shows its seams.
+    const routeWho = (chosen: unknown): string => {
+      const base = String(chosen ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 60)
+      const truth = auth.memberHandle ? '@' + auth.memberHandle : (auth.spaceName ?? auth.slug ?? null)
+      return truth && base !== String(truth) ? `${base} ⋄ ${truth}` : base
+    }
     for (const cmd of commands) {
       // ── HELP — the per-verb contract card (any authed caller, any scope).
       // The bridge is one tool with ~100 verbs and no per-verb schema; this
@@ -1202,7 +1211,7 @@ export async function POST(req: NextRequest) {
         if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'summon needs a space token (uc_st_…) — it rallies AIs to a specific world' }); continue }
         const brief = String(cmd.brief ?? cmd.text ?? '').trim()
         if (!brief) { results.push({ type: cmd.type, error: 'summon needs a `brief` — what should the AIs come build?' }); continue }
-        const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const from = routeWho(cmd.from)
         const out = await broadcastSummon({ world: auth.slug!, spaceId: auth.spaceId, name: auth.spaceName ?? auth.slug!, brief, from, origin: req.nextUrl.origin })
         // the caller is a builder here too — dock it
         await registerWatcher(auth.spaceId!, holderOf(req.headers.get('authorization')?.slice(7) || ''), from, 'builder').catch(() => {})
@@ -1221,7 +1230,7 @@ export async function POST(req: NextRequest) {
       // + the current region map + who else is here. "reappearing watcher" re-docks.
       if (cmd.type === 'watch') {
         if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'watch needs a space token (uc_st_…) — a world to watch' }); continue }
-        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const who = routeWho(cmd.from)
         const kind = cmd.build === true ? 'builder' : 'watcher'
         const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
         const watchers = await registerWatcher(auth.spaceId!, holder, who, kind)
@@ -1237,7 +1246,7 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'wake_watcher') {
         if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'wake_watcher needs a space token (uc_st_…)' }); continue }
         const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
-        const from = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const from = routeWho(cmd.from)
         const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
         await commonsPost({ who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
           ai: true, slug: auth.slug, kind: 'wake', extra: { target, world: auth.slug, viewUrl } })
@@ -1259,7 +1268,7 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'claim_region') {
         if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'claim_region needs a space token (uc_st_…) — a world to carve' }); continue }
         const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const who = routeWho(cmd.from)
         const out = await claimRegion(auth.spaceId!, holder, who, { concept: cmd.concept, kind: cmd.kind, box: cmd.box as never, hookId: cmd.hookId })
         if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
         // dock the claimant as a builder
@@ -1342,7 +1351,7 @@ export async function POST(req: NextRequest) {
       if (cmd.type === 'swarm_dock') {
         if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'swarm_dock needs a space token (uc_st_…)' }); continue }
         const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+        const who = routeWho(cmd.from)
         const out = await dockNode(auth.spaceId!, holder, who, String(cmd.node ?? ''))
         if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
         results.push({ type: 'swarm_dock', ok: true, ...out.situation,
@@ -1486,7 +1495,7 @@ export async function POST(req: NextRequest) {
         if (cmd.type === 'main_say') {
           const text = String(cmd.text ?? '').trim().slice(0, 1000)
           if (!text) { results.push({ error: 'main_say needs a non-empty text' }); continue }
-          const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+          const who = routeWho(cmd.from)
           // account behind this AI: player key → playerId, space token → ownerId.
           // Stamped so the AI-connect pill can show a viewer THEIR OWN agent.
           const ownerId = auth.ownerId ?? auth.playerId ?? null
@@ -1553,7 +1562,7 @@ export async function POST(req: NextRequest) {
           const isNom = cmd.type === 'roundtable_nominate'
           const raw = String((isNom ? cmd.note : cmd.text) ?? '').trim()
           if (!isNom && !raw) { results.push({ error: 'roundtable_say needs a non-empty text' }); continue }
-          const who = String(cmd.from ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 80)
+          const who = routeWho(cmd.from)
           const text = isNom
             ? `⚑ nominates this branch to the arena${raw ? ': ' + raw.slice(0, 500) : ''}`
             : raw.slice(0, 1000)
@@ -2009,11 +2018,15 @@ export async function POST(req: NextRequest) {
       // finished, its own tokens) into the description column for share cards.
       await mirrorWorldBlurb(auth.spaceId)
     }
-    return NextResponse.json({ ok: true, executed: results.length, results, ...(health ? { health } : {}) })
+    // UNIFORM ok (audit F15): every result entry carries ok:boolean so an AI
+    // keying on it never silently misses a per-command failure inside HTTP 200
+    const stamped = results.map(r => (r && typeof r === 'object' && !('ok' in r)) ? { ok: !('error' in r), ...r } : r)
+    return NextResponse.json({ ok: true, executed: stamped.length, results: stamped, ...(health ? { health } : {}) })
   } catch (error) {
     console.error('[Engine Bridge] Error:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Bridge failed' },
+      // internals stay in the log (audit: Prisma/query text leaked to any token)
+      { error: 'bridge failed — the error is logged', ref: Date.now().toString(36) },
       { status: 500 }
     )
   }

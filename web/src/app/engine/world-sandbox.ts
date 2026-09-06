@@ -20,7 +20,8 @@ import { sceneDefine } from './scene-graph'
 const WORKER_SRC = `
 // seal the network/storage surface — a Worker has no DOM already
 for (const k of ['fetch','XMLHttpRequest','WebSocket','importScripts','indexedDB',
-                 'caches','Worker','SharedWorker','EventSource','navigator','Notification']) {
+                 'caches','Worker','SharedWorker','EventSource','navigator','Notification',
+                 'WebTransport','RTCPeerConnection','RTCDataChannel','fetchLater','WebSocketStream']) {
   try { Object.defineProperty(self, k, { value: undefined, configurable: false, writable: false }); } catch (e) {}
 }
 // shim the event bus + CustomEvent so a hook that "dispatches" only collects
@@ -689,7 +690,8 @@ export class WorldSandbox {
         if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
         if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
-            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides' && k !== '__uiClick' && k !== '__uiClickT')) {   // __uiRects (ui-solver) + __uiOverrides (UI EDIT) + __uiClick/__uiClickT (click routing) are HOST-owned — a worker echo is one tick stale and would clobber a fresh solve/drag/CLICK past the change gates (the one-engine card race: a click landing between tick-send and result-apply was erased before the worker ever saw it)
+            // host-owned: __uiRects/__uiOverrides/__uiClick(T) (solver + UI EDIT + click routing — a worker echo is one tick stale and would clobber a fresh solve/drag/CLICK) AND the platform registries __nodes/__nodeHist/__provenance/__nodeErrs/__bridge_rev/__budget/__perf (audit, Sep 5: a hook echoing them could clear peers' holds / forge attribution via tab-sync)
+            (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides' && k !== '__uiClick' && k !== '__uiClickT' && k !== '__nodes' && k !== '__nodeHist' && k !== '__provenance' && k !== '__nodeErrs' && k !== '__bridge_rev' && k !== '__budget' && k !== '__perf')) {
           wd[k] = incoming[k]
         }
       }

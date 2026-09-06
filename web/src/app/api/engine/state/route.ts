@@ -79,6 +79,16 @@ export async function POST(req: NextRequest) {
     if (!body.spaceId && !(await checkAuth(req))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    // …and the GLOBAL world (no spaceId) is the KEEPER's alone (audit F4): its
+    // stepHooks execute in every visiting tab — any-signed-in write was an XSS
+    // delivery door. Admin token or admin session only.
+    if (!body.spaceId) {
+      const { isAdmin, isAdminUserId } = await import('@/lib/adminAuth')
+      const sess = await getServerSession(authOptions)
+      const admin = (await isAdmin(req.headers.get('authorization')))
+        || (sess?.user?.id ? await isAdminUserId(sess.user.id) : false)
+      if (!admin) return NextResponse.json({ error: 'the global world is the keeper\u2019s — space syncs carry a spaceId' }, { status: 403 })
+    }
 
     // Writer lease on the global world — one session syncs, others get 409
     // instead of silently clobbering each other every 2s. Space-scoped syncs
