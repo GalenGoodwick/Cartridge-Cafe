@@ -905,6 +905,7 @@ export default function TheGrid() {
             {tool === 'nodes' && <NodesViewM graph={eyeData?.graph ?? null} />}
             {tool === 'audio' && (() => {
               const slug = scene.startsWith('space:') ? scene.slice(6) : (selected?.slug ?? '')
+              if (slug) return <AudioTabM slug={slug} name={selected?.name || slug} isOwner={!!cfgStable?.isOwner} />
               const audioText = `Add music and sound effects to my cartridge.cafe world "${selected?.name || slug}". First read_guide {"section":"audio"} — the engine synthesizes ALL audio from worldData (no files): use_world {"slug":"${slug}"}, then set_world_data with { tone } for ambience, { sounds } for event sfx (hooks fire them via api), and { music_mod } for generative music. Verify by playing: tell me what you hear should happen at each event, and I will confirm live.`
               return (
                 <div className="w-full h-full overflow-y-auto p-4 font-mono">
@@ -1109,7 +1110,7 @@ export default function TheGrid() {
           in grid/BottomBar.tsx IS the pathway log; see DESIGN-bottom-bar.md. */}
       <BottomBar barH={BAR_H}
         ctx={{
-          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create' || !!companyScope,
+          set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create' || uiSet === 'engine' || !!companyScope,
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
@@ -1117,7 +1118,7 @@ export default function TheGrid() {
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
-          back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create') { setUiSet('games'); setPhase('browse') } },
+          back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create' || uiSet === 'engine') { setUiSet('games'); setPhase('browse') } },
           edit: () => { setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           create: () => { if (companyScope) { setUiSet('engine'); setTool('mine'); return } setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
@@ -1900,6 +1901,89 @@ function CreateView({ baseName, baseSlug, forkable, onForked, onBrew }: {
     </div>
   )
 }
+
+// ♪ MUSIC/SFX — direct uploads on the Vercel Blob rail (Galen, Sep 5).
+// Upload → the track lands on the CDN → the wire snippets are copy-ready;
+// the engine already plays same-origin/blob urls (audio.ts), zero new runtime.
+function AudioTab({ slug, name, isOwner }: { slug: string; name: string; isOwner: boolean }) {
+  const [tracks, setTracks] = useState<Array<{ name: string; bytes: number; url: string }> | null>(null)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [copiedK, setCopiedK] = useState('')
+  const refresh = useCallback(() => {
+    fetch(`/api/spaces/${encodeURIComponent(slug)}/audio`).then(r => r.json())
+      .then(d => setTracks(Array.isArray(d.tracks) ? d.tracks : [])).catch(() => setTracks([]))
+  }, [slug])
+  useEffect(() => { refresh() }, [refresh])
+  const upload = async (f: File | null) => {
+    if (!f || busy) return
+    setBusy(true); setErr('')
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const rd = new FileReader()
+        rd.onload = () => res(String(rd.result).replace(/^data:[^,]*,/, ''))
+        rd.onerror = rej
+        rd.readAsDataURL(f)
+      })
+      const ext = (f.name.split('.').pop() || 'mp3').toLowerCase()
+      const nm = f.name.replace(/\.[^.]+$/, '')
+      const r = await fetch(`/api/spaces/${encodeURIComponent(slug)}/audio`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nm, b64, ext }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(d?.error || 'upload failed'); return }
+      refresh()
+    } catch { setErr('upload failed') }
+    finally { setBusy(false) }
+  }
+  const copySnip = async (t: string, k: string) => { try { await navigator.clipboard.writeText(t); setCopiedK(k); setTimeout(() => setCopiedK(''), 1400) } catch { /* select */ } }
+  const aiText = `Add music and sound effects to my cartridge.cafe world "${name}". read_guide {"section":"audio"} first. Uploaded tracks are listed by list_tracks (or upload new ones with define_track {name, b64, ext}); wire sfx with set_world_data {"data":{"sounds":{"<name>":"<url>"}}} and fire them from hooks via wd.__play_sound={id:"<name>"}; set the world's music with set_world_data {"data":{"__play_music":{"url":"<url>","loop":true}}}. You can also COMPOSE from nothing: tone / sounds synthesis / music_mod (the guide's audio section).`
+  return (
+    <div className="w-full h-full overflow-y-auto p-4 font-mono text-[12px]">
+      <div className="text-[11.5px] tracking-[0.2em] text-amber-200/80 mb-2">♪ MUSIC/SFX — {name.toUpperCase()}</div>
+      {isOwner && (
+        <label className={`inline-block px-4 py-2 rounded-xl border border-emerald-300/50 bg-emerald-400/15 text-emerald-100 text-[12px] tracking-[0.15em] hover:bg-emerald-400/25 transition-colors cursor-pointer ${busy ? 'opacity-50' : ''}`}>
+          {busy ? 'UPLOADING…' : '⬆ UPLOAD MP3 / OGG / WAV'}
+          <input type="file" accept=".mp3,.ogg,.wav,.m4a,audio/*" className="hidden" disabled={busy}
+            onChange={e => { void upload(e.target.files?.[0] ?? null); e.target.value = '' }} />
+        </label>
+      )}
+      {err && <div className="mt-2 text-amber-200/90">{err}</div>}
+      <div className="mt-3 flex flex-col gap-2 max-w-[620px]">
+        {tracks === null && <div className="text-white/50">…</div>}
+        {tracks?.length === 0 && <div className="text-white/50">no tracks yet{isOwner ? ' — upload one, or your AI composes from nothing (copy below)' : ''}.</div>}
+        {(tracks ?? []).map(t => (
+          <div key={t.name} className="rounded-xl border border-white/12 bg-black/40 p-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-white/85">♪ {t.name}</span>
+              <span className="text-white/40 text-[11px]">{Math.round(t.bytes / 1024)}KB</span>
+              <audio controls preload="none" src={t.url} className="h-7 max-w-[220px]" />
+              {isOwner && (
+                <button onClick={async () => { await fetch(`/api/spaces/${encodeURIComponent(slug)}/audio`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: t.name }) }); refresh() }}
+                  className="ml-auto text-white/35 hover:text-red-300 text-[11px]">✕ delete</button>
+              )}
+            </div>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              <button onClick={() => void copySnip(`wd.sounds = { "${t.name}": "${t.url}" }  // then in a hook: wd.__play_sound = { id: "${t.name}" }`, 'sfx:' + t.name)}
+                className="px-2.5 py-1 rounded-lg border border-white/15 text-white/60 hover:text-white text-[11px]">{copiedK === 'sfx:' + t.name ? '✓' : '⧉ wire as SFX'}</button>
+              <button onClick={() => void copySnip(`wd.__play_music = { url: "${t.url}", loop: true }`, 'mus:' + t.name)}
+                className="px-2.5 py-1 rounded-lg border border-white/15 text-white/60 hover:text-white text-[11px]">{copiedK === 'mus:' + t.name ? '✓' : '⧉ wire as MUSIC'}</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 max-w-[620px]">
+        <div className="text-[11px] text-white/45 mb-1.5">or hand it to your AI (uploads, wiring, or composing from nothing):</div>
+        <button onClick={() => void copySnip(aiText, 'ai')}
+          className="px-4 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
+          {copiedK === 'ai' ? '✓ COPIED' : '⧉ COPY FOR YOUR AI'}
+        </button>
+      </div>
+    </div>
+  )
+}
+const AudioTabM = memo(AudioTab)
 
 // ◆ BREW YOUR ICON — the same flow as the old shell panel: describe → mint the
 // icon token → COPY FOR YOUR AI; the AI calls set_player_icon and the commons

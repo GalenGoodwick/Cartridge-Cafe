@@ -901,6 +901,33 @@ export async function POST(req: NextRequest) {
         results.push({ type: cmd.type, ok: true, slots: out.meta.slots.map(s => ({ name: s.name, i: s.i })), clips: out.meta.clips })
         continue
       }
+      // ♪ AUDIO uploads (Galen, Sep 5) — same ◆ premium gate as sprites
+      if (cmd.type === 'define_track' && isSpaceScoped) {
+        {
+          const { hasIpControl } = await import('@/lib/stripe')
+          const { isAdminUserId } = await import('@/lib/adminAuth')
+          const ownerId = auth.ownerId
+          const allowed = ownerId ? (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId)) : false
+          if (!allowed) {
+            results.push({ type: cmd.type, error: 'audio uploads are a ◆ premium-suite feature — the world owner needs the IP control membership' })
+            continue
+          }
+        }
+        const { saveTrack, trackUrl, AUDIO_MIMES } = await import('@/lib/audio-store')
+        const mime = String(cmd.mime ?? '') || AUDIO_MIMES[String(cmd.ext ?? '').toLowerCase()] || ''
+        const r = await saveTrack(auth.spaceId!, String(cmd.name ?? ''), String(cmd.b64 ?? cmd.mp3 ?? '').replace(/^data:[^,]*,/, ''), mime)
+        if (!r.ok) { results.push({ type: cmd.type, error: r.error }); continue }
+        const u = trackUrl(String(auth.slug ?? ''), r.track)
+        results.push({ ok: true, type: cmd.type, name: r.track.name, bytes: r.track.bytes, url: u,
+          next: `wire it: set_world_data {"data":{"sounds":{"${r.track.name}":"${u}"}}} for sfx your hooks fire via wd.__play_sound={id:"${r.track.name}"}, or {"data":{"__play_music":{"url":"${u}","loop":true}}} for the world's music` })
+        continue
+      }
+      if (cmd.type === 'list_tracks' && isSpaceScoped) {
+        const { readAudio, trackUrl } = await import('@/lib/audio-store')
+        const doc = await readAudio(auth.spaceId!)
+        results.push({ ok: true, type: cmd.type, tracks: doc.tracks.map(t => ({ name: t.name, mime: t.mime, bytes: t.bytes, url: trackUrl(String(auth.slug ?? ''), t) })) })
+        continue
+      }
       if (cmd.type === 'list_sprites' && isSpaceScoped) {
         const { readSprites, spritesMeta } = await import('@/lib/sprite-store')
         const doc = await readSprites(auth.spaceId!)

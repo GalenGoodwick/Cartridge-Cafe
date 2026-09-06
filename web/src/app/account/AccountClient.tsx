@@ -242,6 +242,15 @@ export default function AccountClient(p: {
             </div>
           </section>
 
+          {/* ⚙ THE ENGINE — a maker's door back to their workshop (Galen, Sep 5) */}
+          {p.worldCount > 0 && (
+            <section className={box}>
+              <h2 className={h2}>YOUR ENGINE</h2>
+              <p className="text-[13px] text-white/55 mb-3">{p.worldCount} world{p.worldCount === 1 ? '' : 's'} on your deed — open the workshop.</p>
+              <a href="/grid?ui=engine" className={`${btn} inline-block border-sky-300/50 text-sky-100 hover:bg-sky-400/15`}>⚙ OPEN YOUR ENGINE</a>
+            </section>
+          )}
+
           {/* ✚ BUILD CREDITS — count + buy (moved from the dockstar, Sep 5) */}
           <section className={box}>
             <h2 className={h2}>BUILD CREDITS</h2>
