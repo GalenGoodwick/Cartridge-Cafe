@@ -69,6 +69,7 @@ export default function TheGrid() {
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
+  const [companyScope, setCompanyScope] = useState<string | null>(null)
   const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
@@ -259,6 +260,13 @@ export default function TheGrid() {
       // CONNECT INTENT (Galen: "lost copy prompt"): a freshly-built world arrives
       // as ?connect=1 — open the ENGINE ⚿ CONNECT AI tab so its paste-prompt +
       // copy button are right there, no hunting.
+      // COMPANY SCOPE (Galen, Sep 5): /company/<handle> opens THE PRIVATE
+      // ENGINE WINDOW — engine set, worlds tool, listing the company's line
+      const co = u.searchParams.get('co')
+      if (co) {
+        setCompanyScope(co); setUiSet('engine'); setTool('mine')
+        u.searchParams.delete('co'); window.history.replaceState(null, '', u.toString())
+      }
       if (u.searchParams.get('connect') === '1') {
         setUiSet('engine'); setConnectMode('edit'); setConnectOpen(true)   // fresh world → the EDIT face
         u.searchParams.delete('connect'); window.history.replaceState(null, '', u.toString())
@@ -892,7 +900,7 @@ export default function TheGrid() {
               ? <LineagePanel inline slug={scene.slice(6)} worldData={undefined} />
               : <div className="p-4 font-mono text-[13px] text-white/50">house cartridge — lineage lives on real worlds</div>)}
             {tool === 'publish' && <PublishViewM cfg={cfgStable} />}
-            {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} />}
+            {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} co={companyScope} />}
             {tool === 'brain' && <BrainViewM />}
             {tool === 'config' && (
               <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} />
@@ -1467,24 +1475,37 @@ function VersionsView({ cfg }: { cfg: { isOwner: boolean; spaceSlug: string | nu
 
 // ⌂ MY WORLDS in ENGINE — your worlds, pickable into the frame without leaving
 // the workshop (the GAMES shelf has the same tab for play).
-function MyWorldsView({ icons, current, onPick }: {
+function MyWorldsView({ icons, current, onPick, co }: {
   icons: Map<string, string>
   current: string
   onPick: (scene: string) => void
+  co?: string | null
 }) {
   const [mine, setMine] = useState<Entry[] | null>(null)
+  const [coName, setCoName] = useState<string | null>(null)
   useEffect(() => {
+    if (co) {
+      // THE PRIVATE LINE (Galen, Sep 5): company scope lists the company's
+      // private worlds — the engine window a provisioned team lives in
+      fetch(`/api/company/worlds?handle=${encodeURIComponent(co)}`).then(r => r.json())
+        .then((d: { company?: string; worlds?: Array<{ slug: string; name: string }> }) => {
+          setCoName(d.company ?? co)
+          setMine(Array.isArray(d.worlds) ? d.worlds.map(w => ({ slug: w.slug, name: w.name, scene: 'space:' + w.slug })) : [])
+        })
+        .catch(() => setMine([]))
+      return
+    }
     fetch('/api/cards?tab=mine').then(r => r.json())
       .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
         setMine(Array.isArray(d.cards) ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined })) : [])
       })
       .catch(() => setMine([]))
-  }, [])
+  }, [co])
   return (
     <div className="w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">⌂ MY WORLDS — pick one into the frame</div>
+      <div className="text-[11.5px] tracking-[0.2em] text-emerald-200/70 mb-2">{co ? `◆ ${(coName ?? co).toUpperCase()} — THE PRIVATE LINE` : '⌂ MY WORLDS — pick one into the frame'}</div>
       {mine === null && <div className="text-[12px] text-white/55">…</div>}
-      {mine?.length === 0 && <div className="text-[12px] text-white/55">no worlds on your deed yet — sign in, or brew one at /create.</div>}
+      {mine?.length === 0 && <div className="text-[12px] text-white/55">{co ? 'no private worlds yet — create_world under ◆ IP control births them here.' : 'no worlds on your deed yet — sign in, or brew one at /create.'}</div>}
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
         {(mine ?? []).map(e => {
           const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
