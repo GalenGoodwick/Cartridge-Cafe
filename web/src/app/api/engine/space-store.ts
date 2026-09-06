@@ -1134,7 +1134,10 @@ export function applyCommandToSnapshotObject(
         const incoming = w.worldData as Record<string, unknown>
         const next: Record<string, unknown> = {}
         for (const [k, v] of Object.entries(incoming)) {
-          if (!k.startsWith('__') && k !== 'policy') next[k] = v
+          // premium + brief_done ride ONLY set_world_data, where their gates
+          // live (IP entitlement · render/perf ship gates) — the put path was
+          // a bypass (audit, Sep 5)
+          if (!k.startsWith('__') && k !== 'policy' && !(cmd.__admin !== true && (k === 'premium' || k === 'brief_done'))) next[k] = v
         }
         for (const [k, v] of Object.entries(cur)) {
           if (k.startsWith('__')) next[k] = v
