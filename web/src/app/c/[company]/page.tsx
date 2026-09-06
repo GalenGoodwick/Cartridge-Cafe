@@ -60,6 +60,11 @@ export default async function CompanyPage({ params }: { params: Promise<{ compan
     : null
   const myHandle = me?.email ? me.email.split('@')[0].replace(/[^a-z0-9_-]/gi, '') : null
   let inside = me?.id === owner.id
+  // the KEEPER sees every room (admin oversight — same authority as /admin)
+  if (!inside && me?.id) {
+    const { isAdminUserId } = await import('@/lib/adminAuth')
+    if (await isAdminUserId(me.id)) inside = true
+  }
   if (!inside && myHandle) {
     const seat = await prisma.spaceToken.count({
       where: { name: `member:${myHandle}`, revokedAt: null, space: { ownerId: owner.id } },
