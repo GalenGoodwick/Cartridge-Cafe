@@ -70,7 +70,7 @@ export default function TheGrid() {
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
   const [companyScope, setCompanyScope] = useState<string | null>(null)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'audio' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -794,7 +794,7 @@ export default function TheGrid() {
                 ◆ {companyScope.toUpperCase()} — THE COMPANY&apos;S PRIVATE SPACE · closed source · nothing here touches the public cafe
               </div>
             )}
-            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
+            {([['eye', '◈ EYE'], ['console', '⌁ CONSOLE'], ['nodes', '⬢ NODES'], ['assets', '◲ ASSETS'], ['audio', '♪ MUSIC/SFX'], ['versions', '⏱ VERSIONS'], ['lineage', '⑂ LINEAGE'], ['config', '⚙ CONFIG'], ['chat', '◉ CHAT'], ['mine', '⌂ MY WORLDS']] as const).filter(([k]) => !(companyScope && k === 'chat')).map(([k, label]) => (
               <button key={k} onClick={() => setTool(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tool === k ? 'bg-sky-400/15 border-sky-300/50 text-sky-100' : 'bg-black/40 border-white/10 text-white/55 hover:text-white/75'}`}>
@@ -886,6 +886,22 @@ export default function TheGrid() {
               </div>
             )}
             {tool === 'nodes' && <NodesViewM graph={eyeData?.graph ?? null} />}
+            {tool === 'audio' && (() => {
+              const slug = scene.startsWith('space:') ? scene.slice(6) : (selected?.slug ?? '')
+              const audioText = `Add music and sound effects to my cartridge.cafe world "${selected?.name || slug}". First read_guide {"section":"audio"} — the engine synthesizes ALL audio from worldData (no files): use_world {"slug":"${slug}"}, then set_world_data with { tone } for ambience, { sounds } for event sfx (hooks fire them via api), and { music_mod } for generative music. Verify by playing: tell me what you hear should happen at each event, and I will confirm live.`
+              return (
+                <div className="w-full h-full overflow-y-auto p-4 font-mono">
+                  <div className="text-[11.5px] tracking-[0.2em] text-amber-200/80 mb-2">♪ MUSIC/SFX — YOUR AI COMPOSES THEM</div>
+                  <p className="text-[12px] text-white/60 leading-relaxed mb-3 max-w-[560px]">the cafe synthesizes ALL audio from the world itself — tone (ambience), sounds (event sfx your hooks fire), music_mod (generative score). No files needed. Copy this, paste it to your AI:</p>
+                  <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3 max-w-[560px]">{audioText}</div>
+                  <button onClick={async () => { try { await navigator.clipboard.writeText(audioText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* select-all fallback */ } }}
+                    className="px-4 py-2 rounded-xl border border-amber-300/50 bg-amber-400/15 text-amber-100 text-[12px] tracking-[0.15em] hover:bg-amber-400/25 transition-colors">
+                    {copied ? '✓ COPIED' : '⧉ COPY FOR YOUR AI'}
+                  </button>
+                  <p className="text-[11px] text-white/40 mt-3">uploading real audio files (mp3/wav) is coming — the storage rail lands next.</p>
+                </div>
+              )
+            })()}
             {tool === 'assets' && (() => {
               const slug = scene.startsWith('space:') ? scene.slice(6) : ''
               const assetText = `I want to add assets to my cartridge.cafe world "${selected?.name || slug}". I'm dropping the files into this chat — upload each one into the world over the bridge: read_guide {"section":"sprites"} first, then use_world {"slug":"${slug}"} and define_sprite {name, png} per image (define_sheet {cols,rows,fps} for animation strips). Caps: 4MB/sheet, 24MB/world. Confirm each upload by name.`
