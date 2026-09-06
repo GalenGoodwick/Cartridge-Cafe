@@ -66,6 +66,19 @@ export default function TheGrid() {
   // load and pick their own first entry.
   const [scene, setScene] = useState<string>(() =>
     (typeof window !== 'undefined' && window.innerWidth < 700) ? 'space:nocturne-district' : LOCAL[0].scene)
+  // ◉ N PLAYING NOW — live occupancy per slug; shows ONLY when > 0
+  const [playing, setPlaying] = useState<Record<string, number>>({})
+  useEffect(() => {
+    let stop = false
+    const tick = () => {
+      if (document.hidden) return
+      fetch('/api/presence/counts').then(r => r.json())
+        .then(d => { if (!stop && d?.counts) setPlaying(d.counts) }).catch(() => {})
+    }
+    tick()
+    const iv = setInterval(tick, 20_000)
+    return () => { stop = true; clearInterval(iv) }
+  }, [])
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
@@ -675,7 +688,7 @@ export default function TheGrid() {
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
-            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
+            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
           </span>
         </button>
       )}
@@ -757,7 +770,7 @@ export default function TheGrid() {
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
-            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}
+            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
           </span>
         </button>
       )}
