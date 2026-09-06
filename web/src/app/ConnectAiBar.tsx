@@ -20,7 +20,8 @@ export default function ConnectAiBar() {
   // /create too (Galen, Sep 5: 'no connect ai button inside create flow —
   // bottom bar is only where it belongs')
   // /account too (Galen, Sep 5): the bar's green door is the one invitation
-  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play') || path.startsWith('/create') || path.startsWith('/account')) return null
+  // /pair too (Galen, Sep 5): mid-pairing IS connecting — no second door
+  if (path === '/grid' || path === '/' || path.startsWith('/space') || path.startsWith('/play') || path.startsWith('/create') || path.startsWith('/account') || path.startsWith('/pair')) return null
   const lifted = false
   return (
     <>
