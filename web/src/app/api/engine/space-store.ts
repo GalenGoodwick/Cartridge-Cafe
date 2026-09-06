@@ -1677,7 +1677,10 @@ export async function applyCommandToSnapshot(
   try {
     const out = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '4000ms'`)
-      await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, spaceId)
+      // ::text — the lock fn returns SQL `void`, which prisma cannot
+      // deserialize (took every prod space-write down for ~40min, Sep 5 —
+      // found by ChatGPT mid-edit; my proof rig used raw pg, which is void-ok)
+      await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))::text`, spaceId)
       const rows = await tx.$queryRawUnsafe<Array<{ snapshot: unknown }>>(
         `SELECT snapshot FROM "PlayerSpace" WHERE id = $1`, spaceId)
       const snap = (rows[0]?.snapshot as SceneSnapshot | null) ?? emptySnapshot()
