@@ -19,7 +19,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (name.includes(' ⑂ ')) continue
       const scene = loadScene(name) as { worldData?: { __private?: boolean } } | undefined
       if (scene?.worldData?.__private) continue
-      out.push({ url: `${base}/hub/${encodeURIComponent(name)}`, changeFrequency: 'weekly', priority: 0.8 })
+      void name   // hub scene URLs 307 to the shell — never in the index (Search Console, Sep 6); /space pages are the canonical 200s
     }
     const { prisma } = await import('@/lib/prisma')
     const spaces = await prisma.playerSpace.findMany({ where: { isPublic: true }, select: { slug: true, ownerId: true, owner: { select: { email: true } } } })
