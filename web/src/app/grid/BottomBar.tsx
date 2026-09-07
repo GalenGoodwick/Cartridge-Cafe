@@ -70,10 +70,9 @@ const FLOW: Btn[] = [
   // title only on MAIN — in games/engine the world is already selected (Galen)
   { id: 'title', tier: 1, tone: 'chip', show: c => c.set === 'main', label: c => c.title, glyph: c => c.title, testId: 'title' },
   { id: 'share', tier: 0, tone: 'chip', show: c => c.set !== 'create' && !c.contained, label: c => c.copied ? '✓ COPIED' : '↗ SHARE', glyph: c => c.copied ? '✓' : '↗', testId: 'share' },   // not on create; not in a company room (contained)
-  // THE IDENTITY SLOT: a stranger sees gold SIGN IN; signing in turns it into
-  // the GAMES⇄ENGINE toggle (Galen, Sep 5: 'nav = a button that goes to the
-  // engine and on engine it goes back to the games. labeled correctly').
-  { id: 'signIn', tier: 0, tone: 'gold', show: c => c.signedOut, label: () => '⚿ SIGN IN', glyph: () => '⚿', testId: 'signin' },
+  // (the IDENTITY SLOT is RETIRED — Galen, Sep 6: the plaque bar's COME IN →
+  // / handle owns sign-in + account now; the bottom bar carries no identity.
+  // nav below keeps its !signedOut gate: strangers have no engine seat.)
   // from games/main → ⚙ ENGINE; from engine OR the create window → ▶ GAMES
   { id: 'nav', tier: 0, tone: 'goldline', show: c => !c.signedOut && !c.contained, label: c => (c.set === 'engine' || c.set === 'create') ? '▶ GAMES' : '⚙ ENGINE', glyph: c => (c.set === 'engine' || c.set === 'create') ? '▶' : '⚙', testId: 'nav' },
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
@@ -89,8 +88,8 @@ const FLOW: Btn[] = [
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
   // record rides right of the green door in-game (Galen)
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
-  // the person — icon only, even wide; right of the green door (Galen)
-  { id: 'account', tier: 0, tone: 'chip', show: c => c.set !== 'create' && !c.playing, label: () => '👤', glyph: () => '👤', testId: 'account' },   // not on create or IN-game (Galen)
+  // (👤 ACCOUNT retired with the identity slot — the plaque bar's handle is
+  // the account door)
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
@@ -98,13 +97,16 @@ const TOGGLES: Btn[] = [
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
 ]
 
+// TINTED GLASS, not paint cans (Galen, Sep 6: 'solid colors for edit, create
+// and connect ai are garish') — every colored door keeps its hue as border +
+// text + faint wash; solid fill is reserved for an ACTIVE state alone.
 const TONES: Record<Tone, (active: boolean) => string> = {
-  gold: () => 'font-bold bg-amber-400 border-2 border-amber-200/80 text-black hover:bg-amber-300 shadow-[0_0_16px_rgba(245,176,76,0.5)]',
-  blue: () => 'font-bold bg-sky-400 border-2 border-sky-200/80 text-black hover:bg-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.5)]',
-  goldline: () => 'font-bold bg-black/60 border-2 border-amber-300/70 text-amber-200 hover:bg-amber-400/15 shadow-[0_0_10px_rgba(245,176,76,0.25)]',
+  gold: () => 'font-bold bg-amber-400/10 border border-amber-300/50 text-amber-200 hover:bg-amber-400/20 hover:border-amber-300/80',
+  blue: () => 'font-bold bg-sky-400/10 border border-sky-300/50 text-sky-200 hover:bg-sky-400/20 hover:border-sky-300/80',
+  goldline: () => 'font-bold bg-black/60 border border-amber-300/50 text-amber-200 hover:bg-amber-400/15',
   green: (a) => a
-    ? 'font-bold bg-emerald-400 border-2 border-emerald-200 text-black shadow-[0_0_26px_rgba(16,185,129,0.9)]'
-    : 'font-bold bg-emerald-500 border-2 border-emerald-300/80 text-black hover:bg-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.5)]',
+    ? 'font-bold bg-emerald-400 border border-emerald-200 text-black shadow-[0_0_22px_rgba(16,185,129,0.8)]'
+    : 'font-bold bg-emerald-400/10 border border-emerald-300/55 text-emerald-200 hover:bg-emerald-400/20 hover:border-emerald-300/80',
   rec: (a) => a ? 'bg-red-500/25 border border-red-400/60 text-red-100' : 'bg-black/70 border border-white/25 text-white/85 hover:text-white',
   chip: (a) => a ? 'bg-white/20 border border-white/40 text-white' : 'bg-black/70 border border-white/25 text-white/85 hover:text-white',
 }

@@ -701,7 +701,7 @@ export default function TheGrid() {
 
       {/* ═ THE ICON SHELF (games·browse) ═ */}
       {browsing && (
-        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto"
+        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-3 px-4 overflow-y-auto arrive"
           style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           {/* TAB ROW — ◉ LIVE EDITING hooks people · FREE GAMES · PREMIUM · … */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
@@ -785,7 +785,7 @@ export default function TheGrid() {
           default BASE (fork it into yours) · or brew from nothing (/create).
           Hidden during a CREATE PLAYTEST — the full frame owns the screen. ═ */}
       {createSet && phase !== 'play' && (
-        <div className="fixed inset-x-0 z-[112] flex justify-center px-4 overflow-y-auto"
+        <div className="fixed inset-x-0 z-[112] flex justify-center px-4 overflow-y-auto arrive"
           style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           <CreateView
             baseName={selected?.name ?? scene}
@@ -860,7 +860,7 @@ export default function TheGrid() {
           BELOW it (Galen: nothing ever pops over the game). One tab row, one
           content area — the GAMES-browse pattern, engine-flavored. ═ */}
       {engineSet && (
-        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4"
+        <div className="fixed inset-x-0 z-[112] flex flex-col items-center gap-2 px-4 arrive"
           style={{ top: shelfTop, bottom: BAR_H + 6, transition: EASE }}>
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {companyScope && (
