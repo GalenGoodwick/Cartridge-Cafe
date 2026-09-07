@@ -35,8 +35,11 @@ function recordDeletion(slot: string, deleted: boolean, via: string): void {
  *  unauthenticated GET could read every promo code, and any signed-in
  *  session could write itself credits or the $100 ip entitlement. Non-admin
  *  callers may neither read nor write them here; server code goes through
- *  lib functions, not this route. */
-const RESERVED_SLOT = /^(entitlements:|gencredits:|promo:|company:|world_icon:|icon-token:|playtime:|tournament:|ledger|firstpair:|deletedid:|memberuid:|audio:)/i
+ *  lib functions, not this route. `votes:` rides the same list (Sep 6): the
+ *  ♥ upvote docs hold voter handles and shelf-ranking counts — forgeable in
+ *  one raw POST if this route served them; /api/spaces/:slug/vote is the
+ *  only door. */
+const RESERVED_SLOT = /^(entitlements:|gencredits:|promo:|company:|world_icon:|icon-token:|playtime:|tournament:|ledger|firstpair:|deletedid:|memberuid:|audio:|votes:)/i
 function isReservedSlot(key: string | null): boolean {
   return !!key && RESERVED_SLOT.test(key)
 }

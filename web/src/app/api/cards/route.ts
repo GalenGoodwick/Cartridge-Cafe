@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { handleOf } from '@/lib/notify'
 import { composeIcon, dominantHue, type IconField, type IconVisual } from '@/lib/icon-compose'
 import { rootBaseOf, orderGrid } from '@/lib/cards'
+import { voteLiftedRecency } from '@/lib/votes'
 import { worldIsForkable } from '@/lib/fork-policy'
 import { cached } from '@/lib/ttl-cache'
 
@@ -57,6 +58,7 @@ export interface FeedRow {
   unfinished: boolean                // worldData.unfinished — the ⚒ UNFINISHED shelf (Galen, Aug 28)
   hasNodes: boolean                  // proper node foundations (__nodes registry) → dockable / live-editable
   hasContent: boolean                // has ≥1 field — a BLANK world (0 fields) is not a live-editable game (Galen: "blanks are not live editing")
+  votes?: number                     // ♥ upvotes (votes:<spaceId> slots, batch-read in fetchRows; absent = 0 — the mine feed doesn't fetch them)
 }
 
 /** 48 cards a page (clean 2/3/4-column multiples). Pagination is SERVER-side
@@ -232,7 +234,10 @@ export function feedForked(rows: FeedRow[]): { cards: Card[] } {
   return { cards: rows.filter(r => r.forkOfId !== null).sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
 }
 
-/** PUBLISHED: every playable card, one grid, recency order. */
+/** PUBLISHED: every playable card, one grid — recency order LIFTED by ♥ votes
+ *  (Galen, Sep 6: votes influence order but are never the sole key; each vote
+ *  is worth VOTE_LIFT_MS of recency, so loved worlds rise while fresh work
+ *  still surfaces — voteLiftedRecency in lib/votes is the one blend rule). */
 export function feedPublished(rows: FeedRow[]): { cards: Card[] } {
   const roots = rootRows(rows)
   const slugOf = new Map(rows.map(r => [r.id, r.slug]))
@@ -242,7 +247,8 @@ export function feedPublished(rows: FeedRow[]): { cards: Card[] } {
     { card: r.card, blurb: r.blurb, vision: r.vision, __base: r.isBase },
     true,
   )
-  return { cards: [...rows].sort((a, b) => b.updatedAt - a.updatedAt).map(toCard) }
+  const lift = (r: FeedRow) => voteLiftedRecency(r.updatedAt, r.votes ?? 0)
+  return { cards: [...rows].sort((a, b) => lift(b) - lift(a)).map(toCard) }
 }
 
 /** MY/OUR: mine (drafts included) in recency order; rooting resolves against
@@ -283,7 +289,21 @@ async function fetchRows(): Promise<FeedRow[]> {
     take: 2000,
   })
   if (spaces.length === 2000) console.warn('[cards] fetch net FULL (2000) — time for the jsonb-light query')
-  return stripRows(spaces)
+  return attachVotes(stripRows(spaces))
+}
+
+/** ♥ VOTE COUNTS ride the shelf (Galen, Sep 6): ONE batch read of every
+ *  `votes:<spaceId>` slot, attached to the rows INSIDE the cached fetchRows —
+ *  so the counts cost one query per 20s window, never one per world per
+ *  request. Only counts leave this function; voter handles stay server-side. */
+async function attachVotes(rows: FeedRow[]): Promise<FeedRow[]> {
+  const { loadGameSlots } = await import('../engine/store')
+  const { readVoteDoc, voteCount } = await import('@/lib/votes')
+  const docs = await loadGameSlots(rows.map(r => 'votes:' + r.id))
+  return rows.map(r => {
+    const n = voteCount(readVoteDoc(docs.get('votes:' + r.id)))
+    return n > 0 ? { ...r, votes: n } : r
+  })
 }
 
 // strip each snapshot IMMEDIATELY — only the card facts survive, so the

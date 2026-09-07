@@ -226,6 +226,7 @@ describe('cardFromRow', () => {
       mobileReady: false,
       playable: true,
       edit: { mode: 'static', editors: 1 },
+      votes: 0,   // ♥ upvotes ride every card; absent on the row → 0
       updatedAt: 1_755_000_000_000,
     })
   })

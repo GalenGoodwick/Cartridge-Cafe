@@ -30,6 +30,10 @@ export type BarCtx = {
   commonsOpen: boolean
   instructionsOpen: boolean
   brewIconOpen: boolean
+  wchatOpen: boolean          // ◉ the world's own chat overlay (in-game)
+  wchatCount: number          // people+AIs recently talking in it (badge; 0 = quiet)
+  voteCount: number           // ♥ upvotes on this world (0 = bare heart)
+  voteMine: boolean           // I have upvoted — the heart wears amber
   title: string
 }
 
@@ -48,6 +52,8 @@ export type BarActions = {
   connect: () => void
   instructions: () => void
   brewIcon: () => void
+  wchat: () => void
+  vote: () => void
 }
 
 type Tone = 'gold' | 'goldline' | 'blue' | 'green' | 'chip' | 'rec'
@@ -82,6 +88,14 @@ const FLOW: Btn[] = [
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   // in a company room CREATE stays — it opens THE PRIVATE LINE's birth field
   { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
+  // ♥ UPVOTE (Galen, Sep 6 — upvote ONLY, no downvote): one vote per player
+  // per world, toggled. Amber (goldline) once cast; count shows only when > 0.
+  { id: 'vote', tier: 0, tone: c => c.voteMine ? 'goldline' : 'chip', show: c => c.playing,
+    label: c => c.voteCount > 0 ? `♥ ${c.voteCount}` : '♥', glyph: c => c.voteCount > 0 ? `♥${c.voteCount}` : '♥', testId: 'vote' },
+  // ◉ WORLD CHAT (Galen, Sep 6): the world's ONE thread (the same world-chat
+  // slot the engine's door reads), in-game. Badge = who's talking right now.
+  { id: 'wchat', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.wchatOpen,
+    label: c => c.wchatCount > 0 ? `◉ ${c.wchatCount}` : '◉ CHAT', glyph: c => c.wchatCount > 0 ? `◉${c.wchatCount}` : '◉', testId: 'wchat' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,

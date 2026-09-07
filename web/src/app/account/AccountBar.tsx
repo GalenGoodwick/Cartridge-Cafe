@@ -30,7 +30,9 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           set: 'account', playing: false, narrow, glyphs: win < 1280, tier, canBack: true,
           signedOut, premium: false, rReset: false, aiLive: false, recOn: false,
           recSecs: 0, copied, navOpen: false, commonsOpen: false,
-          instructionsOpen: false, brewIconOpen: false, title: '',
+          instructionsOpen: false, brewIconOpen: false,
+          // in-game-only doors (♥ vote / ◉ world chat) never show on account
+          wchatOpen: false, wchatCount: 0, voteCount: 0, voteMine: false, title: '',
         }}
         act={{
           back: () => { if (window.history.length > 1) window.history.back(); else go('/grid') },
@@ -49,6 +51,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           instructions: () => {},
           brewIcon: () => {},
           account: () => {},   // already here
+          wchat: () => {}, vote: () => {},   // in-game only — unreachable here
         }} />
       {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
     </>

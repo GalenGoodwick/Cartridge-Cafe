@@ -22,6 +22,7 @@ import { track } from '@/lib/track'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
 import BottomBar, { type BarCtx, type BarActions } from './BottomBar'
+import { fetchPulse, setPulseChatKey } from '@/app/engine/pulse'
 import { startCafeAudio } from '@/app/engine/cafe-audio'
 import { MembershipBanner } from '@/app/cards/MembershipBanner'
 
@@ -29,7 +30,7 @@ type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
 type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'mobile' | 'desktop'
-type Entry = { slug: string; name: string; scene: string; maker?: string }
+type Entry = { slug: string; name: string; scene: string; maker?: string; votes?: number }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
   isOwner: boolean; spaceId: string | null; spaceSlug: string | null
@@ -231,9 +232,11 @@ export default function TheGrid() {
   useEffect(() => {
     const feed = tab
     fetch(`/api/cards?tab=${feed}`).then(r => r.json())
-      .then((d: { cards?: Array<{ slug: string; name: string; maker?: { name?: string | null; handle?: string | null } }> }) => {
+      .then((d: { cards?: Array<{ slug: string; name: string; votes?: number; maker?: { name?: string | null; handle?: string | null } }> }) => {
         const list = Array.isArray(d.cards) && d.cards.length
-          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined }))
+          // maker rides the tile ('by <name>') and votes ride as ♥ N — the feed
+          // already guards identity (guest-owned worlds carry a null maker)
+          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined, votes: c.votes || undefined }))
           : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' || feed === 'mobile' || feed === 'desktop' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
@@ -450,6 +453,52 @@ export default function TheGrid() {
     window.addEventListener('cafe:rec', on)
     return () => window.removeEventListener('cafe:rec', on)
   }, [])
+
+  // ◉ WORLD CHAT (in-game bar door, Galen Sep 6) — the world's ONE thread.
+  // KEY law (FieldEngine's door, ~line 7734): the door name — a space's
+  // display name, slug fallback — branch suffix (' ⑂ ') stripped, uppercased.
+  // Same derivation ⇒ same world-chat:<KEY> slot the engine door reads/writes.
+  const inGame = uiSet === 'games' && phase === 'play'
+  const wchatKey = spc ? (spc.name || spc.slug).split(' ⑂ ')[0].trim().toUpperCase() : ''
+  const [wchatOpen, setWchatOpen] = useState(false)
+  const [wchatCount, setWchatCount] = useState(0)
+  useEffect(() => {
+    if (!inGame || !spc || !wchatKey) { setWchatCount(0); setWchatOpen(false); return }
+    let stop = false
+    // ride THE PULSE (one shared request family), visible-tab only, 20s — the
+    // badge is a courtesy, never worth background lambda burn. FieldEngine
+    // registers the same key for space worlds; re-registering is harmless.
+    setPulseChatKey(wchatKey)
+    const poll = async () => {
+      if (document.hidden) return
+      try {
+        const pl = await fetchPulse(spc.id)
+        const msgs = (pl && Array.isArray(pl.chat)) ? pl.chat : []
+        const now = Date.now()
+        // the engine door's liveness windows, kept exactly: humans count for
+        // 5min (excluding ME — my own fresh post is not "activity"), AIs 2min
+        const people = new Set(msgs.filter(m => !m.ai && now - m.at < 300_000 && m.who !== me?.name).map(m => m.who)).size
+        const ais = new Set(msgs.filter(m => m.ai && now - m.at < 120_000).map(m => m.who)).size
+        if (!stop) setWchatCount(people + ais)
+      } catch { /* offline is fine — the badge just stays quiet */ }
+    }
+    poll()
+    const t = setInterval(poll, 20_000)
+    return () => { stop = true; clearInterval(t) }
+  }, [inGame, spc, wchatKey, me])
+
+  // ♥ UPVOTE (Galen's ruling: upvote ONLY) — server truth on entering a world;
+  // the bar action flips optimistically and reconciles from the POST's answer.
+  const [voteInfo, setVoteInfo] = useState<{ count: number; mine: boolean } | null>(null)
+  useEffect(() => {
+    if (!inGame || !scene.startsWith('space:')) { setVoteInfo(null); return }
+    let dead = false
+    fetch(`/api/spaces/${encodeURIComponent(scene.slice(6))}/vote`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!dead && d && typeof d.count === 'number') setVoteInfo({ count: d.count, mine: !!d.mine }) })
+      .catch(() => { /* private world / offline — bare heart; a tap still tries */ })
+    return () => { dead = true }
+  }, [inGame, scene])
   // entering ENGINE or CREATE arms the engine's eye-watch (after the transition
   // hygiene) — CREATE needs the config publish too (forkable/owner feed the fork
   // card). spc is a dep: a space mount arrives LATE (after its fetch resolves) —
@@ -563,7 +612,7 @@ export default function TheGrid() {
   const chatIntentRef = useRef(0)   // timestamp — survives the mount run AND the arrival's set-change run
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false)
+    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false); setWchatOpen(false)
     if (Date.now() - chatIntentRef.current > 3000) setChatOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
@@ -755,8 +804,18 @@ export default function TheGrid() {
                       ? <img src={ic} alt="" className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform" />
                       : <span className="font-mono text-[34px] text-white/35">{e.name[0]}</span>}
                   </div>
-                  <div className={`font-mono text-[11.5px] tracking-[0.1em] px-2.5 py-2 truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
-                    {e.name}
+                  <div className="px-2.5 py-2">
+                    <div className={`font-mono text-[11.5px] tracking-[0.1em] truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
+                      {e.name}
+                    </div>
+                    {/* the byline + ♥ — each shows only when TRUE (the playing-now
+                        law): guest-owned worlds have no maker, unloved no count */}
+                    {(e.maker || (e.votes ?? 0) > 0) && (
+                      <div className="flex items-center gap-1.5 font-mono text-[10px] leading-tight mt-0.5">
+                        {e.maker && <span className="text-white/40 truncate">by {e.maker}</span>}
+                        {(e.votes ?? 0) > 0 && <span className="ml-auto shrink-0 text-amber-200/80">♥ {e.votes}</span>}
+                      </div>
+                    )}
                   </div>
                 </button>
               )
@@ -1057,6 +1116,15 @@ export default function TheGrid() {
         <GridChat slotKey="world-chat:MAIN" title="THE COMMONS" bounds={inset} onClose={() => setChatOpen(false)} />
       )}
 
+      {/* ◉ THE WORLD'S CHAT — the in-game bar door (Galen, Sep 6): the SAME
+          world-chat:<KEY> thread the engine's chat door opens, field-bounded so
+          the bar stays free. channel wires the maker-notify (chat is chat). */}
+      {wchatOpen && inGame && !!wchatKey && (
+        <GridChat slotKey={'world-chat:' + wchatKey} title={selected?.name ?? spc?.name ?? 'THIS WORLD'}
+          bounds={inset} onClose={() => setWchatOpen(false)}
+          channel={spc ? 'chat:space:' + spc.slug : undefined} />
+      )}
+
       {/* ◆ BREW YOUR ICON — describe it, copy the prompt, your AI authors the
           avatar (set_player_icon over the bridge; the icon token rides the
           prompt). Field-bounded like everything else. */}
@@ -1189,6 +1257,7 @@ export default function TheGrid() {
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
           recOn: rec.on, recSecs: rec.secs, copied,
           navOpen: false, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
+          wchatOpen, wchatCount, voteCount: voteInfo?.count ?? 0, voteMine: !!voteInfo?.mine,
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
@@ -1210,8 +1279,24 @@ export default function TheGrid() {
           nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setUiSet('engine') } },
           account: () => { window.location.href = '/account' },
           connect: () => { setConnectMode('connect'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
-          instructions: () => { setInstrOpen(o => !o); setConnectOpen(false) },
+          instructions: () => { setInstrOpen(o => !o); setConnectOpen(false); setWchatOpen(false) },
           brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setInstrOpen(false) },
+          wchat: () => { setWchatOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setBrewIconOpen(false) },
+          vote: () => {
+            if (!scene.startsWith('space:')) return
+            const slug = scene.slice(6)
+            // OPTIMISTIC: flip now, reconcile from the POST's answer; a failed
+            // POST re-reads the server truth so the heart never lies for long
+            setVoteInfo(v => v ? { count: Math.max(0, v.count + (v.mine ? -1 : 1)), mine: !v.mine } : { count: 1, mine: true })
+            fetch(`/api/spaces/${encodeURIComponent(slug)}/vote`, { method: 'POST' })
+              .then(r => (r.ok ? r.json() : Promise.reject(new Error('vote ' + r.status))))
+              .then(d => { if (d && typeof d.count === 'number') setVoteInfo({ count: d.count, mine: !!d.mine }) })
+              .catch(() => {
+                fetch(`/api/spaces/${encodeURIComponent(slug)}/vote`).then(r => (r.ok ? r.json() : null))
+                  .then(d => setVoteInfo(d && typeof d.count === 'number' ? { count: d.count, mine: !!d.mine } : null))
+                  .catch(() => { /* offline — leave the optimistic state */ })
+              })
+          },
         } satisfies BarActions}
       />
     </div>

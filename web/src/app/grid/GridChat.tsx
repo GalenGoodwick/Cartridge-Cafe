@@ -8,15 +8,18 @@
 import { useEffect, useRef } from 'react'
 import { useWorldChat } from '@/lib/useWorldChat'
 
-export default function GridChat({ slotKey, title, bounds, onClose, inline }: {
+export default function GridChat({ slotKey, title, bounds, onClose, inline, channel }: {
   slotKey: string                       // world-chat:<KEY> — unique per world/main
   title: string
   bounds?: { top: number; right: number; bottom: number; left: number }
   onClose?: () => void
   /** inline: render as a filling panel (the engine's under-area), no overlay */
   inline?: boolean
+  /** chat:space:<slug> — set it and a post notifies the world's maker, exactly
+   *  like the engine's chat door (chat is chat). Omit for commons rooms. */
+  channel?: string
 }) {
-  const { msgs, who, draft, setDraft, say } = useWorldChat(slotKey, { noStore: true })
+  const { msgs, who, draft, setDraft, say } = useWorldChat(slotKey, { noStore: true, channel })
   const listRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
 

@@ -941,6 +941,29 @@ export async function loadGameSlot(slot: string): Promise<unknown | undefined> {
   }
 }
 
+/** Read MANY named slots in ONE query — for feeds that need a small doc per
+ *  world (the cards shelf's ♥ vote counts). A per-slot loadGameSlot loop would
+ *  be N round-trips per request; this is one findMany over the key list.
+ *  Failure-tolerant: an unreachable DB returns an empty map (callers treat a
+ *  missing slot and a missing DB the same — no doc, count 0). Deliberately
+ *  does NOT populate the single-slot cache: these are read-only shelf peeks,
+ *  and clobbering per-slot cache entries with a feed's snapshot could mask a
+ *  fresher single-slot write on this instance. */
+export async function loadGameSlots(slots: string[]): Promise<Map<string, unknown>> {
+  const out = new Map<string, unknown>()
+  if (slots.length === 0) return out
+  try {
+    const { prisma } = await import('@/lib/prisma')
+    await ensureSlotTable()
+    const rows = await prisma.engineSlot.findMany({
+      where: { slot: { in: slots } },
+      select: { slot: true, data: true },
+    })
+    for (const r of rows) out.set(r.slot, r.data)
+  } catch { /* DB unreachable — empty map; the shelf just shows no counts */ }
+  return out
+}
+
 /** List all save slots with timestamps (cache-first). */
 export async function listGameSlots(): Promise<Array<{ slot: string; savedAt: number }>> {
   if (listCache && Date.now() - listCache.at < LIST_TTL) return listCache.slots

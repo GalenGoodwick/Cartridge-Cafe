@@ -173,6 +173,7 @@ export interface Card {
   mobileReady: boolean
   playable: boolean                  // isPublic — false = a draft (MY/OUR only)
   edit: { mode: 'static' | 'open' | 'crew'; editors: number }   // who may build (the card's tag)
+  votes: number                      // ♥ upvotes — the tile shows it only when > 0 (the only-when-true law)
   updatedAt: number
 }
 
@@ -214,6 +215,7 @@ export function cardFromRow(
       if (ms == null || !Number.isFinite(ms)) return null
       const cups = ms <= 20 ? 1 as const : ms <= 40 ? 2 as const : 3 as const
       return { frameMs: Math.round(ms * 10) / 10, cups } })(),
+    votes: (row as { votes?: number }).votes ?? 0,
     updatedAt: row.updatedAt,
   }
 }

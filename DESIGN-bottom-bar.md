@@ -18,6 +18,8 @@ on session state. No absolute zones, no sibling divs, ever again.
 | commons | ◉ | COMMONS | LEFT inner | main set | 1 | cafe-wide chat toggle |
 | rec | ● | REC / m:ss | LEFT inner | games + playing | 2 | record world → mp4 |
 | reset | ⟲ | RESET | LEFT inner | games + playing + world declares R-reset | 1 | confirm-then-restart |
+| vote | ♥ | ♥ / ♥ N | LEFT, before wchat | IN-game only (playing) | 0 | upvote toggle (upvote ONLY — Galen's ruling, no downvote); one vote per player per world (session id, else the voter-id IP hash); amber (goldline) once mine; count only when > 0 |
+| wchat | ◉ | ◉ CHAT / ◉ N | LEFT, before instructions | IN-game only (playing) | 0 | the world's ONE chat thread (world-chat:<KEY> — the engine door's slot), field-bounded GridChat overlay; badge = people+AIs talking now (20s visible-only pulse poll) |
 | signin→nav | ⚿/⚙/▶ | SIGN IN ⇄ ENGINE/GAMES | THE IDENTITY SLOT | signed out = gold SIGN IN; signed in = gold-OUTLINE toggle labeled with its destination (⚙ ENGINE ⇄ ▶ GAMES) | 0 | signin: /auth/signin · toggle: set switch |
 | connect | ⚿/⚡ | CONNECT AI / AI LIVE | RIGHT 1 (green, edge-pinned) | not engine set | 0 | the green door (modal); LIGHTS UP on the honest heartbeat |
 | instructions | ? | INSTRUCTIONS | RIGHT 2 | IN-game only (playing) | 0 | the world's ? card |
