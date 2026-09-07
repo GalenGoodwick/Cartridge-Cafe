@@ -139,5 +139,27 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
   if (connecting) qs.set('connect', '1'); else qs.set('ph', 'play')
   if (typeof search.paid === 'string') qs.set('paid', search.paid)
   if (typeof search.paycancel === 'string') qs.set('paycancel', search.paycancel)
-  redirect('/grid?' + qs.toString())
+  // MID-FLOW arrivals (connect/checkout round-trips) still redirect — they're
+  // humans in a flow. The PLAIN visit gets a REAL 200 landing (Google Search
+  // Console, Sep 6: 'page with redirect' was blocking every world from the
+  // index — a 307 to the client shell indexes NOTHING).
+  if (connecting || search.paid || search.paycancel) redirect('/grid?' + qs.toString())
+
+  const playUrl = '/grid?' + qs.toString()
+  const wd = (space.snapshot as { worldData?: { instructions?: string; card?: { blurb?: string } } } | null)?.worldData
+  const blurb = (wd?.card?.blurb || space.description || wd?.instructions || 'a little game world, built with AI on cartridge.cafe').slice(0, 300)
+  return (
+    <main className="min-h-screen grid place-items-center p-6" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
+      <div className="max-w-[520px] w-full text-center font-mono">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/api/spaces/icons/${encodeURIComponent(slug)}`} alt="" className="w-24 h-24 mx-auto rounded-2xl border border-white/15 mb-4" />
+        <h1 className="cafe-sign text-4xl text-glow mb-2">{space.name}</h1>
+        <p className="text-[14px] text-white/60 leading-relaxed mb-6">{blurb}</p>
+        <a href={playUrl} className="inline-block px-8 py-3 rounded-2xl border-2 border-amber-300/70 bg-amber-400/15 text-amber-100 text-[15px] tracking-[0.2em] hover:bg-amber-400/25 transition-colors">
+          ▶ PLAY {space.name.toUpperCase()}
+        </a>
+        <p className="text-[12px] text-white/40 mt-6">free to play · <a href="/" className="underline decoration-white/25 hover:decoration-white/60">cartridge.cafe — make little game worlds with AI</a></p>
+      </div>
+    </main>
+  )
 }
