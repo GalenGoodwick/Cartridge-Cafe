@@ -146,8 +146,12 @@ export default async function SpacePage({ params, searchParams }: SpacePageProps
   if (connecting || search.paid || search.paycancel) redirect('/grid?' + qs.toString())
 
   const playUrl = '/grid?' + qs.toString()
-  const wd = (space.snapshot as { worldData?: { instructions?: string; card?: { blurb?: string } } } | null)?.worldData
-  const blurb = (wd?.card?.blurb || space.description || wd?.instructions || 'a little game world, built with AI on cartridge.cafe').slice(0, 300)
+  // the row select above is slim — fetch blurb fields for the landing only
+  const meta = await prisma.playerSpace.findUnique({
+    where: { slug }, select: { description: true, snapshot: true },
+  })
+  const wd = (meta?.snapshot as { worldData?: { instructions?: string; card?: { blurb?: string } } } | null)?.worldData
+  const blurb = (wd?.card?.blurb || meta?.description || wd?.instructions || 'a little game world, built with AI on cartridge.cafe').slice(0, 300)
   return (
     <main className="min-h-screen grid place-items-center p-6" style={{ background: 'radial-gradient(120% 90% at 50% 0%, #0c0b14, #050509)' }}>
       <div className="max-w-[520px] w-full text-center font-mono">
