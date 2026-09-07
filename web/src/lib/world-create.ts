@@ -83,7 +83,7 @@ export function composeBirthSnapshot(opts: {
   snapshot?: Prisma.InputJsonValue
 }): Prisma.InputJsonValue {
   let snapshot = opts.snapshot
-    ?? ({ fields: [], worldData: { ...(opts.worldData ?? {}), __nodeStrict: true, __stagedBirth: 1 } } as Prisma.InputJsonValue)   // STAGED BIRTH (Galen Sep 6): worlds born from the cutover carry the law — imagination compiled before code
+    ?? ({ fields: [], worldData: { ...(opts.worldData ?? {}), __nodeStrict: true } } as Prisma.InputJsonValue)
   // birth-time grid shape (a mobile world is born PORTRAIT, not squeezed into
   // the default square) — the snapshot's own params win if it declares any
   if (opts.worldParams && Object.keys(opts.worldParams).length) {

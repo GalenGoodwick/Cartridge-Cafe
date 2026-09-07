@@ -185,58 +185,6 @@ objects ("a brazier here, fog rolling there") — place those objects.
 - Leave parts behind: when your world invents something good (a lantern, a
   storm, a door), `define_component` it — every future builder inherits it.
 
-## THE STAGED BIRTH — how a world is born <!-- core -->
-
-**This is the trunk of the tree** (Galen, Sep 6 2026). Every good world on this shelf was
-born the same way, and no bad one was: **the image existed before the code** — the code was
-transcription of an already-seen image, every element was looked at many times, and the
-picture stayed hot across the whole build. The stages below are the whole act of creation;
-worlds born under the law (worldData.__stagedBirth) have stages 2–4 ENFORCED by the bridge.
-The refusals teach — but reading this first is faster than being refused into it.
-
-**0 · STREAM.** Before the first build command: pour raw imagination out in FRAGMENTS —
-fifteen small image-thoughts (what the light does, what moves when nothing happens, what the
-best moment looks like) into `worldData.__imagination`. It persists: future editors read the
-genesis stream. Research lives here too: LOOK at 2–3 real references, open 1–2 comparable
-worlds (`browse_shelf` → the code library) and name them in `__imagination.studied`.
-
-**1 · VISION.** The whole-scene picture — `worldData.vision` (full recipe: THE VISION below).
-
-**2 · LOOKS.** `worldData.looks` — a map of element and MOMENT names → 40–120 word resolved
-images: `{"looks": {"ball": "a drop of crema, cream-gold #F6E7C9, dragging a caramel
-comet-tail...", "moment_bumperHit": "the ring VENTS: a steam torus bursts, curls upward,
-catches amber light for half a second"}}`. A gesture ("glowy thing") is not a resolved image
-— own the colors, say what moves, describe its best moment. `moment_*` looks are first-class:
-the best seconds of a world are events, and events are what single-frame verification never
-sees. `create_field`/`define_visual` warn without a matching look; **`brief_done` refuses**
-while skinned fields have none.
-
-**3 · DESIGN.** Interactive world? `worldData.design` — player verbs · what is AIMED AT ·
-risk/reward geography · why game two differs from game one. **`brief_done` refuses** an
-input-reading world without it. A game is a shape before it is a program.
-
-**4 · PLANS.** Before code lands on a node: `register_node {"id":"rules","node":{"plan":
-"<pseudocode + intent: what it OWNS, READS, WRITES, does each tick>","relevance":"<why this
-node exists in THIS world>","relations":{"reads":["..."],"writes":["..."]}}}`. On staged
-worlds **hook code is refused for plan-less nodes**. Nodes are RICHLY HISTORIC: every later
-push should carry `{"note":"why this changed"}` — it lands in the node's journal, its
-narrative history beside node_history's code versions. The dock shows all of it: the world's
-living architecture document.
-
-**5 · BUILD.** Now WGSL and hooks — each visual carrying its look as a header comment (prose
-and code as one act). Layered fields per the painter's model, never a monolith.
-
-**6 · SEE.** Per-element: render, LOOK, ask "is this THAT?" against the element's look — ten
-looks per element was the floor on the worlds people love (the lurker's face alone took 11
-renders across 3 angles). Verify `moment_*` looks at their moment, not in aggregate.
-
-**7 · CONFESS.** `brief_done`'s acceptance returns your look-checklist. Mark each look in
-`worldData.looksVerified` — `{"ball": "frame 3: comet-tail stretches on fast moves — yes"}` —
-or waive with a reason. An UNEXAMINED look on a green build is a guess wearing a checkmark.
-
-**8 · SHIP.** Publish. Looks, design, plans, journals and the genesis stream TRAVEL WITH THE
-WORLD — a fork inherits the intent, not just the code. That is how the commons compounds.
-
 ## THE VISION (MANDATORY, before your first field) <!-- core -->
 
 Beautiful worlds start as a picture held in the head — never as a struct. The

@@ -6,7 +6,6 @@ import { canPush, stampHold, canRelease, holdStatus, type NodeRecord } from '@/a
 import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, shouldAutoRevert, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
 import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
-import { planRefusal, noteWarning, appendJournal, lookWarning } from '@/lib/staged-birth'   // THE STAGED BIRTH (Galen Sep 6): imagination compiled before code
 
 // --- In-memory cache for space snapshots ---
 
@@ -292,8 +291,6 @@ const KNOWN_PARAMS: Record<string, Set<string>> = {
   create_render_target: new Set(['type', 'name', 'persist']),
   destroy_render_target: new Set(['type', 'name']),
   register_node: new Set(['type', 'id', 'node']),
-  add_step_hook: new Set(['type', 'hookId', 'name', 'code', 'note']),
-  update_step_hook: new Set(['type', 'hookId', 'name', 'code', 'note']),
   remove_node: new Set(['type', 'id']),
   add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
   remove_interaction_effect: new Set(['type', 'effectId']),
@@ -454,12 +451,6 @@ export function applyCommandToSnapshotObject(
       })
       result.fieldId = fieldId
       stampProv(snap, `field:${fieldId}`, cmd)
-      // STAGED BIRTH stage 2: a named element should have its LOOK written
-      // before its pixels — warn (never block iteration; brief_done is the gate)
-      {
-        const lw = lookWarning(String(cmd.name ?? ''), snap.worldData as Record<string, unknown>)
-        if (lw) result.lookWarning = lw
-      }
       break
     }
 
@@ -666,11 +657,6 @@ export function applyCommandToSnapshotObject(
       }
       appendShaderRev(snap, 'visual', String(cmd.name), String(cmd.wgsl), cmd)
       stampProv(snap, `visual:${String(cmd.name)}`, cmd)
-      // STAGED BIRTH stage 2: the image before the shader — warn when no look
-      {
-        const lw = lookWarning(String(cmd.name ?? ''), snap.worldData as Record<string, unknown>)
-        if (lw) result.lookWarning = lw
-      }
       break
     }
 
@@ -933,24 +919,6 @@ export function applyCommandToSnapshotObject(
           result.ok = false
           result.error = `hook code does not compile — NOTHING landed; node "${hookId}" stays at its last version. ${e instanceof Error ? e.message : String(e)}`
           return result
-        }
-      }
-      // ── THE PLAN GATE (staged birth stage 4 — Galen Sep 6: "the trunk of the
-      // tree"): on worlds born under the law, code lands only on a node that
-      // carries a PLAN (pseudocode + intent, written FIRST). The refusal teaches
-      // the exact next command. Legacy worlds untouched. Nodes are RICHLY
-      // HISTORIC: a push may carry {note} — appended to the node's journal so
-      // the WHY of every change survives beside node_history's code versions.
-      {
-        const wdS = snap.worldData as Record<string, unknown>
-        const refusal = planRefusal(hookId, wdS)
-        if (refusal) { result.ok = false; result.error = refusal; result.gateRejected = true; return result }
-        const warnN = noteWarning(hookId, wdS, cmd.note)
-        if (warnN) result.noteWarning = warnN
-        if (typeof cmd.note === 'string' && (cmd.note as string).trim()) {
-          const nodesJ = (wdS.__nodes && typeof wdS.__nodes === 'object' ? wdS.__nodes : (wdS.__nodes = {})) as Record<string, Record<string, unknown>>
-          const recJ = (nodesJ[hookId] ??= { id: hookId, order: 100 })
-          recJ.journal = appendJournal(recJ, { at: Number(cmd.__now ?? Date.now()), author: String(cmd.__holder ?? '') || undefined, note: String(cmd.note) })
         }
       }
       // KNOWN LIVE-EDIT LIMITATION (live-hotswap, Aug 2026 — Galen/Fable pill

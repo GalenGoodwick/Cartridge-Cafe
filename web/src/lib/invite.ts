@@ -15,6 +15,5 @@ export function inviteText(slug?: string, worldName?: string): string {
     `  · any MCP client: {"command":"npx","args":["-y","cartridge-cafe-mcp"]}`,
     `  · no MCP? everything is plain HTTP — read https://cartridge.cafe/api/engine/guide and build over the bridge.`,
     `Then: connect_account (my first-ever registration gifts 30 days of membership + 2 world builds)${slug ? `, read_guide, use_world {"slug":"${slug}"}` : ''}.`,
-    `Build by THE STAGED BIRTH (the guide's core): imagine in fragments FIRST, write each element's look and each node's plan BEFORE its code — the bridge enforces it, and worlds built image-first are the ones people love.`,
   ].join('\n')
 }

@@ -5,7 +5,6 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
-import { briefDoneGates } from '@/lib/staged-birth'   // THE STAGED BIRTH gates (Galen Sep 6: the trunk of the tree)
 import { placeholderSeedCommands } from '@/app/engine/placeholder-nodes'
 import { solveUi, type UiTree, type UiNode } from '@/app/engine/ui-solver'
 import { resetWorld, worldStores, setOriginal } from '@/lib/worldSave'
@@ -1877,26 +1876,6 @@ export async function POST(req: NextRequest) {
           if (frameMs > 25) {
             cmd.__perfWarning = `PERF: last measured ${Math.round(frameMs)}ms/frame${budgetFresh ? '' : ' (stale — from a past live session)'} — over the ~25ms budget; cheapen before shipping (>40ms fresh refuses brief_done)`
           }
-          // ── THE STAGED BIRTH GATES (stages 2-4, worlds born under the law):
-          // LOOKS for every skinned field, DESIGN for interactive worlds, PLANS
-          // for every coded node. Refusals teach; the acceptance carries the
-          // CONFESS checklist — an UNEXAMINED look on a green build reads as
-          // loudly as a red rung. Legacy worlds pass untouched.
-          {
-            const sbFields = ((snap?.fields ?? []) as Array<{ name?: string; visualTypeName?: string }>)
-            const sbHooks = ((snap?.stepHooks ?? []) as Array<{ hookId?: string; code?: string }>)
-            const verdict = briefDoneGates({ worldData: (snap?.worldData ?? {}) as Record<string, unknown>, fields: sbFields, stepHooks: sbHooks })
-            if (verdict.errors.length) {
-              results.push({ type: cmd.type, error: verdict.errors.join('\n\n'),
-                next: 'THE STAGED BIRTH: stream → vision → looks → design → plans → build → see → confess → ship. read_guide {"section":"the staged birth"} for the whole protocol.' })
-              continue   // brief_done NOT set — the imagination isn't compiled yet
-            }
-            if (Object.keys(verdict.checklist).length) {
-              const un = Object.entries(verdict.checklist).filter(([, v]) => v === 'UNEXAMINED').map(([k]) => k)
-              cmd.__lookChecklist = verdict.checklist
-              if (un.length) cmd.__confessWarning = `CONFESS PASS: ${un.length} look(s) UNEXAMINED [${un.slice(0, 8).join(', ')}] — verify each against a rendered frame (is this THAT?) and record worldData.looksVerified {"<look>":"<frame evidence or waiver reason>"}. An unexamined look on a green build is a guess wearing a checkmark.`
-            }
-          }
         } catch { /* the check must never block a legitimate finish */ }
       }
       // the world's DONE moment is its pristine state: remember it so reset can
@@ -1945,8 +1924,6 @@ export async function POST(req: NextRequest) {
       }
       if (cmd.__renderWarning) { result.renderWarning = cmd.__renderWarning; delete cmd.__renderWarning }
       if (cmd.__perfWarning) { result.perfWarning = cmd.__perfWarning; delete cmd.__perfWarning }
-      if (cmd.__confessWarning) { result.confessWarning = cmd.__confessWarning; delete cmd.__confessWarning }
-      if (cmd.__lookChecklist) { result.lookChecklist = cmd.__lookChecklist; delete cmd.__lookChecklist }
       if (cmd.__regionWarning) { result.regionWarning = cmd.__regionWarning; delete cmd.__regionWarning }
       if (cmd.__growMeta) { result.grown = cmd.__growMeta; delete cmd.__growMeta }
       results.push(result)
