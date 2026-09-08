@@ -7,6 +7,7 @@ import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevB
 import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
 import { worldRevision, type SnapshotLike } from '@/app/engine/build-lifecycle-server'   // item 3: derived brief_done drops on an authored edit
+import { knownParams } from '@/lib/command-registry'   // item 4: the one command registry — enforcement derives, never drifts
 
 // --- In-memory cache for space snapshots ---
 
@@ -277,36 +278,11 @@ export function invalidateSpaceCache(spaceId: string): void {
 
 // --- Server-side command processing for space mode ---
 
-// #5b: curated known-params per command. Unknown keys are surfaced as a
-// (non-fatal) warning so a typo'd param stops silently vanishing.
-const KNOWN_PARAMS: Record<string, Set<string>> = {
-  create_field: new Set(['type', 'name', 'color', 'shape', 'shapeType', 'x', 'y', 'width', 'height', 'w', 'h', 'radius', 'scale', 'visualType', 'visualParams', 'tags', 'noHit', 'noCollide', 'pixelCollide', 'properties', 'parentFieldId', 'fieldId', 'renderTarget']),
-  set_visual: new Set(['type', 'fieldId', 'visualType', 'visualParams', 'renderTarget', 'sampleTargets', 'renderOrder']),
-  set_position: new Set(['type', 'fieldId', 'x', 'y', 'z', 'rotX', 'rotY']),
-  set_color: new Set(['type', 'fieldId', 'color']),
-  set_scale: new Set(['type', 'fieldId', 'scale']),
-  set_world_data: new Set(['type', 'data']),
-  define_visual: new Set(['type', 'name', 'wgsl']),
-  define_module: new Set(['type', 'name', 'wgsl']),
-  remove_module: new Set(['type', 'name']),
-  create_render_target: new Set(['type', 'name', 'persist']),
-  destroy_render_target: new Set(['type', 'name']),
-  register_node: new Set(['type', 'id', 'node']),
-  remove_node: new Set(['type', 'id']),
-  add_interaction_effect: new Set(['type', 'wgsl', 'fieldA', 'fieldB', 'blend', 'spread', 'precedence', 'hooks', 'author', 'description', 'order']),
-  remove_interaction_effect: new Set(['type', 'effectId']),
-  clone_field: new Set(['type', 'fieldId', 'name', 'offsetX', 'offsetY']),
-  delete_field: new Set(['type', 'fieldId']),
-  move: new Set(['type', 'fieldId', 'dx', 'dy']),
-  set_parent: new Set(['type', 'fieldId', 'parentFieldId']),
-  set_shape: new Set(['type', 'fieldId', 'shape', 'shapeType', 'radius', 'w', 'h']),
-  set_name: new Set(['type', 'fieldId', 'name']),
-  add_tag: new Set(['type', 'fieldId', 'tags']),
-  remove_tag: new Set(['type', 'fieldId', 'tags']),
-  update_effect: new Set(['type', 'fieldId', 'effectId', 'wgsl', 'glsl', 'description', 'blend', 'feedback']),
-  remove_interaction: new Set(['type', 'ruleId']),
-  put_world: new Set(['type', 'world']),
-}
+// #5b: known-params per command — DERIVED from the one command registry
+// (item 4: the registry is the single source; help cards, MCP schemas, and this
+// enforcement whitelist can no longer drift apart). Unknown keys are surfaced as
+// a (non-fatal) warning so a typo'd param stops silently vanishing.
+const KNOWN_PARAMS: Record<string, Set<string>> = knownParams()
 
 export function emptySnapshot(): SceneSnapshot {
   return {

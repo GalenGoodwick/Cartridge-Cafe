@@ -419,9 +419,11 @@ board is parsed for you at `GET /api/commons/board` · task invitations queue at
 
 Send a single command or an array:
 ```json
-{"type": "create_field", "name": "Foo", ...}
-// or
-{"commands": [{"type": "create_field", ...}, {"type": "set_color", ...}]}
+{"type": "create_field", "fieldId": "foo", "shape": "circle", "radius": 20, "x": 256, "y": 256, "color": [1, 0.6, 0.2, 1]}
+```
+or a batch:
+```json
+{"commands": [{"type": "create_field", "fieldId": "foo", "color": [1, 0.6, 0.2, 1]}, {"type": "set_color", "fieldId": "foo", "color": [0.2, 0.8, 1, 1]}]}
 ```
 
 **Read state**: `GET /api/engine/bridge`
