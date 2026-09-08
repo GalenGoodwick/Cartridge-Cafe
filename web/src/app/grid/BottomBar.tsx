@@ -183,7 +183,9 @@ export default function BottomBar({ ctx, act, barH }: { ctx: BarCtx; act: BarAct
     )
   }
   return (
-    <div className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))` }}>
+    // data-cc-chrome: the chrome-safe inset scan (FieldEngine) reserves the world
+    // square around this bar so a world's bottom UI never lands under it.
+    <div data-cc-chrome className="fixed bottom-0 inset-x-0 z-[135]" style={{ height: `calc(${barH}px + env(safe-area-inset-bottom, 0px))` }}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md border-t border-white/10" />
       {/* ONE div, ONE flex context. FLOW renders in exact visual order; the
           toggles cluster rides the right edge. Contact lives on the NAV page. */}

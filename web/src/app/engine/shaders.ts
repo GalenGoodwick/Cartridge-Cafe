@@ -1293,9 +1293,11 @@ export interface ModuleEntry {
 // These are always available without runtime registration.
 // Runtime types with the same name override built-ins.
 
-export const BUILTIN_VISUAL_WGSL: Array<{ id: number; name: string; wgsl: string }> = []
-
-const _BUILTIN_VISUAL_WGSL_DISABLED: Array<{ id: number; name: string; wgsl: string }> = [
+// Built-in visual library — re-enabled Sep 7 2026 (was emptied at the
+// Unity-Chant→cafe extraction). Ids 0–12 are reserved for these; runtime
+// visuals start at RUNTIME_VISUAL_ID_BASE (renderer.ts) so the two id ranges
+// never collide in the "first id wins" dedup below.
+export const BUILTIN_VISUAL_WGSL: Array<{ id: number; name: string; wgsl: string }> = [
   // 0: Solid — flat fill with SDF edge
   { id: 0, name: 'solid', wgsl: `
 fn visual_solid(uv: vec2f, sdf: f32, col: vec4f, time: f32, p: vec4f, behind: vec4f) -> vec4f {

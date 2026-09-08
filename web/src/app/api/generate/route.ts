@@ -3,8 +3,11 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, birthWorld, sweepAbandonedDrafts, resolveBirthExtras } from '@/lib/world-create'
-import { GEN_BUNDLES, GEN_PRICE_USD, readGenCredits, spendGenCredit, stripeConfigured } from '@/lib/stripe'
+import crypto from 'crypto'
+import { canCreateWorld, sweepAbandonedDrafts, resolveBirthExtras } from '@/lib/world-create'
+import { GEN_BUNDLES, GEN_PRICE_USD, readGenCredits, stripeConfigured } from '@/lib/stripe'
+import { buildSpecFromCreateBody, specToWorldData, specToBirthParams, specIsPublic } from '@/lib/build-spec'
+import { createWorldIdempotent } from '@/lib/create-world-service'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -85,67 +88,42 @@ export async function POST(req: NextRequest) {
   // never refunds a credit that was never spent).
   const { isAdminUserId } = await import('@/lib/adminAuth')
   const isKeeper = await isAdminUserId(user.id)
-  let remaining = 0
-  if (!isKeeper) {
-    const spent = await spendGenCredit(user.id)
-    if (spent === null) {
-      return NextResponse.json(
-        { error: 'no generation credits', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
-        { status: 402 },
-      )
-    }
-    remaining = spent
-  }
 
-  try {
-    await sweepAbandonedDrafts(user.id).catch(() => {})
+  await sweepAbandonedDrafts(user.id).catch(() => {})
+  const name = String(body?.name ?? '').trim().slice(0, 60) || brief.slice(0, 40).replace(/\s+\S*$/, '')
+  const baseSlug = slugify(name) || 'generated-world'
 
-    const name = String(body?.name ?? '').trim().slice(0, 60) || brief.slice(0, 40).replace(/\s+\S*$/, '')
-    const baseSlug = slugify(name) || 'generated-world'
-
-    // THE ONE BIRTH PIPELINE (Galen's law: pipelines universal, no hand-rolls —
-    // this route's hand-rolled copy had drifted to born-PUBLIC "so the buyer
-    // can watch the house AI", a house AI that does not exist). Born PRIVATE
-    // like every world: the OWNER sees it fine, connects their AI, and it goes
-    // public through the normal publish gate (vision + instructions +
-    // brief_done) when the build is real. Strangers never meet a bare curtain.
-    // MERGED (rebase): the FORMAT-seed hygiene (strip __base/forkable/policy —
-    // a fork must never inherit base-hood or build rights) now lives INSIDE
-    // resolveBirthExtras, the ONE parser both birth routes share; lineage
-    // (forkOfId) + the targets/access facets ride with it.
-    const birthData = {
-      creation_brief: { prompt: brief, by: user.id, at: Date.now(), ...(extras.forkOfId ? { format: String(body?.base ?? '').trim() } : {}) },
-      ...extras.birthData,
-    }
-    // brief rides the base snapshot too when a BASE/format was picked
-    const baseSnapshot = extras.baseSnapshot
-      ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
-      : undefined
-    const { space } = await birthWorld({
-      worldParams: extras.birthParams,
-      ownerId: user.id,
-      name,
-      baseSlug,
-      description: brief.slice(0, 140),
-      // PEOPLE (Galen, Sep 5): OPEN WORLD launches public; SOLO launches
-      // private — release later from CONFIG when it's ready
-      isPublic: (birthData as { access?: string }).access === 'open',
-      worldData: birthData,
+  // ONE CONTRACT (item 2): body → canonical BuildSpec → birth via the shared
+  // mapper + idempotent, credit-safe service. SOLO launches private, OPEN public
+  // (visibility from access); targets/base facets ride from resolveBirthExtras.
+  // The FORMAT-seed hygiene lives inside resolveBirthExtras (the ONE base parser).
+  const { hasIpShield } = await import('@/lib/stripe')
+  const spec = buildSpecFromCreateBody({ ...body, name, brief })
+  const specWd = specToWorldData(spec, { by: user.id, at: Date.now(), ...(extras.forkOfId ? { format: String(body?.base ?? '').trim() } : {}) })
+  const worldData: Record<string, unknown> = { ...extras.birthData, ...specWd }
+  const baseSnapshot = extras.baseSnapshot
+    ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), ...specWd } } as typeof extras.baseSnapshot
+    : undefined
+  const worldParams = Object.keys(extras.birthParams).length ? extras.birthParams : specToBirthParams(spec)
+  const idempotencyKey = typeof body?.idempotencyKey === 'string' && body.idempotencyKey.trim() ? body.idempotencyKey.trim().slice(0, 120) : crypto.randomUUID()
+  const outcome = await createWorldIdempotent({
+    ownerId: user.id, idempotencyKey, isKeeper,
+    birth: {
+      ownerId: user.id, name, baseSlug, description: brief.slice(0, 140),
+      isPublic: specIsPublic(spec, await hasIpShield(user.id)),
+      ...(Object.keys(worldData).length ? { worldData } : {}),
+      ...(Object.keys(worldParams).length ? { worldParams } : {}),
       ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
       ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
-    })
-
-    // NO BuildJob, NO "awaits a builder" bus ring (Galen, Aug 26: "there is no
-    // house AI — the person ALWAYS connects their AI"). The world is born with
-    // the brief; the curtain hands the owner the CONNECT flow. Done.
-    return NextResponse.json({ ok: true, slug: space.slug, name, credits: remaining }, { status: 201 })
-  } catch (e) {
-    // world creation failed AFTER the credit spent — refund it (admins never spent one)
-    if (!isKeeper) {
-      const { refundGenCredit } = await import('@/lib/stripe')
-      void refundGenCredit(user.id).catch(() => {})
-    }
-    const msg = e instanceof Error ? e.message : 'generation failed'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    },
+  })
+  if (!outcome.ok) {
+    if (outcome.reason === 'needPayment') return NextResponse.json({ error: 'no generation credits', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD }, { status: 402 })
+    if (outcome.reason === 'inFlight') return NextResponse.json({ error: 'a create with this idempotency key is in progress — retry', retryable: true }, { status: 409 })
+    return NextResponse.json({ error: outcome.message }, { status: 500 })
   }
+  // NO BuildJob, NO phantom builder — the world is born with the brief; the
+  // curtain hands the owner the CONNECT flow. Done.
+  const remaining = isKeeper ? 0 : await readGenCredits(user.id)
+  return NextResponse.json({ ok: true, slug: outcome.space.slug, name, credits: remaining, replayed: outcome.replayed }, { status: 201 })
 }

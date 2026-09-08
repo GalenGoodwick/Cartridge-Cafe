@@ -274,6 +274,13 @@ Space owners can also edit instructions in the UI (? INSTRUCTIONS → EDIT), and
 edit persists with the world. A world without instructions shows a placeholder —
 never ship that.
 
+**Instructions live in the FIELD, never on the grid.** Put how-to-play / controls
+text in `worldData.instructions` only — the **? INSTRUCTIONS** button is where the
+player reads it. Do NOT paint it onto the world as a `worldData.ui` panel or a
+`worldData.slots` zone: on-canvas UI is for LIVE game state only (score, meters,
+buttons, timers). An in-world sign/tutorial is opt-in for a design that calls for
+it — never the default.
+
 ## World Blurb (write it when you finish) <!-- core -->
 
 **Publishing:** worlds are born PRIVATE. When vision + instructions + blurb are set and

@@ -2,6 +2,7 @@
 
 import { DEFAULT_GRID_SIZE, type FieldWorld, type Field, type FieldTransform, type FieldEffect, type FieldMemoryEntry, type FieldSnapshot, type FieldProximity, type WorldParams, type InteractionRule, type InteractionEffect, type CustomCommand, type Projectile, type TweenDef, type TimerDef, type CollisionCallback, type GameStateDef } from './types'
 import { sceneDefine, type SceneConfig, type SceneHandle } from './scene-graph'
+import { InputRuntime } from './input-runtime'
 
 /** Default render extent from field center (pixels). Not a "size" — just the shader execution area. */
 const FIELD_RENDER_EXTENT = 32
@@ -85,6 +86,11 @@ export class FieldSimulation {
   interactionEffects: InteractionEffect[] = []
   /** Shared world data — key-value store accessible from step hooks */
   worldData: Record<string, unknown> = {}
+  /** Ordered input queue — the single source of truth for discrete key/button
+   *  input. Capture sites (FieldEngine) push transitions; the tick drains it into
+   *  `wd.input`. Lives here so both the DOM-event side and the sandbox drain reach
+   *  the same instance. See input-runtime.ts. */
+  input: InputRuntime = new InputRuntime()
   /** Seeded PRNG state for sim.rand() — armed when worldData.__seed is a number */
   private _randSeed: number | null = null
   private _randState = 0

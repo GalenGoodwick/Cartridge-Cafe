@@ -54,22 +54,25 @@ export function TouchControls({ simRef, frame, suppressed }: {
     return () => { window.removeEventListener('resize', onR); window.removeEventListener('orientationchange', onR) }
   }, [dims])
 
-  // set a flag + bump its _n pulse counter on the rising edge — the keyboard
-  // contract exactly, so input.pressed / hit() edges never miss a short tap
-  const flag = useCallback((wd: Record<string, unknown>, key: string, on: boolean) => {
-    if (on && wd[key] !== true) wd[key + '_n'] = ((wd[key + '_n'] as number) || 0) + 1
-    wd[key] = on
-  }, [])
+  // Route a touch flag through the ordered input queue — emit down/up only on the
+  // actual transition (the queue writes key_*/_n adapters), so input.pressed / hit()
+  // edges never miss a short tap and a held button doesn't re-fire.
+  const flag = useCallback((key: string, on: boolean) => {
+    const sim = simRef.current
+    if (!sim) return
+    const was = sim.worldData[key] === true
+    if (on && !was) sim.input.push(sim.worldData, key, 'down')
+    else if (!on && was) sim.input.push(sim.worldData, key, 'up')
+  }, [simRef])
 
   const setKeys = useCallback((dx: number, dy: number) => {
-    const wd = simRef.current?.worldData
-    if (!wd) return
+    if (!simRef.current) return
     const TH = 14
     const L = dx < -TH, R = dx > TH, U = dy < -TH, D = dy > TH
-    flag(wd, 'key_left', L); flag(wd, 'key_a', L)
-    flag(wd, 'key_right', R); flag(wd, 'key_d', R)
-    flag(wd, 'key_up', U); flag(wd, 'key_w', U)
-    flag(wd, 'key_down', D); flag(wd, 'key_s', D)
+    flag('key_left', L); flag('key_a', L)
+    flag('key_right', R); flag('key_d', R)
+    flag('key_up', U); flag('key_w', U)
+    flag('key_down', D); flag('key_s', D)
   }, [simRef, flag])
 
   const stickDown = useCallback((e: React.PointerEvent) => {
@@ -93,9 +96,8 @@ export function TouchControls({ simRef, frame, suppressed }: {
 
   const btn = useCallback((key: string, down: boolean) => (e: React.PointerEvent) => {
     e.preventDefault()
-    const wd = simRef.current?.worldData
-    if (wd) flag(wd, key, down)
-  }, [simRef, flag])
+    flag(key, down)
+  }, [flag])
 
   if (!isTouch || !zones || suppressed || !optedIn) return null
   // a MINI frame (the grid's browse/engine shrink) is not a playfield — the

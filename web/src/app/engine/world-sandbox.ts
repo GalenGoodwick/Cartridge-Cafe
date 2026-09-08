@@ -366,12 +366,9 @@ export class WorldSandbox {
   // veilfire-3d: RAF p50 8.3ms, worker tick p50 20.2ms, 12.2s game time / 25s wall.
   private lastSim: FieldSimulation | null = null
   private lastTickAt = 0        // perfNow() of the last POSTED tick — wall-clock dt basis
-  // input edge-detection: last frame's held-state, so the hook is handed a ready
-  // `input` object (held / pressed / released / moveX / moveY / action) instead
-  // of diffing raw key_* itself. ESC is never a game key (unmapped upstream); R
-  // is withheld while restart-with-R is armed so a world can't fight the reset.
-  private prevKeys: Record<string, boolean> = {}
-  private prevPointerDown = false
+  // Discrete input (held/pressed/released/action) is derived by sim.input.drain()
+  // from the ordered event queue — see input-runtime.ts. The old level-diff state
+  // (prevKeys/prevPointerDown) lived here and dropped between-tick taps; gone now.
 
   /** Put a hook failure where players AND agents can see it: worldData
    *  (synced, bridge-visible as last_hook_error) + the cc:fault overlay. */
@@ -431,49 +428,6 @@ export class WorldSandbox {
    *  key-press deltas by hand. Reserved keys: ESC is never mapped upstream (so never
    *  appears here); R is withheld while restart-with-R is armed. moveX/moveY fold
    *  WASD + arrows into a -1..1 axis (moveY: forward/up = +1). */
-  private buildInput(wd: Record<string, unknown>): Record<string, unknown> {
-    const held: Record<string, boolean> = {}
-    const pressed: Record<string, boolean> = {}
-    const released: Record<string, boolean> = {}
-    const rArmed = !!wd['rResetKey']
-    const now: Record<string, boolean> = {}
-    for (const k of Object.keys(wd)) {
-      if (!k.startsWith('key_') || k.endsWith('_n')) continue
-      const name = k.slice(4)
-      if (name === 'r' && rArmed) continue        // reset owns R
-      const down = !!wd[k]
-      now[name] = down
-      if (down) held[name] = true
-      if (down && !this.prevKeys[name]) pressed[name] = true
-      if (!down && this.prevKeys[name]) released[name] = true
-    }
-    this.prevKeys = now
-    const on = (n: string) => !!held[n]
-    const hit = (n: string) => !!pressed[n]
-    const moveX = (on('d') || on('right') ? 1 : 0) - (on('a') || on('left') ? 1 : 0)
-    const moveY = (on('w') || on('up') ? 1 : 0) - (on('s') || on('down') ? 1 : 0)
-    const pdown = !!wd['mouse_down']
-    const pointer = {
-      x: (wd['mouse_x'] as number) ?? 0,
-      y: (wd['mouse_y'] as number) ?? 0,
-      down: pdown,
-      pressed: pdown && !this.prevPointerDown,
-      released: !pdown && this.prevPointerDown,
-    }
-    this.prevPointerDown = pdown
-    // relative mouse-look deltas from pointer-lock (FieldEngine writes mouse_dx/dy);
-    // consumed per frame so a hook reads this frame's turn, not an accumulation.
-    const lookX = (wd['mouse_dx'] as number) || 0
-    const lookY = (wd['mouse_dy'] as number) || 0
-    wd['mouse_dx'] = 0; wd['mouse_dy'] = 0
-    return {
-      held, pressed, released, moveX, moveY,
-      action: hit('space') || hit('enter'),         // primary-action edge
-      actionHeld: on('space') || on('enter'),
-      pointer, lookX, lookY,
-    }
-  }
-
   /** compile one or more hooks into a fresh sealed worker */
   load(hooks: string | { id: string; code: string; author?: string }[]): void {
     this.dispose()
@@ -688,7 +642,7 @@ export class WorldSandbox {
       for (const k of Object.keys(incoming)) {
         if (k === 'save' && this.saveInject) continue   // the loaded save outranks stale replies
         if (this.stateInject && k in this.stateInject.data) continue   // restored save state outranks stale replies
-        if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === '__play_sound' || k === '__play_music' ||
+        if (k === 'gpuUniforms' || k === 'gpuPopulation' || k === 'hud' || k === 'ui' || k === 'slots' || k === '__play_sound' || k === '__play_music' ||
             k === 'instructions' || k === 'tone' || k === 'music_mod' || k === 'sounds' || k === 'save' || k === 'persist' ||
             // host-owned: __uiRects/__uiOverrides/__uiClick(T) (solver + UI EDIT + click routing — a worker echo is one tick stale and would clobber a fresh solve/drag/CLICK) AND the platform registries __nodes/__nodeHist/__provenance/__nodeErrs/__bridge_rev/__budget/__perf (audit, Sep 5: a hook echoing them could clear peers' holds / forge attribution via tab-sync)
             (k.startsWith('__') && k !== '__sandbox' && k !== '__fresh' && k !== '__uiRects' && k !== '__uiOverrides' && k !== '__uiClick' && k !== '__uiClickT' && k !== '__nodes' && k !== '__nodeHist' && k !== '__provenance' && k !== '__nodeErrs' && k !== '__bridge_rev' && k !== '__budget' && k !== '__perf')) {
@@ -751,7 +705,7 @@ export class WorldSandbox {
         const u = sim.worldData['gpuUniforms']
         if (Array.isArray(u)) payload.gpuUniforms = u.slice()
       }
-      payload.input = this.buildInput(sim.worldData)   // derived; never persisted to sim.worldData
+      payload.input = sim.input.drain(sim.worldData)   // ordered-queue drain; never persisted to sim.worldData
       // slim PRESENCE for hooks: the full presence blob is host-heavy and dropped
       // by cloneable, but a hook that reacts to the ROOM (a shared/ambient world)
       // needs everyone's cursor. Hand it a compact [{x,y}] — just positions, capped
@@ -795,7 +749,7 @@ export class WorldSandbox {
 // host-managed blobs the hook never reads — cloning them across the worker
 // boundary every frame is slow AND makes the round-trip time VARIABLE, which
 // surfaces as an irregular update rate (warp/jitter). Drop them from the send.
-const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'gpuPopulation', 'hud', 'ui', '__play_sound', '__play_music'])
+const HOST_HEAVY = new Set(['presence', 'fieldPixels', 'cellSample', 'gpuUniforms', 'gpuPopulation', 'hud', 'ui', 'slots', '__play_sound', '__play_music'])
 
 /** minimal, cheap-to-clone payload: the hook's inputs and its own state, never
  *  the host's heavy blobs or the hook's own outputs (which it overwrites). */

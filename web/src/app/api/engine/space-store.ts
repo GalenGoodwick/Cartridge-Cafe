@@ -6,6 +6,7 @@ import { canPush, stampHold, canRelease, holdStatus, type NodeRecord } from '@/a
 import { appendNodeRev, capWorldHistory, historyMeta, findRevertTarget, markRevBad, shouldAutoRevert, type NodeHist } from '@/lib/node-dock'   // co-build: per-node version chains + revert
 import { mayWritePolicy } from '@/lib/world-policy'   // the immutable social contract
 import { loadScene, saveScene } from './store'   // scene path: branches live in the file store, not the DB
+import { worldRevision, type SnapshotLike } from '@/app/engine/build-lifecycle-server'   // item 3: derived brief_done drops on an authored edit
 
 // --- In-memory cache for space snapshots ---
 
@@ -412,6 +413,15 @@ export function applyCommandToSnapshotObject(
       const shape = (cmd.shape as string) ?? (
         hasRadius ? 'circle' : hasWH ? 'rect' : skinned ? 'screen' : 'circle'
       )
+      // Lower the floor: a field the author gave a COLOR but no visualType should
+      // still DRAW — default it to the built-in 'solid' look (a flat fill with an
+      // SDF edge, no shader needed). Gated on an explicit color so a bare
+      // invisible collider (no color) stays invisible. Computed here — NOT by
+      // mutating cmd.visualType, which would flip `skinned` above and turn every
+      // plain field into a full-screen quad. Built-ins resolve via
+      // renderer.resolveVisualType's fallback map.
+      const visualTypeName = (cmd.visualType as string | undefined)
+        ?? (cmd.color != null ? 'solid' : undefined)
       snap.fields.push({
         id: fieldId,
         name: (cmd.name as string) ?? 'Unnamed',
@@ -430,7 +440,7 @@ export function applyCommandToSnapshotObject(
         radius: (cmd.radius as number) ?? (shape === 'circle' ? 20 : undefined),
         w: (cmd.width as number) ?? (cmd.w as number) ?? (shape === 'rect' ? 50 : undefined),
         h: (cmd.height as number) ?? (cmd.h as number) ?? (shape === 'rect' ? 50 : undefined),
-        visualTypeName: cmd.visualType as string | undefined,
+        visualTypeName,
         visualParams: cmd.visualParams as [number, number, number, number] | undefined,
         tags: cmd.tags as string[] | undefined,
         noHit: cmd.noHit as boolean | undefined,
@@ -1703,6 +1713,14 @@ export async function applyCommandToSnapshot(
       // an AI wrote something this tab never ingested (auto-load watcher).
       const wd = (snap.worldData ??= {}) as Record<string, unknown>
       wd.__bridge_rev = (Number(wd.__bridge_rev) || 0) + 1
+      // brief_done is DERIVED (item 3): a real edit changes the authored CONTENT
+      // revision and un-certifies the build. Clear a stale brief_done here — evidence
+      // writes don't touch the content hash, so a genuine completion survives them,
+      // but a gameplay/shader/spec edit drops brief_done back to false.
+      if (wd.brief_done === true) {
+        const rr = (wd.__build as { readyRevision?: string } | undefined)?.readyRevision
+        if (rr !== worldRevision(snap as unknown as SnapshotLike)) wd.brief_done = false
+      }
       // SANDBOX INVARIANT — same chokepoint rule as setSpaceSnapshot
       if (snap?.stepHooks?.length) {
         ;(snap.worldData as Record<string, unknown>) = { ...(snap.worldData || {}), __sandbox: true }

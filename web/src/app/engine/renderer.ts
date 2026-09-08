@@ -26,8 +26,22 @@ import {
   PropagationEntry,
   ModuleEntry,
   getShaderUtilities,
+  BUILTIN_VISUAL_WGSL,
 } from './shaders'
 import type { SuperFieldGPU } from './types'
+
+/** Runtime visual types start their ids here, above the built-in library's
+ *  reserved range (ids 0–19 in BUILTIN_VISUAL_WGSL). Keeping the ranges disjoint
+ *  is what stops the composite generator's "first id wins" dedup from silently
+ *  dropping a runtime visual that happened to share a built-in's id. */
+const RUNTIME_VISUAL_ID_BASE = 100
+
+/** Built-in visual name→id map — the fallback for resolveVisualType, since
+ *  built-ins are merged into the uber-shader from the const (not the runtime
+ *  registry) and so would otherwise resolve to `undefined` → render nothing. */
+const BUILTIN_VISUAL_ID_BY_NAME: ReadonlyMap<string, number> = new Map(
+  BUILTIN_VISUAL_WGSL.map(b => [b.name, b.id] as const),
+)
 
 type BlendMode = 'alpha' | 'additive' | 'multiply' | 'screen' | 'softlight' | 'opaque'
 
@@ -318,7 +332,7 @@ export class FieldRenderer {
 
   // Visual type registry (dynamic visual types)
   private visualTypeRegistry: Map<string, VisualTypeEntry> = new Map()
-  private nextVisualTypeId: number = 0  // All visual types are runtime-defined
+  private nextVisualTypeId: number = RUNTIME_VISUAL_ID_BASE  // runtime ids sit above the built-in range
 
   // Pre-flight hazard limits. A visual that bakes an image into WGSL `array(...)`
   // literals (e.g. a portrait as thousands of per-pixel u32s) produces a shader
@@ -4466,10 +4480,14 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     return this.visualTypeRegistry.get(name)?.wgsl ?? null
   }
 
-  /** Resolve a visual type name to its ID */
+  /** Resolve a visual type name to its ID. Runtime registrations win; on a miss
+   *  we fall back to the built-in library (solid/glow/ring/…) so a field can ask
+   *  for a built-in look by name with no define_visual. Returns undefined only
+   *  for a truly unknown name (which draws nothing — as intended). */
   resolveVisualType(name: string): number | undefined {
     const entry = this.visualTypeRegistry.get(name)
-    return entry?.id
+    if (entry) return entry.id
+    return BUILTIN_VISUAL_ID_BY_NAME.get(name)
   }
 
   /** Register an interaction type. Triggers uber-shader recompilation. */
@@ -4729,7 +4747,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
   /** Clear all visual type, interaction, propagation, and module registries. Called on reset. */
   clearRegistries(): void {
     this.visualTypeRegistry.clear()
-    this.nextVisualTypeId = 0
+    this.nextVisualTypeId = RUNTIME_VISUAL_ID_BASE
     this.interactionRegistry.clear()
     this.nextInteractionId = 0
     this.propagationRegistry.clear()
@@ -4831,7 +4849,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) p: vec2f, @location(1) @
     this.super3DPipeline = null
     this.super3DPipelineReady = false
     this.visualTypeRegistry.clear()
-    this.nextVisualTypeId = 0
+    this.nextVisualTypeId = RUNTIME_VISUAL_ID_BASE
     this.interactionRegistry.clear()
     this.nextInteractionId = 0
     this.interactionBuffer?.destroy()

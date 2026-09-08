@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { getFieldSnapshot, getAllFieldSnapshots, getEngineState, addInteractionRuleStore, removeInteractionRuleStore, addCustomCommandStore, getCustomCommandStore, getRenderedSamples, getRenderedSample, addGlslMod, removeGlslMod, addVisualType, undoVisualType, removeVisualType, addInteractionDef, addModule, addRenderTargetDef, removeRenderTargetDef, waitForCommandResult, resetStore, saveGameSlot, loadGameSlot } from '../store'
 import type { GlslMod } from '../store'
 import { validateSpaceToken, getSpaceSnapshot, setSpaceSnapshot, applyCommandToSnapshot, applyCommandToScene, getSpaceFamily } from '../space-store'
+import type { SnapshotLike } from '@/app/engine/build-lifecycle-server'
 import { placeholderSeedCommands } from '@/app/engine/placeholder-nodes'
 import { solveUi, type UiTree, type UiNode } from '@/app/engine/ui-solver'
 import { resetWorld, worldStores, setOriginal } from '@/lib/worldSave'
@@ -928,6 +929,54 @@ export async function POST(req: NextRequest) {
         results.push({ ok: true, type: cmd.type, tracks: doc.tracks.map(t => ({ name: t.name, mime: t.mime, bytes: t.bytes, url: trackUrl(String(auth.slug ?? ''), t) })) })
         continue
       }
+      // ── BUILD LIFECYCLE (item 3): evidence-bound completion ──
+      //  build_spec_set  — store/revise the BuildSpec contract
+      //  build_status    — stage, revision, required checks + what's outstanding
+      //  validate_world  — run server checks + fold in eye/playthrough results
+      //  complete_build  — evaluate the evidence; mark ready ONLY if it's earned
+      // brief_done is a DERIVED mirror of stage==='ready'; evidence is bound to the
+      // current revision (__bridge_rev), so an edit invalidates a stale playthrough.
+      if (isSpaceScoped && (cmd.type === 'build_spec_set' || cmd.type === 'build_status' || cmd.type === 'validate_world' || cmd.type === 'complete_build')) {
+        const lc = await import('@/app/engine/build-lifecycle-server')
+        const snap = await getSpaceSnapshot(auth.spaceId!, true)
+        if (!snap) { results.push({ type: cmd.type, error: 'no world snapshot yet' }); continue }
+
+        if (cmd.type === 'build_spec_set') {
+          const { normalizeBuildSpec } = await import('@/lib/build-spec')
+          const spec = normalizeBuildSpec(cmd.spec)
+          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { spec } })
+          results.push({ ok: true, type: cmd.type, spec })
+          continue
+        }
+
+        if (cmd.type === 'build_status') {
+          const e = lc.evaluateFromSnapshot(snap as SnapshotLike)
+          results.push({ ok: true, type: cmd.type, stage: e.stage, revision: e.revision, ready: e.ready, required: e.required, passed: e.passed, outstanding: e.outstanding })
+          continue
+        }
+
+        // validate_world / complete_build: run server checks, fold external eye
+        // results (stamped to the current revision), persist the evidence ledger,
+        // evaluate, and derive brief_done from readiness.
+        const s = snap as SnapshotLike
+        const server = lc.serverChecks(s)
+        const external = lc.stampResults(s, (cmd as Record<string, unknown>).results)
+        const evidence = lc.mergeEvidence(lc.getLedger(s).evidence, [...server, ...external], lc.worldRevision(s))
+        const snapEval: SnapshotLike = { ...s, worldData: { ...(s.worldData ?? {}), __build: { stage: lc.getLedger(s).stage, evidence } } }
+        const e = lc.evaluateFromSnapshot(snapEval)
+        // persist ledger + the DERIVED brief_done (server-authorized: this IS the
+        // completion evaluator, the one place allowed to move brief_done)
+        // readyRevision stamps the content revision this build was certified at, so
+        // brief_done self-clears at the write chokepoint when a later edit changes it.
+        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __build: { stage: e.stage, evidence, ...(e.ready ? { readyRevision: e.revision } : {}) }, brief_done: e.ready } })
+        const base = { ok: true, type: cmd.type, stage: e.stage, revision: e.revision, ready: e.ready, required: e.required, passed: e.passed, outstanding: e.outstanding, checksRun: [...server, ...external].map(c => `${c.check}:${c.status}`) }
+        if (cmd.type === 'complete_build' && !e.ready) {
+          results.push({ ...base, refused: true, hint: `complete_build refused — ${e.outstanding.length} check(s) outstanding at revision ${e.revision}: ${e.outstanding.map(o => `${o.check}(${o.status})`).slice(0, 8).join(', ')}. Run render_probe + playthrough, then submit: validate_world {"results":[{"check":"input-response","status":"passed","environment":"playthrough"}, ...]}. A GPU that's down is 'unavailable', never a pass.` })
+        } else {
+          results.push(base)
+        }
+        continue
+      }
       if (cmd.type === 'list_sprites' && isSpaceScoped) {
         const { readSprites, spritesMeta } = await import('@/lib/sprite-store')
         const doc = await readSprites(auth.spaceId!)
@@ -950,61 +999,72 @@ export async function POST(req: NextRequest) {
       // doesn't own — that keeps a leaked player key from being a wildcard.
       if (auth.playerId) {
         if (cmd.type === 'create_world') {
-          const rawName = typeof cmd.name === 'string' ? cmd.name.trim() : ''
-          const name = (rawName || 'untitled world').slice(0, 60)
+          // ONE CONTRACT (item 2): the AI door now speaks the same BuildSpec the
+          // Create UI does — brief / target / visibility / gameplay / presentation
+          // / acceptance, not name-only — mapped to birth the SAME way. A short
+          // {name} still works; unstated fields default (target universal,
+          // visibility PRIVATE — publication is a separate decision).
+          const { normalizeBuildSpec, specToWorldData, specToBirthParams, specIsPublic } = await import('@/lib/build-spec')
+          const spec = normalizeBuildSpec({
+            name: cmd.name, brief: cmd.brief, target: cmd.target, visibility: cmd.visibility,
+            gameplay: cmd.gameplay, presentation: cmd.presentation, acceptance: cmd.acceptance,
+          })
+          const name = (spec.name || 'untitled world').slice(0, 60)
+          const rawName = typeof cmd.name === 'string' && cmd.name.trim().length > 0
+          // caller-supplied idempotency key makes a retried create replay-safe
+          const idempotencyKey = (typeof cmd.idempotencyKey === 'string' && cmd.idempotencyKey.trim())
+            ? cmd.idempotencyKey.trim().slice(0, 120) : crypto.randomUUID()
           // one gate for every create path (the world cap)
           const gate = await canCreateWorld(auth.playerId)
           if (!gate.ok) { results.push({ type: cmd.type, error: gate.error }); continue }
-          // GUARD: don't silently mint a same-name twin for the same owner (the
-          // VEILFIRE-3D dups). Only for an INTENTIONAL name — an unnamed scratch create still works.
+          // RETRY-SAFE: a repeat of the same key returns the existing world (fresh
+          // build key), BEFORE the twin-guard would reject the now-existing name.
+          const { createWorldIdempotent, peekCreate } = await import('@/lib/create-world-service')
+          const replay = await peekCreate(idempotencyKey)
+          if (replay) {
+            results.push({ ok: true, created: replay.space.slug, spaceName: replay.space.name, token: replay.token, replayed: true })
+            continue
+          }
+          // GUARD: don't silently mint a same-name twin for the same owner. Only
+          // for an INTENTIONAL name — an unnamed scratch create still works.
           if (rawName) {
             const twin = await findOwnWorldByName(auth.playerId, name)
             if (twin) { results.push({ type: cmd.type, error: `You already own a world named "${twin.name}" (/space/${twin.slug}). Edit it with use_world {"slug":"${twin.slug}"}, or create with a different name.`, existingSlug: twin.slug }); continue }
           }
-          // ONE CREATION, ONE PRICE (Galen, Sep 5: "the world build credit
-          // taker as a tool call for ai"). The AI door was the LAST free side
-          // door — every human create path spends a $5 build credit; now this
-          // one does too, with the same law: keeper demos free, spend AFTER
-          // all validation (a refused create never charges), a failed birth
-          // refunds. The AI gets a machine-readable broke answer (needPayment)
-          // it can relay to its human, and creditsLeft on success.
           const { isAdminUserId } = await import('@/lib/adminAuth')
-          const { spendGenCredit, refundGenCredit, stripeConfigured, GEN_PRICE_USD } = await import('@/lib/stripe')
+          const { stripeConfigured, GEN_PRICE_USD, hasIpShield, readGenCredits } = await import('@/lib/stripe')
           const isKeeper = await isAdminUserId(auth.playerId)
-          let creditsLeft: number | null = null
-          if (!isKeeper) {
-            creditsLeft = await spendGenCredit(auth.playerId)
-            if (creditsLeft === null) {
-              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy credits on the ACCOUNT page (bundles are cheaper), or note the editing membership includes 2 build credits EVERY month. Check the balance anytime with {"type":"credits_read"}.`, buyAt: 'https://cartridge.cafe/account',
-                needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD, credits: 0 })
-              continue
+          const worldData = specToWorldData(spec, { by: auth.playerId, at: Date.now() })
+          const worldParams = specToBirthParams(spec)
+          // ONE CREATION, ONE PRICE + IDEMPOTENT: credit-spend and birth happen
+          // atomically in the shared service; a retry never double-charges or
+          // double-creates, and a failed birth refunds in-place.
+          const outcome = await createWorldIdempotent({
+            ownerId: auth.playerId, idempotencyKey, isKeeper,
+            birth: {
+              ownerId: auth.playerId, name, baseSlug: slugify(name),
+              isPublic: specIsPublic(spec, await hasIpShield(auth.playerId)),
+              ...(Object.keys(worldData).length ? { worldData } : {}),
+              ...(Object.keys(worldParams).length ? { worldParams } : {}),
+            },
+          })
+          if (!outcome.ok) {
+            if (outcome.reason === 'needPayment') {
+              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy credits on the ACCOUNT page (bundles are cheaper), or note the editing membership includes 2 build credits EVERY month. Check the balance anytime with {"type":"credits_read"}.`, buyAt: 'https://cartridge.cafe/account', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD, credits: 0 })
+            } else if (outcome.reason === 'inFlight') {
+              results.push({ type: cmd.type, error: 'a create with this idempotency key is already in progress — retry in a moment', retryable: true })
+            } else {
+              results.push({ type: cmd.type, error: 'world birth failed — nothing was charged (your credit was refunded)' })
             }
-          }
-          // THE ONE BIRTH PIPELINE (universal-pipelines law): this door used to
-          // hand-roll creation (slug + seeds + token) and silently missed what
-          // birthWorld gives every other door — the backdrop, born-strict, the
-          // first build key. One pipeline now.
-          // AUTO-PUBLISH (Galen, Sep 5: "all games are auto published" — the
-          // publish ceremony is gone for now). Born PUBLIC; the shelf's
-          // hasContent guard keeps blank worlds invisible until they're real.
-          // EXCEPTION: a PROPRIETARY (IP-control) owner's worlds stay born
-          // private — closed-source dev work is never auto-shelved.
-          let space: { id: string; slug: string }, worldToken: string
-          try {
-            const { birthWorld } = await import('@/lib/world-create')
-            const { hasIpShield } = await import('@/lib/stripe')
-            const born = await birthWorld({ ownerId: auth.playerId!, name, baseSlug: slugify(name), isPublic: !(await hasIpShield(auth.playerId)) })
-            space = born.space; worldToken = born.token
-          } catch (e) {
-            if (!isKeeper) { await refundGenCredit(auth.playerId!).catch(() => {}) }
-            results.push({ type: cmd.type, error: 'world birth failed — nothing was charged (your credit was refunded)' })
             continue
           }
+          const space = outcome.space, worldToken = outcome.token
+          const creditsLeft = isKeeper ? null : await readGenCredits(auth.playerId)
           // The platform speaks on its own bus: world births announce themselves.
           commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
-          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: true,
+          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: !space.isPublic,
             ...(creditsLeft !== null ? { creditsLeft } : {}),
-            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. The world is AUTO-PUBLISHED (proprietary owners excepted) — it appears on the shelf once it has real content; still ship worldData.vision + instructions, they are the player-facing soul.` })
+            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. Ship worldData.vision + instructions — they are the player-facing soul; declare your acceptance checks so completion can be verified.` })
           continue
         }
         if (cmd.type === 'use_world') {

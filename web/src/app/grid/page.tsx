@@ -359,7 +359,11 @@ export default function TheGrid() {
   const mobileBar = win.w < 640
   const topH = miniTop ? (mobileBar ? 74 : 56) : 0
   // a phone can't sit on the hidden DESKTOP tab (shrink/rotate lands here)
-  useEffect(() => { if (mobileBar && tab === 'desktop') setTab('mobile') }, [mobileBar, tab])
+  // Auto-switch to the mobile tab when the window narrows — but NOT while a world
+  // is in PLAY: the tab flip re-fetches the tab's world list and setScene()s its
+  // first entry, which would remount FieldEngine onto a DIFFERENT world and lose
+  // the one you're playing (Galen: "squishing the window makes the world/UI vanish").
+  useEffect(() => { if (mobileBar && tab === 'desktop' && phase !== 'play') setTab('mobile') }, [mobileBar, tab, phase])
   const inset = useMemo<Inset>(() => {
     const W = Math.max(win.w, MIN_W + M * 2), H = Math.max(win.h, MIN_H + topH + M + BAR_H + 10)
     // MOBILE IS MOBILE (Galen): a mobile-declared world wears a PHONE-SHAPED

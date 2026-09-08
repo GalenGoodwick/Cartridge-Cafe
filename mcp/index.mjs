@@ -174,12 +174,38 @@ server.tool(
 
 server.tool(
   'brew_world',
-  'Create YOUR OWN world — requires a connected account (run connect_account once). Returns a build token (uc_st_) for the bridge. Worlds are born owned by your human\'s account.',
-  { name: z.string().describe('The world\'s name') },
-  async ({ name }) => {
+  'Create YOUR OWN world — requires a connected account (run connect_account once). A name is enough to start; the richer BuildSpec fields (brief/target/visibility/gameplay/presentation/acceptance) are the ONE contract the Create UI speaks too — fill what you know, the rest defaults (target universal, visibility PRIVATE). Returns a build token (uc_st_) for the bridge. Worlds are born owned by your human\'s account.',
+  {
+    name: z.string().describe('The world\'s name'),
+    brief: z.string().optional().describe('What the world IS — the core idea a connecting AI builds toward (a sentence or two).'),
+    target: z.enum(['desktop', 'mobile', 'universal']).optional().describe('Device target — mobile is born portrait 576×1024; universal = undeclared (default).'),
+    visibility: z.enum(['private', 'public']).optional().describe('private (default — publish deliberately later) or public.'),
+    gameplay: z.object({
+      coreLoop: z.string().optional(), controls: z.record(z.string()).optional(),
+      progression: z.string().optional(), restartBehavior: z.string().optional(),
+      primitives: z.array(z.object({
+        kind: z.enum(['winCondition', 'loseCondition', 'scoring', 'lives', 'timer', 'waves', 'checkpoint', 'collectible', 'spawner', 'progression']),
+        when: z.string().optional(), target: z.number().optional(), start: z.number().optional(),
+        per: z.string().optional(), seconds: z.number().optional(), note: z.string().optional(),
+      })).optional().describe('Gameplay PRIMITIVES this world draws from the palette — each {kind, ...params}. A universal environment (garden, visualizer, ambient world) draws NONE: no win/lose, nothing imposed. win/lose are primitives here, not required fields.'),
+    }).optional().describe('OPTIONAL gameplay: description (coreLoop/controls/progression/restartBehavior) + a palette of primitives. Nothing is required — omit entirely for a universal environment.'),
+    presentation: z.object({ vision: z.string(), references: z.array(z.string()).optional() }).optional().describe('The look/feel: a vision line + optional references.'),
+    acceptance: z.array(z.object({ id: z.string().optional(), description: z.string(), verification: z.enum(['state', 'render', 'playthrough', 'human']) }))
+      .optional().describe('Checks that define "done" — each verified by state / render / playthrough / human.'),
+    idempotencyKey: z.string().optional().describe('Reuse the SAME key to retry a create safely — a repeat returns the existing world, never a duplicate or a double charge.'),
+  },
+  async ({ name, brief, target, visibility, gameplay, presentation, acceptance, idempotencyKey }) => {
     // paired? build AS the account — the world is born owned, no deed to claim
     if (account) {
-      const out = await bridgeFor(account.playerToken).bridgeSend({ type: 'create_world', name }, { normalize: false })
+      const cmd = { type: 'create_world', name }
+      if (brief) cmd.brief = brief
+      if (target) cmd.target = target
+      if (visibility) cmd.visibility = visibility
+      if (gameplay) cmd.gameplay = gameplay
+      if (presentation) cmd.presentation = presentation
+      if (acceptance) cmd.acceptance = acceptance
+      if (idempotencyKey) cmd.idempotencyKey = idempotencyKey
+      const out = await bridgeFor(account.playerToken).bridgeSend(cmd, { normalize: false })
       const r = (out && out.results && out.results[0]) || out || {}
       if (!r.token) return text({ error: r.error || 'create failed', hint: 'if the key was revoked, connect_account {force:true} re-pairs' })
       const world = { name, slug: r.created, token: r.token, viewUrl: `${BASE}/space/${r.created}` }

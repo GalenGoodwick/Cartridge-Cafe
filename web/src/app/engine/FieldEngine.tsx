@@ -18,6 +18,8 @@ import { AiViewPanel, type SwarmNodeView } from './ai-view/AiViewPanel'
 import { BuilderBoxPanel } from './builderbox/BuilderBoxPanel'
 import { WorldSandbox } from './world-sandbox'
 import { solveUi, hitUi, type UiTree, type UiNode, type SolvedUi, type UiOverride } from './ui-solver'
+import { hudToUi } from './hud-to-ui'
+import { slotsToUi, type SlotsSpec } from './slot-ui'
 import { ArenaClient, fetchArenaRooms } from './arena-client'
 import { FieldInput } from './input'
 import Toolbar from './Toolbar'
@@ -1097,10 +1099,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => { window.removeEventListener('cafe:icon', apply); clearInterval(iv) }
   }, [])
 
-  // HUD elements (driven by worldData['hud'])
+  // hud DOM overlay retired — hudContainerRef now only clears pre-retirement leftovers
   const hudContainerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)   // the top-right UI dock — its bottom seats the VOTE button
-  const hudElementCacheRef = useRef<Map<string, HTMLElement>>(new Map())
   // THE UI SYSTEM — this frame's solved layout (rects/boxes/runs/hits from
   // worldData.ui via the ui-solver) + a geometry fingerprint so __uiRects only
   // republishes on real change
@@ -2823,6 +2824,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
         }
+        sim.input.reset()   // queue/held/pulse counts start fresh with the new world
         if (scene.interactionRules) sim.interactionRules = scene.interactionRules
         if (scene.interactionEffects) for (const ie of scene.interactionEffects) sim.addInteractionEffect(ie)
         if (scene.stepHooks) installHooks(sim, scene.stepHooks, scene.worldData as Record<string, unknown> | undefined)
@@ -2964,6 +2966,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       for (const k of Object.keys(sim.worldData)) {
         if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
       }
+      sim.input.reset()   // queue/held/pulse counts start fresh with the new world
       if (snapshot.interactionRules) sim.interactionRules = snapshot.interactionRules
       if (snapshot.interactionEffects) for (const ie of snapshot.interactionEffects) sim.addInteractionEffect(ie)
       installHooks(sim, snapshot.stepHooks, snapshot.worldData as Record<string, unknown> | undefined)
@@ -3120,6 +3123,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         for (const k of Object.keys(sim.worldData)) {
           if (k.startsWith('key_') || k.startsWith('mouse_')) delete sim.worldData[k]
         }
+        sim.input.reset()   // queue/held/pulse counts start fresh on restore
         if (snapshot.interactionRules) sim.interactionRules = snapshot.interactionRules
         if (snapshot.interactionEffects) {
           for (const ie of snapshot.interactionEffects) sim.addInteractionEffect(ie)
@@ -3293,7 +3297,13 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       draggingFieldId.current = null
       pendingPortalRef.current = null
       const sim = simulationRef.current
-      if (sim) { sim.worldData['mouse_down'] = false; sim.worldData['mouse_down_right'] = false }
+      if (sim) {
+        // Heal a missed pointer-up wherever it landed — release through the queue
+        // only if still held, so pointer.released fires exactly once and no spurious
+        // edge is created when nothing was down.
+        if (sim.worldData['mouse_down']) sim.input.push(sim.worldData, 'mouse_down', 'up')
+        if (sim.worldData['mouse_down_right']) sim.input.push(sim.worldData, 'mouse_down_right', 'up')
+      }
       const canvas = canvasRef.current
       if (canvas) canvas.style.cursor = hubCursorRef.current ? 'none' : 'grab'
     }
@@ -3597,9 +3607,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           }
           if (action.startsWith('key:')) {
             const key = 'key_' + action.slice(4).replace(/[^a-z0-9_]/gi, '').toLowerCase()
-            const wdK = sim.worldData as Record<string, unknown>
-            if (wdK[key] !== true) wdK[key + '_n'] = ((wdK[key + '_n'] as number) || 0) + 1
-            wdK[key] = true
+            // Touch button → same ordered queue as the keyboard (writes key_*/_n).
+            sim.input.push(sim.worldData as Record<string, unknown>, key, 'down')
             uiKeyHeldRef.current.set(e.pointerId, key)
             e.preventDefault(); e.stopPropagation()
             return
@@ -3643,9 +3652,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // the engaging-lock click is swallowed so it locks without firing; every
       // later click (while already locked) records the press and fires normally.
       if (!engagingLock) {
-        sim.worldData['mouse_down'] = true
-        // pulse counter — a click shorter than one sim frame still lands once
-        sim.worldData['mouse_down_n'] = ((sim.worldData['mouse_down_n'] as number) || 0) + 1
+        // Ordered queue owns the press (writes mouse_down / mouse_down_n adapters);
+        // a click shorter than one sim frame still lands as one pointer.pressed.
+        sim.input.push(sim.worldData, 'mouse_down', 'down')
       }
       // RIGHT-CLICK, exposed to hooks — purely additive (mouse_down above is
       // UNCHANGED, still fires for any button, so no existing world's behavior
@@ -3654,8 +3663,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       // inert for gameplay; this gives it a second, distinct button a hook can
       // read (e.g. a strafe-modifier command) without touching the primary one.
       if (e.button === 2) {
-        sim.worldData['mouse_down_right'] = true
-        sim.worldData['mouse_down_right_n'] = ((sim.worldData['mouse_down_right_n'] as number) || 0) + 1
+        sim.input.push(sim.worldData, 'mouse_down_right', 'down')
       }
     }
 
@@ -3804,7 +3812,13 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     if (sim) {
       sim.worldData['mouse_x'] = gridPos.x
       sim.worldData['mouse_y'] = gridPos.y
-      sim.worldData['mouse_down'] = pointerDown.current && !lockSwallow.current
+      // Re-assert the press level through the queue as a TRANSITION so held/edges
+      // stay consistent with the direct down/up pushes (a still press stays down; a
+      // press that only becomes real after the engaging-lock click still fires once).
+      const wantDown = pointerDown.current && !lockSwallow.current
+      const isDown = sim.worldData['mouse_down'] === true
+      if (wantDown && !isDown) sim.input.push(sim.worldData, 'mouse_down', 'down')
+      else if (!wantDown && isDown) sim.input.push(sim.worldData, 'mouse_down', 'up')
     }
 
     // Dragging a field — update its position and skip panning
@@ -3894,12 +3908,15 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       if (held) {
         uiKeyHeldRef.current.delete(e.pointerId)
         const simK = simulationRef.current
-        if (simK) simK.worldData[held] = false
+        if (simK) simK.input.push(simK.worldData, held, 'up')
       }
       uiSliderDragRef.current.delete(e.pointerId)   // slider drags end on release
     }
-    { const simUp = simulationRef.current; if (simUp) simUp.worldData['mouse_down'] = false }
-    if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR) simUpR.worldData['mouse_down_right'] = false }
+    // Route the button release through the queue so pointer.released fires — but
+    // only when it was actually down, so a swallowed/engaging press leaves no
+    // spurious edge (the level adapter mirrors held, so this is the held check).
+    { const simUp = simulationRef.current; if (simUp && simUp.worldData['mouse_down']) simUp.input.push(simUp.worldData, 'mouse_down', 'up') }
+    if (e.button === 2) { const simUpR = simulationRef.current; if (simUpR && simUpR.worldData['mouse_down_right']) simUpR.input.push(simUpR.worldData, 'mouse_down_right', 'up') }
     // PLAY-mode portal: pressed on a door with the chrome closed — travel on a
     // clean click (not a drag). Both types page-nav for now; 'swap' becomes the
     // in-place hubworld travel when that lands.
@@ -4080,9 +4097,9 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       if (e.key === ' ') spaceHeld.current = true
       const mapped = keyMap[e.key] ?? keyMap[e.key.toLowerCase()]
       if (mapped) {
-        sim.worldData[mapped] = true
-        // pulse counter — a tap shorter than one sim frame still registers once
-        sim.worldData[mapped + '_n'] = ((sim.worldData[mapped + '_n'] as number) || 0) + 1
+        // Ordered queue owns the transition (and writes the key_*/_n adapters). The
+        // e.repeat flag marks OS auto-repeat: held stays, but no new press edge.
+        sim.input.push(sim.worldData, mapped, 'down', { repeat: e.repeat })
         // Prevent arrow keys from scrolling
         if (e.key.startsWith('Arrow') || e.key === ' ') e.preventDefault()
       }
@@ -4094,14 +4111,19 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       if (e.key === ' ') spaceHeld.current = false
       const mapped = keyMap[e.key] ?? keyMap[e.key.toLowerCase()]
       if (mapped) {
-        sim.worldData[mapped] = false
+        sim.input.push(sim.worldData, mapped, 'up')
       }
     }
+    // A key held while the window loses focus (alt-tab) would otherwise stick down
+    // forever — the keyup lands on another window. Release everything held on blur.
+    const onBlur = () => { const sim = simulationRef.current; if (sim) sim.input.clearHeld(sim.worldData) }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
     }
   }, [])
 
@@ -4638,160 +4660,13 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         }).catch(() => {})
       }
 
-      // Update HUD overlay from worldData (cached element lookups, no per-frame DOM queries)
-      // The HUB (CAFE / SUB-MAIN) never shows a world's HUD — a game's score UI
-      // lingers in worldData.hud after you leave (the hook stops, the value stays,
-      // and the hub snapshot merges rather than clears), so it bled onto main.
-      // Detect the hub from the sim's OWN fields → hudData undefined → cleared below.
-      const onHubHud = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
-      const hudData = onHubHud ? undefined : (sim.worldData['hud'] as HudElement[] | undefined)
+      // Legacy hud DOM overlay RETIRED (Sep 7): `worldData.hud` now routes through
+      // the ui-solver — ONE render authority (engine pixels, recorded by REC,
+      // contained in framed worlds, layout-solved) — via hudToUi at the UI solve
+      // below. HTML/CSS/image hud had no engine-pixel equivalent and is dropped
+      // (game worlds don't need HTML/CSS UI). Clear any pre-retirement DOM once.
       const hudContainer = hudContainerRef.current
-      if (hudContainer) {
-        if (hudData && Array.isArray(hudData)) {
-          // CLIP THE HUD TO THE WORLD SQUARE (Galen: "text from a world escaping
-          // the grid"). On a wide viewport the 512 grid renders as a CENTERED
-          // square (renderer letterboxes — see computeFieldViewport), but this
-          // container is the full canvas, so edge-anchored HUD (x:'16px',
-          // right:'12px') landed out in the margin BESIDE the world. Project the
-          // grid box [0,512] to screen px with the renderer's OWN camera math and
-          // size the container to it, overflow hidden — HUD coords become
-          // relative to the world, and nothing can spill past its edge.
-          const canvasEl = canvasRef.current
-          let hudSide = 512
-          if (canvasEl) {
-            // CAMERA-INDEPENDENT RESTING SQUARE (the law, Aug 6): HUD is
-            // chrome — it never follows the grid camera. side = min(w,h),
-            // centered; matches the GPU text box and the shader chrome.
-            const cw = canvasEl.clientWidth, ch = canvasEl.clientHeight
-            hudSide = Math.min(cw, ch)
-            hudContainer.style.left = `${(cw - hudSide) / 2}px`
-            hudContainer.style.top = `${(ch - hudSide) / 2}px`
-            hudContainer.style.width = `${hudSide}px`
-            hudContainer.style.height = `${hudSide}px`
-            hudContainer.style.right = 'auto'
-            hudContainer.style.bottom = 'auto'
-            hudContainer.style.overflow = 'hidden'
-          }
-          const cache = hudElementCacheRef.current
-          const seen = new Set<string>()
-          for (const elem of hudData) {
-            if (!elem.id || elem.visible === false) continue
-            // THE BOUNDARY, found by experiment (Galen, Aug 6): screen-space
-            // UI is DOM (the browser's home turf — layout, crisp fonts,
-            // wrapping); WORLD-space text is the GPU glyph pass (damage
-            // numbers, in-world labels — gated on worldData.__gpuText).
-            // The eye stays whole via the hud-composite snapshot paths.
-            seen.add(elem.id)
-            let el = cache.get(elem.id)
-            if (!el || !el.isConnected) {
-              el = document.createElement('div')
-              el.setAttribute('data-hud-id', elem.id)
-              el.style.position = 'absolute'
-              hudContainer.appendChild(el)
-              cache.set(elem.id, el)
-            }
-            // FRAME PARENTING (React-style locating, now in its native medium):
-            // frame:[cx,cy,w,h] (uv) → % rect inside the square; the element's
-            // %-coords resolve inside it, overflow clipped by CSS.
-            const frameF = (elem as unknown as { frame?: number[] }).frame
-            if (Array.isArray(frameF) && frameF.length === 4) {
-              const [fcx, fcy, fwq, fhq] = frameF.map(Number)
-              const fL = (fcx - fwq / 2 + 1) / 2 * 100, fT = (fcy - fhq / 2 + 1) / 2 * 100
-              const fW = fwq / 2 * 100, fH = fhq / 2 * 100
-              const px9 = parseFloat(String(elem.x ?? '0')) / 100, py9 = parseFloat(String(elem.y ?? '0')) / 100
-              el.style.left = `${(fL + fW * px9).toFixed(2)}%`
-              el.style.top = `${(fT + fH * py9).toFixed(2)}%`
-              el.style.maxWidth = `${(fL + fW - (fL + fW * px9)).toFixed(2)}%`
-              el.style.overflow = 'hidden'
-              el.style.whiteSpace = 'nowrap'
-              el.style.textOverflow = 'ellipsis'
-            } else {
-              el.style.left = elem.x ?? ''
-              el.style.top = elem.y ?? ''
-            }
-            el.style.right = elem.right ?? ''
-            el.style.bottom = elem.bottom ?? ''
-            el.style.color = elem.color ?? '#fff'
-            // PROPORTIONAL TEXT: fontSize is design-px against the 512 grid,
-            // scaled by the square so text grows WITH its panels.
-            el.style.fontSize = `${((parseFloat(String(elem.fontSize ?? '16')) || 16) * (hudSide / 512)).toFixed(2)}px`
-            // inner-field HTML/CSS protocol: apply an arbitrary style object
-            if (elem.css) { for (const k in elem.css) { try { (el.style as unknown as Record<string, string>)[k] = elem.css[k] } catch { /* skip bad css prop */ } } }
-            // clickable → feed the click back to the hook via worldData.__uiClick
-            if (elem.clickable) {
-              el.style.pointerEvents = 'auto'
-              if (!el.style.cursor) el.style.cursor = 'pointer'
-              const boundEl = el
-              const anyEl = boundEl as unknown as { __uiClickBound?: boolean }
-              if (!anyEl.__uiClickBound) {
-                anyEl.__uiClickBound = true
-                boundEl.addEventListener('pointerdown', (ev) => {
-                  ev.stopPropagation()
-                  let node = ev.target as HTMLElement | null, action = ''
-                  while (node && node !== boundEl) { if (node.dataset && node.dataset.uiClick) { action = node.dataset.uiClick; break } node = node.parentElement }
-                  if (!action) action = boundEl.getAttribute('data-hud-id') ?? ''
-                  const wd = sim.worldData as Record<string, unknown>
-                  wd['__uiClick'] = action; wd['__uiClickT'] = performance.now()
-                })
-              }
-            } else {
-              el.style.pointerEvents = 'none'
-            }
-
-            if (elem.type === 'text') {
-              el.textContent = elem.text ?? ''
-            } else if (elem.type === 'html') {
-              const anyEl = el as unknown as { __uiHtml?: string }
-              const next = elem.html ?? ''
-              if (anyEl.__uiHtml !== next) { anyEl.__uiHtml = next; el.innerHTML = sanitizeHudHtml(next) }
-            } else if (elem.type === 'bar') {
-              const pct = elem.max ? Math.min(100, ((elem.value ?? 0) / elem.max) * 100) : 0
-              // Reuse fill child if it exists
-              let fill = el.firstChild as HTMLElement | null
-              if (!fill || !fill.style) {
-                el.innerHTML = ''
-                el.style.width = elem.width ?? '100px'
-                el.style.height = '12px'
-                el.style.backgroundColor = 'rgba(255,255,255,0.2)'
-                el.style.borderRadius = '2px'
-                el.style.overflow = 'hidden'
-                fill = document.createElement('div')
-                fill.style.height = '100%'
-                fill.style.backgroundColor = elem.barColor ?? elem.color ?? '#0f0'
-                fill.style.transition = 'width 0.15s'
-                el.appendChild(fill)
-              }
-              fill.style.width = `${pct}%`
-            } else if (elem.type === 'image') {
-              if (el.tagName !== 'IMG') {
-                const img = document.createElement('img') as HTMLImageElement
-                img.setAttribute('data-hud-id', elem.id)
-                img.style.position = 'absolute'
-                el.replaceWith(img)
-                el = img
-                cache.set(elem.id, el)
-              }
-              (el as HTMLImageElement).src = elem.src ?? ''
-              el.style.width = elem.imgWidth ?? ''
-              el.style.height = elem.imgHeight ?? ''
-              el.style.left = elem.x ?? ''
-              el.style.top = elem.y ?? ''
-              el.style.right = elem.right ?? ''
-              el.style.bottom = elem.bottom ?? ''
-            }
-          }
-          // Remove stale elements using cache (no DOM query)
-          for (const [id, el] of cache) {
-            if (!seen.has(id)) {
-              el.remove()
-              cache.delete(id)
-            }
-          }
-        } else if (hudElementCacheRef.current.size > 0) {
-          hudContainer.innerHTML = ''
-          hudElementCacheRef.current.clear()
-        }
-      }
+      if (hudContainer && hudContainer.childElementCount > 0) hudContainer.innerHTML = ''
 
       // Paint field shapes into colorData so base pass renders them
       sim.paintFieldShapes()
@@ -5290,7 +5165,22 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
         // the HUB never shows a world's UI (same law as hud: the tree lingers
         // in worldData after you leave — don't let it bleed onto the cafe)
         const onHubUi = sim.fields.has('cf_world_f') || sim.fields.has('cf_submain_f')
-        const uiT = onHubUi ? undefined : sim.worldData['ui'] as UiTree | undefined
+        // ONE UI AUTHORITY, three ways to feed it (precedence ui > slots > hud):
+        //  · `ui`    — the full declarative solver tree (custom layouts)
+        //  · `slots` — SAFE-ZONE slots: drop content in named zones, the solver
+        //              guarantees placement (overlap structurally impossible) — the
+        //              reliable low floor for UI (slotsToUi)
+        //  · `hud`   — the retired legacy protocol, translated (hudToUi)
+        // __gpuText worlds keep the separate world-space GPU-text path.
+        let uiT = onHubUi ? undefined : sim.worldData['ui'] as UiTree | undefined
+        if (!uiT && !onHubUi) {
+          const slots = sim.worldData['slots']
+          if (slots && typeof slots === 'object' && !Array.isArray(slots)) {
+            uiT = slotsToUi(slots as SlotsSpec)
+          } else if (!sim.worldData['__gpuText'] && Array.isArray(sim.worldData['hud'])) {
+            uiT = hudToUi(sim.worldData['hud'] as HudElement[])
+          }
+        }
         // THE ONE ENGINE: the host's shell nodes join the world's tree in ONE
         // solve — same solver, same passes, same hit table. Shell after world:
         // later panels paint above (chrome over world, the chrome law).

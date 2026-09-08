@@ -3,7 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, birthWorld, sweepAbandonedDrafts, findOwnWorldByName, resolveBirthExtras } from '@/lib/world-create'
+import crypto from 'crypto'
+import { canCreateWorld, sweepAbandonedDrafts, findOwnWorldByName, resolveBirthExtras } from '@/lib/world-create'
+import { buildSpecFromCreateBody, specToWorldData, specToBirthParams, specIsPublic } from '@/lib/build-spec'
+import { createWorldIdempotent } from '@/lib/create-world-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,53 +108,42 @@ export async function POST(req: NextRequest) {
     const err = e as { status?: number; error?: string }
     return NextResponse.json({ error: err.error || 'bad base world' }, { status: err.status || 400 })
   }
-  const birthData: Record<string, unknown> = {
-    ...(brief?.trim() ? { creation_brief: { prompt: brief.trim(), by: user.id, at: Date.now() } } : {}),
-    ...extras.birthData,
-  }
-  // brief must ride the base snapshot too (extras merged only facet keys)
-  const baseSnapshot = extras.baseSnapshot && brief?.trim()
-    ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), creation_brief: birthData.creation_brief } } as typeof extras.baseSnapshot
-    : extras.baseSnapshot
+  // ONE CONTRACT (item 2): body → canonical BuildSpec → birth, the SAME mapping
+  // every door uses. draft forces private (invisible until ENTER WORLD).
+  const spec0 = buildSpecFromCreateBody(body)
+  const spec = draft ? { ...spec0, visibility: 'private' as const } : spec0
+  const specWd = specToWorldData(spec, { by: user.id, at: Date.now(), ...(extras.forkOfId ? { format: String(body?.base ?? '').trim() } : {}) })
+  const worldData: Record<string, unknown> = { ...extras.birthData, ...specWd }
+  // spec + brief ride the base snapshot too (extras merged only facet keys)
+  const baseSnapshot = extras.baseSnapshot
+    ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), ...specWd } } as typeof extras.baseSnapshot
+    : undefined
+  const worldParams = Object.keys(extras.birthParams).length ? extras.birthParams : specToBirthParams(spec)
 
-  // ONE CREATION, ONE PRICE (Galen, Aug 27: "birth and generate are the same
-  // process — we have to charge $5 per world created to prevent clutter/
-  // attacks"). The SAME credit gate as /api/generate — no free side door
-  // through this route. Spent AFTER all validation (a 400 never charges);
-  // keeper demos free; a failed birth refunds.
+  // ONE CREATION, ONE PRICE + IDEMPOTENT (Galen, Aug 27): credit-spend and birth
+  // are atomic in the shared service; a retry never double-charges or double-
+  // creates, and a failed birth refunds in-place. keeper demos free.
   const { isAdminUserId } = await import('@/lib/adminAuth')
-  const { spendGenCredit, refundGenCredit, stripeConfigured, GEN_PRICE_USD } = await import('@/lib/stripe')
+  const { stripeConfigured, GEN_PRICE_USD, hasIpShield } = await import('@/lib/stripe')
   const isKeeper = await isAdminUserId(user.id)
-  if (!isKeeper) {
-    const spent = await spendGenCredit(user.id)
-    if (spent === null) {
-      return NextResponse.json(
-        { error: 'creating a world costs one generation credit', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD },
-        { status: 402 },
-      )
-    }
-  }
-
-  try {
-    const { space, token: rawToken } = await birthWorld({
-      worldParams: extras.birthParams,
-      ownerId: user.id,
-      name: name.trim(),
-      baseSlug,
-      description: description?.trim() || null,
-      isPublic: !draft && !(await (await import('@/lib/stripe')).hasIpControl(user.id)),   // draft stays invisible until ENTER WORLD; a PROPRIETARY owner's worlds are never auto-shelved (Galen, Sep 5)
-      worldData: Object.keys(birthData).length ? birthData : undefined,
+  const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim() ? body.idempotencyKey.trim().slice(0, 120) : crypto.randomUUID()
+  const outcome = await createWorldIdempotent({
+    ownerId: user.id, idempotencyKey, isKeeper,
+    birth: {
+      ownerId: user.id, name: name.trim(), baseSlug, description: description?.trim() || null,
+      isPublic: specIsPublic(spec, await hasIpShield(user.id)),
+      ...(Object.keys(worldData).length ? { worldData } : {}),
+      ...(Object.keys(worldParams).length ? { worldParams } : {}),
       ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
       ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
-    })
-
-    // shape the response (the create returns the full row now — don't leak
-    // snapshot / ownerId to the client)
-    const shaped = { id: space.id, slug: space.slug, name: space.name, description: space.description, isPublic: space.isPublic, createdAt: space.createdAt }
-    return NextResponse.json({ space: shaped, token: rawToken }, { status: 201 })
-  } catch (e) {
-    if (!isKeeper) void refundGenCredit(user.id).catch(() => {})   // birth failed — the credit comes back
-    const msg = e instanceof Error ? e.message : 'world creation failed'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    },
+  })
+  if (!outcome.ok) {
+    if (outcome.reason === 'needPayment') return NextResponse.json({ error: 'creating a world costs one generation credit', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD }, { status: 402 })
+    if (outcome.reason === 'inFlight') return NextResponse.json({ error: 'a create with this idempotency key is in progress — retry', retryable: true }, { status: 409 })
+    return NextResponse.json({ error: outcome.message }, { status: 500 })
   }
+  const s = outcome.space
+  const shaped = { id: s.id, slug: s.slug, name: s.name, description: s.description, isPublic: s.isPublic, createdAt: s.createdAt }
+  return NextResponse.json({ space: shaped, token: outcome.token, replayed: outcome.replayed }, { status: 201 })
 }
