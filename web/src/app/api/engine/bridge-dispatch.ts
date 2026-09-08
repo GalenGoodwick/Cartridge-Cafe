@@ -15,10 +15,15 @@ import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, findOwnWorldByName } from '@/lib/world-create'
 import { commonsSystemSay } from '@/lib/commons'
+import { COMMONS_HANDLERS } from './bridge-commons'
 
 export interface HandlerCtx {
   cmd: Record<string, unknown>
   auth: BridgeAuth
+  /** request origin (req.nextUrl.origin) — for links a handler mints */
+  origin: string
+  /** holderOf(raw token) — the anonymous builder identity for docks/regions */
+  tokenHolder: string
 }
 
 export type BridgeHandler = (ctx: HandlerCtx) => Promise<Record<string, unknown>>
@@ -213,7 +218,12 @@ export const BRIDGE_HANDLERS: Record<string, BridgeHandler> = {
   create_world: createWorld,
   use_world: useWorld,
   credits_read: creditsRead,
+  ...COMMONS_HANDLERS,
 }
+
+/** verbs that carry their ORIGINAL scope guard + exact refusal message inside
+ *  the handler (moved verbatim) — the generic registry scope check skips them. */
+const SELF_GUARDED = new Set(Object.keys(COMMONS_HANDLERS))
 
 /** verbs that require a PLAYER key: without one, dispatch declines (null) and
  *  the legacy chain keeps its exact historical behavior for that caller. */
@@ -229,7 +239,7 @@ export async function dispatchBridgeCommand(ctx: HandlerCtx): Promise<Record<str
   if (!handler) return null
   if (PLAYER_VERBS.has(verb) && !ctx.auth.playerId) return null // legacy chain keeps its behavior
   const scope = COMMAND_REGISTRY[verb]?.scope
-  if ((scope === 'space' || scope === 'owner') && !ctx.auth.spaceId) {
+  if (!SELF_GUARDED.has(verb) && (scope === 'space' || scope === 'owner') && !ctx.auth.spaceId) {
     return { type: verb, error: `${verb} needs a world token (uc_st_) — it acts on a specific world` }
   }
   return handler(ctx)

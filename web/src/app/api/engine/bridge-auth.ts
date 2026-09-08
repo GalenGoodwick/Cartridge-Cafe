@@ -42,6 +42,16 @@ export interface BridgeAuth {
   memberHandle?: string     // set = a member:<handle> crew key (build yes, demolish no)
 }
 
+/** DISPLAY IDENTITY CARRIES ROUTE TRUTH (audit, Sep 5): the commons/
+ *  roundtable `from` was purely client-chosen — any token could speak as
+ *  "the keeper". A chosen name that isn't the route-derived identity gets
+ *  the real tag appended, so impersonation always shows its seams. */
+export function routeWhoFor(auth: BridgeAuth, chosen: unknown): string {
+  const base = String(chosen ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 60)
+  const truth = auth.memberHandle ? '@' + auth.memberHandle : (auth.spaceName ?? auth.slug ?? null)
+  return truth && base !== String(truth) ? `${base} ⋄ ${truth}` : base
+}
+
 // Auth: ENGINE_AGENT_TOKEN or uc_st_ space token
 export async function authorize(req: NextRequest): Promise<BridgeAuth> {
   const authHeader = req.headers.get('authorization')

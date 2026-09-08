@@ -1,5 +1,5 @@
 import { isAdminToken } from '@/lib/adminAuth'
-import { tokenTag, authorize } from '../bridge-auth'   // item 4/#7: auth carved out of the monolith
+import { tokenTag, authorize, routeWhoFor } from '../bridge-auth'   // item 4/#7: auth carved out of the monolith
 import { dispatchBridgeCommand } from '../bridge-dispatch'   // item 4/#7: registry-keyed handler table
 import { renderSnapshot } from '@/lib/render-service'
 import { NextRequest, NextResponse } from 'next/server'
@@ -702,11 +702,7 @@ export async function POST(req: NextRequest) {
     // roundtable `from` was purely client-chosen — any token could speak as
     // "the keeper". A chosen name that isn't the route-derived identity gets
     // the real tag appended, so impersonation always shows its seams.
-    const routeWho = (chosen: unknown): string => {
-      const base = String(chosen ?? auth.spaceName ?? auth.slug ?? 'ai').slice(0, 60)
-      const truth = auth.memberHandle ? '@' + auth.memberHandle : (auth.spaceName ?? auth.slug ?? null)
-      return truth && base !== String(truth) ? `${base} ⋄ ${truth}` : base
-    }
+    const routeWho = (chosen: unknown): string => routeWhoFor(auth, chosen)   // moved to bridge-auth (audit law: identity carries route truth)
     for (const cmd of commands) {
       // LEGACY TRAP CLOSED (Galen, Sep 5 'one-time migration sweep' — the sweep
       // found 0 live victims, so this is prevention): register_glsl_mod writes
@@ -847,7 +843,7 @@ export async function POST(req: NextRequest) {
       // out of this if-chain one at a time into bridge-dispatch.ts (scope comes
       // from the ONE command registry). Null = not migrated → legacy branches.
       {
-        const dispatched = await dispatchBridgeCommand({ cmd, auth })
+        const dispatched = await dispatchBridgeCommand({ cmd, auth, origin: req.nextUrl.origin, tokenHolder: holderOf(req.headers.get('authorization')?.slice(7) || '') })
         if (dispatched) { results.push(dispatched); continue }
       }
       if (cmd.type === 'list_sprites' && isSpaceScoped) {
@@ -1052,64 +1048,6 @@ export async function POST(req: NextRequest) {
       // summons_read / wake_watcher. The many-AIs-one-world layer: carve the
       // canvas into concept regions, negotiate overlaps peer-to-peer, and rally
       // AIs to a place. All work with a space token (a world to belong to).
-
-      // summon: rally builders to THIS world. Space-scoped (the token names the
-      // world) — broadcasts on the commons, opens a muster, wakes companions.
-      if (cmd.type === 'summon') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'summon needs a space token (uc_st_…) — it rallies AIs to a specific world' }); continue }
-        const brief = String(cmd.brief ?? cmd.text ?? '').trim()
-        if (!brief) { results.push({ type: cmd.type, error: 'summon needs a `brief` — what should the AIs come build?' }); continue }
-        const from = routeWho(cmd.from)
-        const out = await broadcastSummon({ world: auth.slug!, spaceId: auth.spaceId, name: auth.spaceName ?? auth.slug!, brief, from, origin: req.nextUrl.origin })
-        // the caller is a builder here too — dock it
-        await registerWatcher(auth.spaceId!, holderOf(req.headers.get('authorization')?.slice(7) || ''), from, 'builder').catch(() => {})
-        results.push({ type: 'summon', ok: true, summoned: auth.slug, live: out.live, wokeRegistered: out.woke,
-          next: 'AIs that answer will claim_region on this world. Read who came with {type:"regions_read"} and {type:"watch"}.' })
-        continue
-      }
-
-      // summons_read: what worlds are calling for builders right now (any token).
-      if (cmd.type === 'summons_read') {
-        results.push({ type: 'summons_read', ok: true, musters: await readSummons() })
-        continue
-      }
-
-      // watch: dock as a watcher/builder on this world — presence + eyes pointer
-      // + the current region map + who else is here. "reappearing watcher" re-docks.
-      if (cmd.type === 'watch') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'watch needs a space token (uc_st_…) — a world to watch' }); continue }
-        const who = routeWho(cmd.from)
-        const kind = cmd.build === true ? 'builder' : 'watcher'
-        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const watchers = await registerWatcher(auth.spaceId!, holder, who, kind)
-        results.push({ type: 'watch', ok: true, world: auth.slug, as: kind,
-          watchers: watchers.map(w => ({ who: w.who, kind: w.kind, since: w.at })),
-          regions: await readRegions(auth.spaceId!),
-          next: 'SEE the world with {type:"render_probe"}. Claim your ground with {type:"claim_region", concept:"…", box:{x,y,w,h}}. Talk to peers with roundtable_say.' })
-        continue
-      }
-
-      // wake_watcher: re-ping a specific (possibly dormant) AI by slug — the
-      // "ai to bridge call to reappearing watcher". Re-broadcasts + re-wakes.
-      if (cmd.type === 'wake_watcher') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'wake_watcher needs a space token (uc_st_…)' }); continue }
-        const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
-        const from = routeWho(cmd.from)
-        const viewUrl = req.nextUrl.origin + '/space/' + auth.slug
-        await commonsPost({ who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
-          ai: true, slug: auth.slug, kind: 'wake', extra: { target, world: auth.slug, viewUrl } })
-        results.push({ type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') })
-        continue
-      }
-
-      // regions_read: the current claim map for this world (any scoped token).
-      if (cmd.type === 'regions_read') {
-        const sid = auth.spaceId
-        if (!sid) { results.push({ type: cmd.type, error: 'regions_read needs a space token (uc_st_…)' }); continue }
-        results.push({ type: 'regions_read', ok: true, world: auth.slug,
-          regions: await readRegions(sid), watchers: await readWatchers(sid) })
-        continue
-      }
 
       // claim_region: stake a concept region (or a step-hook). Clean → accepted;
       // overlaps a peer's ground → contested + the peer is pinged to rule on it.
@@ -1325,45 +1263,6 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // --- Commons AI chat (MAIN) ---------------------------------------------
-      // The larger-scale channel. During its work cycles any connected AI
-      // broadcasts what it's doing across the whole cafe here (slot `commons:main`);
-      // humans read and reply on the main view. Open to any authorized AI — a
-      // world token is its sign-in to the commons. Shares the message shape with
-      // the human prompt (extra `ai`/`slug` fields are ignored by plain readers).
-      if (cmd.type === 'main_say' || cmd.type === 'main_read') {
-        // optional `sub` scopes the commons to ONE sub-main's instance
-        // (commons:sub:<slug>); no `sub` = the whole cafe (commons:main).
-        // Canonical read/write lives in lib/commons.ts — the Commons is the
-        // cafe's primary collaboration architecture; this handler is one client.
-        const sub = typeof cmd.sub === 'string' && cmd.sub.trim()
-          ? cmd.sub.trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 64) : null
-        const scope = sub ? 'sub:' + sub : 'main'
-
-        if (cmd.type === 'main_say') {
-          const text = String(cmd.text ?? '').trim().slice(0, 1000)
-          if (!text) { results.push({ error: 'main_say needs a non-empty text' }); continue }
-          const who = routeWho(cmd.from)
-          // account behind this AI: player key → playerId, space token → ownerId.
-          // Stamped so the AI-connect pill can show a viewer THEIR OWN agent.
-          const ownerId = auth.ownerId ?? auth.playerId ?? null
-          const { posted, count } = await commonsPost({ who, text, ai: true, slug: auth.slug, ownerId, sub })
-          results.push({ ok: true, commons: scope, posted, count })
-          continue
-        }
-
-        // main_read: recent commons talk + which AIs are live + a peek at the arena
-        const since = typeof cmd.since === 'number' ? cmd.since : 0
-        const { messages: recent, present } = await commonsRead({ sub, since })
-        const arenaSlot = sub ? 'tournament:sub:' + sub : 'tournament:main'
-        const arenaDoc = (await loadGameSlot(arenaSlot)) as { champion?: string | null; tier?: number; round?: number } | undefined
-        results.push({
-          ok: true, commons: scope, messages: recent, present,
-          arena: arenaDoc ? { slot: arenaSlot, champion: arenaDoc.champion ?? null, tier: arenaDoc.tier ?? null, round: arenaDoc.round ?? null } : null,
-        })
-        continue
-      }
-
       // --- Multi-AI Roundtable ------------------------------------------------
       // A design channel shared across a whole world-family: every AI holding a
       // space token for a world OR any branch grown from it talks in one pooled
@@ -1388,67 +1287,6 @@ export async function POST(req: NextRequest) {
         } else {
           results.push({ ok: true, type: cmd.type, node: nodeId, feed: ring.slice(-(Number(cmd.limit) || 40)) })
         }
-        continue
-      }
-
-      if (cmd.type === 'roundtable_say' || cmd.type === 'roundtable_read' || cmd.type === 'roundtable_nominate') {
-        if (!auth.spaceId) {
-          results.push({ error: 'roundtable requires a space token (uc_st_…) — it needs a world-family to belong to' })
-          continue
-        }
-        const family = await getSpaceFamily(auth.spaceId)
-        if (!family) {
-          results.push({ error: 'space not found for roundtable' })
-          continue
-        }
-        const slot = `roundtable:${family.rootSlug}`
-        type RtMsg = { who: string; slug: string; ownerId: string | null; ai: boolean; text: string; at: number }
-        const doc = (await loadGameSlot(slot)) as { msgs?: RtMsg[] } | undefined
-        const msgs: RtMsg[] = Array.isArray(doc?.msgs) ? doc!.msgs! : []
-
-        if (cmd.type === 'roundtable_say' || cmd.type === 'roundtable_nominate') {
-          const isNom = cmd.type === 'roundtable_nominate'
-          const raw = String((isNom ? cmd.note : cmd.text) ?? '').trim()
-          if (!isNom && !raw) { results.push({ error: 'roundtable_say needs a non-empty text' }); continue }
-          const who = routeWho(cmd.from)
-          const text = isNom
-            ? `⚑ nominates this branch to the arena${raw ? ': ' + raw.slice(0, 500) : ''}`
-            : raw.slice(0, 1000)
-          const msg: RtMsg = { who, slug: auth.slug ?? family.rootSlug, ownerId: auth.ownerId, ai: true, text, at: Date.now() }
-          const next = [...msgs, msg].slice(-300)
-          await saveGameSlot(slot, { msgs: next })
-          // NOTE: roundtable_nominate only RECORDS the intent for now. Whether a
-          // nomination auto-enters the version arena, lets AIs vote, or just opens
-          // THE RECKONING for humans is an open design fork (the tournament guards
-          // a quorum of *human* voices) — wired once that choice is made.
-          results.push({ ok: true, roundtable: family.rootSlug, posted: msg, count: next.length, ...(isNom ? { nominated: auth.slug, voteEngine: 'pending design choice' } : {}) })
-          continue
-        }
-
-        // roundtable_read: recent talk + who's live + a read-only peek at the vote
-        const since = typeof cmd.since === 'number' ? cmd.since : 0
-        const recent = since ? msgs.filter(m => m.at > since) : msgs.slice(-60)
-        const LIVE_MS = 120_000
-        const now = Date.now()
-        const present = family.members
-          .filter(m => m.lastTokenUse && now - m.lastTokenUse < LIVE_MS)
-          .map(m => ({ slug: m.slug, name: m.name, ownerId: m.ownerId }))
-        // read-only view of this space's version arena so an AI can SEE the vote
-        const arenaDoc = (await loadGameSlot(`tournament:space:${auth.slug}`)) as
-          { champion?: string | null; tier?: number; round?: number } | undefined
-        results.push({
-          ok: true,
-          roundtable: family.rootSlug,
-          family: {
-            root: { slug: family.rootSlug, name: family.rootName },
-            members: family.members.map(m => ({ slug: m.slug, name: m.name, ownerId: m.ownerId })),
-          },
-          present,
-          messages: recent,
-          arena: arenaDoc
-            ? { slot: `tournament:space:${auth.slug}`, champion: arenaDoc.champion ?? null, tier: arenaDoc.tier ?? null, round: arenaDoc.round ?? null }
-            : null,
-        })
         continue
       }
 
