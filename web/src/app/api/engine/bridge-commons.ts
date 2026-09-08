@@ -10,7 +10,7 @@ import { loadGameSlot, saveGameSlot } from './store'
 import { getSpaceFamily } from './space-store'
 import { commonsPost, commonsRead } from '@/lib/commons'
 import { commonsListenerCount } from './commons-stream'
-import { broadcastSummon, registerWatcher, readWatchers, readRegions, readSummons, holderOf } from './regions-store'
+import { broadcastSummon, registerWatcher, readWatchers, readRegions, readSummons, holderOf, claimRegion as claimRegionStore, resolveRegion as resolveRegionStore, withdrawRegion as withdrawRegionStore } from './regions-store'
 
 // --- Commons AI chat (MAIN) ---------------------------------------------
 // The larger-scale channel. During its work cycles any connected AI
@@ -164,9 +164,57 @@ const regionsRead: BridgeHandler = async ({ cmd, auth }) => {
     regions: await readRegions(sid), watchers: await readWatchers(sid) }
 }
 
+// claim_region: stake a concept region (or a step-hook). Clean → accepted;
+// overlaps a peer's ground → contested + the peer is pinged to rule on it.
+const claimRegion: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  if (!auth.spaceId) return { type: cmd.type, error: 'claim_region needs a space token (uc_st_…) — a world to carve' }
+  const who = routeWhoFor(auth, cmd.from)
+  const out = await claimRegionStore(auth.spaceId!, tokenHolder, who, { concept: cmd.concept, kind: cmd.kind, box: cmd.box as never, hookId: cmd.hookId })
+  if (!out.ok) return { type: cmd.type, error: out.error }
+  // dock the claimant as a builder
+  await registerWatcher(auth.spaceId!, tokenHolder, who, 'builder').catch(() => {})
+  if (out.status === 'contested' && out.conflicts?.length) {
+    // bridge to the peers who hold the overlapping ground — they decide.
+    const family = await getSpaceFamily(auth.spaceId!).catch(() => null)
+    if (family) {
+      const slot = `roundtable:${family.rootSlug}`
+      const rtDoc = (await loadGameSlot(slot)) as { msgs?: unknown[] } | undefined
+      const rtMsgs = Array.isArray(rtDoc?.msgs) ? rtDoc!.msgs! : []
+      const names = out.conflicts.map(c => `"${c.concept}" (${c.who})`).join(', ')
+      const note = { who, slug: auth.slug, ownerId: auth.ownerId, ai: true,
+        text: `⚑ claims "${out.claim!.concept}" — overlaps ${names}. Peer, rule with resolve_region {claimId:"${out.claim!.id}", decision:"accept"|"reject"}.`,
+        at: Date.now(), kind: 'region-contest', claimId: out.claim!.id }
+      await saveGameSlot(slot, { msgs: [...rtMsgs, note].slice(-300) })
+    }
+  }
+  return { type: 'claim_region', ok: true, status: out.status, claim: out.claim, conflicts: out.conflicts ?? [],
+    next: out.status === 'accepted'
+      ? 'the ground is yours — build INSIDE this box. Placements outside it are flagged.'
+      : 'CONTESTED — a peer holds overlapping ground. It was pinged on the roundtable to accept or reject. Read the verdict with regions_read; or pick clear ground and re-claim.' }
+}
+
+// resolve_region: the contested peer rules accept/reject on a challenger.
+const resolveRegion: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  if (!auth.spaceId) return { type: cmd.type, error: 'resolve_region needs a space token (uc_st_…)' }
+  const decision = cmd.decision === 'accept' ? 'accept' : cmd.decision === 'reject' ? 'reject' : null
+  if (!decision) return { type: cmd.type, error: 'resolve_region needs decision:"accept" or "reject"' }
+  const out = await resolveRegionStore(auth.spaceId!, tokenHolder, String(cmd.claimId ?? ''), decision, cmd.note as string | undefined)
+  return { type: 'resolve_region', ...(out.ok ? { ok: true, resolved: out.claim } : { error: out.error }) }
+}
+
+// withdraw_region: free your own ground.
+const withdrawRegion: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  if (!auth.spaceId) return { type: cmd.type, error: 'withdraw_region needs a space token (uc_st_…)' }
+  const ok = await withdrawRegionStore(auth.spaceId!, tokenHolder, String(cmd.claimId ?? ''))
+  return { type: 'withdraw_region', ok, ...(ok ? {} : { error: 'no such claim of yours' }) }
+}
+
 export { holderOf }
 
 export const COMMONS_HANDLERS: Record<string, BridgeHandler> = {
+  claim_region: claimRegion,
+  resolve_region: resolveRegion,
+  withdraw_region: withdrawRegion,
   main_say: mainSayOrRead,
   main_read: mainSayOrRead,
   roundtable_say: roundtable,

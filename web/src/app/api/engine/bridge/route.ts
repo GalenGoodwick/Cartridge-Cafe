@@ -1049,56 +1049,7 @@ export async function POST(req: NextRequest) {
       // canvas into concept regions, negotiate overlaps peer-to-peer, and rally
       // AIs to a place. All work with a space token (a world to belong to).
 
-      // claim_region: stake a concept region (or a step-hook). Clean → accepted;
-      // overlaps a peer's ground → contested + the peer is pinged to rule on it.
-      if (cmd.type === 'claim_region') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'claim_region needs a space token (uc_st_…) — a world to carve' }); continue }
-        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const who = routeWho(cmd.from)
-        const out = await claimRegion(auth.spaceId!, holder, who, { concept: cmd.concept, kind: cmd.kind, box: cmd.box as never, hookId: cmd.hookId })
-        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
-        // dock the claimant as a builder
-        await registerWatcher(auth.spaceId!, holder, who, 'builder').catch(() => {})
-        if (out.status === 'contested' && out.conflicts?.length) {
-          // bridge to the peers who hold the overlapping ground — they decide.
-          const family = await getSpaceFamily(auth.spaceId!).catch(() => null)
-          if (family) {
-            const slot = `roundtable:${family.rootSlug}`
-            const rtDoc = (await loadGameSlot(slot)) as { msgs?: unknown[] } | undefined
-            const rtMsgs = Array.isArray(rtDoc?.msgs) ? rtDoc!.msgs! : []
-            const names = out.conflicts.map(c => `"${c.concept}" (${c.who})`).join(', ')
-            const note = { who, slug: auth.slug, ownerId: auth.ownerId, ai: true,
-              text: `⚑ claims "${out.claim!.concept}" — overlaps ${names}. Peer, rule with resolve_region {claimId:"${out.claim!.id}", decision:"accept"|"reject"}.`,
-              at: Date.now(), kind: 'region-contest', claimId: out.claim!.id }
-            await saveGameSlot(slot, { msgs: [...rtMsgs, note].slice(-300) })
-          }
-        }
-        results.push({ type: 'claim_region', ok: true, status: out.status, claim: out.claim, conflicts: out.conflicts ?? [],
-          next: out.status === 'accepted'
-            ? 'the ground is yours — build INSIDE this box. Placements outside it are flagged.'
-            : 'CONTESTED — a peer holds overlapping ground. It was pinged on the roundtable to accept or reject. Read the verdict with regions_read; or pick clear ground and re-claim.' })
-        continue
-      }
-
-      // resolve_region: the contested peer rules accept/reject on a challenger.
-      if (cmd.type === 'resolve_region') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'resolve_region needs a space token (uc_st_…)' }); continue }
-        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const decision = cmd.decision === 'accept' ? 'accept' : cmd.decision === 'reject' ? 'reject' : null
-        if (!decision) { results.push({ type: cmd.type, error: 'resolve_region needs decision:"accept" or "reject"' }); continue }
-        const out = await resolveRegion(auth.spaceId!, holder, String(cmd.claimId ?? ''), decision, cmd.note as string | undefined)
-        results.push({ type: 'resolve_region', ...(out.ok ? { ok: true, resolved: out.claim } : { error: out.error }) })
-        continue
-      }
-
-      // withdraw_region: free your own ground.
-      if (cmd.type === 'withdraw_region') {
-        if (!isSpaceScoped) { results.push({ type: cmd.type, error: 'withdraw_region needs a space token (uc_st_…)' }); continue }
-        const holder = holderOf(req.headers.get('authorization')?.slice(7) || '')
-        const ok = await withdrawRegion(auth.spaceId!, holder, String(cmd.claimId ?? ''))
-        results.push({ type: 'withdraw_region', ok, ...(ok ? {} : { error: 'no such claim of yours' }) })
-        continue
-      }
+      // claim_region / resolve_region / withdraw_region → bridge-commons.ts (dispatch)
 
       // ---- SWARM WORK-GRAPH (a whole SYSTEM, not one world) ------------------
       // The other axis from region-claims: build a multi-part system as a graph
