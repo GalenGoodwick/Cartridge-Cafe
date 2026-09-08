@@ -1,4 +1,6 @@
 import { isAdminToken } from '@/lib/adminAuth'
+import { tokenTag, authorize } from '../bridge-auth'   // item 4/#7: auth carved out of the monolith
+import { dispatchBridgeCommand } from '../bridge-dispatch'   // item 4/#7: registry-keyed handler table
 import { renderSnapshot } from '@/lib/render-service'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
@@ -30,86 +32,6 @@ import { validateWorldDoc, worldDocFacets, type WorldDoc } from '@/app/engine/wo
 import { worldSolve, planRects } from '@/app/engine/world-solve'                              // unified world: pure solve
 
 export const maxDuration = 120   // render probes ride this route — lavapipe needs ~25-60s (see render-service.ts)
-
-/** A stable, non-reversible tag for the caller's token — its TYPE plus an 8-char
- *  hash of the token itself. Lets the admin bridge-watch see per-token volume
- *  ("who is hammering") WITHOUT storing the raw token. Computed pre-auth (cheap),
- *  so it also tags callers whose token later fails validation. */
-function tokenTag(authHeader: string): string {
-  const token = authHeader.slice(7)
-  const type = token.startsWith('uc_st_') ? 'space'
-    : token.startsWith('uc_pt_') ? 'player'
-    : token.startsWith('uc_it_') ? 'icon'
-    : token === process.env.ENGINE_AGENT_TOKEN ? 'house'
-    : 'other'
-  return `${type}:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 8)}`
-}
-
-interface BridgeAuth {
-  authorized: boolean
-  spaceId: string | null    // null = legacy global mode
-  ownerId: string | null
-  iconUserId?: string       // uc_it_ icon token — may ONLY brew this player's icon
-  playerId?: string         // uc_pt_ player key — chat the commons + create/checkout YOUR OWN worlds
-  slug?: string
-  spaceName?: string
-  sceneName?: string        // set = branch-scoped (file-store scene); read/write isolated to it
-  memberHandle?: string     // set = a member:<handle> crew key (build yes, demolish no)
-}
-
-// Auth: ENGINE_AGENT_TOKEN or uc_st_ space token
-async function authorize(req: NextRequest): Promise<BridgeAuth> {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return { authorized: false, spaceId: null, ownerId: null }
-  }
-
-  const token = authHeader.slice(7)
-
-  // Space token path
-  if (token.startsWith('uc_st_')) {
-    const result = await validateSpaceToken(token)
-    if (!result) return { authorized: false, spaceId: null, ownerId: null }
-    const memberHandle = result.tokenName?.startsWith('member:') ? result.tokenName.slice(7) : undefined
-    return { authorized: true, spaceId: result.spaceId, ownerId: result.ownerId, slug: result.slug, spaceName: result.spaceName, memberHandle }
-  }
-
-  // Icon token path — minted by the BREW YOUR ICON panel, carried in the copied
-  // prompt. It authorizes exactly ONE thing: set_player_icon, landing on the
-  // player who minted it. No world, no scene, no state access — the brew flow
-  // needs no world creation at all.
-  if (token.startsWith('uc_it_')) {
-    const hash = crypto.createHash('sha256').update(token).digest('hex')
-    const doc = (await loadGameSlot('icon-token:' + hash)) as { userId?: string } | undefined
-    if (!doc?.userId) return { authorized: false, spaceId: null, ownerId: null }
-    return { authorized: true, spaceId: null, ownerId: null, iconUserId: doc.userId }
-  }
-
-  // Branch (scene) token path — stateless, bound to ONE scene name. Read/write
-  // scope to that scene only; it can never touch main or the global registry.
-  if (token.startsWith('uc_sc_')) {
-    const result = validateSceneToken(token)
-    if (!result) return { authorized: false, spaceId: null, ownerId: null }
-    const slug = result.sceneName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
-    return { authorized: true, spaceId: null, ownerId: null, sceneName: result.sceneName, slug, spaceName: result.sceneName }
-  }
-
-  // Player key path — a signed-in player's personal credential (uc_pt_). It is
-  // NOT world-scoped: it may chat the commons and create/checkout THIS player's
-  // own worlds (each yields a uc_st_ world token that does the actual building).
-  if (token.startsWith('uc_pt_')) {
-    const p = await validatePlayerToken(token)
-    if (!p) return { authorized: false, spaceId: null, ownerId: null }
-    return { authorized: true, spaceId: null, ownerId: null, playerId: p.userId }
-  }
-
-  // Legacy global token path (admin) — THE one check (lib/adminAuth, audit #6)
-  if (isAdminToken('Bearer ' + token, { allowLegacyAnthropicKey: true })) {
-    return { authorized: true, spaceId: null, ownerId: null }
-  }
-
-  return { authorized: false, spaceId: null, ownerId: null }
-}
 
 /** SERVER-SIDE WGSL HAZARD SCAN — the quarantine feedback a HEADLESS builder
  *  never gets. Browser compile results only reach the bridge when a live tab is
@@ -186,14 +108,6 @@ const WGSL_BUILTINS = new Set([
   'pop', 'popCount', 'prevHere', 'prevAt', 'pix', 'sampleTarget', 'sampleTargetUV', 'uni', 'uni4',
 ])
 
-/** Mint a fresh uc_st_ world token for a space (raw shown once, SHA-256 stored). */
-async function mintWorldToken(spaceId: string, name: string): Promise<string> {
-  const raw = `uc_st_${crypto.randomBytes(16).toString('hex')}`
-  await prisma.spaceToken.create({
-    data: { name, tokenHash: crypto.createHash('sha256').update(raw).digest('hex'), tokenPrefix: raw.slice(0, 12) + '...', spaceId },
-  })
-  return raw
-}
 
 // Relay commands to the agent SSE queue
 async function pushToAgent(command: Record<string, unknown>, req: NextRequest, spaceId?: string | null): Promise<unknown> {
@@ -929,53 +843,12 @@ export async function POST(req: NextRequest) {
         results.push({ ok: true, type: cmd.type, tracks: doc.tracks.map(t => ({ name: t.name, mime: t.mime, bytes: t.bytes, url: trackUrl(String(auth.slug ?? ''), t) })) })
         continue
       }
-      // ── BUILD LIFECYCLE (item 3): evidence-bound completion ──
-      //  build_spec_set  — store/revise the BuildSpec contract
-      //  build_status    — stage, revision, required checks + what's outstanding
-      //  validate_world  — run server checks + fold in eye/playthrough results
-      //  complete_build  — evaluate the evidence; mark ready ONLY if it's earned
-      // brief_done is a DERIVED mirror of stage==='ready'; evidence is bound to the
-      // current revision (__bridge_rev), so an edit invalidates a stale playthrough.
-      if (isSpaceScoped && (cmd.type === 'build_spec_set' || cmd.type === 'build_status' || cmd.type === 'validate_world' || cmd.type === 'complete_build')) {
-        const lc = await import('@/app/engine/build-lifecycle-server')
-        const snap = await getSpaceSnapshot(auth.spaceId!, true)
-        if (!snap) { results.push({ type: cmd.type, error: 'no world snapshot yet' }); continue }
-
-        if (cmd.type === 'build_spec_set') {
-          const { normalizeBuildSpec } = await import('@/lib/build-spec')
-          const spec = normalizeBuildSpec(cmd.spec)
-          await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { spec } })
-          results.push({ ok: true, type: cmd.type, spec })
-          continue
-        }
-
-        if (cmd.type === 'build_status') {
-          const e = lc.evaluateFromSnapshot(snap as SnapshotLike)
-          results.push({ ok: true, type: cmd.type, stage: e.stage, revision: e.revision, ready: e.ready, required: e.required, passed: e.passed, outstanding: e.outstanding })
-          continue
-        }
-
-        // validate_world / complete_build: run server checks, fold external eye
-        // results (stamped to the current revision), persist the evidence ledger,
-        // evaluate, and derive brief_done from readiness.
-        const s = snap as SnapshotLike
-        const server = lc.serverChecks(s)
-        const external = lc.stampResults(s, (cmd as Record<string, unknown>).results)
-        const evidence = lc.mergeEvidence(lc.getLedger(s).evidence, [...server, ...external], lc.worldRevision(s))
-        const snapEval: SnapshotLike = { ...s, worldData: { ...(s.worldData ?? {}), __build: { stage: lc.getLedger(s).stage, evidence } } }
-        const e = lc.evaluateFromSnapshot(snapEval)
-        // persist ledger + the DERIVED brief_done (server-authorized: this IS the
-        // completion evaluator, the one place allowed to move brief_done)
-        // readyRevision stamps the content revision this build was certified at, so
-        // brief_done self-clears at the write chokepoint when a later edit changes it.
-        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __build: { stage: e.stage, evidence, ...(e.ready ? { readyRevision: e.revision } : {}) }, brief_done: e.ready } })
-        const base = { ok: true, type: cmd.type, stage: e.stage, revision: e.revision, ready: e.ready, required: e.required, passed: e.passed, outstanding: e.outstanding, checksRun: [...server, ...external].map(c => `${c.check}:${c.status}`) }
-        if (cmd.type === 'complete_build' && !e.ready) {
-          results.push({ ...base, refused: true, hint: `complete_build refused — ${e.outstanding.length} check(s) outstanding at revision ${e.revision}: ${e.outstanding.map(o => `${o.check}(${o.status})`).slice(0, 8).join(', ')}. Run render_probe + playthrough, then submit: validate_world {"results":[{"check":"input-response","status":"passed","environment":"playthrough"}, ...]}. A GPU that's down is 'unavailable', never a pass.` })
-        } else {
-          results.push(base)
-        }
-        continue
+      // ── DISPATCH TABLE (item 4/#7): registry-keyed handlers. Verbs migrate
+      // out of this if-chain one at a time into bridge-dispatch.ts (scope comes
+      // from the ONE command registry). Null = not migrated → legacy branches.
+      {
+        const dispatched = await dispatchBridgeCommand({ cmd, auth })
+        if (dispatched) { results.push(dispatched); continue }
       }
       if (cmd.type === 'list_sprites' && isSpaceScoped) {
         const { readSprites, spritesMeta } = await import('@/lib/sprite-store')
@@ -998,133 +871,8 @@ export async function POST(req: NextRequest) {
       // actual building. It can never edit a world directly, nor touch worlds it
       // doesn't own — that keeps a leaked player key from being a wildcard.
       if (auth.playerId) {
-        if (cmd.type === 'create_world') {
-          // ONE CONTRACT (item 2): the AI door now speaks the same BuildSpec the
-          // Create UI does — brief / target / visibility / gameplay / presentation
-          // / acceptance, not name-only — mapped to birth the SAME way. A short
-          // {name} still works; unstated fields default (target universal,
-          // visibility PRIVATE — publication is a separate decision).
-          const { normalizeBuildSpec, specToWorldData, specToBirthParams, specIsPublic } = await import('@/lib/build-spec')
-          const spec = normalizeBuildSpec({
-            name: cmd.name, brief: cmd.brief, target: cmd.target, visibility: cmd.visibility,
-            gameplay: cmd.gameplay, presentation: cmd.presentation, acceptance: cmd.acceptance,
-          })
-          const name = (spec.name || 'untitled world').slice(0, 60)
-          const rawName = typeof cmd.name === 'string' && cmd.name.trim().length > 0
-          // caller-supplied idempotency key makes a retried create replay-safe
-          const idempotencyKey = (typeof cmd.idempotencyKey === 'string' && cmd.idempotencyKey.trim())
-            ? cmd.idempotencyKey.trim().slice(0, 120) : crypto.randomUUID()
-          // one gate for every create path (the world cap)
-          const gate = await canCreateWorld(auth.playerId)
-          if (!gate.ok) { results.push({ type: cmd.type, error: gate.error }); continue }
-          // RETRY-SAFE: a repeat of the same key returns the existing world (fresh
-          // build key), BEFORE the twin-guard would reject the now-existing name.
-          const { createWorldIdempotent, peekCreate } = await import('@/lib/create-world-service')
-          const replay = await peekCreate(idempotencyKey)
-          if (replay) {
-            results.push({ ok: true, created: replay.space.slug, spaceName: replay.space.name, token: replay.token, replayed: true })
-            continue
-          }
-          // GUARD: don't silently mint a same-name twin for the same owner. Only
-          // for an INTENTIONAL name — an unnamed scratch create still works.
-          if (rawName) {
-            const twin = await findOwnWorldByName(auth.playerId, name)
-            if (twin) { results.push({ type: cmd.type, error: `You already own a world named "${twin.name}" (/space/${twin.slug}). Edit it with use_world {"slug":"${twin.slug}"}, or create with a different name.`, existingSlug: twin.slug }); continue }
-          }
-          const { isAdminUserId } = await import('@/lib/adminAuth')
-          const { stripeConfigured, GEN_PRICE_USD, hasIpShield, readGenCredits } = await import('@/lib/stripe')
-          const isKeeper = await isAdminUserId(auth.playerId)
-          const worldData = specToWorldData(spec, { by: auth.playerId, at: Date.now() })
-          const worldParams = specToBirthParams(spec)
-          // ONE CREATION, ONE PRICE + IDEMPOTENT: credit-spend and birth happen
-          // atomically in the shared service; a retry never double-charges or
-          // double-creates, and a failed birth refunds in-place.
-          const outcome = await createWorldIdempotent({
-            ownerId: auth.playerId, idempotencyKey, isKeeper,
-            birth: {
-              ownerId: auth.playerId, name, baseSlug: slugify(name),
-              isPublic: specIsPublic(spec, await hasIpShield(auth.playerId)),
-              ...(Object.keys(worldData).length ? { worldData } : {}),
-              ...(Object.keys(worldParams).length ? { worldParams } : {}),
-            },
-          })
-          if (!outcome.ok) {
-            if (outcome.reason === 'needPayment') {
-              results.push({ type: cmd.type, error: `creating a world costs one build credit ($${GEN_PRICE_USD}) and this account has none. Tell your human: buy credits on the ACCOUNT page (bundles are cheaper), or note the editing membership includes 2 build credits EVERY month. Check the balance anytime with {"type":"credits_read"}.`, buyAt: 'https://cartridge.cafe/account', needPayment: true, buyable: stripeConfigured(), priceUsd: GEN_PRICE_USD, credits: 0 })
-            } else if (outcome.reason === 'inFlight') {
-              results.push({ type: cmd.type, error: 'a create with this idempotency key is already in progress — retry in a moment', retryable: true })
-            } else {
-              results.push({ type: cmd.type, error: 'world birth failed — nothing was charged (your credit was refunded)' })
-            }
-            continue
-          }
-          const space = outcome.space, worldToken = outcome.token
-          const creditsLeft = isKeeper ? null : await readGenCredits(auth.playerId)
-          // The platform speaks on its own bus: world births announce themselves.
-          commonsSystemSay(`⚙ new world born: "${name}" → /space/${space.slug}`, space.slug)
-          results.push({ ok: true, created: space.slug, spaceName: name, token: worldToken, private: !space.isPublic,
-            ...(creditsLeft !== null ? { creditsLeft } : {}),
-            next: `now POST your build commands with Authorization: Bearer ${worldToken} — that key edits "${name}". The world is BORN WITH ITS SLOTS: blank nodes player/world/entities/rules/hud/net already exist — build WITHIN them (dock_node → replace the body → undock; update_step_hook with that hookId) instead of inventing a new anatomy. Skin every field with a visualType or it renders as nothing. Ship worldData.vision + instructions — they are the player-facing soul; declare your acceptance checks so completion can be verified.` })
-          continue
-        }
-        if (cmd.type === 'use_world') {
-          const slug = typeof cmd.slug === 'string' ? cmd.slug.trim() : ''
-          const sp = slug ? await prisma.playerSpace.findUnique({ where: { slug }, select: { id: true, name: true, ownerId: true, snapshot: true } }) : null
-          if (!sp) { results.push({ type: cmd.type, error: `no world "${slug}"` }); continue }
-          if (sp.ownerId === auth.playerId) {
-            const worldToken = await mintWorldToken(sp.id, 'checked out via player key')
-            results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken,
-              next: `POST build commands with Authorization: Bearer ${worldToken} to edit "${sp.name}".` })
-            continue
-          }
-          // THE SANDBOX JOIN, REGISTERED (Galen, Sep 5: "register the user with
-          // an edit slug on the world? So we can investigate mischief"). A
-          // non-owner joins through the SAME law + the SAME attribution the
-          // browser join door uses: sandbox-open world only, the membership
-          // seat, the ban list — and the token is minted AS member:<handle>,
-          // so every push lands in __provenance / __nodeHist / the roster
-          // under a HUMAN-READABLE identity. Mischief → read the trail →
-          // ban the handle (world-bans) + revoke the key.
-          const wdJ = ((sp.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-          const { effectiveBuild } = await import('@/lib/world-policy')
-          const { hasIpShield, hasEditingMembership } = await import('@/lib/stripe')
-          if (effectiveBuild(wdJ, await hasIpShield(sp.ownerId)) !== 'anyone') {
-            results.push({ type: cmd.type, error: `"${sp.name}" is not open to sandbox building (premium or proprietary — its creator's contract holds)` }); continue
-          }
-          const joiner = await prisma.user.findUnique({ where: { id: auth.playerId }, select: { email: true } })
-          const { handleOf } = await import('@/lib/notify')
-          const handle = (joiner?.email ? handleOf(joiner.email) : null) || 'member'
-          // handle binds to its first claimer (audit: local-part collision)
-          const { claimMemberHandle } = await import('@/lib/member-identity')
-          if (!(await claimMemberHandle(sp.id, handle, auth.playerId))) {
-            results.push({ type: cmd.type, error: `the handle "${handle}" belongs to another member on this world` }); continue
-          }
-          // RE-ENTRY IS FREE (mirror of the browser join door): an existing
-          // member of THIS world is never stranded by a lapsed seat — the
-          // membership gates NEW joins only.
-          const alreadyBuilder = await prisma.spaceToken.findFirst({
-            where: { spaceId: sp.id, revokedAt: null, name: `member:${handle}` }, select: { id: true } })
-          if (!alreadyBuilder && !(await hasEditingMembership(auth.playerId))) {
-            results.push({ type: cmd.type, error: 'joining another creator\u2019s world takes the editing membership ($10/mo; a first-ever AI pairing gifts 30 days) \u2014 your human can join on the ACCOUNT page', needPayment: true }); continue
-          }
-          const { isBanned } = await import('@/lib/world-bans')
-          if (await isBanned(sp.id, handle)) { results.push({ type: cmd.type, error: 'you are banned from this world' }); continue }
-          const worldToken = await mintWorldToken(sp.id, `member:${handle}`)
-          results.push({ ok: true, world: slug, spaceName: sp.name, token: worldToken, member: handle,
-            next: `You are REGISTERED on "${sp.name}" as member:${handle} \u2014 every push you land is attributed (provenance, node history, the roster). Build in NODES beside the existing work; the OG creator governs. POST build commands with Authorization: Bearer ${worldToken}.` })
-          continue
-        }
-        if (cmd.type === 'credits_read') {
-          // THE CREDIT TOOL (Galen, Sep 5): the AI reads its human's build-credit
-          // balance + prices in one call, so "can I create?" is answerable
-          // before a create is refused — and the broke answer is relayable.
-          const { readGenCredits, GEN_PRICE_USD, GEN_BUNDLES, stripeConfigured } = await import('@/lib/stripe')
-          results.push({ ok: true, type: 'credits_read', credits: await readGenCredits(auth.playerId),
-            priceUsd: GEN_PRICE_USD, bundles: GEN_BUNDLES, buyable: stripeConfigured(),
-            buyAt: 'https://cartridge.cafe/account',
-            next: 'create_world {name} spends ONE credit (the keeper is exempt). Bundles are cheaper per credit — your human buys them on the account page.' })
-          continue
-        }
+        // create_world / use_world / credits_read → migrated to bridge-dispatch.ts
+        // (the dispatch table ran before this branch; only the refusal remains)
         if (cmd.type !== 'main_say' && cmd.type !== 'main_read') {
           results.push({ type: cmd.type, error: 'a player key can only: create_world {name}, use_world {slug}, credits_read, main_say, main_read. Build a world with the uc_st_ token those return.' })
           continue
