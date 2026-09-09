@@ -7305,7 +7305,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                       try {
                         const r = await fetch('/api/spaces/' + encodeURIComponent(spaceSlug), { method: 'DELETE' })
                         const d = await r.json().catch(() => null) as { creditGranted?: boolean; error?: string } | null
-                        if (r.ok) { window.location.href = d?.creditGranted ? '/create' : '/'; return }
+                        if (r.ok) { window.location.href = d?.creditGranted ? '/grid?connect=create' : '/'; return }
                         showToast(d?.error || 'could not cancel the build', 'error')
                       } catch { showToast('could not cancel the build', 'error') }
                     }}

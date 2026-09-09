@@ -83,7 +83,7 @@ export default function TheGrid() {
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
-  const [connectMode, setConnectMode] = useState<'edit' | 'connect'>('connect')   // edit = THIS world; connect = the generic door (any AI)
+  const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
@@ -289,6 +289,11 @@ export default function TheGrid() {
         // scope survives reloads, and the frame drops whatever public world
         // was last open — a company window never shows foreign work.
         setCompanyScope(co); setUiSet('engine'); setTool('mine'); setScene('BLANK')
+      }
+      if (u.searchParams.get('connect') === 'create') {   // post-checkout / deep-link create door
+        connectIntentRef.current = Date.now()
+        setConnectMode('create'); setConnectOpen(true)
+        u.searchParams.delete('connect'); window.history.replaceState(null, '', u.toString())
       }
       if (u.searchParams.get('connect') === '1') {
         connectIntentRef.current = Date.now()
@@ -878,12 +883,13 @@ export default function TheGrid() {
               const slug = scene.startsWith('space:') ? scene.slice(6) : (selected?.slug ?? '')
               const wname = selected?.name || spc?.name || slug || 'this world'
               const isEdit = connectMode === 'edit' && !!slug
+              const isCreate = connectMode === 'create'
               // EDIT face: world-focused. CONNECT face: GENERIC (Galen, Sep 5) —
               // and NOT Claude-locked: the mcp server is standard, any MCP
               // client runs it; below MCP the bridge is plain HTTP.
-              const text = isEdit ? inviteText(slug, wname) : inviteText()
+              const text = isEdit ? inviteText(slug, wname) : inviteText(undefined, undefined, isCreate ? 'create' : undefined)
               return (<>
-                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : '⚿ CONNECT YOUR AI'}</div>
+                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
                 <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI. First-ever registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>.</p>
                 <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{text}</div>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
@@ -1270,7 +1276,13 @@ export default function TheGrid() {
         act={{
           back: () => { if (connectOpen) { setConnectOpen(false); return } if (instrOpen) { setInstrOpen(false); return } if (giRef.current > 0) { window.history.back(); return } if (companyScope) { window.location.href = '/account'; return } if (uiSet === 'create' || uiSet === 'engine') { setUiSet('games'); setPhase('browse') } },
           edit: () => { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setConnectMode('edit'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
-          create: () => { if (companyScope) { setUiSet('engine'); setTool('mine'); return } setUiSet('create'); setPhase('browse'); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
+          create: () => { if (companyScope) { setUiSet('engine'); setTool('mine'); return }
+            // THE AI CREATES THE WORLD (Galen, Sep 9): the door hands you the
+            // connection prompt — your AI asks what we're making and calls
+            // create_world with the full BuildSpec. No form, no empty pre-birth.
+            // (/create stays reachable by URL as the manual fallback.)
+            connectIntentRef.current = Date.now()
+            setConnectMode('create'); setConnectOpen(true); setInstrOpen(false); setChatOpen(false); setBrewIconOpen(false) },
           title: () => { if (uiSet !== 'main') setAttribOpen(o => !o) },
           share: async () => {
             track('share', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid')
