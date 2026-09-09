@@ -67,6 +67,15 @@ const validateOrComplete: BridgeHandler = async ({ cmd, auth }) => {
   const snapEval: SnapshotLike = { ...s, worldData: { ...(s.worldData ?? {}), __build: { stage: lc.getLedger(s).stage, evidence } } }
   const e = lc.evaluateFromSnapshot(snapEval)
   await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __build: { stage: e.stage, evidence, ...(e.ready ? { readyRevision: e.revision } : {}) }, brief_done: e.ready } })
+  // ICON ON READY (Galen, Sep 9: "don't forget to snapshot the world icon"):
+  // a world that just became READY gets its shelf face photographed by the eye
+  // (world_icon:<slug> bake) — backend, best-effort, never blocks completion.
+  if (e.ready && auth.slug) {
+    try {
+      const { enqueueBake } = await import('@/lib/icon-bake-queue')
+      enqueueBake(auth.slug, s as never)
+    } catch { /* the shelf face is a courtesy */ }
+  }
   const base = { ok: true, type: cmd.type, stage: e.stage, revision: e.revision, ready: e.ready, required: e.required, passed: e.passed, outstanding: e.outstanding, checksRun: [...server, ...external].map(c => `${c.check}:${c.status}`) }
   if (cmd.type === 'complete_build' && !e.ready) {
     return { ...base, refused: true, hint: `complete_build refused — ${e.outstanding.length} check(s) outstanding at revision ${e.revision}: ${e.outstanding.map(o => `${o.check}(${o.status})`).slice(0, 8).join(', ')}. Run render_probe + playthrough, then submit: validate_world {"results":[{"check":"input-response","status":"passed","environment":"playthrough"}, ...]}. A GPU that's down is 'unavailable', never a pass.` }

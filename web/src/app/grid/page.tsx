@@ -86,7 +86,7 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // ? GUIDE — the human 'what do I say to my AI' card
   const [gamePaused, setGamePaused] = useState(false)  // ⏸ in-game pause (engine halts sim ticks; visuals keep breathing)
-  const [guideTab, setGuideTab] = useState<'how' | 'ask' | 'lessons'>('how')
+  const [guideTab, setGuideTab] = useState<'how' | 'ask' | 'lessons' | 'why'>('how')
   // ⚿ door options (Galen, Sep 9): the human's PRE-ANSWERS, woven into the prompt
   const [doorName, setDoorName] = useState('')
   const [doorTarget, setDoorTarget] = useState<'desktop' | 'mobile'>('desktop')
@@ -1000,7 +1000,7 @@ export default function TheGrid() {
           <div className="w-full max-w-[560px] max-h-[80%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0d0c14]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[15px] tracking-[0.25em] text-amber-100 mb-3">? THE GUIDE</div>
             <div className="flex gap-1.5 mb-4">
-              {([['how', 'HOW IT WORKS'], ['ask', 'WHAT YOU CAN ASK'], ['lessons', 'WORKING WITH YOUR AI']] as const).map(([k, l]) => (
+              {([['how', 'HOW IT WORKS'], ['ask', 'WHAT YOU CAN ASK'], ['lessons', 'WORKING WITH YOUR AI'], ['why', 'WHY THIS ENGINE']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setGuideTab(k)}
                   className={`flex-1 rounded-lg px-2 py-1.5 text-[11.5px] tracking-[0.12em] font-bold border transition-all ${guideTab === k ? 'bg-amber-400 text-black border-amber-200' : 'bg-black/50 text-amber-100/80 border-amber-300/30 hover:bg-amber-400/15'}`}>{l}</button>
               ))}
@@ -1024,9 +1024,20 @@ export default function TheGrid() {
               <p><b className="text-sky-300">Name &amp; face</b> — rename the world; write the player instructions (the ? button); set the blurb and shelf card.</p>
               <p><b className="text-sky-300">Assets</b> — &ldquo;use this image as the hero sprite&rdquo; · &ldquo;this mp3 is the music&rdquo; (◆ suite for uploads; shader-made art is free).</p>
               <p><b className="text-sky-300">Open or close building</b> — invite co-builders in (open = its code becomes readable commons) or keep it solo; ◆ proprietary keeps code closed even when published.</p>
+              <p><b className="text-sky-300">Build together</b> — open worlds host many builders at once: humans and AIs each hold their own protected <b>nodes</b> (docking) — nobody can overwrite anyone&apos;s work, and every change is attributed.</p>
               <p><b className="text-sky-300">Verify</b> — &ldquo;prove it works&rdquo;: the AI screenshots the world and plays it with real inputs before calling anything done.</p>
               <p><b className="text-sky-300">Money</b> — &ldquo;how many credits do I have?&rdquo; · buying happens on your account page, never in chat.</p>
               <p className="text-white/60">Deleting a world lives on your account page (protected when co-builders have stake).</p>
+            </div>
+            )}
+            {guideTab === 'why' && (
+            <div className="text-[13.5px] leading-relaxed text-white/85 space-y-2.5">
+              <p><b className="text-amber-200">Live GPU worlds.</b> Every game is real shader code running on YOUR graphics card — not embedded video, not a canvas library. The whole screen is one programmable surface.</p>
+              <p><b className="text-amber-200">Hot editing.</b> Your AI&apos;s changes land in the RUNNING world — shaders recompile and logic swaps live, no rebuild, no reload. You watch the game change under your hands.</p>
+              <p><b className="text-amber-200">Many hands, one world.</b> The node system gives every builder — human or AI — protected pieces they dock into and own. Whole crews (or AI swarms) build one world at once, clobber-proof by construction.</p>
+              <p><b className="text-amber-200">Everything is data.</b> A world is a readable document — forkable, versioned, its code open commons when published. Your AI learns from every public world ever made here.</p>
+              <p><b className="text-amber-200">Evidence, not vibes.</b> A game isn&apos;t &ldquo;done&rdquo; because an AI says so — the platform demands proof: rendered frames, real playthroughs, working inputs, at the current version.</p>
+              <p><b className="text-amber-200">The AI has eyes and ears on it.</b> It screenshots, replays, and reads live state — the first game platform built for AN AI TO BUILD IN, not just a human with an editor.</p>
             </div>
             )}
             {guideTab === 'lessons' && (
