@@ -916,19 +916,19 @@ export default function TheGrid() {
               const modeBtn = (m: 'edit' | 'fork' | 'create', label: string, on: boolean, enabled: boolean) => (
                 <button key={m} disabled={!enabled}
                   onClick={() => setConnectMode(m)}
-                  className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-200/90 border-amber-300/35 hover:bg-amber-400/15' : 'bg-black/30 text-white/25 border-white/10 cursor-not-allowed'}`}>{label}</button>
+                  className={`flex-1 rounded-lg px-2 py-2 text-[13px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-100 border-amber-300/45 hover:bg-amber-400/15' : 'bg-black/30 text-white/30 border-white/10 cursor-not-allowed'}`}>{label}</button>
               )
               // a 2-option segmented toggle — the human's pre-answer, not a form
               const seg = <T extends string>(a: [T, string], b: [T, string], cur: T, set: (v: T) => void) => (
                 <div className="flex rounded-lg overflow-hidden border border-white/15">
                   {[a, b].map(([v, l]) => (
                     <button key={v} onClick={() => set(v)}
-                      className={`flex-1 px-2 py-1 text-[10.5px] tracking-[0.1em] font-bold transition-all ${cur === v ? 'bg-sky-400/85 text-black' : 'bg-black/50 text-white/55 hover:text-white/85'}`}>{l}</button>
+                      className={`flex-1 px-2 py-1.5 text-[12.5px] tracking-[0.1em] font-bold transition-all ${cur === v ? 'bg-sky-400/85 text-black' : 'bg-black/50 text-white/70 hover:text-white'}`}>{l}</button>
                   ))}
                 </div>
               )
               return (<>
-                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? <>✎ GET YOUR AI EDITING <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b></> : isFork ? <>⑂ FORK <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b> WITH YOUR AI</> : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
+                <div className="text-[16px] tracking-[0.25em] text-amber-100 mb-3">{isEdit ? <>✎ GET YOUR AI EDITING <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b></> : isFork ? <>⑂ FORK <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b> WITH YOUR AI</> : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
                 <div className="flex gap-1.5 mb-3">
                   {modeBtn('edit', '✎ EDIT THIS WORLD', isEdit, !!slug)}
                   {modeBtn('fork', '⑂ FORK IT', isFork, !!slug)}
@@ -938,7 +938,7 @@ export default function TheGrid() {
                   <div className="mb-3 space-y-1.5">
                     <input value={doorName} onChange={e => setDoorName(e.target.value)} maxLength={40}
                       placeholder={isFork ? 'name your copy (blank = your AI proposes one)' : 'name the world (blank = your AI proposes one)'}
-                      className="w-full rounded-lg bg-black/60 border border-white/15 px-3 py-2 text-[12.5px] text-white/90 placeholder:text-white/30 outline-none focus:border-sky-300/60" />
+                      className="w-full rounded-lg bg-black/60 border border-white/20 px-3 py-2.5 text-[14px] text-white placeholder:text-white/45 outline-none focus:border-sky-300/60" />
                     <div className={`grid gap-1.5 ${isCreate ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {isCreate && seg(['desktop', '🖥 DESKTOP'], ['mobile', '📱 MOBILE'], doorTarget, setDoorTarget)}
                       {isCreate && seg(['2d', '▦ 2D'], ['3d', '◇ 3D'], door3d, setDoor3d)}
@@ -950,27 +950,27 @@ export default function TheGrid() {
                         {SEED_CARD_TYPES.map(ct => (
                           <button key={ct.id}
                             onClick={() => setDoorTags(t => t.includes(ct.id) ? t.filter(x => x !== ct.id) : [...t, ct.id])}
-                            className={`rounded-md px-1.5 py-0.5 text-[10px] tracking-[0.06em] border transition-all ${doorTags.includes(ct.id) ? 'bg-sky-400/85 text-black border-sky-200 font-bold' : 'bg-black/40 text-white/45 border-white/12 hover:text-white/80'}`}>{ct.label}</button>
+                            className={`rounded-md px-2 py-1 text-[12px] tracking-[0.06em] border transition-all ${doorTags.includes(ct.id) ? 'bg-sky-400/85 text-black border-sky-200 font-bold' : 'bg-black/40 text-white/65 border-white/15 hover:text-white'}`}>{ct.label}</button>
                         ))}
                       </div>
                     )}
                     {isCreate && doorAccess === 'open' && (
-                      <div className="text-[10.5px] text-emerald-200/70 leading-relaxed">⛭ open building — launches public; other members can build in it (they join with the editing membership); its code is readable commons inside the platform</div>
+                      <div className="text-[12px] text-emerald-200/95 leading-relaxed">⛭ open building — launches public; other members can build in it (they join with the editing membership); its code is readable commons inside the platform</div>
                     )}
                     {isCreate && doorAccess === 'proprietary' && (
-                      <div className="text-[10.5px] text-amber-200/70 leading-relaxed">◆ proprietary (closed-source) takes the IP-control membership — your AI will check; join at <span className="text-amber-200">cartridge.cafe/suite</span></div>
+                      <div className="text-[12px] text-amber-200/95 leading-relaxed">◆ proprietary (closed-source) takes the IP-control membership — your AI will check; join at <span className="text-amber-200">cartridge.cafe/suite</span></div>
                     )}
 
                   </div>
                 )}
-                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy the prompt, paste it to your AI — then just talk to it.</p>
+                <p className="text-[14px] text-white/85 leading-relaxed mb-3">Copy the prompt, paste it to your AI — then just talk to it.</p>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
-                  className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-[13px] tracking-[0.16em] text-black font-bold transition-all">
+                  className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-3 text-[15px] tracking-[0.16em] text-black font-bold transition-all">
                   {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY'}
                 </button>
-                <div className="mt-3 text-[11px] text-white/45 leading-relaxed">works with ANY AI — Claude, Cursor, Windsurf, Gemini, or anything that can read a URL; the text carries every road in.</div>
+                <div className="mt-3 text-[12.5px] text-white/60 leading-relaxed">works with ANY AI — Claude, Cursor, Windsurf, Gemini, or anything that can read a URL; the text carries every road in.</div>
                 <button onClick={() => setConnectOpen(false)}
-                  className="mt-3 w-full rounded-xl bg-black/50 border border-white/20 px-3 py-2 text-[12px] tracking-[0.16em] text-white/70 hover:text-white hover:border-white/40 transition-all">CLOSE</button>
+                  className="mt-3 w-full rounded-xl bg-black/50 border border-white/25 px-3 py-2.5 text-[13.5px] tracking-[0.16em] text-white/85 hover:text-white hover:border-white/50 transition-all">CLOSE</button>
               </>)
             })()}
           </div>
