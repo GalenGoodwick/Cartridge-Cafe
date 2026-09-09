@@ -13,7 +13,7 @@ import { getSpaceSnapshot, applyCommandToSnapshot } from './space-store'
 import type { SnapshotLike } from '@/app/engine/build-lifecycle-server'
 import { prisma } from '@/lib/prisma'
 import { slugify } from '@/lib/slug'
-import { canCreateWorld, findOwnWorldByName } from '@/lib/world-create'
+import { canCreateWorld, findOwnWorldByName, resolveBirthExtras } from '@/lib/world-create'
 import { commonsSystemSay } from '@/lib/commons'
 import { COMMONS_HANDLERS } from './bridge-commons'
 import { ASSET_HANDLERS } from './bridge-assets'
@@ -122,8 +122,23 @@ const createWorld: BridgeHandler = async ({ cmd, auth }) => {
   const { isAdminUserId } = await import('@/lib/adminAuth')
   const { stripeConfigured, GEN_PRICE_USD, hasIpShield, readGenCredits } = await import('@/lib/stripe')
   const isKeeper = await isAdminUserId(auth.playerId!)
-  const worldData = specToWorldData(spec, { by: auth.playerId!, at: Date.now() })
-  const worldParams = specToBirthParams(spec)
+  // FORK / BASE (Galen, Sep 9 — the ⚿ door's third face): {base:"<slug>"} seeds the
+  // newborn from that world through the ONE parser every birth door shares
+  // (resolveBirthExtras: your own worlds or public bases/forkables only; seed
+  // hygiene strips __base/forkable/policy; forkOfId carries lineage).
+  let extras: Awaited<ReturnType<typeof resolveBirthExtras>>
+  try {
+    extras = await resolveBirthExtras(auth.playerId!, { base: cmd.base, targets: spec.target === 'universal' ? undefined : spec.target })
+  } catch (e) {
+    const err = e as { error?: string }
+    return { type: cmd.type, error: err.error || 'bad base world' }
+  }
+  const specWd = specToWorldData(spec, { by: auth.playerId!, at: Date.now(), ...(extras.forkOfId ? { format: String(cmd.base ?? '').trim() } : {}) })
+  const worldData = { ...extras.birthData, ...specWd }
+  const baseSnapshot = extras.baseSnapshot
+    ? { ...(extras.baseSnapshot as Record<string, unknown>), worldData: { ...((extras.baseSnapshot as { worldData?: Record<string, unknown> }).worldData ?? {}), ...specWd } } as typeof extras.baseSnapshot
+    : undefined
+  const worldParams = Object.keys(extras.birthParams).length ? extras.birthParams : specToBirthParams(spec)
   // ONE CREATION, ONE PRICE + IDEMPOTENT: credit-spend and birth happen
   // atomically in the shared service; a retry never double-charges or
   // double-creates, and a failed birth refunds in-place.
@@ -134,6 +149,8 @@ const createWorld: BridgeHandler = async ({ cmd, auth }) => {
       isPublic: specIsPublic(spec, await hasIpShield(auth.playerId!)),
       ...(Object.keys(worldData).length ? { worldData } : {}),
       ...(Object.keys(worldParams).length ? { worldParams } : {}),
+      ...(baseSnapshot !== undefined ? { snapshot: baseSnapshot } : {}),
+      ...(extras.forkOfId ? { forkOfId: extras.forkOfId } : {}),
     },
   })
   if (!outcome.ok) {

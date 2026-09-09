@@ -41,6 +41,7 @@ export type BarActions = {
   back: () => void
   edit: () => void
   create: () => void
+  guide: () => void
   title: () => void
   share: () => void
   commons: () => void
@@ -84,10 +85,8 @@ const FLOW: Btn[] = [
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
   // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
-  { id: 'edit', tier: 0, tone: 'blue', show: c => c.playing ? !c.premium : (c.set === 'games' || c.set === 'engine'), label: () => 'EDIT', glyph: () => '✎', testId: 'edit' },
   // ✚ CREATE — the product's core promise, one tap from anywhere; never IN-game
   // in a company room CREATE stays — it opens THE PRIVATE LINE's birth field
-  { id: 'create', tier: 0, tone: 'gold', show: c => c.set !== 'create' && !c.playing, label: () => '✚ CREATE', glyph: () => '✚', testId: 'create' },
   // ♥ UPVOTE (Galen, Sep 6 — upvote ONLY, no downvote): one vote per player
   // per world, toggled. Amber (goldline) once cast; count shows only when > 0.
   { id: 'vote', tier: 0, tone: c => c.voteMine ? 'goldline' : 'chip', show: c => c.playing,
@@ -98,6 +97,9 @@ const FLOW: Btn[] = [
     label: c => c.wchatCount > 0 ? `◉ ${c.wchatCount}` : '◉ CHAT', glyph: c => c.wchatCount > 0 ? `◉${c.wchatCount}` : '◉', testId: 'wchat' },
   { id: 'instructions', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.instructionsOpen, label: () => '? INSTRUCTIONS', glyph: () => '?', testId: 'instructions' },   // in-game only
   // condensed = just "AI"; desktop speaks the state: CONNECT AI ⇄ AI LIVE
+  // ONE DOOR (Galen, Sep 9): ✎EDIT and ✚CREATE condensed into ⚿ CONNECT AI —
+  // the popup carries the mode picker (edit/fork/new). ? GUIDE = the human guide.
+  { id: 'guide', tier: 0, tone: 'chip', show: c => !c.playing, label: () => '? GUIDE', glyph: () => '?', testId: 'guide' },
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
   // record rides right of the green door in-game (Galen)

@@ -4,8 +4,10 @@
 // at all — the guide is a public GET, the bridge a POST). SHARE, the ⚿
 // CONNECT door, and ✎ EDIT all speak this one text so the funnel never forks.
 
-export function inviteText(slug?: string, worldName?: string, face?: 'create'): string {
-  const mission = slug
+export function inviteText(slug?: string, worldName?: string, face?: 'create' | 'fork'): string {
+  const mission = slug && face === 'fork'
+    ? `fork the world "${worldName || slug}" (slug: ${slug}) on cartridge.cafe into my own copy and make it ours`
+    : slug
     ? `edit the world "${worldName || slug}" (slug: ${slug}) on cartridge.cafe with me`
     : face === 'create'
       ? 'create a new game world on cartridge.cafe with me'
@@ -16,6 +18,6 @@ export function inviteText(slug?: string, worldName?: string, face?: 'create'): 
     `  · Claude Code: claude mcp add cartridge-cafe -- npx -y cartridge-cafe-mcp`,
     `  · any MCP client: {"command":"npx","args":["-y","cartridge-cafe-mcp"]}`,
     `  · no MCP? everything is plain HTTP — read https://cartridge.cafe/api/engine/guide and build over the bridge.`,
-    `Then: connect_account (my first-ever registration gifts 30 days of membership + 2 world builds)${slug ? `, read_guide, use_world {"slug":"${slug}"}` : face === 'create' ? `, read_guide — then ask me what we're making and create it yourself: create_world {"name":…, "brief":…, "target":"desktop|mobile|universal"} births the world (one build credit, idempotencyKey makes retries safe) and returns the build key you build with. Build it while I watch` : ''}.`,
+    `Then: connect_account (my first-ever registration gifts 30 days of membership + 2 world builds)${slug && face === 'fork' ? `, read_guide — then fork it: create_world {"name":…, "base":"${slug}"} births MY copy seeded from it (one build credit; lineage carried) and returns the build key. Ask me what to change, then build it while I watch` : slug ? `, read_guide, use_world {"slug":"${slug}"}` : face === 'create' ? `, read_guide — then ask me what we're making and create it yourself: create_world {"name":…, "brief":…, "target":"desktop|mobile|universal"} births the world (one build credit, idempotencyKey makes retries safe) and returns the build key you build with. Build it while I watch` : ''}.`,
   ].join('\n')
 }

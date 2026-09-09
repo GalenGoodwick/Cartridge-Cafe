@@ -35,7 +35,8 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           wchatOpen: false, wchatCount: 0, voteCount: 0, voteMine: false, title: '',
         }}
         act={{
-          back: () => { if (window.history.length > 1) window.history.back(); else go('/grid') },
+          guide: () => { window.location.href = '/grid?guide=1' },
+        back: () => { if (window.history.length > 1) window.history.back(); else go('/grid') },
           edit: () => go('/grid'),
           title: () => {},
           share: async () => {

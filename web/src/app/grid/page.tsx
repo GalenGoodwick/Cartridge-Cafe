@@ -83,7 +83,8 @@ export default function TheGrid() {
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
-  const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
+  const [guideOpen, setGuideOpen] = useState(false)   // ? GUIDE — the human 'what do I say to my AI' card
+  const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create' | 'fork'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
@@ -289,6 +290,11 @@ export default function TheGrid() {
         // scope survives reloads, and the frame drops whatever public world
         // was last open — a company window never shows foreign work.
         setCompanyScope(co); setUiSet('engine'); setTool('mine'); setScene('BLANK')
+      }
+      if (u.searchParams.get('guide') === '1') {
+        connectIntentRef.current = Date.now()   // same one-shot: survive the mount hygiene pass
+        setGuideOpen(true)
+        u.searchParams.delete('guide'); window.history.replaceState(null, '', u.toString())
       }
       if (u.searchParams.get('connect') === 'create') {   // post-checkout / deep-link create door
         connectIntentRef.current = Date.now()
@@ -625,6 +631,7 @@ export default function TheGrid() {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
     if (Date.now() - connectIntentRef.current > 3000) setConnectOpen(false)
     setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false); setWchatOpen(false)
+    if (Date.now() - connectIntentRef.current > 3000) setGuideOpen(false)
     if (Date.now() - chatIntentRef.current > 3000) setChatOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
@@ -883,13 +890,26 @@ export default function TheGrid() {
               const slug = scene.startsWith('space:') ? scene.slice(6) : (selected?.slug ?? '')
               const wname = selected?.name || spc?.name || slug || 'this world'
               const isEdit = connectMode === 'edit' && !!slug
+              const isFork = connectMode === 'fork' && !!slug
               const isCreate = connectMode === 'create'
-              // EDIT face: world-focused. CONNECT face: GENERIC (Galen, Sep 5) —
-              // and NOT Claude-locked: the mcp server is standard, any MCP
-              // client runs it; below MCP the bridge is plain HTTP.
-              const text = isEdit ? inviteText(slug, wname) : inviteText(undefined, undefined, isCreate ? 'create' : undefined)
+              // ONE DOOR, FOUR FACES (Galen, Sep 9): the picker chooses the mission;
+              // the text is the ONE funnel prompt wearing it. Not Claude-locked —
+              // any MCP client, and below MCP the bridge is plain HTTP.
+              const text = isEdit ? inviteText(slug, wname)
+                : isFork ? inviteText(slug, wname, 'fork')
+                : inviteText(undefined, undefined, isCreate ? 'create' : undefined)
+              const modeBtn = (m: 'edit' | 'fork' | 'create', label: string, on: boolean, enabled: boolean) => (
+                <button key={m} disabled={!enabled}
+                  onClick={() => setConnectMode(m)}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-200/90 border-amber-300/35 hover:bg-amber-400/15' : 'bg-black/30 text-white/25 border-white/10 cursor-not-allowed'}`}>{label}</button>
+              )
               return (<>
-                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
+                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : isFork ? `⑂ FORK "${wname.toUpperCase()}" WITH YOUR AI` : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
+                <div className="flex gap-1.5 mb-3">
+                  {modeBtn('edit', '✎ EDIT THIS WORLD', isEdit, !!slug)}
+                  {modeBtn('fork', '⑂ FORK IT', isFork, !!slug)}
+                  {modeBtn('create', '✚ NEW WORLD', isCreate, true)}
+                </div>
                 <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI. First-ever registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>.</p>
                 <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{text}</div>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
@@ -911,6 +931,24 @@ export default function TheGrid() {
           <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4" onClick={e => e.stopPropagation()}>
             <div className="font-mono text-[13px] tracking-[0.25em] text-white/60 mb-2">? INSTRUCTIONS — {selected?.name}</div>
             <div className="font-mono text-[14px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ? GUIDE — the human guide: you talk, your AI builds (Galen, Sep 9) */}
+      {guideOpen && (
+        <div className="fixed z-[127] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+          onClick={() => setGuideOpen(false)}>
+          <div className="w-full max-w-[560px] max-h-[80%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0d0c14]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
+            <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-3">? HOW CARTRIDGE.CAFE WORKS</div>
+            <div className="text-[13px] leading-relaxed text-white/80 space-y-3">
+              <p><b className="text-white/95">You talk. Your AI builds.</b> Every game here is a little world an AI built live for its human — and yours can too.</p>
+              <p><b className="text-emerald-200/90">1 · Connect.</b> Hit <b>⚿ CONNECT AI</b>, copy the prompt, paste it to your AI — Claude, Cursor, Windsurf, anything that can read a URL. First-ever pairing gifts 30 days of membership + 2 world builds.</p>
+              <p><b className="text-emerald-200/90">2 · Say what you want.</b> &ldquo;Make me a game about a lighthouse keeper.&rdquo; &ldquo;Edit my comet catcher — add sound and a boss.&rdquo; &ldquo;Fork this world and make it harder.&rdquo; Your AI asks the right questions, creates or opens the world itself, and builds while you watch the tab.</p>
+              <p><b className="text-emerald-200/90">3 · Play everything.</b> Playing is free. <b>♥</b> upvote what you love; <b>? INSTRUCTIONS</b> in a game shows its controls; <b>↗ SHARE</b> hands anyone the same door in.</p>
+              <p className="text-white/55">Worlds cost one build credit ($5, bundles cheaper) — your AI checks your balance and tells you when it needs one. Open worlds welcome co-builders with the editing membership ($10/mo). Your account lives under your @handle up top.</p>
+            </div>
           </div>
         </div>
       )}
@@ -1297,7 +1335,12 @@ export default function TheGrid() {
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
           nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setUiSet('engine') } },
           account: () => { window.location.href = '/account' },
-          connect: () => { setConnectMode('connect'); setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          connect: () => {
+            // ONE DOOR (Galen, Sep 9): the popup carries the mode picker. Default:
+            // a world on screen → EDIT it; nothing targeted → the generic face.
+            setConnectMode(scene.startsWith('space:') ? 'edit' : 'connect')
+            setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
+          guide: () => { setGuideOpen(o => !o); setInstrOpen(false); setBrewIconOpen(false) },
           instructions: () => { setInstrOpen(o => !o); setConnectOpen(false); setWchatOpen(false) },
           brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setInstrOpen(false) },
           wchat: () => { setWchatOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setBrewIconOpen(false) },

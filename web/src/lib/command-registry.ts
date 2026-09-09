@@ -225,6 +225,7 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
       presentation: '{vision, references?}?',
       acceptance: '[{id?, description, verification: state|render|playthrough|human}]?',
       idempotencyKey: 'reuse the SAME key to retry safely — a repeat returns the existing world, never a duplicate or double charge?',
+      base: 'fork: seed the newborn from this world (your own, or a public base/forkable) — lineage carried, seed hygiene applied?',
     },
     example: { type: 'create_world', name: 'tidepool', brief: 'a calm tide-pool you tend', target: 'universal', idempotencyKey: 'tidepool-1' },
     law: 'out of credits → the error carries buyAt; credits_read checks the wallet',
