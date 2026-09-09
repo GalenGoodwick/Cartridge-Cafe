@@ -291,6 +291,7 @@ export default function TheGrid() {
         setCompanyScope(co); setUiSet('engine'); setTool('mine'); setScene('BLANK')
       }
       if (u.searchParams.get('connect') === '1') {
+        connectIntentRef.current = Date.now()
         setUiSet('engine'); setConnectMode('edit'); setConnectOpen(true)   // fresh world → the EDIT face
         u.searchParams.delete('connect'); window.history.replaceState(null, '', u.toString())
       }
@@ -614,9 +615,11 @@ export default function TheGrid() {
   // an arrival (?chat=1) opens the commons in the SAME transition this hygiene
   // would close it — the one-shot intent lets that window through.
   const chatIntentRef = useRef(0)   // timestamp — survives the mount run AND the arrival's set-change run
+  const connectIntentRef = useRef(0) // same one-shot for ?connect=1 — the fresh-world CONNECT prompt must survive the uiSet('engine') hygiene pass (Galen: create dropped him in the engine, prompt never showed)
   useEffect(() => {
     try { window.dispatchEvent(new CustomEvent('cafe:shell-cmd', { detail: 'closepanels' })) } catch { /* ssr */ }
-    setConnectOpen(false); setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false); setWchatOpen(false)
+    if (Date.now() - connectIntentRef.current > 3000) setConnectOpen(false)
+    setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false); setWchatOpen(false)
     if (Date.now() - chatIntentRef.current > 3000) setChatOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
