@@ -86,7 +86,7 @@ export default function TheGrid() {
   const [connectOpen, setConnectOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // ? GUIDE — the human 'what do I say to my AI' card
   const [gamePaused, setGamePaused] = useState(false)  // ⏸ in-game pause (engine halts sim ticks; visuals keep breathing)
-  const [guideTab, setGuideTab] = useState<'how' | 'ask' | 'lessons' | 'why'>('how')
+  const [guideTab, setGuideTab] = useState<'how' | 'ask' | 'lessons' | 'why' | 'fix'>('how')
   // ⚿ door options (Galen, Sep 9): the human's PRE-ANSWERS, woven into the prompt
   const [doorName, setDoorName] = useState('')
   const [doorTarget, setDoorTarget] = useState<'desktop' | 'mobile'>('desktop')
@@ -999,10 +999,10 @@ export default function TheGrid() {
           onClick={() => setGuideOpen(false)}>
           <div className="w-full max-w-[560px] max-h-[80%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0d0c14]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
             <div className="text-[15px] tracking-[0.25em] text-amber-100 mb-3">? THE GUIDE</div>
-            <div className="flex gap-1.5 mb-4">
-              {([['how', 'HOW IT WORKS'], ['ask', 'WHAT YOU CAN ASK'], ['lessons', 'WORKING WITH YOUR AI'], ['why', 'WHY THIS ENGINE']] as const).map(([k, l]) => (
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {([['how', 'HOW IT WORKS'], ['ask', 'WHAT YOU CAN ASK'], ['lessons', 'WORKING WITH YOUR AI'], ['why', 'WHY THIS ENGINE'], ['fix', 'TROUBLESHOOTING']] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setGuideTab(k)}
-                  className={`flex-1 rounded-lg px-2 py-1.5 text-[11.5px] tracking-[0.12em] font-bold border transition-all ${guideTab === k ? 'bg-amber-400 text-black border-amber-200' : 'bg-black/50 text-amber-100/80 border-amber-300/30 hover:bg-amber-400/15'}`}>{l}</button>
+                  className={`flex-1 basis-[30%] rounded-lg px-2 py-1.5 text-[11.5px] tracking-[0.12em] font-bold border transition-all ${guideTab === k ? 'bg-amber-400 text-black border-amber-200' : 'bg-black/50 text-amber-100/80 border-amber-300/30 hover:bg-amber-400/15'}`}>{l}</button>
               ))}
             </div>
             {guideTab === 'how' && (
@@ -1038,6 +1038,17 @@ export default function TheGrid() {
               <p><b className="text-amber-200">Everything is data.</b> A world is a readable document — forkable, versioned, its code open commons when published. Your AI learns from every public world ever made here.</p>
               <p><b className="text-amber-200">Evidence, not vibes.</b> A game isn&apos;t &ldquo;done&rdquo; because an AI says so — the platform demands proof: rendered frames, real playthroughs, working inputs, at the current version.</p>
               <p><b className="text-amber-200">The AI has eyes and ears on it.</b> It screenshots, replays, and reads live state — the first game platform built for AN AI TO BUILD IN, not just a human with an editor.</p>
+            </div>
+            )}
+            {guideTab === 'fix' && (
+            <div className="text-[13.5px] leading-relaxed text-white/85 space-y-2.5">
+              <p><b className="text-white">The one move that fixes most things:</b> tell your AI <b className="text-rose-300">what&apos;s happening</b> and <b className="text-emerald-300">what solved looks like</b>. &ldquo;The ball falls through the paddle — solved means it bounces every time, even fast ones.&rdquo;</p>
+              <p><b className="text-rose-300">Black screen?</b> A shader broke. Say: &ldquo;the world renders black — find the broken visual and fix it or revert it.&rdquo;</p>
+              <p><b className="text-rose-300">Frozen or laggy?</b> &ldquo;Check the frame cost — which node is heavy?&rdquo; Worlds carry budgets; your AI can read them.</p>
+              <p><b className="text-rose-300">AI can&apos;t see the bug?</b> &ldquo;Watch me: replay my inputs and find where it breaks.&rdquo; It runs your exact play and reads the state at the failure.</p>
+              <p><b className="text-rose-300">Fix attempts going in circles?</b> &ldquo;Revert to the last working version.&rdquo; Every node keeps its history — going back is one ask.</p>
+              <p><b className="text-rose-300">A change vanished?</b> Another builder may hold that node. &ldquo;Who holds it? Add ours beside it.&rdquo;</p>
+              <p className="text-white/60">Still stuck: ask in the world&apos;s ◉ chat or the commons — other builders (and their AIs) answer.</p>
             </div>
             )}
             {guideTab === 'lessons' && (
