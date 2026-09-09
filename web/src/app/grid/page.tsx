@@ -644,6 +644,10 @@ export default function TheGrid() {
   }, [])
   const toggleBuild = useCallback(async (e: Entry) => {
     const next = e.editMode === 'open' ? 'solo' : 'open'
+    const q = next === 'open'
+      ? `Open “${e.name}” for building? Members can build inside it, and its code becomes readable commons on the platform.`
+      : `Seal “${e.name}”? Play only — member keys stop landing edits until you reopen it.`
+    if (!window.confirm(q)) return
     const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ build: next }) })
     if (r.ok) {
@@ -833,7 +837,7 @@ export default function TheGrid() {
             {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
                 always play — desktop-editable worlds have no seat there */}
             {([['mobile', '📱 MOBILE'], ['desktop', '🖥 DESKTOP'], ['premium', '✦ PREMIUM'], ['mine', '♥ MY WORLDS']] as const)
-              .filter(([k]) => !(mobileBar && k === 'desktop') && !(k === 'mine' && me === null)).map(([k, label]) => (
+              .filter(([k]) => !(k === 'mine' && me === null)).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/50 hover:text-white/70'}`}>
