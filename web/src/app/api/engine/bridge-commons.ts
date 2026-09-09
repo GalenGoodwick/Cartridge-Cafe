@@ -10,8 +10,7 @@ import { loadGameSlot, saveGameSlot } from './store'
 import { getSpaceFamily } from './space-store'
 import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { commonsPost, commonsRead } from '@/lib/commons'
-import { commonsListenerCount } from './commons-stream'
-import { broadcastSummon, registerWatcher, readWatchers, readRegions, readSummons, holderOf, claimRegion as claimRegionStore, resolveRegion as resolveRegionStore, withdrawRegion as withdrawRegionStore } from './regions-store'
+import { registerWatcher, readWatchers, readRegions, holderOf, claimRegion as claimRegionStore, resolveRegion as resolveRegionStore, withdrawRegion as withdrawRegionStore } from './regions-store'
 
 // --- Commons AI chat (MAIN) ---------------------------------------------
 // The larger-scale channel. During its work cycles any connected AI
@@ -113,25 +112,6 @@ const roundtable: BridgeHandler = async ({ cmd, auth }) => {
   }
 }
 
-// summon: rally builders to THIS world. Space-scoped (the token names the
-// world) — broadcasts on the commons, opens a muster, wakes companions.
-const summon: BridgeHandler = async ({ cmd, auth, origin, tokenHolder }) => {
-  if (!auth.spaceId) return { type: cmd.type, error: 'summon needs a space token (uc_st_…) — it rallies AIs to a specific world' }
-  const brief = String(cmd.brief ?? cmd.text ?? '').trim()
-  if (!brief) return { type: cmd.type, error: 'summon needs a `brief` — what should the AIs come build?' }
-  const from = routeWhoFor(auth, cmd.from)
-  const out = await broadcastSummon({ world: auth.slug!, spaceId: auth.spaceId, name: auth.spaceName ?? auth.slug!, brief, from, origin })
-  // the caller is a builder here too — dock it
-  await registerWatcher(auth.spaceId!, tokenHolder, from, 'builder').catch(() => {})
-  return { type: 'summon', ok: true, summoned: auth.slug, live: out.live, wokeRegistered: out.woke,
-    next: 'AIs that answer will claim_region on this world. Read who came with {type:"regions_read"} and {type:"watch"}.' }
-}
-
-// summons_read: what worlds are calling for builders right now (any token).
-const summonsRead: BridgeHandler = async () => {
-  return { type: 'summons_read', ok: true, musters: await readSummons() }
-}
-
 // watch: dock as a watcher/builder on this world — presence + eyes pointer
 // + the current region map + who else is here. "reappearing watcher" re-docks.
 const watch: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
@@ -143,18 +123,6 @@ const watch: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
     watchers: watchers.map(w => ({ who: w.who, kind: w.kind, since: w.at })),
     regions: await readRegions(auth.spaceId!),
     next: 'SEE the world with {type:"render_probe"}. Claim your ground with {type:"claim_region", concept:"…", box:{x,y,w,h}}. Talk to peers with roundtable_say.' }
-}
-
-// wake_watcher: re-ping a specific (possibly dormant) AI by slug — the
-// "ai to bridge call to reappearing watcher". Re-broadcasts + re-wakes.
-const wakeWatcher: BridgeHandler = async ({ cmd, auth, origin }) => {
-  if (!auth.spaceId) return { type: cmd.type, error: 'wake_watcher needs a space token (uc_st_…)' }
-  const target = String(cmd.target ?? cmd.slug ?? '').trim().slice(0, 80)
-  const from = routeWhoFor(auth, cmd.from)
-  const viewUrl = origin + '/space/' + auth.slug
-  await commonsPost({ who: from, text: `↺ ${from} calls ${target || 'the watchers'} back to "${auth.spaceName ?? auth.slug}" → ${viewUrl}`,
-    ai: true, slug: auth.slug, kind: 'wake', extra: { target, world: auth.slug, viewUrl } })
-  return { type: 'wake_watcher', ok: true, pinged: target || 'all', live: commonsListenerCount('commons:main') }
 }
 
 // regions_read: the current claim map for this world (any scoped token).
@@ -242,9 +210,6 @@ export const COMMONS_HANDLERS: Record<string, BridgeHandler> = {
   roundtable_say: roundtable,
   roundtable_read: roundtable,
   roundtable_nominate: roundtable,
-  summon,
-  summons_read: summonsRead,
   watch,
-  wake_watcher: wakeWatcher,
   regions_read: regionsRead,
 }

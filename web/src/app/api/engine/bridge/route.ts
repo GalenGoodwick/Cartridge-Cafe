@@ -24,7 +24,7 @@ import { validatePlayerToken } from '@/lib/player-token'
 import { warmSpaceOgCard } from '@/lib/og-card'
 import { slugify } from '@/lib/slug'
 import { canCreateWorld, createSpaceUniqueSlug, findOwnWorldByName } from '@/lib/world-create'
-import { claimRegion, resolveRegion, withdrawRegion, readRegions, registerWatcher, readWatchers, readSummons, broadcastSummon, regionWarningForPoint, holderOf } from '../regions-store'
+import { readRegions, registerWatcher, regionWarningForPoint, holderOf } from '../regions-store'
 import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { setSwarmMap, readSwarmMap, dockNode, jumpTarget, releaseNode, healDependents, attachServerEvidence, mapSummary } from '../swarm-store'
 import { handleCardTypes, handleProposeCardType, handleSetCard } from '../cards-registry'   // SEAM-A (cards)
@@ -540,7 +540,7 @@ const REGION_TURN_TTL = 12_000
 /** verbs that PROVABLY mutate nothing — a batch of only these skips the
  *  rollback snapshot (the read-path latency amplifier). When unsure, a verb
  *  stays OFF this list and pays for rollback like before. */
-const PURE_READS = new Set(['help', 'list_sprites', 'list_tracks', 'list_fields', 'main_read', 'roundtable_read', 'regions_read', 'summons_read', 'node_feed_read', 'credits_read', 'build_status', 'card_types', 'node_history'])
+const PURE_READS = new Set(['help', 'list_sprites', 'list_tracks', 'list_fields', 'main_read', 'roundtable_read', 'regions_read', 'node_feed_read', 'credits_read', 'build_status', 'card_types', 'node_history'])
 
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
 // NODE-GATE: commands whose effect is gated by node holds. The route stamps the

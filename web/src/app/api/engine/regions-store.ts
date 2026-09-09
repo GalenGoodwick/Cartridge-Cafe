@@ -34,18 +34,6 @@ export interface RegionClaim {
   at: number
   ttl: number               // absolute expiry ms
 }
-export interface Muster {
-  id: string
-  world: string             // slug
-  spaceId: string | null
-  name: string
-  brief: string
-  from: string
-  at: number
-  ttl: number
-  viewUrl: string
-  bridgeUrl: string
-}
 export interface Watcher {
   holder: string
   who: string
@@ -221,90 +209,8 @@ export async function regionWarningForPoint(
 }
 
 // ---- summon / muster -------------------------------------------------------
-const SUMMONS_SLOT = 'summons:open'
+// (summons machinery DELETED — Galen Sep 9: on-demand only, no wake infra)
 
-/** Open (or refresh) a summons for a world — the muster every AI can discover. */
-export async function openSummon(m: Omit<Muster, 'id' | 'at' | 'ttl'>): Promise<Muster> {
-  const doc = (await loadGameSlot(SUMMONS_SLOT)) as { musters?: Muster[] } | undefined
-  const t = now()
-  const live = (doc?.musters ?? []).filter(x => x.ttl > t && x.world !== m.world)
-  const muster: Muster = { ...m, id: rid('sm_'), at: t, ttl: t + MUSTER_TTL }
-  await saveGameSlot(SUMMONS_SLOT, { musters: [...live, muster].slice(-50) })
-  return muster
-}
-
-export async function readSummons(): Promise<Muster[]> {
-  const doc = (await loadGameSlot(SUMMONS_SLOT)) as { musters?: Muster[] } | undefined
-  const t = now()
-  return (doc?.musters ?? []).filter(x => x.ttl > t).sort((a, b) => b.at - a.at)
-}
-
-/** SUMMON — a call-to-arms. Opens a durable muster (every polling AI discovers
- *  it via summons_read), broadcasts it live onto the commons (every streaming AI
- *  hears it now), and wakes REGISTERED companions by pushing their accountable
- *  humans. Shared by the AI bridge command and the owner's browser endpoint. */
-export async function broadcastSummon(opts: {
-  world: string; spaceId: string | null; name: string; brief: string; from: string; origin: string;
-  /** where a builder should GO — defaults to the space page; house worlds pass
-   *  their /hub/<scene> address so the summons points at the right door. */
-  viewUrl?: string;
-  /** skip waking dormant companions via push (communal summons that must not
-   *  spam every companion owner). Live commons + builderbox still fire. */
-  noPush?: boolean;
-}): Promise<{ muster: Muster; woke: number; live: number }> {
-  const viewUrl = opts.viewUrl || (opts.origin + '/space/' + opts.world)
-  const bridgeUrl = opts.origin + '/api/engine/bridge'
-  const muster = await openSummon({
-    world: opts.world, spaceId: opts.spaceId, name: opts.name,
-    brief: opts.brief.slice(0, 800), from: opts.from, viewUrl, bridgeUrl,
-  })
-
-  // live: through the COMMONS BUS — the one hardcoded artery for system events.
-  // Every AI streaming /api/engine/commons receives it instantly; watchers key
-  // on kind:'summon'.
-  await commonsBus({ kind: 'summon', who: opts.from, slug: opts.world, ai: false,
-    text: `⚑ SUMMONS — "${opts.name}" needs builders. ${opts.brief.slice(0, 300)} → claim a region and build: ${viewUrl}`,
-    data: { world: opts.world, viewUrl, bridgeUrl, brief: opts.brief.slice(0, 800) } })
-
-  // the summoned world's OWN BuilderBox must hear its summons too (Galen, Jul 23:
-  // a summon that skips the world's AI chat strands builders already inside it) —
-  // queue entry + kind:'builderbox' bus ping, and a line in the world-chat slot
-  // so the in-world chat panel shows the call.
-  void builderboxInvite({
-    worldKey: opts.world, space: !!opts.spaceId, who: opts.from,
-    text: opts.brief.slice(0, 300), worldName: opts.name, quiet: true,
-  })
-  try {
-    // the panel reads `world-chat:<KEY>` (key = base name, uppercased) — the
-    // old 'chat:space:' echo landed in a slot nothing renders
-    const chatKey = (opts.name || opts.world).split(' ⑂ ')[0].trim().toUpperCase()
-    const chatSlot = 'world-chat:' + chatKey
-    const line = `⚑ SUMMONS — ${opts.brief.slice(0, 300)}`
-    const doc = (await loadGameSlot(chatSlot)) as { msgs?: Array<{ who?: string; text?: string; at?: number }> } | undefined
-    const msgs = Array.isArray(doc?.msgs) ? doc.msgs : []
-    const now = Date.now()
-    if (!msgs.some(m => m.who === opts.from && m.text === line && now - (m.at || 0) < 15_000)) {
-      msgs.push({ who: opts.from, text: line, at: now })
-      await saveGameSlot(chatSlot, { msgs: msgs.slice(-300) })
-    }
-  } catch { /* chat echo is best-effort; the muster + bus already carry the summon */ }
-
-  // (Push-wake of registered AI identities was removed with the companion system —
-  // there is no persistent AI registry to wake. The live commons bus + builderbox
-  // above still deliver the summon to every connected AI.)
-  const woke = 0
-
-  return { muster, woke, live: commonsListenerCount('commons:main') }
-}
-
-export async function closeSummon(world: string): Promise<void> {
-  const doc = (await loadGameSlot(SUMMONS_SLOT)) as { musters?: Muster[] } | undefined
-  const t = now()
-  const live = (doc?.musters ?? []).filter(x => x.ttl > t && x.world !== world)
-  await saveGameSlot(SUMMONS_SLOT, { musters: live })
-}
-
-// ---- watchers --------------------------------------------------------------
 function watchersSlot(spaceId: string): string { return 'watchers:' + spaceId }
 
 /** Dock an AI as a watcher/builder on a world (upsert by holder). */
