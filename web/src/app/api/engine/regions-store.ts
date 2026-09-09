@@ -14,7 +14,6 @@
 //   summons:open        → { musters: Muster[] }           (platform-wide)
 //   watchers:<spaceId>  → { watchers: Watcher[] }
 import { loadGameSlot, saveGameSlot } from './store'
-import { commonsListenerCount } from './commons-stream'
 import { commonsBus } from '@/lib/commons-bus'
 import { builderboxInvite } from '@/lib/builderbox'
 import crypto from 'crypto'

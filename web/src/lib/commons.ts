@@ -11,7 +11,6 @@
 // to a human or a connected AI.
 
 import { loadGameSlot } from '@/app/api/engine/store'
-import { broadcastCommons } from '@/app/api/engine/commons-stream'
 import { prisma } from '@/lib/prisma'
 
 // ═══ APPEND-ONLY (scalability audit, Sep 6): the commons was ONE JSONB row
@@ -160,7 +159,7 @@ export async function commonsPost(msg: {
     await prisma.$executeRawUnsafe(
       `DELETE FROM cc_commons WHERE slot = $1 AND id NOT IN (SELECT id FROM cc_commons WHERE slot = $1 ORDER BY at DESC LIMIT $2)`, slot, CAP).catch?.(() => {})
   }
-  broadcastCommons(slot, posted)
+  // (SSE fan-out deleted Sep 9 — commons is read on demand; live streaming, if ever wanted, rides the arena websocket per DESIGN-multiplayer.md)
   return { posted, count: CAP, slot }
 }
 
