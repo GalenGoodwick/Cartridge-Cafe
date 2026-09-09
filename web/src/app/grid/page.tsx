@@ -836,7 +836,7 @@ export default function TheGrid() {
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
                 always play — desktop-editable worlds have no seat there */}
-            {([['mobile', '📱 MOBILE'], ['desktop', '🖥 DESKTOP'], ['premium', '✦ PREMIUM'], ['mine', '♥ MY WORLDS']] as const)
+            {([['mobile', '📱 MOBILE'], ['desktop', '🖥 DESKTOP'], ['mine', '♥ MY WORLDS']] as const)
               .filter(([k]) => !(k === 'mine' && me === null)).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
