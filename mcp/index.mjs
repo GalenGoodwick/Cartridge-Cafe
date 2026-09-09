@@ -194,8 +194,9 @@ server.tool(
       .optional().describe('Checks that define "done" — each verified by state / render / playthrough / human.'),
     idempotencyKey: z.string().optional().describe('Reuse the SAME key to retry a create safely — a repeat returns the existing world, never a duplicate or a double charge.'),
     base: z.string().optional().describe('Fork: seed the newborn from this world slug (your own, or a public base/forkable). Lineage carried, seed hygiene applied.'),
+    access: z.enum(['open']).optional().describe("'open' = an OPEN-BUILDING world: launches public, other members may build in it."),
   },
-  async ({ name, brief, target, visibility, gameplay, presentation, acceptance, idempotencyKey, base }) => {
+  async ({ name, brief, target, visibility, gameplay, presentation, acceptance, idempotencyKey, base, access }) => {
     // paired? build AS the account — the world is born owned, no deed to claim
     if (account) {
       const cmd = { type: 'create_world', name }
@@ -207,6 +208,7 @@ server.tool(
       if (acceptance) cmd.acceptance = acceptance
       if (idempotencyKey) cmd.idempotencyKey = idempotencyKey
       if (base) cmd.base = base
+      if (access) cmd.access = access
       const out = await bridgeFor(account.playerToken).bridgeSend(cmd, { normalize: false })
       const r = (out && out.results && out.results[0]) || out || {}
       if (!r.token) return text({ error: r.error || 'create failed', hint: 'if the key was revoked, connect_account {force:true} re-pairs' })

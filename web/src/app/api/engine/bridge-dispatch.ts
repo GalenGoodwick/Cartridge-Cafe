@@ -128,7 +128,7 @@ const createWorld: BridgeHandler = async ({ cmd, auth }) => {
   // hygiene strips __base/forkable/policy; forkOfId carries lineage).
   let extras: Awaited<ReturnType<typeof resolveBirthExtras>>
   try {
-    extras = await resolveBirthExtras(auth.playerId!, { base: cmd.base, targets: spec.target === 'universal' ? undefined : spec.target })
+    extras = await resolveBirthExtras(auth.playerId!, { base: cmd.base, access: cmd.access === 'open' ? 'open' : undefined, targets: spec.target === 'universal' ? undefined : spec.target })
   } catch (e) {
     const err = e as { error?: string }
     return { type: cmd.type, error: err.error || 'bad base world' }

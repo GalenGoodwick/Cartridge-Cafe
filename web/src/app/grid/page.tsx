@@ -84,6 +84,12 @@ export default function TheGrid() {
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // ? GUIDE — the human 'what do I say to my AI' card
+  // ⚿ door options (Galen, Sep 9): the human's PRE-ANSWERS, woven into the prompt
+  const [doorName, setDoorName] = useState('')
+  const [doorTarget, setDoorTarget] = useState<'desktop' | 'mobile'>('desktop')
+  const [door3d, setDoor3d] = useState<'2d' | '3d'>('2d')
+  const [doorVis, setDoorVis] = useState<'private' | 'published'>('private')
+  const [doorAccess, setDoorAccess] = useState<'open' | 'proprietary'>('open')
   const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create' | 'fork'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -895,13 +901,28 @@ export default function TheGrid() {
               // ONE DOOR, FOUR FACES (Galen, Sep 9): the picker chooses the mission;
               // the text is the ONE funnel prompt wearing it. Not Claude-locked —
               // any MCP client, and below MCP the bridge is plain HTTP.
+              const opts = {
+                ...(doorName.trim() ? { newName: doorName.trim().slice(0, 40) } : {}),
+                ...(isCreate ? { target: doorTarget, d3: door3d === '3d', access: doorAccess } : {}),
+                visibility: doorVis,
+              }
               const text = isEdit ? inviteText(slug, wname)
-                : isFork ? inviteText(slug, wname, 'fork')
-                : inviteText(undefined, undefined, isCreate ? 'create' : undefined)
+                : isFork ? inviteText(slug, wname, 'fork', opts)
+                : isCreate ? inviteText(undefined, undefined, 'create', opts)
+                : inviteText()
               const modeBtn = (m: 'edit' | 'fork' | 'create', label: string, on: boolean, enabled: boolean) => (
                 <button key={m} disabled={!enabled}
                   onClick={() => setConnectMode(m)}
                   className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-200/90 border-amber-300/35 hover:bg-amber-400/15' : 'bg-black/30 text-white/25 border-white/10 cursor-not-allowed'}`}>{label}</button>
+              )
+              // a 2-option segmented toggle — the human's pre-answer, not a form
+              const seg = <T extends string>(a: [T, string], b: [T, string], cur: T, set: (v: T) => void) => (
+                <div className="flex rounded-lg overflow-hidden border border-white/15">
+                  {[a, b].map(([v, l]) => (
+                    <button key={v} onClick={() => set(v)}
+                      className={`flex-1 px-2 py-1 text-[10.5px] tracking-[0.1em] font-bold transition-all ${cur === v ? 'bg-sky-400/85 text-black' : 'bg-black/50 text-white/55 hover:text-white/85'}`}>{l}</button>
+                  ))}
+                </div>
               )
               return (<>
                 <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? <>✎ GET YOUR AI EDITING <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b></> : isFork ? <>⑂ FORK <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b> WITH YOUR AI</> : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
@@ -910,6 +931,22 @@ export default function TheGrid() {
                   {modeBtn('fork', '⑂ FORK IT', isFork, !!slug)}
                   {modeBtn('create', '✚ NEW WORLD', isCreate, true)}
                 </div>
+                {(isFork || isCreate) && (
+                  <div className="mb-3 space-y-1.5">
+                    <input value={doorName} onChange={e => setDoorName(e.target.value)} maxLength={40}
+                      placeholder={isFork ? 'name your copy (blank = your AI proposes one)' : 'name the world (blank = your AI proposes one)'}
+                      className="w-full rounded-lg bg-black/60 border border-white/15 px-3 py-2 text-[12.5px] text-white/90 placeholder:text-white/30 outline-none focus:border-sky-300/60" />
+                    <div className={`grid gap-1.5 ${isCreate ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {isCreate && seg(['desktop', '🖥 DESKTOP'], ['mobile', '📱 MOBILE'], doorTarget, setDoorTarget)}
+                      {isCreate && seg(['2d', '▦ 2D'], ['3d', '◇ 3D'], door3d, setDoor3d)}
+                      {seg(['private', '● PRIVATE'], ['published', '◉ PUBLISHED'], doorVis, setDoorVis)}
+                      {isCreate && seg(['open', '⛭ OPEN'], ['proprietary', '◆ PROPRIETARY'], doorAccess, setDoorAccess)}
+                    </div>
+                    {isCreate && doorAccess === 'proprietary' && (
+                      <div className="text-[10.5px] text-amber-200/70 leading-relaxed">◆ proprietary (closed-source) takes the IP-control membership — your AI will check; join at <span className="text-amber-200">cartridge.cafe/suite</span></div>
+                    )}
+                  </div>
+                )}
                 <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI — then just talk to it.</p>
                 <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{text}</div>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
