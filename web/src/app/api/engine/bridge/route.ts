@@ -537,6 +537,11 @@ const BUILD_LOCK_TTL = 3 * 60_000
 const REGION_TURN_TTL = 12_000
 // a command changes the world if it's a build op (define_/create_/set_/… ), not a
 // read or roundtable-chat command — only those contend for the lock.
+/** verbs that PROVABLY mutate nothing — a batch of only these skips the
+ *  rollback snapshot (the read-path latency amplifier). When unsure, a verb
+ *  stays OFF this list and pays for rollback like before. */
+const PURE_READS = new Set(['help', 'list_sprites', 'list_tracks', 'list_fields', 'main_read', 'roundtable_read', 'regions_read', 'summons_read', 'node_feed_read', 'credits_read', 'build_status', 'card_types', 'node_history'])
+
 const MUTATING = /^(define_|create_|set_|add_|update_|clear_|delete_|remove_|destroy_|inject_|paint|spawn_|move_|link_|unlink_)/
 // NODE-GATE: commands whose effect is gated by node holds. The route stamps the
 // un-spoofable builder identity (holderOf(token)) onto these before they reach the
@@ -663,8 +668,14 @@ export async function POST(req: NextRequest) {
 
     // #4 atomic batch: snapshot the world BEFORE the batch; if any command throws
     // mid-way, we revert to this so a half-applied batch never persists.
+    // LATENCY (Galen, Sep 8): a PURE-READ batch (main_read polls, list_*,
+    // build_status…) can never need the rollback — skip the fresh full-snapshot
+    // fetch + deep clone it paid on every call (the single biggest read-path
+    // cost: a cache-bypassing JSONB detoast of the whole world). Conservative
+    // allowlist: any verb not PROVABLY read-only keeps rollback exactly as before.
     if (isSceneScoped) await hydrateScene(auth.sceneName!)   // this lambda may have never seen the branch
-    const rollback = isSpaceScoped
+    const pureReadBatch = commands.every(c => PURE_READS.has(String(c.type)))
+    const rollback = pureReadBatch ? null : isSpaceScoped
       ? await getSpaceSnapshot(auth.spaceId!, true).then(snap => (snap ? JSON.parse(JSON.stringify(snap)) : null)).catch(() => null)
       : isSceneScoped
         ? (() => { const s = loadScene(auth.sceneName!); return s ? JSON.parse(JSON.stringify(s)) : null })()
