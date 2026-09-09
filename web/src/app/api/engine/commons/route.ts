@@ -6,7 +6,7 @@ import { addCommonsListener } from '../commons-stream'
 import { loadGameSlot, saveGameSlot } from '../store'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120 // SSE can stay open
+export const maxDuration = 25 // ON-DEMAND ONLY (Galen, Sep 9): short SSE holds — clients reconnect; a held-open lambda was the Vercel bill's biggest burner
 
 /**
  * GET /api/engine/commons?sub=<slug>

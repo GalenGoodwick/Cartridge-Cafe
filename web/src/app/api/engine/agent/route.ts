@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { appendMemory, getEngineState, setWorldData, setWorldParamsStore, resetStore, postCommandResult } from '../store'
 
-export const maxDuration = 120 // SSE can stay open
+export const maxDuration = 25 // ON-DEMAND ONLY (Galen, Sep 9): short SSE holds — clients reconnect; a held-open lambda was the Vercel bill's biggest burner
 export const dynamic = 'force-dynamic'
 
 // --- In-memory command queue ---
