@@ -80,8 +80,8 @@ const FLOW: Btn[] = [
   // (the IDENTITY SLOT is RETIRED — Galen, Sep 6: the plaque bar's COME IN →
   // / handle owns sign-in + account now; the bottom bar carries no identity.
   // nav below keeps its !signedOut gate: strangers have no engine seat.)
-  // from games/main → ⚙ ENGINE; from engine OR the create window → ▶ GAMES
-  { id: 'nav', tier: 0, tone: 'goldline', show: c => !c.signedOut && !c.contained, label: c => (c.set === 'engine' || c.set === 'create') ? '▶ GAMES' : '⚙ ENGINE', glyph: c => (c.set === 'engine' || c.set === 'create') ? '▶' : '⚙', testId: 'nav' },
+  // (⚙ ENGINE retired from the bar — Galen, Sep 9: 'we don't need people to see
+  // the backend' — the AI is the interface. ?ui=engine stays URL-reachable.)
   // EDIT: BLUE on the main grid (the general edit door), GOLD in-world (edits
   // THIS world); premium worlds hide it in-game
   // EDIT is BLUE everywhere (Galen: 'not supposed to be yellow')
