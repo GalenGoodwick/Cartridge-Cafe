@@ -28,7 +28,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
       <BottomBar barH={64}
         ctx={{
           set: 'account', playing: false, narrow, glyphs: win < 1280, tier, canBack: true,
-          signedOut, premium: false, rReset: false, aiLive: false, recOn: false,
+          signedOut, premium: false, rReset: false, aiLive: false, recOn: false, pausedOn: false,
           recSecs: 0, copied, navOpen: false, commonsOpen: false,
           instructionsOpen: false, brewIconOpen: false,
           // in-game-only doors (♥ vote / ◉ world chat) never show on account
@@ -36,6 +36,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
         }}
         act={{
           guide: () => { window.location.href = '/grid?guide=1' },
+        pause: () => {},
         back: () => { if (window.history.length > 1) window.history.back(); else go('/grid') },
           edit: () => go('/grid'),
           title: () => {},

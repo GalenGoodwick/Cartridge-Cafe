@@ -31,6 +31,7 @@ export type BarCtx = {
   instructionsOpen: boolean
   brewIconOpen: boolean
   wchatOpen: boolean          // ◉ the world's own chat overlay (in-game)
+  pausedOn: boolean           // ⏸ the sim is frozen
   wchatCount: number          // people+AIs recently talking in it (badge; 0 = quiet)
   voteCount: number           // ♥ upvotes on this world (0 = bare heart)
   voteMine: boolean           // I have upvoted — the heart wears amber
@@ -42,6 +43,7 @@ export type BarActions = {
   edit: () => void
   create: () => void
   guide: () => void
+  pause: () => void
   title: () => void
   share: () => void
   commons: () => void
@@ -100,7 +102,11 @@ const FLOW: Btn[] = [
   // ONE DOOR (Galen, Sep 9): ✎EDIT and ✚CREATE condensed into ⚿ CONNECT AI —
   // the popup carries the mode picker (edit/fork/new). ? GUIDE = the human guide.
   { id: 'guide', tier: 0, tone: 'chip', show: c => !c.playing, label: () => '? GUIDE', glyph: () => '?', testId: 'guide' },
-  { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create', active: c => c.aiLive,
+  // ⏸ PAUSE (Galen, Sep 9): freeze the sim mid-game; ▶ resumes
+  { id: 'pause', tier: 0, tone: c => c.pausedOn ? 'goldline' : 'chip', show: c => c.playing, active: c => c.pausedOn,
+    label: c => c.pausedOn ? '▶ RESUME' : '⏸ PAUSE', glyph: c => c.pausedOn ? '▶' : '⏸', testId: 'pause' },
+  // ⚿ never IN-game (Galen, Sep 9): back out first — playing is playing
+  { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create' && !c.playing, active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
   // record rides right of the green door in-game (Galen)
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },

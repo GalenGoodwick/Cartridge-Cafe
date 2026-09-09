@@ -85,6 +85,8 @@ export default function TheGrid() {
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)   // ? GUIDE — the human 'what do I say to my AI' card
+  const [gamePaused, setGamePaused] = useState(false)  // ⏸ in-game pause (engine halts sim ticks; visuals keep breathing)
+  const [guideTab, setGuideTab] = useState<'how' | 'ask' | 'lessons'>('how')
   // ⚿ door options (Galen, Sep 9): the human's PRE-ANSWERS, woven into the prompt
   const [doorName, setDoorName] = useState('')
   const [doorTarget, setDoorTarget] = useState<'desktop' | 'mobile'>('desktop')
@@ -640,6 +642,7 @@ export default function TheGrid() {
     if (Date.now() - connectIntentRef.current > 3000) setConnectOpen(false)
     setInstrOpen(false); setAttribOpen(false); setBrewIconOpen(false); setWchatOpen(false)
     if (Date.now() - connectIntentRef.current > 3000) setGuideOpen(false)
+    setGamePaused(false); cmd('resume')   // never carry a frozen sim between sets/worlds
     if (Date.now() - chatIntentRef.current > 3000) setChatOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uiSet, phase])
@@ -783,8 +786,8 @@ export default function TheGrid() {
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
                 always play — desktop-editable worlds have no seat there */}
-            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM']] as const)
-              .filter(([k]) => !(mobileBar && k === 'desktop')).map(([k, label]) => (
+            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM'], ['mine', '♥ MY WORLDS']] as const)
+              .filter(([k]) => !(mobileBar && k === 'desktop') && !(k === 'mine' && me === null)).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
                   tab === k ? 'bg-emerald-400/15 border-emerald-300/50 text-emerald-100' : 'bg-black/40 border-white/10 text-white/50 hover:text-white/70'}`}>
@@ -995,15 +998,48 @@ export default function TheGrid() {
           style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
           onClick={() => setGuideOpen(false)}>
           <div className="w-full max-w-[560px] max-h-[80%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0d0c14]/97 p-5 m-4 font-mono" onClick={e => e.stopPropagation()}>
-            <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-3">? HOW CARTRIDGE.CAFE WORKS</div>
-            <div className="text-[13px] leading-relaxed text-white/80 space-y-3">
-              <p><b className="text-white/95">You talk. Your AI builds.</b> Every game here is a little world an AI built live for its human — and yours can too.</p>
-              <p><b className="text-emerald-200/90">1 · Connect.</b> Hit <b>⚿ CONNECT AI</b>, copy the prompt, paste it to your AI — Claude, Cursor, Windsurf, anything that can read a URL. First-ever pairing gifts 30 days of membership + 2 world builds.</p>
-              <p><b className="text-emerald-200/90">2 · Say what you want.</b> &ldquo;Make me a game about a lighthouse keeper.&rdquo; &ldquo;Edit my comet catcher — add sound and a boss.&rdquo; &ldquo;Fork this world and make it harder.&rdquo; Your AI asks the right questions, creates or opens the world itself, and builds while you watch the tab.</p>
-              <p><b className="text-emerald-200/90">Assets too:</b> hand your AI an image or a sound — drop the file into the chat (or point at it) and say where it belongs; the AI imports it into the world (uploads ride the ◆ premium suite).</p>
-              <p><b className="text-emerald-200/90">3 · Play everything.</b> Playing is free. <b>♥</b> upvote what you love; <b>? INSTRUCTIONS</b> in a game shows its controls; <b>↗ SHARE</b> hands anyone the same door in.</p>
-              <p className="text-white/55">Worlds cost one build credit ($5, bundles cheaper) — your AI checks your balance and tells you when it needs one. Open worlds welcome co-builders with the editing membership ($10/mo). Your account lives under your @handle up top.</p>
+            <div className="text-[15px] tracking-[0.25em] text-amber-100 mb-3">? THE GUIDE</div>
+            <div className="flex gap-1.5 mb-4">
+              {([['how', 'HOW IT WORKS'], ['ask', 'WHAT YOU CAN ASK'], ['lessons', 'WORKING WITH YOUR AI']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setGuideTab(k)}
+                  className={`flex-1 rounded-lg px-2 py-1.5 text-[11.5px] tracking-[0.12em] font-bold border transition-all ${guideTab === k ? 'bg-amber-400 text-black border-amber-200' : 'bg-black/50 text-amber-100/80 border-amber-300/30 hover:bg-amber-400/15'}`}>{l}</button>
+              ))}
             </div>
+            {guideTab === 'how' && (
+            <div className="text-[13.5px] leading-relaxed text-white/85 space-y-3">
+              <p><b className="text-white">You talk. Your AI builds.</b> Every game here is a little world an AI built live for its human — and yours can too.</p>
+              <p><b className="text-emerald-200">1 · Connect.</b> Hit <b>⚿ CONNECT AI</b>, copy the prompt, paste it to your AI — Claude, Cursor, Windsurf, anything that can read a URL.</p>
+              <p><b className="text-emerald-200">2 · Say what you want.</b> &ldquo;Make me a game about a lighthouse keeper.&rdquo; &ldquo;Edit my comet catcher — add sound and a boss.&rdquo; Your AI asks the right questions, creates or opens the world itself, and builds while you watch.</p>
+              <p><b className="text-emerald-200">Assets too:</b> drop an image or sound file into the chat and say where it belongs — the AI imports it (uploads ride the ◆ premium suite).</p>
+              <p><b className="text-emerald-200">3 · Play everything.</b> Playing is free. <b>♥</b> upvote what you love; <b>? INSTRUCTIONS</b> in a game shows its controls; <b>↗ SHARE</b> hands anyone the same door in.</p>
+              <p className="text-white/60">Worlds cost one build credit ($5, bundles cheaper). Open worlds welcome co-builders with the editing membership ($10/mo). Your account lives under your @handle up top.</p>
+            </div>
+            )}
+            {guideTab === 'ask' && (
+            <div className="text-[13.5px] leading-relaxed text-white/85 space-y-2.5">
+              <p className="text-white/60">Everything below is a sentence to your AI — it holds the keys.</p>
+              <p><b className="text-sky-300">Make / fork / edit</b> — &ldquo;create a new world&rdquo; · &ldquo;fork &lt;world&gt; into my copy&rdquo; (bases &amp; your own worlds; costs a credit) · &ldquo;open my &lt;world&gt; and change …&rdquo;</p>
+              <p><b className="text-sky-300">Publish / unpublish</b> — &ldquo;publish it&rdquo; puts it on the shelf; &ldquo;take it down&rdquo; unpublishes. Original creator only.</p>
+              <p><b className="text-sky-300">Classify it</b> — &ldquo;file it as a platformer&rdquo; sets the genre card the shelf sorts by (the same genres as the ⚿ door chips).</p>
+              <p><b className="text-sky-300">Name &amp; face</b> — rename the world; write the player instructions (the ? button); set the blurb and shelf card.</p>
+              <p><b className="text-sky-300">Assets</b> — &ldquo;use this image as the hero sprite&rdquo; · &ldquo;this mp3 is the music&rdquo; (◆ suite for uploads; shader-made art is free).</p>
+              <p><b className="text-sky-300">Open or close building</b> — invite co-builders in (open = its code becomes readable commons) or keep it solo; ◆ proprietary keeps code closed even when published.</p>
+              <p><b className="text-sky-300">Verify</b> — &ldquo;prove it works&rdquo;: the AI screenshots the world and plays it with real inputs before calling anything done.</p>
+              <p><b className="text-sky-300">Money</b> — &ldquo;how many credits do I have?&rdquo; · buying happens on your account page, never in chat.</p>
+              <p className="text-white/60">Deleting a world lives on your account page (protected when co-builders have stake).</p>
+            </div>
+            )}
+            {guideTab === 'lessons' && (
+            <div className="text-[13.5px] leading-relaxed text-white/85 space-y-2.5">
+              <p className="text-white/60">How the best worlds here actually got built:</p>
+              <p><b className="text-emerald-200">Your AI has eyes.</b> It can screenshot the world and replay the game with real button presses. Ask it to LOOK after every change — never accept &ldquo;should work&rdquo;.</p>
+              <p><b className="text-emerald-200">It can see where you are.</b> Your position, score, and state are readable live — &ldquo;watch me play and tell me why that jump feels wrong&rdquo; is a real request.</p>
+              <p><b className="text-emerald-200">Describe outcomes, not code.</b> &ldquo;The ball feels floaty&rdquo; beats &ldquo;change gravity to 800&rdquo;. You bring taste; it brings mechanism.</p>
+              <p><b className="text-emerald-200">Small steps.</b> One change → look → next. Big vague asks make mud.</p>
+              <p><b className="text-emerald-200">Make it stage.</b> A good AI proposes the plan and waits for your yes before touching anything. If it charges ahead, say &ldquo;stage your moves&rdquo;.</p>
+              <p><b className="text-emerald-200">Let it verify the finish.</b> &ldquo;Prove the flippers work, then call it done&rdquo; — the platform holds it to evidence, not vibes.</p>
+            </div>
+            )}
           </div>
         </div>
       )}
@@ -1361,7 +1397,7 @@ export default function TheGrid() {
           set: uiSet, playing: uiSet === 'games' && phase === 'play', narrow, glyphs: barGlyphs, tier: tier as BarCtx['tier'], contained: !!companyScope, canBack: giRef.current > 0 || connectOpen || instrOpen || uiSet === 'create' || uiSet === 'engine' || !!companyScope,
           signedOut: me === null, premium: !!cfgStable?.premium,
           rReset: !!(cfgStable?.rReset || spc?.rReset), aiLive,
-          recOn: rec.on, recSecs: rec.secs, copied,
+          recOn: rec.on, recSecs: rec.secs, copied, pausedOn: gamePaused,
           navOpen: false, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
           wchatOpen, wchatCount, voteCount: voteInfo?.count ?? 0, voteMine: !!voteInfo?.mine,
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
@@ -1396,6 +1432,7 @@ export default function TheGrid() {
             setConnectMode(scene.startsWith('space:') ? 'edit' : 'connect')
             setConnectOpen(true); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           guide: () => { setGuideOpen(o => !o); setInstrOpen(false); setBrewIconOpen(false) },
+          pause: () => { setGamePaused(pp => { const next = !pp; cmd(next ? 'pause' : 'resume'); return next }) },
           instructions: () => { setInstrOpen(o => !o); setConnectOpen(false); setWchatOpen(false) },
           brewIcon: () => { setBrewIconOpen(o => !o); setChatOpen(false); setInstrOpen(false) },
           wchat: () => { setWchatOpen(o => !o); setInstrOpen(false); setConnectOpen(false); setBrewIconOpen(false) },

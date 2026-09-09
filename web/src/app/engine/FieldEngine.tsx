@@ -1099,6 +1099,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     return () => { window.removeEventListener('cafe:icon', apply); clearInterval(iv) }
   }, [])
 
+  const pausedRef = useRef(false)   // ⏸ PAUSE (bar): halts sandbox ticks + sim.step; rAF/render continue
   // hud DOM overlay retired — hudContainerRef now only clears pre-retirement leftovers
   const hudContainerRef = useRef<HTMLDivElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)   // the top-right UI dock — its bottom seats the VOTE button
@@ -2129,6 +2130,8 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       setCfgTick(n => n + 1)   // worldData writes aren't React state — re-publish so the host reads back
     }
     else if (cmd === 'nodes') setNodesOpen(v => !v)       // ⬢ NODES — the co-build dock (spaces)
+    else if (cmd === 'pause') { pausedRef.current = true }    // ⏸ freeze sim ticks (render keeps breathing)
+    else if (cmd === 'resume') { pausedRef.current = false }
     else if (cmd === 'closepanels') {                     // host set/phase transitions: nothing stays stuck open
       setBuildConsoleOpen(false); buildConsoleClosedRef.current = true
       setInstrOpen(false); setWorldChatOpen(false); setChromeVisible(false)
@@ -4474,11 +4477,11 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             if (s2) s2.worldData['__lobby'] = { rooms, at: Date.now() }
           }).catch(() => {})
         }
-        sandboxRef.current?.tick(sim, dt)
+        if (!pausedRef.current) sandboxRef.current?.tick(sim, dt)
       } else {
-        sandboxRef.current?.tick(sim, dt)
+        if (!pausedRef.current) sandboxRef.current?.tick(sim, dt)
       }
-      sim.step(dt)
+      if (!pausedRef.current) sim.step(dt)
 
       // Process audio triggers from worldData (single event or an array per tick)
       // Hosted files only load from the cafe's own blob store (or same-origin) —
