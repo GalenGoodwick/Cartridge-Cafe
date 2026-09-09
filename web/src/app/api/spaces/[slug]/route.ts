@@ -224,23 +224,21 @@ export async function DELETE(
     return NextResponse.json({ error: 'Space not found' }, { status: 404 })
   }
 
-  // DELETE PROTECTION for public open-building worlds (Galen, Aug 27): once a
-  // public world invites anyone to build, other people's work lives in it --
-  // it can't be one-click destroyed while co-builders hold a stake. The owner
-  // can close building or unpublish first (both reversible), then delete.
+  // CO-BUILT PROTECTION, STAKE-BASED (Galen, Sep 9: "delete if allowed" =
+  // nobody else ever edited). The tracking is provenance we already keep:
+  // member:<handle> tokens (every join door mints one) + version history rows
+  // authored by non-owners. ANY world with real foreign edits refuses deletion;
+  // an open world nobody else touched deletes fine.
   {
-    const wd = ((space.snapshot as { worldData?: Record<string, unknown> } | null)?.worldData) ?? {}
-    const { effectiveBuild } = await import('@/lib/world-policy')
-    if (space.isPublic && effectiveBuild(wd, await hasIpShield(user.id)) === 'anyone') {
-      const [memberTokens, foreignVersions] = await Promise.all([
-        prisma.spaceToken.count({ where: { spaceId: space.id, revokedAt: null, name: { startsWith: 'member:' } } }),
-        prisma.spaceVersion.count({ where: { spaceId: space.id, authorId: { not: user.id } } }),
-      ])
-      if (memberTokens > 0 || foreignVersions > 0) {
-        return NextResponse.json({
-          error: 'Cannot delete: this is a public open-building world with co-builders\u2019 work in it. Close building or unpublish it first \u2014 then delete.',
-        }, { status: 409 })
-      }
+    const [memberTokens, foreignVersions] = await Promise.all([
+      prisma.spaceToken.count({ where: { spaceId: space.id, revokedAt: null, name: { startsWith: 'member:' } } }),
+      prisma.spaceVersion.count({ where: { spaceId: space.id, authorId: { not: user.id } } }),
+    ])
+    if (memberTokens > 0 || foreignVersions > 0) {
+      return NextResponse.json({
+        error: `Other builders have work in this world (${memberTokens} member key${memberTokens === 1 ? '' : 's'}, ${foreignVersions} foreign version${foreignVersions === 1 ? '' : 's'}). Co-built work is protected \u2014 close building and revoke member keys first, or keep it.`,
+        coBuilt: true, blocked: true, memberTokens, foreignVersions,
+      }, { status: 409 })
     }
   }
 
@@ -248,26 +246,17 @@ export async function DELETE(
   if (space._count.childSpaces > 0) {
     return NextResponse.json({
       error: `Cannot delete: ${space._count.childSpaces} branch${space._count.childSpaces > 1 ? 'es' : ''} grew from this world. Their roots live here.`,
+      blocked: true,
     }, { status: 409 })
   }
   if (space._count.flags > 0) {
     return NextResponse.json({
       error: 'Cannot delete: this world has been flagged into a vote. The community holds a stake until it resolves.',
+      blocked: true,
     }, { status: 409 })
   }
-  // CO-BUILT PROTECTION (Galen, Aug 27: "multiple edit worlds are protected").
-  // An OPEN world invited members to build in it — their work lives here too,
-  // so a single click can't erase it. Close the world (make it solo) first;
-  // a deliberate second step, not a wall.
-  const openRows = await prisma.$queryRaw<{ b: string | null; a: string | null }[]>`
-    SELECT snapshot->'worldData'->>'build' AS b, snapshot->'worldData'->>'access' AS a
-    FROM "PlayerSpace" WHERE id = ${space.id}`
-  if (openRows[0]?.b === 'anyone' || openRows[0]?.a === 'open') {
-    return NextResponse.json({
-      error: 'Cannot delete: this is an OPEN world — members may have built here, and co-built work is protected. Close it (make it solo) first, then delete.',
-      coBuilt: true,
-    }, { status: 409 })
-  }
+  // (the blanket OPEN-world refusal is retired — Sep 9: the stake gate above
+  // refuses on ACTUAL foreign edits; an untouched open world is the owner's.)
   // (being live in a cell no longer blocks deletion — everything here is live
   //  state, so the cell HEALS instead: TournamentBar prunes non-roster worlds on
   //  its next beat — votes for the dead release, an emptied cell completes.)
@@ -276,25 +265,20 @@ export async function DELETE(
   try {
     const lin = await getLineage(space.name)
     if (lin && lin.original === 'space:' + slug) {
-      return NextResponse.json({ error: 'This is the original of its lineage — it can never be deleted.' }, { status: 409 })
+      return NextResponse.json({ error: 'This is the original of its lineage — it can never be deleted.', blocked: true }, { status: 409 })
     }
   } catch { /* lineage store unavailable — do not block on it */ }
 
   invalidateSpaceCache(space.id)
 
-  // CANCEL BUILD = CREDIT BACK (Galen, Aug 29: no $5 refunds — the credit
-  // returns instead): deleting a PAID creation that never got built (has a
-  // creation_brief, brief never done, no fields) puts ONE generation credit
-  // back on the account. A world that was actually built earns no credit on
-  // delete; the keeper creates free so gets none either.
+  // DELETE = CREDIT BACK, ALWAYS (Galen, Sep 9: "1 credit always returned").
+  // If deletion is allowed (no foreign stake — checked above), the build
+  // credit returns regardless of build state. Keeper creates free → no refund.
   let creditGranted = false
   {
-    const snap = space.snapshot as { fields?: unknown[]; worldData?: Record<string, unknown> } | null
-    const wd = snap?.worldData ?? {}
-    const unbuilt = !!wd['creation_brief'] && wd['brief_done'] !== true && !(Array.isArray(snap?.fields) && snap!.fields!.length > 0)
-    if (unbuilt) {
-      const { isAdminUserId } = await import('@/lib/adminAuth')
-      if (!(await isAdminUserId(user.id))) {
+    const { isAdminUserId } = await import('@/lib/adminAuth')
+    if (!(await isAdminUserId(user.id))) {
+      {
         const { refundGenCredit } = await import('@/lib/stripe')
         await refundGenCredit(user.id)
         creditGranted = true

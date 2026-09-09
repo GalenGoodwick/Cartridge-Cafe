@@ -631,6 +631,7 @@ export default function TheGrid() {
 
   // MY WORLDS owner controls (Galen, Sep 9: publish is a BUTTON, deletion honest)
   const [ownerNote, setOwnerNote] = useState<string | null>(null)
+  const [ownerBlock, setOwnerBlock] = useState<{ title: string; msg: string } | null>(null)   // 🛡 the DISTINCT can't-delete dialog
   const togglePublish = useCallback(async (e: Entry) => {
     const next = !e.playable
     const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), {
@@ -642,14 +643,21 @@ export default function TheGrid() {
     setTimeout(() => setOwnerNote(null), 4000)
   }, [])
   const deleteWorld = useCallback(async (e: Entry) => {
-    if (!window.confirm(`Delete “${e.name}” forever? An unbuilt world returns its build credit; a built one doesn’t.`)) return
+    if (!window.confirm(`Delete “${e.name}” forever? Your build credit will be returned.`)) return
     const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), { method: 'DELETE' })
-    const d = await r.json().catch(() => ({} as { creditGranted?: boolean; error?: string }))
+    const d = await r.json().catch(() => ({} as { creditGranted?: boolean; error?: string; blocked?: boolean; coBuilt?: boolean }))
     if (r.ok) {
       setEntries(list => list.filter(x => x.slug !== e.slug))
       setOwnerNote(d.creditGranted ? `“${e.name}” deleted — build credit returned ✓` : `“${e.name}” deleted`)
-    } else setOwnerNote(`couldn’t delete — ${d.error ?? r.status}`)
-    setTimeout(() => setOwnerNote(null), 5000)
+      setTimeout(() => setOwnerNote(null), 5000)
+    } else if (d.blocked) {
+      // the DISTINCT dialog (Galen, Sep 9): co-built / staked worlds don't
+      // fail into a status line — they explain themselves properly.
+      setOwnerBlock({ title: d.coBuilt ? `🛡 “${e.name}” IS CO-BUILT` : `🛡 “${e.name}” CAN’T BE DELETED`, msg: d.error ?? 'This world holds someone else’s stake.' })
+    } else {
+      setOwnerNote(`couldn’t delete — ${d.error ?? r.status}`)
+      setTimeout(() => setOwnerNote(null), 5000)
+    }
   }, [])
 
   // TAP TWICE (Galen, Sep 9): first tap SELECTS a card (loads it into the frame);
@@ -1033,6 +1041,20 @@ export default function TheGrid() {
           <div className="w-full max-w-[560px] max-h-[70%] overflow-y-auto rounded-2xl border border-white/12 bg-[#0d0c14]/97 p-5 m-4" onClick={e => e.stopPropagation()}>
             <div className="font-mono text-[13px] tracking-[0.25em] text-white/60 mb-2">? INSTRUCTIONS — {selected?.name}</div>
             <div className="font-mono text-[14px] leading-relaxed text-white/80 whitespace-pre-wrap">{instrText}</div>
+          </div>
+        </div>
+      )}
+
+      {/* 🛡 BLOCKED DELETE — the distinct dialog (co-built stake, branches, votes) */}
+      {ownerBlock && (
+        <div className="fixed z-[128] flex items-center justify-center backdrop-blur-sm"
+          style={{ top: M, right: M, bottom: BAR_H + 10, left: M, background: 'rgba(5,6,12,0.88)', borderRadius: 10 }}
+          onClick={() => setOwnerBlock(null)}>
+          <div className="w-full max-w-[460px] rounded-2xl border border-rose-300/40 bg-[#140d0f]/97 p-5 m-4 font-mono" onClick={ev => ev.stopPropagation()}>
+            <div className="text-[14px] tracking-[0.2em] text-rose-200 mb-2">{ownerBlock.title}</div>
+            <p className="text-[13px] leading-relaxed text-white/85">{ownerBlock.msg}</p>
+            <button onClick={() => setOwnerBlock(null)}
+              className="mt-4 w-full rounded-xl bg-black/50 border border-white/25 px-3 py-2 text-[13px] tracking-[0.16em] text-white/85 hover:text-white transition-all">UNDERSTOOD</button>
           </div>
         </div>
       )}
