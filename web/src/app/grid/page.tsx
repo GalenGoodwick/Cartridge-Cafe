@@ -629,7 +629,12 @@ export default function TheGrid() {
   // AFTER mount — polling must start once the space is actually in the frame
   }, [scene])
 
-  const pick = useCallback((e: Entry) => setScene(e.scene), [])
+  // TAP TWICE (Galen, Sep 9): first tap SELECTS a card (loads it into the frame);
+  // a second tap on the already-selected card means "I want in" — enter play.
+  const pick = useCallback((e: Entry) => {
+    if (scene === e.scene) { void tryPlay(); return }
+    setScene(e.scene)
+  }, [scene, tryPlay])
 
   // TRANSITION HYGIENE (Galen: builderbox stuck open from engine → play): any
   // set/phase change closes the engine's panels — nothing follows you through.
@@ -773,7 +778,7 @@ export default function TheGrid() {
           className="fixed z-[115] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
-            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
+            ▶ CLICK TO PLAY{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
           </span>
         </button>
       )}
@@ -832,17 +837,17 @@ export default function TheGrid() {
                     style={{ background: 'linear-gradient(160deg, #141224, #0a0913)' }}>
                     {ic
                       ? <img src={ic} alt="" className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform" />
-                      : <span className="font-mono text-[34px] text-white/35">{e.name[0]}</span>}
+                      : <span className="font-mono text-[34px] text-white/50">{e.name[0]}</span>}
                   </div>
                   <div className="px-2.5 py-2">
-                    <div className={`font-mono text-[11.5px] tracking-[0.1em] truncate ${on ? 'text-sky-100' : 'text-white/70'}`}>
+                    <div className={`font-mono text-[12.5px] tracking-[0.1em] truncate ${on ? 'text-sky-100 font-bold' : 'text-white/90'}`}>
                       {e.name}
                     </div>
                     {/* the byline + ♥ — each shows only when TRUE (the playing-now
                         law): guest-owned worlds have no maker, unloved no count */}
                     {(e.maker || (e.votes ?? 0) > 0) && (
-                      <div className="flex items-center gap-1.5 font-mono text-[10px] leading-tight mt-0.5">
-                        {e.maker && <span className="text-white/40 truncate">by {e.maker}</span>}
+                      <div className="flex items-center gap-1.5 font-mono text-[11px] leading-tight mt-0.5">
+                        {e.maker && <span className="text-white/60 truncate">by {e.maker}</span>}
                         {(e.votes ?? 0) > 0 && <span className="ml-auto shrink-0 text-amber-200/80">♥ {e.votes}</span>}
                       </div>
                     )}
@@ -865,7 +870,7 @@ export default function TheGrid() {
           className="fixed z-[114] group cursor-pointer"
           style={{ top: inset.top, right: inset.right, bottom: inset.bottom, left: inset.left, background: 'transparent', border: 'none', transition: EASE }}>
           <span className="absolute bottom-2 left-1/2 -translate-x-1/2 max-w-[calc(100%-20px)] truncate whitespace-nowrap font-mono text-[11px] tracking-[0.2em] px-2.5 py-1 rounded-lg bg-black/70 border border-amber-300/60 text-amber-200 group-hover:bg-amber-400/20 group-hover:text-amber-100 transition-colors">
-            ▶ CLICK TO PLAY{selected?.name ? ` — ${selected.name}` : ''}{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
+            ▶ CLICK TO PLAY{(() => { const n = selected?.slug ? playing[selected.slug] : 0; return n ? ` · ◉ ${n} playing now` : '' })()}
           </span>
         </button>
       )}
