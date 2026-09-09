@@ -1060,6 +1060,9 @@ export default function TheGrid() {
               <p><b className="text-emerald-200">Small steps.</b> One change → look → next. Big vague asks make mud.</p>
               <p><b className="text-emerald-200">Make it stage.</b> A good AI proposes the plan and waits for your yes before touching anything. If it charges ahead, say &ldquo;stage your moves&rdquo;.</p>
               <p><b className="text-emerald-200">Let it verify the finish.</b> &ldquo;Prove the flippers work, then call it done&rdquo; — the platform holds it to evidence, not vibes.</p>
+              <p><b className="text-emerald-200">It can playtest for you.</b> Ask for a full playthrough — it plays the game with real inputs, start to finish. Takes longer than a screenshot, catches what a screenshot can&apos;t.</p>
+              <p><b className="text-emerald-200">Make it imagine first.</b> Before any code: &ldquo;write the vision — what this world looks and feels like — and stream the concept to the commons.&rdquo; A world imagined in words first comes out sharper; the vision is kept with the world.</p>
+              <p><b className="text-emerald-200">Stronger AIs build better worlds.</b> A more capable model plans deeper, drifts less, and needs fewer fixes. Bring your best model for the build — any AI can play and tweak.</p>
             </div>
             )}
           </div>
