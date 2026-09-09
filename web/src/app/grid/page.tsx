@@ -904,19 +904,21 @@ export default function TheGrid() {
                   className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-200/90 border-amber-300/35 hover:bg-amber-400/15' : 'bg-black/30 text-white/25 border-white/10 cursor-not-allowed'}`}>{label}</button>
               )
               return (<>
-                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? `✎ GET YOUR AI EDITING "${wname.toUpperCase()}"` : isFork ? `⑂ FORK "${wname.toUpperCase()}" WITH YOUR AI` : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
+                <div className="text-[13px] tracking-[0.25em] text-amber-200/90 mb-2">{isEdit ? <>✎ GET YOUR AI EDITING <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b></> : isFork ? <>⑂ FORK <b className="text-sky-300 font-bold">&ldquo;{wname.toUpperCase()}&rdquo;</b> WITH YOUR AI</> : isCreate ? '✧ CREATE A WORLD WITH YOUR AI' : '⚿ CONNECT YOUR AI'}</div>
                 <div className="flex gap-1.5 mb-3">
                   {modeBtn('edit', '✎ EDIT THIS WORLD', isEdit, !!slug)}
                   {modeBtn('fork', '⑂ FORK IT', isFork, !!slug)}
                   {modeBtn('create', '✚ NEW WORLD', isCreate, true)}
                 </div>
-                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI. First-ever registration gifts <b className="text-emerald-200/90">30 days of membership + 2 world builds</b>.</p>
+                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI — then just talk to it.</p>
                 <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{text}</div>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
                   className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-[13px] tracking-[0.16em] text-black font-bold transition-all">
                   {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY'}
                 </button>
                 <div className="mt-3 text-[11px] text-white/45 leading-relaxed">works with ANY AI — Claude, Cursor, Windsurf, Gemini, or anything that can read a URL; the text carries every road in.</div>
+                <button onClick={() => setConnectOpen(false)}
+                  className="mt-3 w-full rounded-xl bg-black/50 border border-white/20 px-3 py-2 text-[12px] tracking-[0.16em] text-white/70 hover:text-white hover:border-white/40 transition-all">CLOSE</button>
               </>)
             })()}
           </div>
