@@ -777,68 +777,7 @@ export async function POST(req: NextRequest) {
         results.push(await handleSetCard(auth.spaceId!, cmd))
         continue
       }
-      // ── SPRITES (Galen, Aug 26 — the Fortis ask): the AI's door into the ONE
-      // sprite pipeline (lib/sprite-store shares it with the owner UI route).
-      // define_sheet {name, png, cols, rows, fps?} uploads + RIPS a sheet into
-      // slots name.0..n-1 (+ an anim clip when fps set); define_sprite is the
-      // 1×1 case. Metadata mirrors into worldData.sprites (rev → live tabs
-      // repack the atlas); sprite(i,uv)/spriteAnim(...) sample it in any visual.
-      if ((cmd.type === 'define_sprite' || cmd.type === 'define_sheet') && isSpaceScoped) {
-        // PREMIUM SUITE (Galen, Aug 27): importing REAL media (sprite sheets;
-        // 3D models + audio when they land) rides the ◆ IP-control membership.
-        // Shader-made art stays free — the gate is on uploads, not creativity.
-        // Admin owners pass (the keeper demos).
-        {
-          const { hasIpControl } = await import('@/lib/stripe')
-          const { isAdminUserId } = await import('@/lib/adminAuth')
-          const ownerId = auth.ownerId
-          const allowed = ownerId ? (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId)) : false
-          if (!allowed) {
-            results.push({ type: cmd.type, error: 'asset imports are a ◆ premium-suite feature (coming soon) — the world owner will need the IP control membership' })
-            continue
-          }
-        }
-        const { putSheet } = await import('@/lib/sprite-store')
-        const one = cmd.type === 'define_sprite'
-        const out = await putSheet(auth.spaceId!, {
-          name: String(cmd.name ?? ''),
-          png_b64: String(cmd.png ?? cmd.png_b64 ?? ''),
-          cols: one ? 1 : Number(cmd.cols) || 1,
-          rows: one ? 1 : Number(cmd.rows) || 1,
-          fps: one ? undefined : Number(cmd.fps) || undefined,
-        })
-        if (!out.ok) { results.push({ type: cmd.type, error: out.error }); continue }
-        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { sprites: out.meta } }).catch(() => {})
-        results.push({ type: cmd.type, ok: true, slots: out.meta.slots.map(s => ({ name: s.name, i: s.i })), clips: out.meta.clips })
-        continue
-      }
-      // ♪ AUDIO uploads (Galen, Sep 5) — same ◆ premium gate as sprites
-      if (cmd.type === 'define_track' && isSpaceScoped) {
-        {
-          const { hasIpControl } = await import('@/lib/stripe')
-          const { isAdminUserId } = await import('@/lib/adminAuth')
-          const ownerId = auth.ownerId
-          const allowed = ownerId ? (await hasIpControl(ownerId)) || (await isAdminUserId(ownerId)) : false
-          if (!allowed) {
-            results.push({ type: cmd.type, error: 'audio uploads are a ◆ premium-suite feature — the world owner needs the IP control membership' })
-            continue
-          }
-        }
-        const { saveTrack, trackUrl, AUDIO_MIMES } = await import('@/lib/audio-store')
-        const mime = String(cmd.mime ?? '') || AUDIO_MIMES[String(cmd.ext ?? '').toLowerCase()] || ''
-        const r = await saveTrack(auth.spaceId!, String(cmd.name ?? ''), String(cmd.b64 ?? cmd.mp3 ?? '').replace(/^data:[^,]*,/, ''), mime)
-        if (!r.ok) { results.push({ type: cmd.type, error: r.error }); continue }
-        const u = trackUrl(String(auth.slug ?? ''), r.track)
-        results.push({ ok: true, type: cmd.type, name: r.track.name, bytes: r.track.bytes, url: u,
-          next: `wire it: set_world_data {"data":{"sounds":{"${r.track.name}":"${u}"}}} for sfx your hooks fire via wd.__play_sound={id:"${r.track.name}"}, or {"data":{"__play_music":{"url":"${u}","loop":true}}} for the world's music` })
-        continue
-      }
-      if (cmd.type === 'list_tracks' && isSpaceScoped) {
-        const { readAudio, trackUrl } = await import('@/lib/audio-store')
-        const doc = await readAudio(auth.spaceId!)
-        results.push({ ok: true, type: cmd.type, tracks: doc.tracks.map(t => ({ name: t.name, mime: t.mime, bytes: t.bytes, url: trackUrl(String(auth.slug ?? ''), t) })) })
-        continue
-      }
+      // sprites/tracks (define/list) → bridge-assets.ts (dispatch)
       // ── DISPATCH TABLE (item 4/#7): registry-keyed handlers. Verbs migrate
       // out of this if-chain one at a time into bridge-dispatch.ts (scope comes
       // from the ONE command registry). Null = not migrated → legacy branches.
@@ -846,20 +785,7 @@ export async function POST(req: NextRequest) {
         const dispatched = await dispatchBridgeCommand({ cmd, auth, origin: req.nextUrl.origin, tokenHolder: holderOf(req.headers.get('authorization')?.slice(7) || '') })
         if (dispatched) { results.push(dispatched); continue }
       }
-      if (cmd.type === 'list_sprites' && isSpaceScoped) {
-        const { readSprites, spritesMeta } = await import('@/lib/sprite-store')
-        const doc = await readSprites(auth.spaceId!)
-        const meta = spritesMeta(doc)
-        results.push({ type: cmd.type, ok: true, sheets: doc.sheets.map(s => ({ name: s.name, cols: s.cols, rows: s.rows, fps: s.fps ?? null })), slots: meta.slots.map(s => ({ name: s.name, i: s.i })), clips: meta.clips })
-        continue
-      }
-      if (cmd.type === 'delete_sprite' && isSpaceScoped) {
-        const { deleteSheet } = await import('@/lib/sprite-store')
-        const { meta } = await deleteSheet(auth.spaceId!, String(cmd.name ?? ''))
-        await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', data: { sprites: meta } }).catch(() => {})
-        results.push({ type: cmd.type, ok: true, slots: meta.slots.length })
-        continue
-      }
+      // list_sprites / delete_sprite → bridge-assets.ts (dispatch)
 
       // Player key (uc_pt_): a personal, non-world credential. It may chat the
       // commons (main_say/main_read, handled below) and BOOTSTRAP world tokens —
@@ -1223,23 +1149,7 @@ export async function POST(req: NextRequest) {
       // ── the DOCK INTERNALS FEED: a docked builder streams status lines per node;
       // anyone on the world reads them. Chatty by design → game slots, never the
       // snapshot. Ring-capped (FEED_CAP) so a verbose AI can't grow it unbounded.
-      if ((cmd.type === 'node_feed' || cmd.type === 'node_feed_read') && isSpaceScoped) {
-        const nodeId = String(cmd.id ?? '')
-        if (!nodeId) { results.push({ type: cmd.type, error: 'needs {id: "<nodeId>"}' }); continue }
-        const slot = `nodefeed:${auth.spaceId}:${nodeId}`
-        const ring = ((await loadGameSlot(slot)) as FeedLine[] | undefined) ?? []
-        if (cmd.type === 'node_feed') {
-          const text = typeof cmd.text === 'string' ? cmd.text.trim() : ''
-          if (!text) { results.push({ type: cmd.type, error: 'needs {text}' }); continue }
-          const kind = (['status', 'dock', 'undock', 'error', 'revert'] as const).includes(cmd.kind as never) ? cmd.kind as FeedLine['kind'] : 'status'
-          const next = feedAppend(ring, { at: Date.now(), by: holderOf(req.headers.get('authorization')?.slice(7) || ''), kind, text })
-          await saveGameSlot(slot, next)
-          results.push({ ok: true, type: cmd.type, node: nodeId, lines: next.length })
-        } else {
-          results.push({ ok: true, type: cmd.type, node: nodeId, feed: ring.slice(-(Number(cmd.limit) || 40)) })
-        }
-        continue
-      }
+      // node_feed / node_feed_read → bridge-commons.ts (dispatch)
 
       // grow_building: buildings construct themselves from guideline RANGES —
       // scope-agnostic, so it transforms BEFORE the scoping branches. Server

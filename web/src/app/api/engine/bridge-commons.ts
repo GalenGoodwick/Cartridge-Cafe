@@ -8,6 +8,7 @@ import type { BridgeHandler } from './bridge-dispatch'
 import { routeWhoFor } from './bridge-auth'
 import { loadGameSlot, saveGameSlot } from './store'
 import { getSpaceFamily } from './space-store'
+import { feedAppend, type FeedLine } from '@/lib/node-dock'   // co-build: dock internals feed ring
 import { commonsPost, commonsRead } from '@/lib/commons'
 import { commonsListenerCount } from './commons-stream'
 import { broadcastSummon, registerWatcher, readWatchers, readRegions, readSummons, holderOf, claimRegion as claimRegionStore, resolveRegion as resolveRegionStore, withdrawRegion as withdrawRegionStore } from './regions-store'
@@ -209,9 +210,30 @@ const withdrawRegion: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
   return { type: 'withdraw_region', ok, ...(ok ? {} : { error: 'no such claim of yours' }) }
 }
 
+// ── the DOCK INTERNALS FEED: a docked builder streams status lines per node;
+// anyone on the world reads them. Chatty by design → game slots, never the
+// snapshot. Ring-capped (FEED_CAP) so a verbose AI can't grow it unbounded.
+const nodeFeed: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  const nodeId = String(cmd.id ?? '')
+  if (!nodeId) return { type: cmd.type, error: 'needs {id: "<nodeId>"}' }
+  const slot = `nodefeed:${auth.spaceId}:${nodeId}`
+  const ring = ((await loadGameSlot(slot)) as FeedLine[] | undefined) ?? []
+  if (cmd.type === 'node_feed') {
+    const text = typeof cmd.text === 'string' ? cmd.text.trim() : ''
+    if (!text) return { type: cmd.type, error: 'needs {text}' }
+    const kind = (['status', 'dock', 'undock', 'error', 'revert'] as const).includes(cmd.kind as never) ? cmd.kind as FeedLine['kind'] : 'status'
+    const next = feedAppend(ring, { at: Date.now(), by: tokenHolder, kind, text })
+    await saveGameSlot(slot, next)
+    return { ok: true, type: cmd.type, node: nodeId, lines: next.length }
+  }
+  return { ok: true, type: cmd.type, node: nodeId, feed: ring.slice(-(Number(cmd.limit) || 40)) }
+}
+
 export { holderOf }
 
 export const COMMONS_HANDLERS: Record<string, BridgeHandler> = {
+  node_feed: nodeFeed,
+  node_feed_read: nodeFeed,
   claim_region: claimRegion,
   resolve_region: resolveRegion,
   withdraw_region: withdrawRegion,
