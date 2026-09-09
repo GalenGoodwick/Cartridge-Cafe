@@ -20,9 +20,8 @@ export interface InviteOpts {
   visibility?: 'private' | 'published'
   /** open = open-building world (public, members build in it); proprietary = ◆ closed-source */
   access?: 'open' | 'proprietary'
-  /** genre/kind tags — route the AI's research at the right codebases */
+  /** genre tags from the card-type taxonomy — route the AI's research */
   tags?: string[]
-  multiplayer?: boolean
 }
 
 const stage = (goal: string) =>
@@ -46,8 +45,7 @@ function pathways(o: InviteOpts): string {
   p.push(`before building from nothing, check the proven foundations: browse_shelf shows BASES (forkable templates) — seeding via "base" beats a blank start when one fits`)
   if (o.access === 'open') p.push(`I chose OPEN BUILDING: the world launches PUBLIC and other members may build inside it (they join with the editing membership) — and a public world's code is commons-readable within the platform. Explain that contract to me in one line before you create`)
   if (o.access === 'proprietary') p.push(`I want this PROPRIETARY (◆ closed-source): that takes the IP-control membership on my account — check it, and tell me about cartridge.cafe/suite if I don't hold it`)
-  if (o.multiplayer) p.push(`I want MULTIPLAYER: that is the arena lane (real-time networked worlds) — read_guide {"section":"multiplayer"} FIRST and tell me honestly what it supports today before promising anything`)
-  if (o.tags?.length) p.push(`the game is tagged: ${o.tags.join(', ')} — RESEARCH before building: browse_shelf for similar worlds and read_world_source on the closest ones (public code is the platform commons), so the foundation starts from proven patterns, not a blank guess`)
+  if (o.tags?.length) p.push(`the game's genre: ${o.tags.join(', ')} — RESEARCH before building: browse_shelf for worlds of that kind and read_world_source on the closest ones (public code is the platform commons), so the foundation starts from proven patterns; after birth, file it in the taxonomy with set_card (ask help {"verb":"set_card"} for the shape)`)
   return p.join('. ')
 }
 

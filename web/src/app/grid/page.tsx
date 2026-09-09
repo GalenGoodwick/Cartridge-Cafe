@@ -18,6 +18,7 @@ import type { AiNodeGraph, ANode } from '@/app/engine/ai-view/NodeGraph'
 import SpaceManagementOverlay from '@/app/engine/SpaceManagementOverlay'
 import LineagePanel from '@/app/engine/LineagePanel'
 import { inviteText } from '@/lib/invite'
+import { SEED_CARD_TYPES } from '@/lib/cards'   // the ⚿ door's genre chips — the REAL taxonomy, not free text
 import { track } from '@/lib/track'
 import SpritesPanel from '@/app/engine/SpritesPanel'
 import { iconAuthorPrompt, playerGlyphPrompt } from '@/lib/connectPrompt'
@@ -90,8 +91,7 @@ export default function TheGrid() {
   const [door3d, setDoor3d] = useState<'2d' | '3d'>('2d')
   const [doorVis, setDoorVis] = useState<'private' | 'published'>('private')
   const [doorAccess, setDoorAccess] = useState<'open' | 'proprietary'>('open')
-  const [doorTags, setDoorTags] = useState('')
-  const [doorMp, setDoorMp] = useState<'single' | 'multi'>('single')
+  const [doorTags, setDoorTags] = useState<string[]>([])   // card-type ids (the searchable taxonomy)
   const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create' | 'fork'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -905,8 +905,8 @@ export default function TheGrid() {
               // any MCP client, and below MCP the bridge is plain HTTP.
               const opts = {
                 ...(doorName.trim() ? { newName: doorName.trim().slice(0, 40) } : {}),
-                ...(isCreate ? { target: doorTarget, d3: door3d === '3d', access: doorAccess, multiplayer: doorMp === 'multi',
-                  ...(doorTags.trim() ? { tags: doorTags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) } : {}) } : {}),
+                ...(isCreate ? { target: doorTarget, d3: door3d === '3d', access: doorAccess,
+                  ...(doorTags.length ? { tags: doorTags.slice(0, 4) } : {}) } : {}),
                 visibility: doorVis,
               }
               const text = isEdit ? inviteText(slug, wname)
@@ -944,12 +944,15 @@ export default function TheGrid() {
                       {isCreate && seg(['2d', '▦ 2D'], ['3d', '◇ 3D'], door3d, setDoor3d)}
                       {seg(['private', '● PRIVATE'], ['published', '◉ PUBLISHED'], doorVis, setDoorVis)}
                       {isCreate && seg(['open', '⛭ OPEN'], ['proprietary', '◆ PROPRIETARY'], doorAccess, setDoorAccess)}
-                      {isCreate && seg(['single', '☺ SINGLE'], ['multi', '☺☺ MULTIPLAYER'], doorMp, setDoorMp)}
                     </div>
                     {isCreate && (
-                      <input value={doorTags} onChange={e => setDoorTags(e.target.value)} maxLength={80}
-                        placeholder="tags: pinball, platformer, ambient… (routes your AI's research)"
-                        className="w-full rounded-lg bg-black/60 border border-white/15 px-3 py-2 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-sky-300/60" />
+                      <div className="flex flex-wrap gap-1">
+                        {SEED_CARD_TYPES.map(ct => (
+                          <button key={ct.id}
+                            onClick={() => setDoorTags(t => t.includes(ct.id) ? t.filter(x => x !== ct.id) : [...t, ct.id])}
+                            className={`rounded-md px-1.5 py-0.5 text-[10px] tracking-[0.06em] border transition-all ${doorTags.includes(ct.id) ? 'bg-sky-400/85 text-black border-sky-200 font-bold' : 'bg-black/40 text-white/45 border-white/12 hover:text-white/80'}`}>{ct.label}</button>
+                        ))}
+                      </div>
                     )}
                     {isCreate && doorAccess === 'open' && (
                       <div className="text-[10.5px] text-emerald-200/70 leading-relaxed">⛭ open building — launches public; other members can build in it (they join with the editing membership); its code is readable commons inside the platform</div>
@@ -957,13 +960,10 @@ export default function TheGrid() {
                     {isCreate && doorAccess === 'proprietary' && (
                       <div className="text-[10.5px] text-amber-200/70 leading-relaxed">◆ proprietary (closed-source) takes the IP-control membership — your AI will check; join at <span className="text-amber-200">cartridge.cafe/suite</span></div>
                     )}
-                    {isCreate && doorMp === 'multi' && (
-                      <div className="text-[10.5px] text-sky-200/70 leading-relaxed">☺☺ multiplayer is the arena lane (experimental) — your AI reads its recipe first and tells you honestly what it supports today</div>
-                    )}
+
                   </div>
                 )}
-                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy this, paste it to your AI — then just talk to it.</p>
-                <div className="rounded-xl bg-black/60 border border-white/12 p-3 text-[12.5px] text-white/85 leading-relaxed select-all whitespace-pre-wrap mb-3">{text}</div>
+                <p className="text-[12px] text-white/60 leading-relaxed mb-3">Copy the prompt, paste it to your AI — then just talk to it.</p>
                 <button onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }}
                   className="w-full rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2.5 text-[13px] tracking-[0.16em] text-black font-bold transition-all">
                   {copied ? '✓ COPIED — PASTE TO YOUR AI' : '⧉ COPY'}
