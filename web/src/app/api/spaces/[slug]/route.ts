@@ -127,6 +127,13 @@ export async function PATCH(
   if (body.name?.trim()) update.name = body.name.trim().slice(0, 60)          // caps (audit): multi-MB strings rode into every card payload
   if (body.description !== undefined) update.description = body.description?.trim().slice(0, 4000) || null
   if (typeof body.isPublic === 'boolean') update.isPublic = body.isPublic
+  // ⚒/🔒 (Galen, Sep 9: finished games are FAIR): owner flips open-building
+  // vs sealed play-only. Rides the bridge chokepoint so provenance/rev hold.
+  if (body.build === 'open' || body.build === 'solo') {
+    const { applyCommandToSnapshot } = await import('@/app/api/engine/space-store')
+    await applyCommandToSnapshot(space.id, { type: 'set_world_data', __internal: true,
+      data: { build: body.build === 'open' ? 'anyone' : null, access: body.build === 'open' ? 'open' : null } })
+  }
 
   // wizard: once the world is truly named, trade the placeholder slug for a real one
   if (body.slugFromName && body.name?.trim()) {

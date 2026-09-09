@@ -31,7 +31,7 @@ type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
 type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'mobile' | 'desktop'
-type Entry = { slug: string; name: string; scene: string; maker?: string; votes?: number; playable?: boolean }
+type Entry = { slug: string; name: string; scene: string; maker?: string; votes?: number; playable?: boolean; editMode?: string }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
   isOwner: boolean; spaceId: string | null; spaceSlug: string | null
@@ -247,7 +247,7 @@ export default function TheGrid() {
         const list = Array.isArray(d.cards) && d.cards.length
           // maker rides the tile ('by <name>') and votes ride as ♥ N — the feed
           // already guards identity (guest-owned worlds carry a null maker)
-          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined, votes: c.votes || undefined, playable: (c as { playable?: boolean }).playable }))
+          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined, votes: c.votes || undefined, playable: (c as { playable?: boolean }).playable, editMode: (c as { edit?: { mode?: string } }).edit?.mode }))
           : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' || feed === 'mobile' || feed === 'desktop' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
@@ -642,6 +642,16 @@ export default function TheGrid() {
     } else setOwnerNote(`couldn’t change “${e.name}” — ${(await r.json().catch(() => ({})) as { error?: string }).error ?? r.status}`)
     setTimeout(() => setOwnerNote(null), 4000)
   }, [])
+  const toggleBuild = useCallback(async (e: Entry) => {
+    const next = e.editMode === 'open' ? 'solo' : 'open'
+    const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ build: next }) })
+    if (r.ok) {
+      setEntries(list => list.map(x => x.slug === e.slug ? { ...x, editMode: next === 'open' ? 'open' : 'static' } : x))
+      setOwnerNote(next === 'open' ? `“${e.name}” is OPEN — members can build in it` : `“${e.name}” is SEALED — play only`)
+    } else setOwnerNote(`couldn’t change “${e.name}”`)
+    setTimeout(() => setOwnerNote(null), 4000)
+  }, [])
   const deleteWorld = useCallback(async (e: Entry) => {
     if (!window.confirm(`Delete “${e.name}” forever? Your build credit will be returned.`)) return
     const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), { method: 'DELETE' })
@@ -822,7 +832,7 @@ export default function TheGrid() {
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-center">
             {/* phones never see the DESKTOP tab (Galen, Sep 6): mobile is
                 always play — desktop-editable worlds have no seat there */}
-            {([['mobile', '📱 MOBILE EDITABLE'], ['desktop', '🖥 DESKTOP EDITABLE'], ['premium', '✦ PREMIUM'], ['mine', '♥ MY WORLDS']] as const)
+            {([['mobile', '📱 MOBILE'], ['desktop', '🖥 DESKTOP'], ['premium', '✦ PREMIUM'], ['mine', '♥ MY WORLDS']] as const)
               .filter(([k]) => !(mobileBar && k === 'desktop') && !(k === 'mine' && me === null)).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 className={`font-mono text-[11.5px] tracking-[0.18em] px-3 py-1 rounded-lg border transition-colors ${
@@ -872,6 +882,12 @@ export default function TheGrid() {
                       className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.08em] font-bold border transition-all ${
                         e.playable ? 'bg-emerald-400/20 border-emerald-300/60 text-emerald-100' : 'bg-black/60 border-white/25 text-white/70 hover:text-white'}`}>
                       {e.playable ? '◉ LIVE' : '● DRAFT'}
+                    </button>
+                    <button onClick={ev => { ev.stopPropagation(); void toggleBuild(e) }}
+                      title={e.editMode === 'open' ? 'open building — anyone with a seat may edit; tap to SEAL (play only)' : 'sealed — play only; tap to OPEN building'}
+                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.08em] font-bold border transition-all ${
+                        e.editMode === 'open' ? 'bg-sky-400/20 border-sky-300/60 text-sky-100' : 'bg-black/60 border-white/25 text-white/70 hover:text-white'}`}>
+                      {e.editMode === 'open' ? '⚒ OPEN' : '🔒 SEALED'}
                     </button>
                     <button onClick={ev => { ev.stopPropagation(); void deleteWorld(e) }} title="delete this world"
                       className="rounded-md px-1.5 py-0.5 font-mono text-[10px] border bg-black/60 border-white/25 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-all">✕</button>
