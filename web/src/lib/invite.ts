@@ -20,6 +20,9 @@ export interface InviteOpts {
   visibility?: 'private' | 'published'
   /** open = open-building world (public, members build in it); proprietary = ◆ closed-source */
   access?: 'open' | 'proprietary'
+  /** genre/kind tags — route the AI's research at the right codebases */
+  tags?: string[]
+  multiplayer?: boolean
 }
 
 const stage = (goal: string) =>
@@ -41,7 +44,10 @@ function pathways(o: InviteOpts): string {
   if (o.d3) p.push(`I want 3D: build a raymarched foundation — read_guide {"section":"3d kit"} (world3/anim3, raymarching) before the first shader`)
   if (o.target === 'mobile') p.push(`mobile-first: the world is born portrait 576×1024 — read_guide {"section":"mobile"} and build to FILL that rect, touch controls in mind`)
   p.push(`before building from nothing, check the proven foundations: browse_shelf shows BASES (forkable templates) — seeding via "base" beats a blank start when one fits`)
+  if (o.access === 'open') p.push(`I chose OPEN BUILDING: the world launches PUBLIC and other members may build inside it (they join with the editing membership) — and a public world's code is commons-readable within the platform. Explain that contract to me in one line before you create`)
   if (o.access === 'proprietary') p.push(`I want this PROPRIETARY (◆ closed-source): that takes the IP-control membership on my account — check it, and tell me about cartridge.cafe/suite if I don't hold it`)
+  if (o.multiplayer) p.push(`I want MULTIPLAYER: that is the arena lane (real-time networked worlds) — read_guide {"section":"multiplayer"} FIRST and tell me honestly what it supports today before promising anything`)
+  if (o.tags?.length) p.push(`the game is tagged: ${o.tags.join(', ')} — RESEARCH before building: browse_shelf for similar worlds and read_world_source on the closest ones (public code is the platform commons), so the foundation starts from proven patterns, not a blank guess`)
   return p.join('. ')
 }
 

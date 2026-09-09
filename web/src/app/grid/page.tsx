@@ -90,6 +90,8 @@ export default function TheGrid() {
   const [door3d, setDoor3d] = useState<'2d' | '3d'>('2d')
   const [doorVis, setDoorVis] = useState<'private' | 'published'>('private')
   const [doorAccess, setDoorAccess] = useState<'open' | 'proprietary'>('open')
+  const [doorTags, setDoorTags] = useState('')
+  const [doorMp, setDoorMp] = useState<'single' | 'multi'>('single')
   const [connectMode, setConnectMode] = useState<'edit' | 'connect' | 'create' | 'fork'>('connect')   // edit = THIS world; connect = generic; create = the AI births the world (create_world) — the human form is retired from the doors
   const [attribOpen, setAttribOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -903,7 +905,8 @@ export default function TheGrid() {
               // any MCP client, and below MCP the bridge is plain HTTP.
               const opts = {
                 ...(doorName.trim() ? { newName: doorName.trim().slice(0, 40) } : {}),
-                ...(isCreate ? { target: doorTarget, d3: door3d === '3d', access: doorAccess } : {}),
+                ...(isCreate ? { target: doorTarget, d3: door3d === '3d', access: doorAccess, multiplayer: doorMp === 'multi',
+                  ...(doorTags.trim() ? { tags: doorTags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) } : {}) } : {}),
                 visibility: doorVis,
               }
               const text = isEdit ? inviteText(slug, wname)
@@ -941,9 +944,21 @@ export default function TheGrid() {
                       {isCreate && seg(['2d', '▦ 2D'], ['3d', '◇ 3D'], door3d, setDoor3d)}
                       {seg(['private', '● PRIVATE'], ['published', '◉ PUBLISHED'], doorVis, setDoorVis)}
                       {isCreate && seg(['open', '⛭ OPEN'], ['proprietary', '◆ PROPRIETARY'], doorAccess, setDoorAccess)}
+                      {isCreate && seg(['single', '☺ SINGLE'], ['multi', '☺☺ MULTIPLAYER'], doorMp, setDoorMp)}
                     </div>
+                    {isCreate && (
+                      <input value={doorTags} onChange={e => setDoorTags(e.target.value)} maxLength={80}
+                        placeholder="tags: pinball, platformer, ambient… (routes your AI's research)"
+                        className="w-full rounded-lg bg-black/60 border border-white/15 px-3 py-2 text-[12px] text-white/90 placeholder:text-white/30 outline-none focus:border-sky-300/60" />
+                    )}
+                    {isCreate && doorAccess === 'open' && (
+                      <div className="text-[10.5px] text-emerald-200/70 leading-relaxed">⛭ open building — launches public; other members can build in it (they join with the editing membership); its code is readable commons inside the platform</div>
+                    )}
                     {isCreate && doorAccess === 'proprietary' && (
                       <div className="text-[10.5px] text-amber-200/70 leading-relaxed">◆ proprietary (closed-source) takes the IP-control membership — your AI will check; join at <span className="text-amber-200">cartridge.cafe/suite</span></div>
+                    )}
+                    {isCreate && doorMp === 'multi' && (
+                      <div className="text-[10.5px] text-sky-200/70 leading-relaxed">☺☺ multiplayer is the arena lane (experimental) — your AI reads its recipe first and tells you honestly what it supports today</div>
                     )}
                   </div>
                 )}
