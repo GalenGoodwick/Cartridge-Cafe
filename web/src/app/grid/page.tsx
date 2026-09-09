@@ -31,7 +31,7 @@ type Inset = { top: number; right: number; bottom: number; left: number }
 type UiSet = 'games' | 'main' | 'engine' | 'create'
 type Phase = 'browse' | 'play'
 type Tab = 'live' | 'published' | 'premium' | 'unfinished' | 'forked' | 'mine' | 'mobile' | 'desktop'
-type Entry = { slug: string; name: string; scene: string; maker?: string; votes?: number }
+type Entry = { slug: string; name: string; scene: string; maker?: string; votes?: number; playable?: boolean }
 // the engine's cfg publish — one shape, read by CONFIG/PUBLISH/VERSIONS/CREW
 type GridCfg = {
   isOwner: boolean; spaceId: string | null; spaceSlug: string | null
@@ -247,7 +247,7 @@ export default function TheGrid() {
         const list = Array.isArray(d.cards) && d.cards.length
           // maker rides the tile ('by <name>') and votes ride as ♥ N — the feed
           // already guards identity (guest-owned worlds carry a null maker)
-          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined, votes: c.votes || undefined }))
+          ? d.cards.map(c => ({ slug: c.slug, name: c.name, scene: 'space:' + c.slug, maker: c.maker?.name ?? c.maker?.handle ?? undefined, votes: c.votes || undefined, playable: (c as { playable?: boolean }).playable }))
           : (feed === 'mine' || feed === 'premium' || feed === 'unfinished' || feed === 'forked' || feed === 'mobile' || feed === 'desktop' ? [] : LOCAL)   // empty deed/premium/unfinished/forks is EMPTY, not the house shelf
         setEntries(list)
         // A TAB IS A CONTEXT (Galen): switching shelves doesn't carry the last
@@ -629,6 +629,29 @@ export default function TheGrid() {
   // AFTER mount — polling must start once the space is actually in the frame
   }, [scene])
 
+  // MY WORLDS owner controls (Galen, Sep 9: publish is a BUTTON, deletion honest)
+  const [ownerNote, setOwnerNote] = useState<string | null>(null)
+  const togglePublish = useCallback(async (e: Entry) => {
+    const next = !e.playable
+    const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isPublic: next }) })
+    if (r.ok) {
+      setEntries(list => list.map(x => x.slug === e.slug ? { ...x, playable: next } : x))
+      setOwnerNote(next ? `“${e.name}” is LIVE on the shelf` : `“${e.name}” is a private draft again`)
+    } else setOwnerNote(`couldn’t change “${e.name}” — ${(await r.json().catch(() => ({})) as { error?: string }).error ?? r.status}`)
+    setTimeout(() => setOwnerNote(null), 4000)
+  }, [])
+  const deleteWorld = useCallback(async (e: Entry) => {
+    if (!window.confirm(`Delete “${e.name}” forever? An unbuilt world returns its build credit; a built one doesn’t.`)) return
+    const r = await fetch('/api/spaces/' + encodeURIComponent(e.slug), { method: 'DELETE' })
+    const d = await r.json().catch(() => ({} as { creditGranted?: boolean; error?: string }))
+    if (r.ok) {
+      setEntries(list => list.filter(x => x.slug !== e.slug))
+      setOwnerNote(d.creditGranted ? `“${e.name}” deleted — build credit returned ✓` : `“${e.name}” deleted`)
+    } else setOwnerNote(`couldn’t delete — ${d.error ?? r.status}`)
+    setTimeout(() => setOwnerNote(null), 5000)
+  }, [])
+
   // TAP TWICE (Galen, Sep 9): first tap SELECTS a card (loads it into the frame);
   // a second tap on the already-selected card means "I want in" — enter play.
   const pick = useCallback((e: Entry) => {
@@ -800,6 +823,9 @@ export default function TheGrid() {
               </button>
             ))}
           </div>
+          {ownerNote && (
+            <div className="font-mono text-[11.5px] tracking-[0.08em] text-amber-200/90 text-center pb-1">{ownerNote}</div>
+          )}
           {/* SEARCH — always visible under the tabs (Galen); filters the active tab */}
           <div className="relative shrink-0 w-full max-w-[320px]">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-white/45">⌕</span>
@@ -830,8 +856,21 @@ export default function TheGrid() {
               const ic = icons.get(e.slug.toLowerCase()) ?? icons.get(e.name.toLowerCase())
               const on = scene === e.scene
               return (
-                <button key={e.slug} onClick={() => pick(e)}
-                  className={`group rounded-2xl border overflow-hidden text-left transition-colors ${
+                <div key={e.slug} className="relative">
+                {tab === 'mine' && (
+                  <div className="absolute top-1.5 right-1.5 z-10 flex gap-1">
+                    <button onClick={ev => { ev.stopPropagation(); void togglePublish(e) }}
+                      title={e.playable ? 'unpublish — back to private draft' : 'publish to the shelf'}
+                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.08em] font-bold border transition-all ${
+                        e.playable ? 'bg-emerald-400/20 border-emerald-300/60 text-emerald-100' : 'bg-black/60 border-white/25 text-white/70 hover:text-white'}`}>
+                      {e.playable ? '◉ LIVE' : '● DRAFT'}
+                    </button>
+                    <button onClick={ev => { ev.stopPropagation(); void deleteWorld(e) }} title="delete this world"
+                      className="rounded-md px-1.5 py-0.5 font-mono text-[10px] border bg-black/60 border-white/25 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-all">✕</button>
+                  </div>
+                )}
+                <button onClick={() => pick(e)}
+                  className={`w-full group rounded-2xl border overflow-hidden text-left transition-colors ${
                     on ? 'border-sky-300/70 bg-sky-400/10' : 'border-white/10 bg-black/40 hover:border-white/30'}`}>
                   <div className="aspect-square w-full grid place-items-center overflow-hidden"
                     style={{ background: 'linear-gradient(160deg, #141224, #0a0913)' }}>
@@ -853,6 +892,7 @@ export default function TheGrid() {
                     )}
                   </div>
                 </button>
+                </div>
               )
             })}
             {q.trim() && shown.length === 0 && (
