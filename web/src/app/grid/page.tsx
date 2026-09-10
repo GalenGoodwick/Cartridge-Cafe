@@ -880,21 +880,21 @@ export default function TheGrid() {
               return (
                 <div key={e.slug} className="relative">
                 {tab === 'mine' && (
-                  <div className="absolute top-1.5 right-1.5 z-10 flex gap-1">
+                  <div className="absolute inset-x-1 bottom-1 z-10 flex flex-wrap gap-1 justify-end">
                     <button onClick={ev => { ev.stopPropagation(); void togglePublish(e) }}
                       title={e.playable ? 'unpublish — back to private draft' : 'publish to the shelf'}
-                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.08em] font-bold border transition-all ${
-                        e.playable ? 'bg-emerald-400/20 border-emerald-300/60 text-emerald-100' : 'bg-black/60 border-white/25 text-white/70 hover:text-white'}`}>
+                      className={`rounded px-1 py-0.5 font-mono text-[9.5px] tracking-[0.04em] font-bold border transition-all ${
+                        e.playable ? 'bg-emerald-500/30 border-emerald-300/70 text-emerald-50' : 'bg-black/75 border-white/30 text-white/80'}`}>
                       {e.playable ? '◉ LIVE' : '● DRAFT'}
                     </button>
                     <button onClick={ev => { ev.stopPropagation(); void toggleBuild(e) }}
-                      title={e.editMode === 'open' ? 'open building — anyone with a seat may edit; tap to SEAL (play only)' : 'sealed — play only; tap to OPEN building'}
-                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] tracking-[0.08em] font-bold border transition-all ${
-                        e.editMode === 'open' ? 'bg-sky-400/20 border-sky-300/60 text-sky-100' : 'bg-black/60 border-white/25 text-white/70 hover:text-white'}`}>
-                      {e.editMode === 'open' ? '⚒ OPEN' : '🔒 SEALED'}
+                      title={e.editMode === 'open' ? 'open edit — members may build; tap to SEAL' : 'sealed — play only; tap to OPEN EDIT'}
+                      className={`rounded px-1 py-0.5 font-mono text-[9.5px] tracking-[0.04em] font-bold border transition-all ${
+                        e.editMode === 'open' ? 'bg-sky-500/30 border-sky-300/70 text-sky-50' : 'bg-black/75 border-white/30 text-white/80'}`}>
+                      {e.editMode === 'open' ? '⚒ OPEN EDIT' : '🔒 SEALED'}
                     </button>
                     <button onClick={ev => { ev.stopPropagation(); void deleteWorld(e) }} title="delete this world"
-                      className="rounded-md px-1.5 py-0.5 font-mono text-[10px] border bg-black/60 border-white/25 text-white/50 hover:text-red-300 hover:border-red-400/50 transition-all">✕</button>
+                      className="rounded px-1.5 py-0.5 font-mono text-[9.5px] font-bold border bg-red-950/80 border-red-400/60 text-red-300 hover:bg-red-500/30 hover:text-red-100 transition-all">✕</button>
                   </div>
                 )}
                 <button onClick={() => pick(e)}
@@ -915,6 +915,7 @@ export default function TheGrid() {
                     {(e.maker || (e.votes ?? 0) > 0) && (
                       <div className="flex items-center gap-1.5 font-mono text-[11px] leading-tight mt-0.5">
                         {e.maker && <span className="text-white/60 truncate">by {e.maker}</span>}
+                        {tab !== 'mine' && e.editMode === 'open' && <span className="shrink-0 rounded px-1 border border-sky-300/50 bg-sky-400/15 text-sky-200 text-[9px] tracking-[0.04em] font-bold">⚒ OPEN EDIT</span>}
                         {(e.votes ?? 0) > 0 && <span className="ml-auto shrink-0 text-amber-200/80">♥ {e.votes}</span>}
                       </div>
                     )}
