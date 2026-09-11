@@ -1,0 +1,94 @@
+{
+  "at": "2026-09-11T19:36:43.902Z",
+  "base": "https://cartridge.cafe",
+  "rows": [
+    {
+      "row": "INTACT BASE",
+      "carved": [],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve camera",
+      "carved": [
+        "camera"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve entities",
+      "carved": [
+        "entities"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.7,
+      "trace": 8
+    },
+    {
+      "row": "carve rules",
+      "carved": [
+        "rules"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve hud",
+      "carved": [
+        "hud"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve fx",
+      "carved": [
+        "fx"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve audio",
+      "carved": [
+        "audio"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve save",
+      "carved": [
+        "save"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    },
+    {
+      "row": "carve base_bg",
+      "carved": [
+        "base_bg"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 218.6,
+      "trace": 8
+    }
+  ]
+}

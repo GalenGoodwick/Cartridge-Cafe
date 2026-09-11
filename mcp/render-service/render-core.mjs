@@ -87,6 +87,12 @@ function uiReport(ui) {
 }
 
 export async function renderProbe(state, opts = {}) {
+  // THE DECLARED GRID (legacy-square removal, Sep 11): every mapping below
+  // uses the world's own gridW/gridH — square 512 is only the default, never
+  // an assumption. Portrait worlds render their WHOLE field of play.
+  const GW = Number(state?.worldParams?.gridW) || 512;
+  const GH = Number(state?.worldParams?.gridH) || 512;
+
   const S = parseInt(opts.size ?? 400);
   const NTICKS = opts.ticks !== undefined ? parseInt(opts.ticks) : (opts.input ? 90 : 45);
   // PLAYTHROUGH IS A TOOL CALL, NOT AN AUTOMATIC THING (Galen, Sep 3): the state
@@ -328,6 +334,7 @@ export async function renderProbe(state, opts = {}) {
   const dedupedModules = modules.map(m => deduplicateModCode(m.wgsl || "", modSeen));
   const wgsl = `
 ${PRELUDE}
+const CC_GRID = vec2f(${GW}.0, ${GH}.0);
 ${HEADLESS_STUBS}
 ${dedupedModules.join("\n")}
 ${usedVisuals.map(v => v.wgsl).join("\n")}
@@ -350,7 +357,7 @@ struct U { outSize: f32, time: f32, fx: f32, fy: f32, fw: f32, fh: f32, cr: f32,
   return vec4f(p[vi], 0., 1.);
 }
 @fragment fn fs(@builtin(position) fc: vec4f) -> @location(0) vec4f {
-  let grid = (fc.xy / vec2f(u.outSize, u.outSize)) * 512.0;
+  let grid = (fc.xy / vec2f(u.outSize, u.outSize)) * vec2f(${GW}.0, ${GH}.0);
   // MATCH THE ENGINE: cellPos.y=0 is the top row (uv.y increases DOWNWARD). No flip.
   var colr = vec3f(u.bgr, u.bgg, u.bgb);
 ${fieldChain}
@@ -399,11 +406,11 @@ ${fieldChain}
       const tr = simFields.get(f.id)?.transform || f.transform || {};
       const shapeType = f.shapeType || (f.radius != null ? "circle" : (f.w != null ? "rect" : "screen"));
       let fw, fh;
-      if (shapeType === "screen") { fw = 512; fh = 512; }
+      if (shapeType === "screen") { fw = GW; fh = GH; }
       else if (shapeType === "circle") { const rad = f.radius ?? 20; fw = 2 * rad; fh = 2 * rad; }
       else { fw = f.w ?? 512; fh = f.h ?? 512; }
       const col = f.color || [1, 1, 1, 1];
-      FREC.set([tr.x ?? 256, tr.y ?? 256, fw, fh, col[0], col[1], col[2], col[3] ?? 1], i * 8);
+      FREC.set([tr.x ?? GW / 2, tr.y ?? GH / 2, fw, fh, col[0], col[1], col[2], col[3] ?? 1], i * 8);
     });
     device.queue.writeBuffer(fbuf, 0, FREC);
     device.queue.writeBuffer(ubuf, 0, new Float32Array([S, time, 0, 0, 0, 0, 0, 0, 0, 0, BG[0], BG[1], BG[2], 0, 0, 0]));
