@@ -418,6 +418,7 @@ export class FieldRenderer {
 
   /** Declare the playable rect (worldParams.gridW/gridH). Cheap — called per
    *  frame by the engine so a live world-size edit takes effect immediately. */
+  getWorldRect(): { w: number; h: number } { return { w: this.worldW || this.gridSize, h: this.worldH || this.gridSize } }
   setWorldRect(w?: number, h?: number): void {
     this.worldW = Number.isFinite(w) && (w as number) > 0 ? (w as number) : 0
     this.worldH = Number.isFinite(h) && (h as number) > 0 ? (h as number) : 0

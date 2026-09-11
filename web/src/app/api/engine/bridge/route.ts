@@ -231,17 +231,19 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   const visuals = snapshot?.visualTypes ?? []
   const hooks = snapshot?.stepHooks ?? []
   const wd = snapshot?.worldData ?? {}
+  const gwp = (snapshot as { worldParams?: { gridW?: number; gridH?: number } })?.worldParams ?? {}
+  const GW = Number(gwp.gridW) || 512, GH = Number(gwp.gridH) || 512
   const renderable = new Set(visuals.filter(v => /fn\s+visual_\w+\s*\(/.test(v.wgsl ?? '')).map(v => v.name))
   const warnings: string[] = []
   const fieldReport = fields.map(fr => {
     const f = fr as { name?: string; id?: string; visualType?: unknown; visualTypeName?: string; transform?: { x?: number; y?: number }; x?: number; y?: number }
     const vt = f.visualTypeName || (typeof f.visualType === 'string' ? f.visualType : null)
     const x = f.transform?.x ?? f.x, y = f.transform?.y ?? f.y
-    const onScreen = x != null && y != null && x >= 0 && x <= 512 && y >= 0 && y <= 512
+    const onScreen = x != null && y != null && x >= 0 && x <= GW && y >= 0 && y <= GH
     const skinned = !!(vt && renderable.has(vt))
     if (!vt) warnings.push(`field "${f.name}" has NO visualType — it renders as NOTHING (define_visual, then set_visual it)`)
     else if (!skinned) warnings.push(`field "${f.name}" uses visual "${vt}" but no "fn visual_${vt}(...)" is defined — it renders nothing`)
-    if (x != null && !onScreen) warnings.push(`field "${f.name}" is off-screen at (${x},${y}) — the grid is 0..512, camera fixed at center 256,256; build AROUND 256,256, never negatives`)
+    if (x != null && !onScreen) warnings.push(`field "${f.name}" is off-screen at (${x},${y}) — THIS world's grid is 0..${GW} × 0..${GH}, center ${GW / 2},${GH / 2}; build inside it, never negatives`)
     return { name: f.name, id: f.id, visualType: vt, skinned, x, y, onScreen }
   })
   if (!fields.length) warnings.push('no fields yet — the world is empty (a blank/black screen until you create + skin fields)')
@@ -256,6 +258,14 @@ function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
   if (uiTree != null) {
     if (typeof uiTree !== 'object' || !Array.isArray(uiTree.root)) {
       warnings.push('worldData.ui is not a { root: [...] } tree — it renders as NOTHING (schema: guide ?section=world ui)')
+    }
+    // BAND-ANCHOR LAW (Galen, Sep 11 — the middle-top bug, permanently): on a
+    // NON-SQUARE grid, gx/gy anchor the centered world SQUARE — a "top" band
+    // written as gy lands mid-screen. Screen bands must use vx/vy fractions.
+    if (GW !== GH && wd.ui && typeof wd.ui === 'object') {
+      const root = (wd.ui as { root?: Array<{ anchor?: Record<string, unknown> }> }).root
+      const gyBand = Array.isArray(root) && root.some(n => n?.anchor && n.anchor.vx == null && n.anchor.vy == null && (n.anchor.gy != null || n.anchor.gx != null))
+      if (gyBand) warnings.push(`UI panels use gx/gy anchors on a NON-SQUARE grid (${GW}×${GH}) — gx/gy anchor the centered world SQUARE, so "top" renders mid-screen. Use anchor {wx, wy} (0..1 fractions of the WORLD's visible rect) for bands — correct at every grid shape and framing.`)
     } else {
       try {
         const solved = solveUi({ ui: uiTree })

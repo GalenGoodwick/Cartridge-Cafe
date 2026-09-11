@@ -37,22 +37,22 @@ export type SlotsSpec = Partial<Record<SlotZone, SlotItem[]>> & {
   glass?: boolean
 }
 
-// Anchor to the WORLD SQUARE (gx/gy, 0..512), NOT the full viewport (vx/vy). This
+// Anchor to the WORLD RECT (wx/wy fractions) — the third space (Sep 11): gx/gy
 // is what keeps a HUD contained ON the world in ANY frame — full-bleed /space or
 // the letterboxed /grid player where the world is a centered square. vx/vy would
 // spill the UI into the margins beside a framed world (the "all over the place"
 // bug). Full-bleed screen-edge UI is an advanced case for raw worldData.ui.
 const M = 14 // margin from the square edge, in the 512 design grid
-const ZONES: Record<SlotZone, { gx: number; gy: number; align: NonNullable<UiNode['align']> }> = {
-  topLeft: { gx: M, gy: M, align: 'tl' },
-  topCenter: { gx: 256, gy: M, align: 'tc' },
-  topRight: { gx: 512 - M, gy: M, align: 'tr' },
-  midLeft: { gx: M, gy: 256, align: 'cl' },
-  center: { gx: 256, gy: 256, align: 'c' },
-  midRight: { gx: 512 - M, gy: 256, align: 'cr' },
-  bottomLeft: { gx: M, gy: 512 - M, align: 'bl' },
-  bottomCenter: { gx: 256, gy: 512 - M, align: 'bc' },
-  bottomRight: { gx: 512 - M, gy: 512 - M, align: 'br' },
+const ZONES: Record<SlotZone, { wx: number; wy: number; align: NonNullable<UiNode['align']> }> = {
+  topLeft: { wx: 0.027, wy: 0.027, align: 'tl' },
+  topCenter: { wx: 0.5, wy: 0.027, align: 'tc' },
+  topRight: { wx: 0.973, wy: 0.027, align: 'tr' },
+  midLeft: { wx: 0.027, wy: 0.5, align: 'cl' },
+  center: { wx: 0.5, wy: 0.5, align: 'c' },
+  midRight: { wx: 0.973, wy: 0.5, align: 'cr' },
+  bottomLeft: { wx: 0.027, wy: 0.973, align: 'bl' },
+  bottomCenter: { wx: 0.5, wy: 0.973, align: 'bc' },
+  bottomRight: { wx: 0.973, wy: 0.973, align: 'br' },
 }
 const ZONE_ORDER: SlotZone[] = ['topLeft', 'topCenter', 'topRight', 'midLeft', 'center', 'midRight', 'bottomLeft', 'bottomCenter', 'bottomRight']
 
@@ -90,7 +90,7 @@ export function slotsToUi(slots: SlotsSpec): UiTree {
     const lift = barPresent && (zone === 'bottomLeft' || zone === 'bottomCenter' || zone === 'bottomRight') ? -52 : 0
     root.push({
       id: `slot_${zone}`, kind: 'panel',
-      anchor: { gx: z.gx, gy: z.gy + lift }, align: z.align,
+      anchor: { wx: z.wx, wy: z.wy, dy: lift }, align: z.align,
       glass, pad: glass ? 8 : 0, gap: 4,
       children: items.map(itemToNode),
     })

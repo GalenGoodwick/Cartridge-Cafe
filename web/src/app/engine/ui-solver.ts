@@ -52,7 +52,7 @@ export interface UiNode {
   // edges — the responsive band layer (Galen's fit law, Aug 23): UI reaches
   // the true screen corners at ANY aspect, while gx/gy/x/y stay in the
   // centered design square. 0 = left/top edge, 1 = right/bottom, 0.5 = center.
-  anchor?: { x?: number; y?: number; gx?: number; gy?: number; vx?: number; vy?: number; entity?: string; below?: string; gap?: number; dx?: number; dy?: number }
+  anchor?: { x?: number; y?: number; gx?: number; gy?: number; vx?: number; vy?: number; wx?: number; wy?: number; entity?: string; below?: string; gap?: number; dx?: number; dy?: number }
   /** which POINT of the panel the anchor pins: tl tc tr cl c cr bl bc br (default c) */
   align?: 'tl' | 'tc' | 'tr' | 'cl' | 'c' | 'cr' | 'bl' | 'bc' | 'br'
   glass?: boolean | GlassStyle
@@ -111,6 +111,11 @@ export interface SolveInput {
    *  the square. Enables anchor vx/vy — viewport-edge panels. Omitted = the
    *  square itself (vx/vy degrade gracefully to square edges). */
   viewport?: { w: number; h: number }
+  /** the WORLD's visible rect in design units — powers anchor wx/wy (0..1
+   *  fractions of the world's actual footprint). THE band space: correct on
+   *  cover, letterbox, portrait and square alike (Galen, Sep 11 — gx/gy is
+   *  the world square, vx/vy is the raw canvas; wx/wy is the world itself). */
+  worldRect?: { x: number; y: number; w: number; h: number }
 }
 
 export interface SolvedUi {
@@ -349,9 +354,20 @@ function layout(node: UiNode, x: number, y: number, availW: number, ctx: Ctx): {
 }
 
 /** resolve a top-level panel's anchor to its top-left, given its size */
-function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities'], rects?: SolvedUi['rects'], viewport?: SolveInput['viewport']): { x: number; y: number } {
+function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['entities'], rects?: SolvedUi['rects'], viewport?: SolveInput['viewport'], worldRect?: SolveInput['worldRect']): { x: number; y: number } {
   const a = node.anchor ?? {}
   let px = GRID / 2, py = GRID / 2
+  if (a.wx != null || a.wy != null) {
+    // WORLD-RECT anchor: fractions of the world's visible footprint — bands
+    // that stay on the world at any grid shape or framing.
+    const wr = worldRect ?? { x: 0, y: 0, w: GRID, h: GRID }
+    px = wr.x + (a.wx ?? 0.5) * wr.w + (a.dx ?? 0)
+    py = wr.y + (a.wy ?? 0.5) * wr.h + (a.dy ?? 0)
+    const alW = node.align ?? 'c'
+    const axW = alW[1] === 'l' || alW === 'cl' ? 0 : alW[1] === 'r' || alW === 'cr' ? 1 : 0.5
+    const ayW = alW[0] === 't' ? 0 : alW[0] === 'b' ? 1 : 0.5
+    return { x: px - w * axW, y: py - h * ayW }
+  }
   if (a.vx != null || a.vy != null) {
     // VIEWPORT anchor: fractions of the full screen, centered on the square —
     // the responsive band layer. Falls back to the square when no viewport given.
@@ -413,7 +429,7 @@ export function solveUi(input: SolveInput): SolvedUi {
     const size = layout(body, 0, 0, w, scratch)
     const h = ov.h ?? (panel.h != null && panel.h !== 'auto' ? units(panel.h, size.h) : size.h)
 
-    const tl = anchorTL(panel, w, h, entities, out.rects, input.viewport)
+    const tl = anchorTL(panel, w, h, entities, out.rects, input.viewport, input.worldRect)
     let x = tl.x + (ov.dx ?? 0)
     let y = tl.y + (ov.dy ?? 0)
     // CHROME-SAFE: clamp the panel into the safe rect minus the chrome bands.
@@ -424,11 +440,17 @@ export function solveUi(input: SolveInput): SolvedUi {
     // pins to its top-left (never pushed off the far side).
     {
       const ins = input.insets ?? {}
+      const wAnchored = panel.anchor?.wx != null || panel.anchor?.wy != null
       const vAnchored = panel.anchor?.vx != null || panel.anchor?.vy != null
-      const vw = vAnchored ? (input.viewport?.w ?? GRID) : GRID
-      const vh = vAnchored ? (input.viewport?.h ?? GRID) : GRID
-      const rx0 = vAnchored ? GRID / 2 - vw / 2 : 0
-      const ry0 = vAnchored ? GRID / 2 - vh / 2 : 0
+      const wr = input.worldRect
+      // w-anchored panels clamp into the world rect ∩ viewport (a world larger
+      // than the screen never pushes its bands off-screen)
+      const vpW = input.viewport?.w ?? GRID, vpH = input.viewport?.h ?? GRID
+      const vpX0 = GRID / 2 - vpW / 2, vpY0 = GRID / 2 - vpH / 2
+      const vw = wAnchored && wr ? Math.min(wr.x + wr.w, vpX0 + vpW) - Math.max(wr.x, vpX0) : vAnchored ? vpW : GRID
+      const vh = wAnchored && wr ? Math.min(wr.y + wr.h, vpY0 + vpH) - Math.max(wr.y, vpY0) : vAnchored ? vpH : GRID
+      const rx0 = wAnchored && wr ? Math.max(wr.x, vpX0) : vAnchored ? vpX0 : 0
+      const ry0 = wAnchored && wr ? Math.max(wr.y, vpY0) : vAnchored ? vpY0 : 0
       const sx0 = rx0 + (ins.left ?? 0), sy0 = ry0 + (ins.top ?? 0)
       const sx1 = rx0 + vw - (ins.right ?? 0), sy1 = ry0 + vh - (ins.bottom ?? 0)
       x = Math.max(sx0, Math.min(x, Math.max(sx0, sx1 - w)))

@@ -5208,6 +5208,29 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
           // edge panels, the responsive band layer; Galen's fit law Aug 23)
           const cnvUi = canvasRef.current
           const sideUi = cnvUi ? Math.min(cnvUi.clientWidth, cnvUi.clientHeight) : 0
+          // the WORLD RECT in design units — same mapping the renderer draws
+          // with (sampleRenderedRegion math), so wx/wy bands sit ON the world
+          // whatever the grid shape or framing (Galen, Sep 11).
+          let worldRectUi: { x: number; y: number; w: number; h: number } | undefined
+          if (cnvUi && sideUi > 0) {
+            const cam = cameraRef.current
+            const cw = cnvUi.clientWidth, ch = cnvUi.clientHeight
+            const aspectUi = cw / ch
+            const rangeUi = gridSize / (cam.zoom || 1)
+            const wrW = rendererRef.current?.getWorldRect?.().w ?? gridSize
+            const wrH = rendererRef.current?.getWorldRect?.().h ?? gridSize
+            let sxp: number, syp: number, swp: number, shp: number
+            if (aspectUi > 1) {
+              sxp = ((0 - cam.x) / (rangeUi * aspectUi) + 0.5) * cw; swp = (wrW / (rangeUi * aspectUi)) * cw
+              syp = ((0 - cam.y) / rangeUi + 0.5) * ch; shp = (wrH / rangeUi) * ch
+            } else {
+              sxp = ((0 - cam.x) / rangeUi + 0.5) * cw; swp = (wrW / rangeUi) * cw
+              syp = ((0 - cam.y) / (rangeUi / aspectUi) + 0.5) * ch; shp = (wrH / (rangeUi / aspectUi)) * ch
+            }
+            const scaleUi = sideUi / 512
+            const vwDu = cw / scaleUi, vhDu = ch / scaleUi
+            worldRectUi = { x: 256 - vwDu / 2 + sxp / scaleUi, y: 256 - vhDu / 2 + syp / scaleUi, w: swp / scaleUi, h: shp / scaleUi }
+          }
           const solved = solveUi({
             ui: { rev: uiT?.rev, theme: uiT?.theme, root: rootAll },
             entities: sim.worldData['__entities'] as Parameters<typeof solveUi>[0]['entities'],
@@ -5216,6 +5239,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
             viewport: cnvUi && sideUi > 0
               ? { w: cnvUi.clientWidth / (sideUi / 512), h: cnvUi.clientHeight / (sideUi / 512) }
               : undefined,
+            worldRect: worldRectUi,
           })
           uiSolvedRef.current = solved
           renderer.setUiSolved(solved)

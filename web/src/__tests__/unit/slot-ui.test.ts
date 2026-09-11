@@ -15,7 +15,7 @@ describe('slotsToUi — named zones → correct solver tree', () => {
     expect(t.root).toHaveLength(1)
     const p = t.root[0]
     expect(p.id).toBe('slot_topLeft')
-    expect(p.anchor).toMatchObject({ gx: 14, gy: 14 }) // world-square coords, not viewport
+    expect(p.anchor).toMatchObject({ wx: 0.027, wy: 0.027 }) // world-square coords, not viewport
     expect(p.align).toBe('tl')
     expect(p.children!.map(c => c.kind)).toEqual(['text', 'meter', 'button'])
     expect(p.children![2]).toMatchObject({ kind: 'button', text: 'GO', click: 'go' })
@@ -70,5 +70,29 @@ describe('slotsToUi — named zones → correct solver tree', () => {
     // same text length → same rev is fine; different length must differ
     expect(a).not.toBe(slotsToUi({ topLeft: [{ text: 'SCORE 12' }] }).rev)
     void b
+  })
+})
+
+// THE THIRD SPACE (Sep 11): wx/wy anchor the WORLD RECT — the band space.
+import { solveUi } from '@/app/engine/ui-solver'
+describe('wx/wy world-rect anchors', () => {
+  it('a wx band sits on the world rect, not the square or the canvas', () => {
+    // portrait world (world rect 0..512 x, -200..712 y in design units),
+    // canvas taller still — three DIFFERENT spaces
+    const worldRect = { x: 0, y: -200, w: 512, h: 912 }
+    const s = solveUi({
+      ui: { root: [{ id: 'top', kind: 'panel', anchor: { wx: 0.5, wy: 0 }, align: 'tc', children: [{ kind: 'text', text: 'HI' }] }] },
+      viewport: { w: 512, h: 1000 },
+      worldRect,
+    })
+    const r = s.rects['top']
+    expect(r).toBeTruthy()
+    // the panel's top sits at the WORLD's top (-200), not the square's (0)
+    expect(Math.abs(r.y - (-200))).toBeLessThan(2)
+  })
+  it('without a worldRect, wx degrades to the square (legacy exact)', () => {
+    const s = solveUi({ ui: { root: [{ id: 't', kind: 'panel', anchor: { wx: 0, wy: 0 }, align: 'tl', children: [{ kind: 'text', text: 'X' }] }] } })
+    expect(s.rects['t'].x).toBeGreaterThanOrEqual(0)
+    expect(s.rects['t'].y).toBeGreaterThanOrEqual(0)
   })
 })
