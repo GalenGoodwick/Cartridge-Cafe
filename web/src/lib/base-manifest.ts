@@ -95,3 +95,21 @@ export function carveSet(manifest: BaseManifest, id: string): Set<string> {
   }
   return out
 }
+
+/** P4 — LOAD-BEARING TEETH. The carve verbs consult this before removing:
+ *  a load-bearing target refuses (with the manifest's own carve hint) unless
+ *  the carver says force. Worlds without a manifest are untouched. */
+export function checkBaseCarve(
+  manifest: BaseManifest | undefined | null,
+  kind: BaseKind,
+  id: string,
+  force?: boolean,
+): { refused: true; error: string } | null {
+  if (!manifest?.entries || force) return null
+  const e = manifest.entries.find(e => e.kind === kind && e.id === id)
+  if (!e || e.removable !== 'load-bearing') return null
+  return { refused: true, error:
+    `"${id}" is LOAD-BEARING in this base (${e.role}) — removing it breaks the world.` +
+    (e.carveHint ? ` ${e.carveHint}.` : '') +
+    ` If you truly mean it, resend with {"force": true}.` }
+}

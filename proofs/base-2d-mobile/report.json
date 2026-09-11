@@ -1,5 +1,5 @@
 {
-  "at": "2026-09-11T19:36:43.902Z",
+  "at": "2026-09-11T20:09:03.933Z",
   "base": "https://cartridge.cafe",
   "rows": [
     {
@@ -7,7 +7,7 @@
       "carved": [],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -17,7 +17,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -27,7 +27,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.7,
+      "meanLum": 158.6,
       "trace": 8
     },
     {
@@ -37,7 +37,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -47,7 +47,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -57,7 +57,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 217.5,
       "trace": 8
     },
     {
@@ -67,7 +67,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -77,7 +77,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     },
     {
@@ -87,7 +87,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 218.6,
+      "meanLum": 158.9,
       "trace": 8
     }
   ]

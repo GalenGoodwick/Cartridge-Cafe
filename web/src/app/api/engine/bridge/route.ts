@@ -729,6 +729,17 @@ export async function POST(req: NextRequest) {
       // ONLY the global store — a space world leaning on it breaks whenever the
       // global registry changes (the mod_cf_sky class; the Aug 9 dragon-wing
       // lesson). Space-scoped builders are taught the persistent verb instead.
+      // P4 — LOAD-BEARING TEETH (base matrix): on a world carrying a
+      // baseManifest, carving a load-bearing entry refuses with the manifest's
+      // own hint; {"force": true} overrides for a carver who truly means it.
+      if (isSpaceScoped && rollback && (cmd.type === 'remove_step_hook' || cmd.type === 'delete_field' || cmd.type === 'remove_module')) {
+        const { checkBaseCarve } = await import('@/lib/base-manifest')
+        const bm = (rollback.worldData as Record<string, unknown> | undefined)?.baseManifest as import('@/lib/base-manifest').BaseManifest | undefined
+        const kind = cmd.type === 'remove_step_hook' ? 'hook' as const : cmd.type === 'delete_field' ? 'field' as const : 'module' as const
+        const targetId = String(cmd.hookId ?? cmd.fieldId ?? cmd.name ?? '')
+        const block = checkBaseCarve(bm, kind, targetId, cmd.force === true)
+        if (block) { results.push({ type: cmd.type, ok: false, error: block.error, loadBearing: true }); continue }
+      }
       if (isSpaceScoped && (cmd.type === 'register_glsl_mod' || cmd.type === 'register_wgsl_mod')) {
         results.push({ ok: false, type: cmd.type, error: 'register_glsl_mod is GLOBAL-store only — it does not persist with your world and breaks later. Use define_module {name, wgsl}: it lives in your world\u2019s snapshot forever.' })
         continue

@@ -51,3 +51,20 @@ describe('base manifest (P2)', () => {
     expect([...carveSet(manifest, 'rules')]).toEqual(['rules'])
   })
 })
+
+import { checkBaseCarve } from '@/lib/base-manifest'
+describe('P4 — load-bearing teeth', () => {
+  it('refuses a load-bearing carve with role + hint + the force road', () => {
+    const r = checkBaseCarve(manifest, 'hook', 'player')
+    expect(r?.refused).toBe(true)
+    expect(r?.error).toContain('LOAD-BEARING')
+    expect(r?.error).toContain('input+movement')
+    expect(r?.error).toContain('force')
+  })
+  it('removable carves pass; force passes; no-manifest worlds untouched', () => {
+    expect(checkBaseCarve(manifest, 'hook', 'entities')).toBeNull()
+    expect(checkBaseCarve(manifest, 'hook', 'player', true)).toBeNull()
+    expect(checkBaseCarve(undefined, 'hook', 'player')).toBeNull()
+    expect(checkBaseCarve(manifest, 'hook', 'not-in-manifest')).toBeNull()
+  })
+})

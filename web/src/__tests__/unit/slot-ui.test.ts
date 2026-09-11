@@ -74,7 +74,6 @@ describe('slotsToUi — named zones → correct solver tree', () => {
 })
 
 // THE THIRD SPACE (Sep 11): wx/wy anchor the WORLD RECT — the band space.
-import { solveUi } from '@/app/engine/ui-solver'
 describe('wx/wy world-rect anchors', () => {
   it('a wx band sits on the world rect, not the square or the canvas', () => {
     // portrait world (world rect 0..512 x, -200..712 y in design units),
