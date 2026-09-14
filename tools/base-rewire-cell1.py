@@ -145,12 +145,63 @@ for (const f of sim.fields.values()) {
   if (!(f.properties && f.properties.standable) || f.shapeType !== 'rect') continue;
   const sc = (f.transform && f.transform.scale) || 1;
   const w = (f.w || 0) * sc, top = (f.transform.y || 0) - ((f.h || 0) * sc) * 0.5;
-  if (P.vy >= 0 && Math.abs(P.x - f.transform.x) < w * 0.5 + 8 && P.y >= top - 2 && P.y <= top + Math.max(14, P.vy * dt2 + 6)) {
+  // slop = the avatar's drawn half-width (18): ANY visible overlap with the
+  // slab supports you — you can never fall while pixels say you're standing
+  if (P.vy >= 0 && Math.abs(P.x - f.transform.x) < w * 0.5 + 18 && P.y >= top - 2 && P.y <= top + Math.max(14, P.vy * dt2 + 6)) {
     P.y = top; P.vy = 0; P.ground = true;
   }
 }
 P.hop = P.ground ? Math.max(0, (P.hop || 0) - dt2 * 6) : Math.min(1, (P.hop || 0) + dt2 * 4);
 if (P.y > 1100) { (wd.__ev = wd.__ev || []).push({ t: 'fell' }); P.x = 288; P.y = 900; P.vx = 0; P.vy = 0; }
+"""
+
+ENTITIES = r"""
+// ENTITIES (removable) — coins to collect + one patrolling critter. A coin
+// stays COLLECTED until restart (no respawn farming — Galen, Sep 14); taking
+// the last one emits 'allcoins' (the win itself belongs to rules).
+const wd = sim.worldData;
+if (!wd.__ents) wd.__ents = {
+  coins: [{x:150,y:770},{x:430,y:660},{x:200,y:530},{x:440,y:400},{x:170,y:280},{x:288,y:910}].map(c => ({ ...c, got: false })),
+  critter: { x: 380, y: 940, dir: 1 },
+};
+const E = wd.__ents; const P = wd.__p;
+const dt2 = Math.min(dt, 1/30);
+for (const c of E.coins) {
+  if (c.got) continue;
+  if (P && Math.hypot(P.x - c.x, P.y - 20 - c.y) < 26) {
+    c.got = true; (wd.__ev = wd.__ev || []).push({ t: 'coin' });
+    if (E.coins.every(k => k.got)) wd.__ev.push({ t: 'allcoins' });
+  }
+}
+const K = E.critter;
+K.x += K.dir * 60 * dt2;
+if (K.x < 300) { K.x = 300; K.dir = 1; } if (K.x > 500) { K.x = 500; K.dir = -1; }
+if (P && Math.hypot(P.x - K.x, P.y - K.y) < 28) {
+  if (P.vy > 100) { (wd.__ev = wd.__ev || []).push({ t: 'stomp' }); K.x = 100 + (sim.rand ? sim.rand() : 0.5) * 380; P.vy = -450; }
+  else (wd.__ev = wd.__ev || []).push({ t: 'hit' });
+}
+"""
+
+RULES = r"""
+// RULES (removable) — coins, lives, win/lose, restart. Consumes the event
+// list; with no producers it idles. state: 0 play · 1 won · 2 over. The win
+// is entities' 'allcoins' — every DISTINCT coin once, never farmed.
+const wd = sim.worldData;
+if (!wd.__rules) wd.__rules = { coins: 0, lives: 3, state: 0, iframe: 0 };
+const R = wd.__rules;
+const dt2 = Math.min(dt, 1/30);
+R.iframe = Math.max(0, R.iframe - dt2);
+for (const ev of (wd.__ev || [])) {
+  if (R.state !== 0) break;
+  if (ev.t === 'coin') R.coins += 1;
+  if (ev.t === 'allcoins') R.state = 1;
+  if ((ev.t === 'hit' || ev.t === 'fell') && R.iframe <= 0) { R.lives -= 1; R.iframe = 1.2; if (R.lives <= 0) R.state = 2; }
+}
+const restart = wd.key_r || (wd.__uiClickT && wd.__uiClickT !== R.lastClick && wd.__uiClick === 'restart');
+if (restart) { R.lastClick = wd.__uiClickT || 0;
+  if (R.state !== 0 || wd.key_r) { R.coins = 0; R.lives = 3; R.state = 0; R.iframe = 0;
+    if (wd.__p) { wd.__p.x = 288; wd.__p.y = 900; wd.__p.vx = 0; wd.__p.vy = 0; }
+    if (wd.__ents) { for (const c of wd.__ents.coins) c.got = false; } } }
 """
 
 CAMERA = r"""
@@ -190,7 +241,7 @@ U[7] = wd.__rules ? wd.__rules.state : 0;
 wd.gpuUniforms = U;
 const POP = [];
 if (wd.__ents) {
-  for (const c of wd.__ents.coins) if (!(c.up > 0)) POP.push(c.x, c.y, 0, (c.x + c.y) * 0.01);
+  for (const c of wd.__ents.coins) if (!c.got) POP.push(c.x, c.y, 0, (c.x + c.y) * 0.01);
   const K = wd.__ents.critter; if (K) POP.push(K.x, K.y - 14, 1, K.x * 0.05);
 }
 wd.gpuPopulation = POP;
@@ -255,7 +306,16 @@ out['visualTypes'] = list(vts.values()) + [
     {'name': 'base_ground', 'wgsl': GROUND},
 ]
 hooks = {str(h.get('hookId') or h.get('id')): h for h in out['stepHooks']}
-for hid, code in (('world', WORLD), ('camera', CAMERA), ('fx', FX), ('uplink', UPLINK)):
+# HUD + SAVE ride whatever the source snapshot has — normalize to the coins
+# model (R.coins / distinct-total) in case the seed predates the hotfix
+hud = hooks['hud']
+hud['code'] = hud['code'].replace(
+    "const rev = R ? (R.score * 100 + R.lives + R.state * 10000) : -1;",
+    "const total = (wd.__ents && wd.__ents.coins) ? wd.__ents.coins.length : 0;\nconst rev = R ? (R.coins * 100 + R.lives + R.state * 10000) : -1;")
+hud['code'] = hud['code'].replace("text: 'COINS ' + R.score + '/10'", "text: 'COINS ' + R.coins + (total ? '/' + total : '')")
+save_h = hooks['save']
+save_h['code'] = save_h['code'].replace('R.score > wd.__best', 'R.coins > wd.__best').replace('wd.__best = R.score', 'wd.__best = R.coins')
+for hid, code in (('world', WORLD), ('entities', ENTITIES), ('rules', RULES), ('camera', CAMERA), ('fx', FX), ('uplink', UPLINK)):
     hooks[hid]['code'] = code
 out['worldData']['baseManifest'] = manifest(backdrop_id)
 
@@ -279,7 +339,7 @@ cmds.append({'type': 'set_visual', 'fieldId': 'actors', 'visualType': 'base_acto
 cmds.append({'type': 'set_visual', 'fieldId': backdrop_id, 'visualType': 'base_atmo', 'renderOrder': 0})
 # backdrop → screen space (shape change): update_field if supported
 cmds.append({'type': 'update_field', 'fieldId': backdrop_id, 'shapeType': 'screen'})
-for hid, code in (('world', WORLD), ('camera', CAMERA), ('fx', FX), ('uplink', UPLINK)):
+for hid, code in (('world', WORLD), ('entities', ENTITIES), ('rules', RULES), ('camera', CAMERA), ('fx', FX), ('uplink', UPLINK)):
     cmds.append({'type': 'claim_node', 'id': hid})
     cmds.append({'type': 'update_step_hook', 'hookId': hid, 'author': 'Claude Opus 4.8',
                  'description': f'base-2d-mobile: {hid} (pixels=hitbox rewire)', 'code': code})

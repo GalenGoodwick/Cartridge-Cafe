@@ -1,5 +1,5 @@
 {
-  "at": "2026-09-14T20:16:26.033Z",
+  "at": "2026-09-14T20:52:17.878Z",
   "base": "https://cartridge.cafe",
   "rows": [
     {
@@ -27,7 +27,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 216.2,
+      "meanLum": 216.3,
       "trace": 8
     },
     {
@@ -107,7 +107,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 216.6,
+      "meanLum": 216.7,
       "trace": 8
     },
     {
@@ -117,7 +117,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 216.9,
+      "meanLum": 217,
       "trace": 8
     },
     {
@@ -127,7 +127,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 216.9,
+      "meanLum": 217,
       "trace": 8
     },
     {
@@ -137,7 +137,7 @@
       ],
       "pass": true,
       "fails": [],
-      "meanLum": 216.8,
+      "meanLum": 216.9,
       "trace": 8
     },
     {

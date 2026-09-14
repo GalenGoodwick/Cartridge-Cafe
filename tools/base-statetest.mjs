@@ -72,12 +72,14 @@ console.log('═ P1 — per-subsystem state tests (deployed hooks) ═')
   const evs = sim.worldData.__ev || []
   T('physics: fall → respawn + event', evs.some(e => e.t === 'fell') && sim.worldData.__p.y < 1000) }
 
-// entities: coin collect emits + coin sleeps; critter stomp vs hit
+// entities: coin collect emits + STAYS collected (no respawn farming); stomp vs hit
 { const sim = mkSim(); run(sim, 3)
   const c0 = sim.worldData.__ents.coins[5]           // the ground coin at 288,910
   sim.worldData.__p.x = c0.x; sim.worldData.__p.y = c0.y + 20
   const evs = []; run(sim, 2, wd => { evs.push(...(wd.__ev || [])) }, ['entities'])
-  T('entities: coin collect event + sleep', evs.some(e => e.t === 'coin') && c0.up > 0)
+  T('entities: coin collect event + stays collected', evs.some(e => e.t === 'coin') && c0.got === true)
+  run(sim, 300, null, ['entities'])                  // 5s: the old design respawned here
+  T('entities: no respawn after 5s (no farming)', c0.got === true)
   const K = sim.worldData.__ents.critter
   sim.worldData.__p.x = K.x; sim.worldData.__p.y = K.y; sim.worldData.__p.vy = 0
   sim.worldData.__ev = []; run(sim, 1, null, ['entities'])
@@ -88,12 +90,12 @@ console.log('═ P1 — per-subsystem state tests (deployed hooks) ═')
   run(sim, 1, null, ['entities'])
   T('entities: falling touch → stomp + bounce', (sim.worldData.__ev || []).some(e => e.t === 'stomp') && sim.worldData.__p.vy < 0) }
 
-// rules: score, win, lives, game over, restart
+// rules: coins, win on ALL DISTINCT coins, lives, game over, restart
 { const sim = mkSim(); run(sim, 3)
   sim.worldData.__ev = [{ t: 'coin' }]; run(sim, 1, null, ['rules'])
-  T('rules: coin scores', sim.worldData.__rules.score === 1)
-  sim.worldData.__rules.score = 9; sim.worldData.__ev = [{ t: 'coin' }]; run(sim, 1, null, ['rules'])
-  T('rules: 10 coins → won', sim.worldData.__rules.state === 1)
+  T('rules: coin counts', sim.worldData.__rules.coins === 1)
+  sim.worldData.__ev = [{ t: 'coin' }, { t: 'allcoins' }]; run(sim, 1, null, ['rules'])
+  T('rules: last distinct coin → won', sim.worldData.__rules.state === 1)
   const sim2 = mkSim(); run(sim2, 3)
   sim2.worldData.__rules.lives = 1; sim2.worldData.__ev = [{ t: 'hit' }]; run(sim2, 1, null, ['rules'])
   T('rules: last heart → game over', sim2.worldData.__rules.state === 2)
@@ -106,7 +108,7 @@ console.log('═ P1 — per-subsystem state tests (deployed hooks) ═')
   T('fx: hit → flash (no positional shake — pixels ≡ hitbox)', sim.worldData.__fx.flash > 0.9)
   sim.worldData.__p.y = 300; run(sim, 40, null, ['camera'])
   T('camera: looks up via worldData.__camera (engine-owned)', (sim.worldData.__camera?.y ?? 512) < 400, `camY ${sim.worldData.__camera?.y}`)
-  sim.worldData.__rules = { score: 7, lives: 3, state: 0, iframe: 0 }; run(sim, 1, null, ['save'])
+  sim.worldData.__rules = { coins: 7, lives: 3, state: 0, iframe: 0 }; run(sim, 1, null, ['save'])
   T('save: best score sticks', sim.worldData.__best === 7)
   run(sim, 1)
   const U = sim.worldData.gpuUniforms
