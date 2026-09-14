@@ -5601,7 +5601,14 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       installHooks, allStepHookSnapshots, updateSelectionMask, gridSize, FIT_ZOOM,
     }
 
+    // VISIBILITY GATE (fluid-cost, Sep 14): a held SSE stream bills provisioned
+    // memory wall-clock on Vercel — a hidden tab pinned a lambda 24/7 for
+    // commands it couldn't even show. Hidden → stream closed; visible → it
+    // reconnects, and the 5s rev-poll (also hidden-gated) adopts anything missed.
+    let suspended = typeof document !== 'undefined' && document.hidden
+
     function connect() {
+      if (suspended) return   // hidden tab holds no stream — onVisibility reopens it
       if (playScene) return   // play sessions are local-only — no shared queue
       // COST (audit, Sep 6): the SSE stream pins a lambda for the tab's whole
       // life, and for NON-OWNER space tabs it carries nothing they need (the
@@ -5655,11 +5662,27 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
       lastSSEMsgRef.current = Date.now()
     }
 
+    const onVisibility = () => {
+      if (document.hidden) {
+        suspended = true
+        clearTimeout(retryTimeout)   // a pending retry must not reopen a hidden tab's stream
+        try { es?.close() } catch { /* already dead */ }
+        es = null
+        setAgentConnected(false)
+      } else {
+        suspended = false
+        lastSSEMsgRef.current = Date.now()   // fresh grace so the watchdog doesn't instantly refire
+        connect()   // retryDelay carries over — a 401 loop stays backed off across tab switches
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
     connect()
 
     // Watchdog: the server pings every 15s — 40s of silence means the stream
     // died without an error event (HMR orphan, dropped socket). Reconnect.
     const watchdog = setInterval(() => {
+      if (suspended) return   // closed on purpose — nothing to resurrect
       if (Date.now() - lastSSEMsgRef.current > 40_000) {
         setAgentConnected(false)
         try { es?.close() } catch { /* already dead */ }
@@ -5669,6 +5692,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
     }, 10_000)
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
       clearTimeout(retryTimeout)
       clearInterval(watchdog)
       es?.close()
