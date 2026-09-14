@@ -4,7 +4,8 @@
 // the world still WORKS: renders bright, hooks clean, input still answered.
 // One green row per subsystem or the base does not ship.
 //
-//   node tools/base-harness.mjs <uc_st_token> [baseUrl] [proofDir]
+//   node tools/base-harness.mjs <uc_st_token | snapshot.json> [baseUrl] [proofDir]
+// A .json arg proves a LOCAL snapshot (pre-deploy); a token proves LIVE.
 //
 // A carve here is snapshot surgery on a copy — exactly what a fork IS (a
 // snapshot copy + hygiene) — so each row is the fork-and-remove experiment
@@ -75,9 +76,16 @@ const DRIVE = [{ from: 0, to: 80, keys: ['d'] }, { from: 90, to: 110, keys: ['w'
 
 async function main() {
   mkdirSync(PROOFS, { recursive: true })
-  const c = makeClient({ base: BASE, token: TOKEN, timeoutMs: 120000 })
-  const { text: body } = await c.bridgeGet()
-  const snap = shapeSnapshot(JSON.parse(body))
+  let raw
+  if (TOKEN.endsWith('.json')) {
+    const { readFileSync } = await import('node:fs')
+    raw = JSON.parse(readFileSync(TOKEN, 'utf8'))
+  } else {
+    const c = makeClient({ base: BASE, token: TOKEN, timeoutMs: 120000 })
+    const { text: body } = await c.bridgeGet()
+    raw = JSON.parse(body)
+  }
+  const snap = shapeSnapshot(raw)
   const manifest = snap.worldData?.baseManifest
   if (!manifest?.entries) { console.error('RED: world carries no worldData.baseManifest'); process.exit(1) }
 

@@ -1,0 +1,154 @@
+{
+  "at": "2026-09-14T20:16:26.033Z",
+  "base": "https://cartridge.cafe",
+  "rows": [
+    {
+      "row": "INTACT BASE",
+      "carved": [],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve camera",
+      "carved": [
+        "camera"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve entities",
+      "carved": [
+        "entities"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.2,
+      "trace": 8
+    },
+    {
+      "row": "carve rules",
+      "carved": [
+        "rules"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve hud",
+      "carved": [
+        "hud"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve fx",
+      "carved": [
+        "fx"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve audio",
+      "carved": [
+        "audio"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve save",
+      "carved": [
+        "save"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    },
+    {
+      "row": "carve ground-l",
+      "carved": [
+        "ground-l"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 215.4,
+      "trace": 8
+    },
+    {
+      "row": "carve plat-1",
+      "carved": [
+        "plat-1"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.6,
+      "trace": 8
+    },
+    {
+      "row": "carve plat-2",
+      "carved": [
+        "plat-2"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.6,
+      "trace": 8
+    },
+    {
+      "row": "carve plat-3",
+      "carved": [
+        "plat-3"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.9,
+      "trace": 8
+    },
+    {
+      "row": "carve plat-4",
+      "carved": [
+        "plat-4"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.9,
+      "trace": 8
+    },
+    {
+      "row": "carve plat-5",
+      "carved": [
+        "plat-5"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.8,
+      "trace": 8
+    },
+    {
+      "row": "carve base_bg",
+      "carved": [
+        "base_bg"
+      ],
+      "pass": true,
+      "fails": [],
+      "meanLum": 216.3,
+      "trace": 8
+    }
+  ]
+}

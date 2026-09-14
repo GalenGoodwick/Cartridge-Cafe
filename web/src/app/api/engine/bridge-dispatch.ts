@@ -237,9 +237,37 @@ const creditsRead: BridgeHandler = async ({ auth }) => {
     next: 'create_world {name} spends ONE credit (the keeper is exempt). Bundles are cheaper per credit — your human buys them on the account page.' }
 }
 
+// ── set_card_shot — the entry photo, baked BUILDER-SIDE. The eye is local-only
+// now (cloud eye removed Sep 1), so prod's icon-on-ready bake degrades and a
+// freshly published world has NO photo on its click-to-play card. The builder's
+// machine HAS the eye: it photographs the world locally and uploads the frame
+// here with its world token — same world_icon:<slug> slot, same IconRecord
+// shape as ◆ SET VISUAL, so every card surface picks it up unchanged.
+const setCardShot: BridgeHandler = async ({ cmd, auth }) => {
+  if (!auth.slug) return { type: cmd.type, error: 'set_card_shot needs a world token bound to a slug' }
+  const s = await requireSnapshot(auth)
+  if (!s) return { type: cmd.type, error: 'no world snapshot yet' }
+  let png = String(cmd.png_b64 ?? '')
+  const comma = png.indexOf(',')
+  if (png.startsWith('data:') && comma > 0) png = png.slice(comma + 1)
+  if (!png || png.length < 100) return { type: cmd.type, error: 'no shot — render the world (local eye) and send its png as png_b64' }
+  if (png.length > 2_000_000) return { type: cmd.type, error: 'shot too large (2MB cap)' }
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(png)) return { type: cmd.type, error: 'not valid base64' }
+  const decoded = Buffer.from(png, 'base64')
+  if (decoded.length < 8 || decoded[0] !== 0x89 || decoded[1] !== 0x50 || decoded[2] !== 0x4e || decoded[3] !== 0x47) {
+    return { type: cmd.type, error: 'not a png — send the eye’s png capture' }
+  }
+  const { iconSnapshotHash, iconSlotKey } = await import('@/lib/icon-bake')
+  const { saveGameSlotStrict } = await import('./store')
+  const hash = iconSnapshotHash(s as never)
+  await saveGameSlotStrict(iconSlotKey(auth.slug), { hash, at: Date.now(), png_b64: png, manual: true })
+  return { ok: true, type: cmd.type, next: 'the entry card + shelf now show this exact frame' }
+}
+
 export const BRIDGE_HANDLERS: Record<string, BridgeHandler> = {
   build_spec_set: buildSpecSet,
   build_status: buildStatus,
+  set_card_shot: setCardShot,
   validate_world: validateOrComplete,
   complete_build: validateOrComplete,
   create_world: createWorld,

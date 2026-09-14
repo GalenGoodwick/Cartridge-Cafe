@@ -115,7 +115,8 @@ export async function renderProbe(state, opts = {}) {
   // (engine dispatch-cap parity). opts.name narrows to that visual's fields
   // (or a synthetic full-screen field if nothing references it yet). ──
   const visName = (f) => f.visualTypeName || (typeof f.visualType === "string" ? f.visualType : null);
-  let renderFields = fields.filter(f => { const n = visName(f); return n && visuals.some(v => v.name === n); });
+  let renderFields = fields.filter(f => { const n = visName(f); return n && visuals.some(v => v.name === n); })
+    .sort((a, b) => (a.renderOrder || 0) - (b.renderOrder || 0));   // browser parity (FieldEngine sorts renderOrder, lower = behind); stable sort keeps field order for ties
   if (opts.name) {
     const named = renderFields.filter(f => visName(f) === opts.name);
     if (named.length) renderFields = named;
@@ -132,7 +133,7 @@ export async function renderProbe(state, opts = {}) {
   // ── hooks: compile + sim shim (mirrors world-sandbox.ts) ──
   const hookErrors = [];
   const simFields = new Map();
-  for (const f of fields) simFields.set(f.id, { id: f.id, name: f.name, transform: { ...(f.transform || { x: 256, y: 256 }) }, properties: f.properties });
+  for (const f of fields) simFields.set(f.id, { id: f.id, name: f.name, transform: { ...(f.transform || { x: 256, y: 256 }) }, properties: f.properties, visualParams: f.visualParams, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius });   // geometry rides along (parity with world-sandbox): the drawn shape IS the hitbox
 
   // ── sim shim, at PARITY with the browser's world-sandbox (web/.../simulation)
   // so interactive/puzzle worlds actually ADVANCE here — without trigger/edge/

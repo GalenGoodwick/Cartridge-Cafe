@@ -101,7 +101,9 @@ self.onmessage = function (ev) {
       // visualParams IS exposed to the hook now: a sandboxed hook can animate a
       // field's shader (melt, charge, glow) — previously it was silently dropped,
       // so a hook that set field.visualParams had NO visible effect on space worlds.
-      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams });
+      // GEOMETRY too (shapeType/w/h/r, read-only): the field the engine DRAWS is
+      // the one true shape — a hook colliding against it needs no shadow table.
+      fields.set(f.id, { id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius });
       before.set(f.id, { transform: { ...f.transform }, visualParams: Array.isArray(f.visualParams) ? [...f.visualParams] : null });
     }
     const sim = {
@@ -684,9 +686,10 @@ export class WorldSandbox {
    *  how many rendered frames a reply spans. __fixedStep keeps its exact quantum. */
   private postTick(sim: FieldSimulation): void {
     if (!this.worker) return
-    const fields: { id: string; name: string; transform: unknown; properties: unknown; visualParams: unknown }[] = []
+    const fields: { id: string; name: string; transform: unknown; properties: unknown; visualParams: unknown; shapeType?: string; w?: number; h?: number; radius?: number }[] = []
     for (const f of sim.fields.values()) {
-      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams })
+      // geometry rides along (read-only in the box): the drawn shape IS the hitbox
+      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius })
     }
     // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
     // one exact quantum — one tick per rendered frame, same sequence every run

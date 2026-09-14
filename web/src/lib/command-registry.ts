@@ -169,6 +169,12 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
     law: 'premium pricing needs ◆ IP control; internal __keys are route-owned and refused. How-to-play text goes HERE (instructions) — never painted on the world canvas.',
   },
   set_world_params: { scope: 'space', group: G.world, desc: 'physics/grid params (gravity, friction, gridW/H…)' },
+  set_card_shot: {
+    scope: 'space', group: G.world,
+    desc: 'upload the world’s entry-card photo (a png the LOCAL eye captured) — the eye lives builder-side now, so the builder ships the shot',
+    params: { png_b64: 'base64 png (data-URL accepted), 2MB cap' },
+    law: 'send a real frame of the running world, never a mockup — the card is the world’s honest face',
+  },
   validate_world_doc: { scope: 'space', group: G.world, desc: 'lint the world doc for structural problems' },
   put_world: { scope: 'owner', group: G.world, enforce: true, desc: 'replace the whole world doc (owner-only; members build additively)', params: { world: 'the full doc' } },
   reset_world: { scope: 'space', group: G.world, desc: 'reset run-state to the original snapshot' },

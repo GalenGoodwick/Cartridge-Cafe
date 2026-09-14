@@ -3,26 +3,40 @@
 // asserting each node's one job. Runs against the live base so the proof is
 // about what players actually get, not a local copy.
 //
-//   node tools/base-statetest.mjs <uc_st_token> [baseUrl]
+//   node tools/base-statetest.mjs <uc_st_token | snapshot.json> [baseUrl]
+// A .json arg tests a LOCAL snapshot (pre-deploy proof); a token tests LIVE.
 
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 const here = dirname(fileURLToPath(import.meta.url))
-const { makeClient } = await import(join(here, '../mcp/bridge-client.mjs'))
 
 const TOKEN = process.argv[2]
 const BASE = process.argv[3] || 'https://cartridge.cafe'
-if (!TOKEN) { console.error('usage: node tools/base-statetest.mjs <token> [base]'); process.exit(2) }
+if (!TOKEN) { console.error('usage: node tools/base-statetest.mjs <token|snapshot.json> [base]'); process.exit(2) }
 
-const c = makeClient({ base: BASE, token: TOKEN, timeoutMs: 120000 })
-const { text: body } = await c.bridgeGet()
-const snap = JSON.parse(body)
+let snap
+if (TOKEN.endsWith('.json')) {
+  snap = JSON.parse(readFileSync(TOKEN, 'utf8'))
+} else {
+  const { makeClient } = await import(join(here, '../mcp/bridge-client.mjs'))
+  const c = makeClient({ base: BASE, token: TOKEN, timeoutMs: 120000 })
+  const { text: body } = await c.bridgeGet()
+  snap = JSON.parse(body)
+}
 const hooks = new Map(snap.stepHooks.map(h => [String(h.hookId ?? h.id), new Function('sim', 'dt', h.code)]))
 const ORDER = ['player', 'world', 'camera', 'entities', 'rules', 'hud', 'fx', 'audio', 'save', 'uplink']
 
 const mkSim = () => {
   let s = 7; const rand = () => (s = (s * 1664525 + 1013904223) >>> 0, s / 2 ** 32)
-  return { rand, worldData: { input: { moveX: 0, moveY: 0, pointer: {} } } }
+  // fields FROM THE SNAPSHOT (never a hand-mirrored table): the physics hook
+  // collides against sim.fields — the mock must carry the same truth the
+  // engine ships (id/shape/w/h/transform/properties), deep-copied per sim.
+  const fields = new Map((snap.fields ?? []).map(f => [f.id, {
+    id: f.id, name: f.name, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius,
+    transform: { ...(f.transform || {}) }, properties: { ...(f.properties || {}) },
+  }]))
+  return { rand, fields, worldData: { input: { moveX: 0, moveY: 0, pointer: {} } } }
 }
 const tick = (sim, only = null) => {
   for (const id of ORDER) { if (only && !only.includes(id)) continue; const f = hooks.get(id); if (f) f(sim, 1 / 60) }
@@ -89,14 +103,14 @@ console.log('═ P1 — per-subsystem state tests (deployed hooks) ═')
 // fx: hit flashes; camera: follows height; save: best sticks; uplink: lanes + defaults
 { const sim = mkSim(); run(sim, 3)
   sim.worldData.__ev = [{ t: 'hit' }]; run(sim, 1, null, ['fx'])
-  T('fx: hit → flash+shake', sim.worldData.__fx.flash > 0.9 && sim.worldData.__fx.shake > 0.9)
+  T('fx: hit → flash (no positional shake — pixels ≡ hitbox)', sim.worldData.__fx.flash > 0.9)
   sim.worldData.__p.y = 300; run(sim, 40, null, ['camera'])
-  T('camera: rises with the player', sim.worldData.__cam.y < -20, `camY ${sim.worldData.__cam.y.toFixed(0)}`)
+  T('camera: looks up via worldData.__camera (engine-owned)', (sim.worldData.__camera?.y ?? 512) < 400, `camY ${sim.worldData.__camera?.y}`)
   sim.worldData.__rules = { score: 7, lives: 3, state: 0, iframe: 0 }; run(sim, 1, null, ['save'])
   T('save: best score sticks', sim.worldData.__best === 7)
   run(sim, 1)
   const U = sim.worldData.gpuUniforms
-  T('uplink: player + plats on the whiteboard', Math.abs(U[0] - sim.worldData.__p.x) < 1 && U[42] > 0)
+  T('uplink: player on the whiteboard, NO geometry lanes (fields own geometry)', Math.abs(U[0] - sim.worldData.__p.x) < 1 && U[38] === 0 && U[42] === 0 && sim.worldData.gpuPopulation.length > 0)
   const sim3 = mkSim(); run(sim3, 3, null, ['player', 'world', 'uplink'])   // carved world: no cam/fx/rules/ents
   const U3 = sim3.worldData.gpuUniforms
   T('uplink: sane defaults when subsystems carved', U3[4] === 0 && U3[5] === 0 && U3[7] === 0 && sim3.worldData.gpuPopulation.length === 0) }

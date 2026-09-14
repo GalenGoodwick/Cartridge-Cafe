@@ -96,6 +96,18 @@ mapping only) · HUD in solver bands · declared-grid everywhere (no square
 assumptions — the legacy-square sweep rides this program) · nodes law ·
 budgets. The base is where these laws live as CODE instead of guide prose.
 
+**PIXELS ≡ HITBOX (Galen, Sep 14: "platform hitboxes are not the same as the
+colored pixels — the field engine would draw these and calculate collision").**
+Standable/collidable geometry is FIELDS the engine draws: the drawn rect IS
+the hitbox, one source of truth. Paint never duplicates geometry (no shadow
+tables, no whiteboard geometry lanes) and never applies private camera/shake
+offsets — worldData.__camera is the one legal camera. Hooks read the truth
+from sim.fields (shapeType/w/h/radius now exposed to the sandbox + eye).
+Proven on the cell-1 rewire: physics lands at exactly the field top the
+pixels show; the pit is the measured gap between ground fields (61..149 in
+the proof frame vs 60..150 declared); the harness re-discovered design truth
+(ground-r is the spawn floor → load-bearing).
+
 ## Order
 1. P2+P3 harness FIRST (the proof machinery — small, pure) →
 2. CELL 1 base built subsystem-by-subsystem, each landing with its P1 state
