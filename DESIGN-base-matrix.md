@@ -71,6 +71,17 @@ names what's safe."
 > **PROOF P5:** end-to-end — walk the door's own prompt cold: create from the
 > base via the chip's taught call, verify the newborn carries the subsystems +
 > manifest, hygiene stripped base-hood, and the fork plays (trace) at tick 0.
+> **CLOSED Sep 14** (`p5-carve-proof-3`: 10 hooks incl. uplink last, 15-entry
+> manifest + probe, hygiene clean, tick-0 trace `__p.x` Δ147.6, lum 159, zero
+> errors — `proofs/base-2d-mobile/p5-fork3-tick0.png`). Two bugs found by this
+> proof, both fixed: (1) birthWorld stamped placeholder slots/backdrop over
+> seed snapshots (gated on `opts.snapshot === undefined`, c6d997b4); (2) THE
+> P4 AUTOPSY — the P4 deploy-wait loop polled prod with the destructive
+> command itself (`until remove_step_hook uplink | grep LOAD-BEARING; sleep`),
+> and its first pre-deploy iteration deleted uplink from the live base; the
+> manifest-based refusal then printed green over the corpse. LAW: deploy polls
+> use a READ, never the guarded mutation. Uplink restored + P1/P2/P3 re-run
+> green on the healed base.
 
 **P6 — A carved game.** The method's existence proof: one real game made by
 subtraction + a small addition on top (e.g. tilt-cathedral's loop rebuilt
