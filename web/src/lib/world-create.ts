@@ -117,8 +117,11 @@ export async function birthWorld(opts: {
   }))
   // BORN WITH ITS SLOTS: seed the blank placeholder nodes so the sandbox is
   // alive from frame one and the anatomy is named; a connecting AI builds
-  // WITHIN the slots.
-  {
+  // WITHIN the slots. ONLY for blank births — a world born FROM a full seed
+  // snapshot (fork / base / cartridge) already IS its anatomy: stamping the
+  // blank slots over it replaced the seed's player/world/entities/rules/hud
+  // with stubs and stacked a second backdrop (the P5 fork autopsy, Sep 14).
+  if (opts.snapshot === undefined) {
     const { applyCommandToSnapshot } = await import('@/app/api/engine/space-store')
     const { placeholderSeedCommands, baseBackdropSeedCommands } = await import('@/app/engine/placeholder-nodes')
     for (const seed of placeholderSeedCommands(Date.now())) {

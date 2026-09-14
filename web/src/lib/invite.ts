@@ -24,13 +24,23 @@ export interface InviteOpts {
   tags?: string[]
 }
 
+/** P5 — the base matrix wired to the door: cells that EXIST seed creation.
+ *  A cell ships only when its base passed the full harness (P1–P4); until
+ *  then its toggles keep the research pathway. */
+const BASE_CELLS: Array<{ target: 'desktop' | 'mobile'; d3: boolean; base: string }> = [
+  { target: 'mobile', d3: false, base: 'base-2d-mobile' },
+]
+const cellBase = (o: InviteOpts): string | null =>
+  BASE_CELLS.find(c => c.target === (o.target ?? 'desktop') && c.d3 === !!o.d3)?.base ?? null
+
 const stage = (goal: string) =>
   `STAGE IT: first interview me briefly (${goal}), PROPOSE the plan in one message (name · foundation · target · visibility), get my yes, THEN act — announce each tool call before you run it.`
 
 function creationSpec(o: InviteOpts, base?: string): string {
   const kv: string[] = []
   kv.push(`"name":${o.newName ? `"${o.newName.replace(/"/g, '')}"` : '…'}`)
-  if (base) kv.push(`"base":"${base}"`)
+  const seed = base ?? cellBase(o) ?? undefined
+  if (seed) kv.push(`"base":"${seed}"`)
   else kv.push('"brief":…')
   if (o.target) kv.push(`"target":"${o.target}"`)
   if (o.visibility) kv.push(`"visibility":"${o.visibility === 'published' ? 'public' : 'private'}"`)
@@ -40,9 +50,11 @@ function creationSpec(o: InviteOpts, base?: string): string {
 
 function pathways(o: InviteOpts): string {
   const p: string[] = []
+  const cb = cellBase(o)
+  if (cb) p.push(`START FROM THE BASE, THEN CARVE: "${cb}" is a COMPLETE WORKING game (player, physics, camera, entities, rules, HUD, fx, audio, save — one node each, all proven). Create with {"base":"${cb}"} and SUBTRACT: worldData.baseManifest names every part, what it does, and what is safe to carve — remove what your vision doesn't need, replace the two painter visuals for your look. Load-bearing parts refuse removal (they are the spine). Carving a working world beats wiring a blank one — you cannot break input by deleting the weather`)
   if (o.d3) p.push(`I want 3D: build a raymarched foundation — read_guide {"section":"3d kit"} (world3/anim3, raymarching) before the first shader`)
-  if (o.target === 'mobile') p.push(`mobile-first: the world is born portrait 576×1024 — read_guide {"section":"mobile"} and build to FILL that rect, touch controls in mind`)
-  p.push(`before building from nothing, check the proven foundations: browse_shelf shows BASES (forkable templates) — seeding via "base" beats a blank start when one fits`)
+  if (o.target === 'mobile' && !cb) p.push(`mobile-first: the world is born portrait 576×1024 — read_guide {"section":"mobile"} and build to FILL that rect, touch controls in mind`)
+  if (!cb) p.push(`before building from nothing, check the proven foundations: browse_shelf shows BASES (forkable templates) — seeding via "base" beats a blank start when one fits`)
   if (o.access === 'open') p.push(`I chose OPEN BUILDING: the world launches PUBLIC and other members may build inside it (they join with the editing membership) — and a public world's code is commons-readable within the platform. Explain that contract to me in one line before you create`)
   if (o.access === 'proprietary') p.push(`I want this PROPRIETARY (◆ closed-source): that takes the IP-control membership on my account — check it, and tell me about cartridge.cafe/suite if I don't hold it`)
   if (o.tags?.length) p.push(`the game's genre: ${o.tags.join(', ')} — RESEARCH before building: browse_shelf for worlds of that kind and read_world_source on the closest ones (public code is the platform commons), so the foundation starts from proven patterns; after birth, file it in the taxonomy with set_card (ask help {"verb":"set_card"} for the shape)`)
