@@ -46,10 +46,10 @@ export async function renderSnapshot(
   snap: RenderSnapshot,
   opts: RenderOpts,
 ): Promise<Record<string, unknown>> {
-  // LOCAL-FIRST (Galen, Aug 29: 'always local, not the railway service'): if the
-  // local Metal render is up (render-service/start-local.sh) it wins — a probe
-  // never leaves the machine. Railway is only the fallback when local is down.
-  // A 700ms health race decides; the result is cached per-process.
+  // LOCAL ONLY (the Railway cloud eye was retired Sep 1 and its service
+  // DELETED Sep 14 — nothing to fall back to). RENDER_SERVICE_URL survives
+  // solely as the dev-env localhost pointer; a 700ms health race confirms the
+  // local eye is up, cached per-process.
   const configured = process.env.RENDER_SERVICE_URL
   const secret = process.env.RENDER_SECRET
   const base = await preferLocal(configured)
@@ -78,10 +78,10 @@ export async function renderSnapshot(
   if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the __vf state trace per sampled tick
   try {
     const ctrl = new AbortController()
-    // 90s, not 25: Railway's SOFTWARE Vulkan (lavapipe) spends ~23s on
-    // pipeline compile for even a trivial world — 25s aborted EVERY prod
-    // probe and reported it as 'unreachable' (the Aug 29 mystery). The local
-    // Metal eye answers in seconds; the cloud fallback just needs the time.
+    // 90s: the local Metal eye answers most probes in seconds, but a heavy
+    // world's first pipeline compile can take a while — a short abort would
+    // report a healthy eye as 'unreachable' (the Aug 29 mystery, back when
+    // this was the cloud's lavapipe).
     const timer = setTimeout(() => ctrl.abort(), 90_000)
     const r = await fetch(url, {
       method: 'POST',

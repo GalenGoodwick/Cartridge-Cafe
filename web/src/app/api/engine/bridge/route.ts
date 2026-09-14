@@ -30,7 +30,7 @@ import { handleCardTypes, handleProposeCardType, handleSetCard } from '../cards-
 import { validateWorldDoc, worldDocFacets, type WorldDoc } from '@/app/engine/world-config'   // unified world: pure schema
 import { worldSolve, planRects } from '@/app/engine/world-solve'                              // unified world: pure solve
 
-export const maxDuration = 120   // render probes ride this route — lavapipe needs ~25-60s (see render-service.ts)
+export const maxDuration = 120   // render probes ride this route — a heavy world's headless run needs time (see render-service.ts)
 
 /** SERVER-SIDE WGSL HAZARD SCAN — the quarantine feedback a HEADLESS builder
  *  never gets. Browser compile results only reach the bridge when a live tab is
@@ -223,7 +223,7 @@ async function fetchShellIdentity(shellName: string, req: NextRequest): Promise<
 // skin, which sit off the 512 grid, hook ids, worldData keys, and a WARNINGS list
 // naming the exact recurring mistakes. The CHEAP eyes: instant, always available
 // on Vercel (no GPU). For the FULL eyes (actual rendered pixels + PNG), an off-box
-// AI now uses {type:"render_probe"} → the Railway render-service (see #12 below).
+// AI now uses {type:"render_probe"} → the LOCAL render eye (see #12 below).
 // describe stays the fast structural pre-check; render_probe is the pixel truth.
 type DescribeSnap = { fields?: Array<Record<string, unknown>>; visualTypes?: Array<{ name?: string; wgsl?: string }>; modules?: unknown[]; stepHooks?: Array<{ id?: string }>; worldData?: Record<string, unknown>; worldParams?: Record<string, unknown> } | null | undefined
 function describeWorld(snapshot: DescribeSnap, extra: Record<string, unknown>) {
