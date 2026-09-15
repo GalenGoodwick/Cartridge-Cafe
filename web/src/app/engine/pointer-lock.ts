@@ -45,6 +45,23 @@ export function usePointerLock(
     // let the next deliberate click re-request the plain lock once the cooldown ends.
     const isWebKit = /apple/i.test(navigator.vendor || '')
 
+    // LOCK-FLOW TELEMETRY (Galen, Sep 15: "we STILL have the cursor lock
+    // issue" — and no headless instrument can see Safari's pointer lock, so
+    // the PLAYER'S tab reports which branch actually fired). Rides the same
+    // quarantine channel that bridges live faults to the building AI.
+    // Throttled per-stage; silent failure (telemetry never breaks play).
+    const tattled = new Map<string, number>()
+    const tattle = (stage: string, detail: string) => {
+      const now = performance.now()
+      if ((tattled.get(stage) ?? -1e9) > now - 30_000) return
+      tattled.set(stage, now)
+      try {
+        void fetch('/api/engine/quarantine', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phase: 'lock-flow', url: location.href,
+            hazards: [{ name: stage, reason: `${detail} · webkit:${isWebKit} · fs:${!!document.fullscreenElement} · ${navigator.userAgent.slice(0, 80)}` }] }) })
+      } catch { /* never break play for telemetry */ }
+    }
+
     // relative deltas while locked → worldData.mouse_dx/dy (world-sandbox exposes
     // them as input.lookX/lookY). Untouched for non-mouse-look worlds (never locked).
     const onMove = (e: MouseEvent) => {
@@ -54,7 +71,7 @@ export function usePointerLock(
       sim.worldData['mouse_dx'] = ((sim.worldData['mouse_dx'] as number) || 0) + e.movementX
       sim.worldData['mouse_dy'] = ((sim.worldData['mouse_dy'] as number) || 0) + e.movementY
     }
-    const onLockChange = () => { canvas.style.cursor = isLocked() ? 'none' : 'grab'; if (isLocked()) fsTried = false }
+    const onLockChange = () => { canvas.style.cursor = isLocked() ? 'none' : 'grab'; if (isLocked()) { fsTried = false; tattle('locked', 'pointer lock ENGAGED') } else { tattle('unlocked', 'pointer lock released') } }
 
     // ── THE SAFARI PATH ──
     // ONE-SHOT guard: a lock that keeps failing (headless, a browser mid-cooldown
@@ -110,15 +127,17 @@ export function usePointerLock(
     // click after entering (the "click doesn't work when I enter" bug); 250ms
     // covers the entering click and frees the human's first real one.
     const engage = (): boolean => {
-      if (!mouseLook() || isLocked()) return false
-      if (performance.now() - swapAtRef.current < 250) return false
+      if (isLocked()) return false
+      if (!mouseLook()) { tattle('no-mouselook', 'click on a world with no __mouseLook visible on the main thread') ; return false }
+      if (performance.now() - swapAtRef.current < 250) { tattle('entry-gate', 'click inside the 250ms swap gate') ; return false }
+      tattle('requesting', 'requestPointerLock sent')
       // Chrome returns a promise that REJECTS on failure → cooldown retry.
       // Safari returns nothing and fires pointerlockerror (onErr, below).
       const req = (canvas.requestPointerLock as (() => Promise<void> | void))?.()
       if (req && typeof (req as Promise<void>).then === 'function') {
         (req as Promise<void>).catch((e: Error) => {
-          if (isWebKit) fullscreenThenLock()
-          else { console.warn('[cafe] pointer lock refused — auto-retrying:', e?.message); armRetry() }
+          if (isWebKit) { tattle('refused-webkit', 'plain lock rejected: ' + (e?.message ?? '?') + ' — going fullscreenThenLock'); fullscreenThenLock() }
+          else { console.warn('[cafe] pointer lock refused — auto-retrying:', e?.message); tattle('refused-retry', 'rejected: ' + (e?.message ?? '?') + ' — armed 1.4s retry'); armRetry() }
         })
       }
       return true
@@ -133,8 +152,8 @@ export function usePointerLock(
       // (its lock needs fullscreen); Chrome/Firefox get the one-shot cooldown
       // retry — never storm, never force-fullscreen.
       if (!mouseLook()) { console.warn('[cafe] pointerlockerror — the browser refused the cursor bind'); return }
-      if (isWebKit) { console.warn('[cafe] pointerlockerror — retrying via fullscreen (Safari path)'); fullscreenThenLock() }
-      else armRetry()
+      if (isWebKit) { console.warn('[cafe] pointerlockerror — retrying via fullscreen (Safari path)'); tattle('error-webkit', 'pointerlockerror — trying fullscreen path'); fullscreenThenLock() }
+      else { tattle('error-retry', 'pointerlockerror — armed retry'); armRetry() }
     }
 
     canvas.addEventListener('pointerdown', onDown, true)
