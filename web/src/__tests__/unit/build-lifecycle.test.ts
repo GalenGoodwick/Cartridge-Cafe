@@ -28,8 +28,9 @@ describe('build lifecycle — required checks', () => {
     expect(req).toEqual(expect.arrayContaining(['p-score', 'p-lives', 'p-win']))
   })
 
-  it('performance is required only when a target is declared', () => {
+  it('performance is required for every INTERACTIVE world (the temp gate) and any declared target', () => {
     expect(requiredChecks(undefined, facts({ fieldCount: 1, hasVisual: true }))).not.toContain('performance')
+    expect(requiredChecks(undefined, facts({ fieldCount: 1, hasVisual: true, hookCount: 1, interactive: true }))).toContain('performance')
     expect(requiredChecks(undefined, facts({ fieldCount: 1, hasVisual: true, perfTargetMs: 16 }))).toContain('performance')
   })
 })

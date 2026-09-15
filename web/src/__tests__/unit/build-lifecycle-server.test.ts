@@ -8,7 +8,9 @@ const gameSnap: SnapshotLike = {
   stepHooks: [{ code: 'const wd=sim.worldData; if(wd.input.pressed.space) wd.__score=(wd.__score||0)+1;' }],
   visualTypes: [{ name: 'solid', wgsl: 'fn visual_solid(uv: vec2f, sdf: f32, col: vec4f, time: f32, p: vec4f, behind: vec4f) -> vec4f { return col; }' },
                 { name: 'glow', wgsl: 'fn visual_glow(uv: vec2f, sdf: f32, col: vec4f, time: f32, p: vec4f, behind: vec4f) -> vec4f { return col; }' }],
-  worldData: { __bridge_rev: 7, spec: gameSpec },
+  // __budget: the temp gate needs a fresh live-tab measurement or the world
+  // cannot ready (performance is required for every interactive world now)
+  worldData: { __bridge_rev: 7, spec: gameSpec, __budget: { frameMs: 18, at: Date.now() } },
 }
 
 describe('build-lifecycle-server — snapshot → lifecycle', () => {

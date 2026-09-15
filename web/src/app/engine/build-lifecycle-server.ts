@@ -74,6 +74,7 @@ export function worldFactsFromSnapshot(snap: SnapshotLike): WorldFacts {
   if (snap.worldData?.['dockstarBay']) {
     facts.dockstarNodes = dockstarNodeIds(snap as never)
   }
+  if (snap.worldData?.['__liveBug']) facts.hasLiveBugStamp = true
   return facts
 }
 
@@ -106,6 +107,40 @@ export function serverChecks(snap: SnapshotLike): ValidationResult[] {
       environment: 'server-shape',
       details: brokenAttached.length ? [`${brokenAttached.length} field(s) use a non-defining visual → renders black: ${brokenAttached.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}`] : [],
     })
+  }
+  // PERFORMANCE (the temp gate): a live tab writes worldData.__budget every
+  // ~2s — the only device-honest frame measurement we have. Fresh + under
+  // the wall → passed; over → failed with the cheapen hint; absent/stale →
+  // 'unavailable' (teaches how to measure) — never silently skipped.
+  {
+    const hooks2 = snap.stepHooks ?? []
+    const interactive2 = hooks2.length > 0
+    if (interactive2) {
+      const b = snap.worldData?.['__budget'] as { frameMs?: number; at?: number } | undefined
+      const fresh = !!b && typeof b.frameMs === 'number' && typeof b.at === 'number' && Date.now() - b.at < 10 * 60_000
+      if (fresh) {
+        const over = (b!.frameMs as number) > 40
+        out.push({ revision, check: 'performance', status: over ? 'failed' : 'passed', environment: 'live-tab',
+          details: [over
+            ? `measures ${Math.round(b!.frameMs as number)}ms/frame live (budget ~25ms, wall 40ms) — cheapen: fewer march steps, region-gate the SDF, populations in gpuPopulation not fields`
+            : `${Math.round(b!.frameMs as number)}ms/frame live`] })
+      } else {
+        out.push({ revision, check: 'performance', status: 'unavailable', environment: 'live-tab',
+          details: ['no fresh live measurement — open the world in a real tab (or agent playtest); a live tab writes worldData.__budget every ~2s, then re-run complete_build'] })
+      }
+    }
+  }
+  // NO LIVE BUGS (Galen: completion refuses while a real tab's bug call
+  // stands): the quarantine route pins __liveBug to the revision it saw
+  // break. The check fails ONLY at that revision — any fix edit moves the
+  // revision and the stamp goes stale (passes, with the history in details).
+  {
+    const lb = snap.worldData?.['__liveBug'] as { at?: number; revision?: string; reason?: string; phase?: string } | undefined
+    if (lb?.revision) {
+      const live = lb.revision === revision
+      out.push({ revision, check: 'no-live-bugs', status: live ? 'failed' : 'passed', environment: 'live-tab',
+        details: [ (live ? 'a real tab reported this exact revision broken: ' : 'stale (earlier revision was fixed): ') + `${lb.phase ?? '?'} — ${String(lb.reason ?? '').slice(0, 200)}` ] })
+    }
   }
   // DOCKSTAR TRIAGE (auto, snapshot-pure): bay empty + ledger complete + no
   // ghosts/bad targets. The server computes it, so it can never be claimed.

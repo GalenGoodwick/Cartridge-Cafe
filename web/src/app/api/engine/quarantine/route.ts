@@ -197,6 +197,29 @@ export async function POST(req: NextRequest) {
       } catch { /* telemetry never throws */ }
     }
   }
+  // LIVE BUG STAMP (Galen: "AI complete gate needs no-bug-calls pass"): a
+  // runtime fault seen by a REAL TAB pins worldData.__liveBug to the current
+  // content revision. The no-live-bugs server check fails while the stamp
+  // matches the live revision — so completion is refused until the build
+  // actually CHANGES (a fix edit moves the revision and clears the check).
+  if (['cc-fault:quarantine', 'window-error', 'cc-fault'].some(ph => String(report.phase ?? '').startsWith(ph.replace(':quarantine', '')))) {
+    const slug2 = (typeof report.scene === 'string' && report.scene)
+      || (report.url?.match(/[?&]w=space%3A([^&]+)/)?.[1] ?? report.url?.match(/\/space\/([^/?#]+)/)?.[1] ?? null)
+    if (slug2) {
+      try {
+        const sp2 = await prisma.playerSpace.findUnique({ where: { slug: decodeURIComponent(String(slug2)).toLowerCase() }, select: { id: true, snapshot: true } })
+        if (sp2) {
+          const { worldRevision } = await import('@/app/engine/build-lifecycle-server')
+          const snap2 = sp2.snapshot as { worldData?: Record<string, unknown> } | null
+          const revision = worldRevision((snap2 ?? {}) as never)
+          const reason = hazards.map(h => `${h.name}: ${String(h.reason ?? '').slice(0, 160)}`).join(' | ').slice(0, 400)
+          const { applyCommandToSnapshot } = await import('../space-store')
+          await applyCommandToSnapshot(sp2.id, { type: 'set_world_data', __internal: true, __admin: true,
+            data: { __liveBug: { at: Date.now(), revision, phase: report.phase, reason } } })
+        }
+      } catch { /* telemetry never throws */ }
+    }
+  }
   return NextResponse.json({ ok: true, logged: hazards.length, healed })
 }
 

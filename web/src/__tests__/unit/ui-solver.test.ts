@@ -97,23 +97,23 @@ describe('row flow — natural widths + flex distribution', () => {
 
 describe('anchors — uv seats, grid points, entities, alignment', () => {
   it('uv seat (−1..+1, y down) resolves to grid units, center-pinned', () => {
-    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { x: 0, y: 0 }, w: 100, h: 50, children: [] }] })
+    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { x: 0, y: 0 }, w: 100, h: 50, children: [{ kind: 'meter', value: 1 }] }] })
     expect(s.rects['p']).toMatchObject({ x: GRID / 2 - 50, y: GRID / 2 - 25, w: 100, h: 50 })
   })
   it('align tl pins the top-left corner to the anchor', () => {
-    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 10, gy: 20 }, align: 'tl', w: 100, h: 50, children: [] }] })
+    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 10, gy: 20 }, align: 'tl', w: 100, h: 50, children: [{ kind: 'meter', value: 1 }] }] })
     expect(s.rects['p']).toMatchObject({ x: 10, y: 20 })
   })
   it('entity anchor reads the __entities projection (sx,sy in 0..512)', () => {
     const s = solve(
-      { rev: 1, root: [{ id: 'tip', kind: 'panel', anchor: { entity: 'helm', dy: -30 }, align: 'bc', w: 60, h: 20, children: [] }] },
+      { rev: 1, root: [{ id: 'tip', kind: 'panel', anchor: { entity: 'helm', dy: -30 }, align: 'bc', w: 60, h: 20, children: [{ kind: 'meter', value: 1 }] }] },
       { entities: [{ id: 7, label: 'helm', sx: 256, sy: 300 }] },
     )
     // bottom-center pinned 30 units above the entity
     expect(s.rects['tip']).toMatchObject({ x: 256 - 30, y: 300 - 30 - 20 })
   })
   it('percent width resolves against the square', () => {
-    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: '25%', h: 10, children: [] }] })
+    const s = solve({ rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: '25%', h: 10, children: [{ kind: 'meter', value: 1 }] }] })
     expect(s.rects['p'].w).toBeCloseTo(GRID / 4, 6)
   })
 })
@@ -258,7 +258,7 @@ describe('panels table — UI EDIT’s hit list', () => {
   it('top-level panels expose rect + affordances; children do not appear', () => {
     const s = solve({ rev: 1, root: [
       { id: 'a', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, pad: 0, children: [{ id: 'inner', kind: 'text', text: 'X' }] },
-      { id: 'b', kind: 'panel', anchor: { gx: 200, gy: 0 }, align: 'tl', w: 80, h: 40, draggable: false, collapsible: false, children: [] },
+      { id: 'b', kind: 'panel', anchor: { gx: 200, gy: 0 }, align: 'tl', w: 80, h: 40, draggable: false, collapsible: false, children: [{ kind: 'meter', value: 1 }] },
     ] })
     expect(s.panels.map((p) => p.id)).toEqual(['a', 'b'])
     expect(s.panels[0]).toMatchObject({ draggable: true, collapsible: true, collapsed: false, ...s.rects['a'] })
@@ -321,7 +321,7 @@ describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 2
 
   it('vx:0 reaches the TRUE left edge of a wide viewport (outside the square)', () => {
     const s = solveUi({
-      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40, children: [{ kind: 'meter', value: 1 }] }] },
       viewport: vpWide,
     })
     expect(s.rects['p'].x).toBeCloseTo(256 - 910 / 2, 5)
@@ -330,7 +330,7 @@ describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 2
 
   it('vx:1 align br pins the panel inside the bottom-right viewport corner', () => {
     const s = solveUi({
-      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 1 }, align: 'br', w: 100, h: 40 }] },
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 1 }, align: 'br', w: 100, h: 40, children: [{ kind: 'meter', value: 1 }] }] },
       viewport: vpWide,
     })
     expect(s.rects['p'].x + s.rects['p'].w).toBeCloseTo(256 + 910 / 2, 5)
@@ -339,7 +339,7 @@ describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 2
 
   it('viewport-anchored panels clamp to the VIEWPORT minus insets, not the square', () => {
     const s = solveUi({
-      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 0, vy: 0 }, align: 'tl', w: 100, h: 40, children: [{ kind: 'meter', value: 1 }] }] },
       viewport: vpWide,
       insets: { left: 10, top: 6 },
     })
@@ -349,7 +349,7 @@ describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 2
 
   it('square-anchored panels keep the OLD clamp exactly (never leave the square)', () => {
     const s = solveUi({
-      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, h: 40 }] },
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { gx: 0, gy: 0 }, align: 'tl', w: 100, h: 40, children: [{ kind: 'meter', value: 1 }] }] },
       viewport: vpWide,
     })
     expect(s.rects['p'].x).toBeGreaterThanOrEqual(0)
@@ -358,7 +358,7 @@ describe('viewport anchoring (vx/vy — the responsive band layer, fit law Aug 2
 
   it('no viewport given: vx/vy degrade to square edges (never NaN, never off-square)', () => {
     const s = solveUi({
-      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 0 }, align: 'tr', w: 80, h: 30 }] },
+      ui: { rev: 1, root: [{ id: 'p', kind: 'panel', anchor: { vx: 1, vy: 0 }, align: 'tr', w: 80, h: 30, children: [{ kind: 'meter', value: 1 }] }] },
     })
     expect(s.rects['p'].x + s.rects['p'].w).toBeCloseTo(512, 5)
     expect(s.rects['p'].y).toBeCloseTo(0, 5)

@@ -40,6 +40,9 @@ export interface WorldFacts {
   /** DOCKSTAR world (worldData.dockstarBay): the organized nodes owed green
    *  evidence + the triage gate. Absent for ordinary worlds. */
   dockstarNodes?: string[]
+  /** a real tab reported a runtime fault (worldData.__liveBug) — the
+   *  no-live-bugs check joins the required set until the build changes */
+  hasLiveBugStamp?: boolean
 }
 
 /** The core checks a build can be asked for. Acceptance-scenario ids (from the
@@ -67,7 +70,11 @@ export function requiredChecks(spec: BuildSpec | undefined, facts: WorldFacts): 
     if (spec) for (const c of acceptanceFromSpec(spec)) req.push(c.id)
     if (needsRestart(spec)) req.push('restart')
   }
-  if (facts.perfTargetMs != null) req.push('performance')
+  // PERFORMANCE IS REQUIRED for anything interactive (Galen, Sep 14: "temp
+  // check gate needs to be in place before ai complete" — MARBLE lagged a
+  // desktop and completed anyway because no measurement existed). Absence of
+  // evidence now refuses completion instead of skipping the check.
+  if (facts.interactive || facts.perfTargetMs != null) req.push('performance')
   // DOCKSTAR triage law: the bay must be empty + accounted (server-computed)
   // and EVERY organized node must carry green evidence — publish rides
   // brief_done, brief_done rides these.
@@ -75,6 +82,7 @@ export function requiredChecks(spec: BuildSpec | undefined, facts: WorldFacts): 
     req.push('triage-complete')
     for (const id of facts.dockstarNodes) req.push(`node-green:${id}`)
   }
+  if (facts.hasLiveBugStamp) req.push('no-live-bugs')
   return [...new Set(req)]
 }
 

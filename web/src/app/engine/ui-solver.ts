@@ -404,6 +404,26 @@ function anchorTL(node: UiNode, w: number, h: number, entities: SolveInput['enti
 }
 
 /** THE SOLVE — worldData.ui (+ overrides + entity anchors) → the rect table */
+/** true when a node tree carries no visible content at all (no text, no
+ *  meter/image/button label, no non-empty descendants) — the preset law's
+ *  vanish case. A button with a label or any meter/image counts as content. */
+export function isEmptyBox(node: UiNode): boolean {
+  return emptyTree(node)
+}
+function emptyLeaf(node: UiNode): boolean {
+  const n = node as { text?: unknown; kind?: string; src?: unknown; value?: unknown }
+  if (typeof n.text === 'string' && n.text.trim().length > 0) return false
+  if (n.kind === 'meter' || n.kind === 'image' || n.kind === 'slider') return false
+  if (n.kind === 'button') return typeof n.text !== 'string' || n.text.trim().length === 0
+  return true
+}
+function emptyTree(node: UiNode): boolean {
+  if (!emptyLeaf(node)) return false
+  const kids = (node.children ?? []).filter(k => k && !k.hidden)
+  if (kids.length === 0) return true
+  return kids.every(k => emptyTree(k))
+}
+
 export function solveUi(input: SolveInput): SolvedUi {
   const { ui, entities, overrides } = input
   const out: SolvedUi = { rev: ui.rev ?? 0, rects: {}, boxes: [], runs: [], meters: [], hits: [], panels: [] }
@@ -412,6 +432,12 @@ export function solveUi(input: SolveInput): SolvedUi {
 
   for (const panel of ui.root ?? []) {
     if (!panel || panel.hidden) continue
+    // THE PRESET LAW (Galen, Sep 14: "UI boxes all need preset — merge, fill
+    // text, inner visual, or vanish"): a box with NOTHING in it — no text, no
+    // non-empty children, no meter/image content — must VANISH: it neither
+    // renders nor catches input. An empty glass box hanging on screen is a
+    // build bug, never a layout outcome.
+    if (isEmptyBox(panel)) continue
     const id = panel.id ?? `_p${ctx.auto++}`
     const ov = overrides?.[id] ?? {}
     const collapsed = ov.collapsed === true
