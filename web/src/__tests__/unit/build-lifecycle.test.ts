@@ -18,7 +18,7 @@ const gameSpec = normalizeBuildSpec({
 
 describe('build lifecycle — required checks', () => {
   it('a render-only world needs shader-compile + render-frame', () => {
-    expect(requiredChecks(undefined, facts({ fieldCount: 3, hasVisual: true }))).toEqual(['shader-compile', 'render-frame'])
+    expect(requiredChecks(undefined, facts({ fieldCount: 3, hasVisual: true }))).toEqual(['visual-gate', 'shader-compile', 'render-frame'])
   })
 
   it('an interactive game additionally needs input, its acceptance scenarios, and restart', () => {

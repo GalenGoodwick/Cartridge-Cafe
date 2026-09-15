@@ -49,6 +49,7 @@ describe('build-lifecycle-server — snapshot → lifecycle', () => {
 
   it('with the eye supplying the browser checks at the current rev → ready', () => {
     const browser = stampResults(gameSnap, [
+      { check: 'visual-gate', status: 'passed', environment: 'real-tab' },
       { check: 'render-frame', status: 'passed', environment: 'browser-webgpu' },
       { check: 'input-response', status: 'passed', environment: 'playthrough' },
       { check: 'p-score', status: 'passed', environment: 'playthrough' },
