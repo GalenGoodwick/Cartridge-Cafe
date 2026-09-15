@@ -5,10 +5,12 @@
 // regressing). What lives here:
 //   · the relative-delta capture (movementX/Y → worldData.mouse_dx/dy) while locked
 //   · the cursor hide on lock
-//   · the click-to-lock GATE: never on the entry click (the one that swapped the
-//     world in) — only a deliberate click ≥600ms later
+//   · the click-to-lock GATE: never on the click that carried the entry (the one
+//     that swapped the world in) — any deliberate click ≥250ms later engages
 //   · the SWALLOW of that engaging click, so re-capturing the cursor never fires a
 //     game press (the "misfire" — a mouse-look world shooting the instant you re-lock)
+//   · the COOLDOWN RETRY: a refused lock (Chrome's ~1.25s post-Esc cooldown) arms
+//     one ~1.4s retry, so a too-soon click still ends in a bound cursor
 //   · THE SAFARI PATH: Safari/WebKit refuses pointer lock unless the element is in
 //     FULLSCREEN. So we try the plain lock (Chrome/Firefox get it, staying in the
 //     grid frame); on refusal we go fullscreen on the frame, then lock once there.
@@ -86,18 +88,37 @@ export function usePointerLock(
       } catch { document.removeEventListener('fullscreenchange', onFs); awaitingFs = false }
     }
 
+    // THE COOLDOWN RETRY (Galen: "I just want the click to work when I enter
+    // the game, or exit/enter, or enter from any way"): Chrome rejects a
+    // re-lock for ~1.25s after an Esc unlock — a click in that window used to
+    // fail SILENTLY (the dead click on exit→re-enter). A refused request now
+    // arms ONE retry ~1.4s out; if the player is still here (mouse-look world,
+    // unlocked, page visible) the lock takes without needing another click.
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    const armRetry = () => {
+      if (retryTimer) return
+      retryTimer = setTimeout(() => {
+        retryTimer = null
+        if (!isLocked() && mouseLook() && document.visibilityState === 'visible') lockNow()
+      }, 1400)
+    }
+
     // engage: true iff THIS click should take the lock (mouse-look world, not
-    // already locked, ≥600ms past the world swap — never the entry click).
+    // already locked). The swap gate only needs to swallow the click that
+    // CARRIED the entry — that click's own bubble lands within a frame of the
+    // swap stamp. The old 600ms gate also ate the player's first deliberate
+    // click after entering (the "click doesn't work when I enter" bug); 250ms
+    // covers the entering click and frees the human's first real one.
     const engage = (): boolean => {
       if (!mouseLook() || isLocked()) return false
-      if (performance.now() - swapAtRef.current < 600) return false
-      // Chrome returns a promise that REJECTS on failure → fullscreen fallback.
+      if (performance.now() - swapAtRef.current < 250) return false
+      // Chrome returns a promise that REJECTS on failure → cooldown retry.
       // Safari returns nothing and fires pointerlockerror (onErr, below).
       const req = (canvas.requestPointerLock as (() => Promise<void> | void))?.()
       if (req && typeof (req as Promise<void>).then === 'function') {
         (req as Promise<void>).catch((e: Error) => {
           if (isWebKit) fullscreenThenLock()
-          else console.warn('[cafe] pointer lock refused (will retry on next click):', e?.message)
+          else { console.warn('[cafe] pointer lock refused — auto-retrying:', e?.message); armRetry() }
         })
       }
       return true
@@ -108,11 +129,12 @@ export function usePointerLock(
     const onDown = () => { fsTried = false; if (engage()) lockSwallow.current = true }
     const onUp = () => { lockSwallow.current = false }
     const onErr = () => {
-      // the browser refused the direct lock. Only WebKit gets the fullscreen retry
-      // (its lock needs fullscreen); on Chrome/Firefox we log and let the next
-      // click try the plain lock again — never storm, never force-fullscreen.
-      if (mouseLook() && isWebKit) { console.warn('[cafe] pointerlockerror — retrying via fullscreen (Safari path)'); fullscreenThenLock() }
-      else console.warn('[cafe] pointerlockerror — the browser refused the cursor bind')
+      // the browser refused the direct lock. WebKit gets the fullscreen retry
+      // (its lock needs fullscreen); Chrome/Firefox get the one-shot cooldown
+      // retry — never storm, never force-fullscreen.
+      if (!mouseLook()) { console.warn('[cafe] pointerlockerror — the browser refused the cursor bind'); return }
+      if (isWebKit) { console.warn('[cafe] pointerlockerror — retrying via fullscreen (Safari path)'); fullscreenThenLock() }
+      else armRetry()
     }
 
     canvas.addEventListener('pointerdown', onDown, true)
@@ -121,6 +143,7 @@ export function usePointerLock(
     document.addEventListener('pointerlockchange', onLockChange)
     document.addEventListener('pointerlockerror', onErr)
     return () => {
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
       canvas.removeEventListener('pointerdown', onDown, true)
       canvas.removeEventListener('pointerup', onUp, true)
       document.removeEventListener('mousemove', onMove)
