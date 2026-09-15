@@ -293,12 +293,19 @@ const triageHandler: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
     if (!reason) return { type: cmd.type, error: '"deleted" needs {reason: "why this primitive is not part of the vision"} — the accounting keeps the why' }
     entry.reason = reason.slice(0, 200)
   }
-  // atomic act: remove the prim (if still present) + append the ledger entry
+  // atomic act: remove the prim (if still present) + append the ledger entry.
+  // remove_step_hook honors the nodes law even internally — claim first, and
+  // REFUSE the whole act if removal fails (MARBLE lesson: the first version
+  // ignored this result and left every prim in the world while the ledger
+  // said clean; the gate caught it, but the verb must be honest itself).
   const present = primsInSnapshot(s as never).find(p => p.id === prim)
   if (present?.kind === 'hook') {
-    await applyCommandToSnapshot(auth.spaceId!, { type: 'remove_step_hook', hookId: prim, __internal: true })
+    await applyCommandToSnapshot(auth.spaceId!, { type: 'claim_node', id: prim, __internal: true })
+    const rm = await applyCommandToSnapshot(auth.spaceId!, { type: 'remove_step_hook', hookId: prim, __internal: true }) as { ok?: boolean; error?: string } | undefined
+    if (rm && rm.ok === false) return { type: cmd.type, error: `triage refused — the primitive would not remove: ${rm.error ?? 'unknown'}. Nothing was recorded.` }
   } else if (present?.kind === 'field') {
-    await applyCommandToSnapshot(auth.spaceId!, { type: 'delete_field', fieldId: prim, __internal: true, force: true })
+    const rm = await applyCommandToSnapshot(auth.spaceId!, { type: 'delete_field', fieldId: prim, __internal: true, force: true }) as { ok?: boolean; error?: string } | undefined
+    if (rm && rm.ok === false) return { type: cmd.type, error: `triage refused — the primitive field would not delete: ${rm.error ?? 'unknown'}. Nothing was recorded.` }
   }
   const ledger = [...ledgerOf(s as never), entry]
   await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { triage: ledger } })

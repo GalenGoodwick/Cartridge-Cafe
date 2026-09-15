@@ -186,6 +186,10 @@ export async function renderLocal(snap, opts = {}) {
   const payload = { state: snap, size: opts.size ?? 256 }
   if (opts.ticks != null) payload.ticks = opts.ticks
   if (typeof opts.input === 'string' || Array.isArray(opts.input)) payload.input = opts.input
+  // the eye defaults input to start at NTICKS/3 (hands-off baseline phase) —
+  // a timeline caller that means tick 0 must say so (the MARBLE probe lesson:
+  // a 0..100 drive silently became 20 effective ticks)
+  if (opts.inputStart != null) payload.inputStart = opts.inputStart
   if (opts.trace) payload.trace = true   // PLAYTHROUGH: return the state trace per sampled tick
   const ctrl = new AbortController()
   // 200s: the FIRST render on a software GPU can pay a long pipeline compile;

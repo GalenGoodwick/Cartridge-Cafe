@@ -99,7 +99,7 @@ for (const id of nodes) {
 // ── the eye: bright frame + probe movement → render/input evidence ──
 const snap = shapeSnapshot(raw)
 const probe = snap.worldData?.baseManifest?.probe || wd.probe || null
-const r = await eye.renderLocal(snap, { input: probe?.drive, ticks: 240, trace: true, size: 256 })
+const r = await eye.renderLocal(snap, { input: probe?.drive, ticks: 240, trace: true, size: 256, inputStart: 1 })
 const tr = r?.stateTrace ?? []
 const key = probe?.moveKey
 const vals = key ? tr.map(s2 => s2?.[key]).filter(v => typeof v === 'number') : []

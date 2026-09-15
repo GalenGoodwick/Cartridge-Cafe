@@ -126,7 +126,7 @@ Deno.serve({ port: PORT }, async (req) => {
 
   try {
     inflight = { at: Date.now(), deadline: HANG_MS_RENDER, what: "/render" };
-    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input, trace: body.trace });
+    const r = await renderProbe(state, { name: body.name, ticks: body.ticks, samples: body.samples, size: body.size, time: body.time, input: body.input, inputStart: body.inputStart, trace: body.trace });
     const { png, frames: _frames, ...struct } = r;
     return Response.json({ ...struct, image: r.ok && png ? encodeBase64(png) : null, imageMime: "image/png" });
   } catch (e) {
