@@ -327,7 +327,9 @@ const dockPhase: BridgeHandler = async ({ cmd, auth }) => {
   if (!gate.ok) return { type: cmd.type, error: gate.error }
   const prev = pd.phaseOf(s as never)
   const mode = pd.processOf(s as never)
-  const state = { id: target, mode, dockedAt: Date.now(), passed: prev?.passed ?? [] }
+  // progress survives undock: the passed list parks in __phasePassed between docks
+  const parked = ((s.worldData ?? {}) as Record<string, unknown>)['__phasePassed']
+  const state = { id: target, mode, dockedAt: Date.now(), passed: prev?.passed ?? (Array.isArray(parked) ? parked : []) }
   await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __phase: state } })
   // THE PACKET: this phase's verbs + gate + guide pointer, served at the gateway
   return { ok: true, type: cmd.type, phase: target, mode,
