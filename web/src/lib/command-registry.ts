@@ -175,6 +175,13 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
     params: { png_b64: 'base64 png (data-URL accepted), 2MB cap' },
     law: 'send a real frame of the running world, never a mockup — the card is the world’s honest face',
   },
+  owner_note: {
+    scope: 'owner', group: G.world,
+    desc: 'the keeper’s standing guidance — SIGNED and pinned into every bridge read (ownerNotes) so any AI building here always sees it; humans read the same words',
+    params: { text: 'the note (≤500 chars) — appends, last 10 kept', clear: 'true wipes all notes?' },
+    example: { type: 'owner_note', text: 'the nave SDF is load-bearing — extend past z=40 instead of carving it' },
+    law: 'never covert: attribution is stamped server-side and the channel is visible to everyone with world access',
+  },
   dock_phase: {
     scope: 'space', group: G.world,
     desc: 'enter a design phase (vision/frame/space/look/ui/behavior/tune/proof/ship/tend) — serves that phase’s verbs + gate; other verbs refuse while docked',

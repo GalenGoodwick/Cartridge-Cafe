@@ -407,6 +407,11 @@ export async function GET(req: NextRequest) {
     // step-hook failures a player's browser reported — surface them by DEFAULT so
     // the building AI sees WHY a hook does nothing instead of guessing (empty = fine)
     const hookErrors = (await loadGameSlot('hook-err:space:' + (auth.slug || '').toLowerCase())) as unknown[] | undefined
+    // OWNER NOTES (Galen, Sep 15: "owner note always") — the world keeper's
+    // signed, human-visible guidance, folded into EVERY bridge read so a
+    // builder's AI always sees the standing word. Never covert: attributed,
+    // pinned, and shown wherever hookErrors show.
+    const ownerNotes = (await loadGameSlot('owner-notes:space:' + (auth.slug || '').toLowerCase())) as unknown[] | undefined
     return NextResponse.json({
       space: { slug: auth.slug, name: auth.spaceName, viewUrl: req.nextUrl.origin + '/space/' + auth.slug },
       spaceId: auth.spaceId,
@@ -420,6 +425,7 @@ export async function GET(req: NextRequest) {
       modules: snapshot?.modules ?? [],
       stepHooks: snapshot?.stepHooks ?? [],
       hookErrors: Array.isArray(hookErrors) ? hookErrors : [],
+      ...(Array.isArray(ownerNotes) && ownerNotes.length ? { ownerNotes } : {}),
     })
   }
 

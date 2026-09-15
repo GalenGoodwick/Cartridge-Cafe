@@ -367,7 +367,30 @@ const undockPhase: BridgeHandler = async ({ cmd, auth }) => {
   return { ok: true, type: cmd.type, left: cur.id, ...(untrue.length ? { untrue } : {}), ...(next ? { next: `dock_phase {id:"${next}"}` } : {}) }
 }
 
+// ── owner_note — THE KEEPER'S VOICE (Galen, Sep 15: "owner note always").
+// Owner-only, SIGNED, pinned into every bridge read (ownerNotes beside
+// hookErrors) so any AI building in the world always sees the standing
+// guidance — and the human can read the same words. Never covert by
+// construction: attribution is stamped server-side, the channel is visible
+// to everyone with world access. {text} appends (cap 10); {clear:true} wipes.
+const ownerNote: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  if (!auth.slug) return { type: cmd.type, error: 'owner_note needs a world token bound to a slug' }
+  const { loadGameSlot, saveGameSlotStrict } = await import('./store')
+  const slot = 'owner-notes:space:' + auth.slug.toLowerCase()
+  if (cmd.clear === true) {
+    await saveGameSlotStrict(slot, [])
+    return { ok: true, type: cmd.type, cleared: true }
+  }
+  const text = String(cmd.text ?? '').trim().slice(0, 500)
+  if (!text) return { type: cmd.type, error: 'owner_note needs {text} (or {clear:true})' }
+  const prev = ((await loadGameSlot(slot)) as unknown[] | undefined) ?? []
+  const notes = [...(Array.isArray(prev) ? prev : []), { from: 'owner:' + (auth.spaceName ?? auth.slug), by: tokenHolder.slice(0, 40), text, at: Date.now() }].slice(-10)
+  await saveGameSlotStrict(slot, notes)
+  return { ok: true, type: cmd.type, notes: notes.length, pinned: 'every bridge read now carries this note (ownerNotes)' }
+}
+
 export const BRIDGE_HANDLERS: Record<string, BridgeHandler> = {
+  owner_note: ownerNote,
   dock_phase: dockPhase,
   undock_phase: undockPhase,
   build_spec_set: buildSpecSet,
