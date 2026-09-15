@@ -40,6 +40,7 @@ export type BarCtx = {
 
 export type BarActions = {
   back: () => void
+  engine: () => void
   edit: () => void
   create: () => void
   guide: () => void
@@ -108,6 +109,12 @@ const FLOW: Btn[] = [
   // ⚿ never IN-game (Galen, Sep 9): back out first — playing is playing
   { id: 'connect', tier: 0, tone: 'green', show: c => c.set !== 'engine' && c.set !== 'create' && !c.playing, active: c => c.aiLive,
     label: c => c.aiLive ? '⚡ AI LIVE' : '⚿ CONNECT AI', glyph: () => 'AI', testId: 'connect' },
+  // ⚙ ENGINE restored (Galen, Sep 15: "so people can use AI snapshot") —
+  // the engine seat carries 📸 SNAPSHOT → AI, the human-tab-as-eye that
+  // relay-mode AIs depend on. Signed-in only; shows in browse AND in-game
+  // (in-game is exactly when a snapshot is wanted).
+  { id: 'engine', tier: 1, tone: 'chip', show: c => !c.signedOut && c.set !== 'engine' && c.set !== 'create',
+    label: () => '⚙ ENGINE', glyph: () => '⚙', testId: 'engine' },
   // record rides right of the green door in-game (Galen)
   { id: 'rec', tier: 2, tone: 'rec', show: c => c.playing, label: c => c.recOn ? `● ${Math.floor(c.recSecs / 60)}:${String(c.recSecs % 60).padStart(2, '0')}` : '● REC', glyph: c => '●', testId: 'rec' },
   // (👤 ACCOUNT retired with the identity slot — the plaque bar's handle is

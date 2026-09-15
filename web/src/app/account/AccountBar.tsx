@@ -36,6 +36,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
         }}
         act={{
           guide: () => { window.location.href = '/grid?guide=1' },
+        engine: () => { window.location.href = '/grid?ui=engine' },
         pause: () => {},
         back: () => { if (window.history.length > 1) window.history.back(); else go('/grid') },
           edit: () => go('/grid'),

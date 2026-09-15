@@ -1541,6 +1541,7 @@ export default function TheGrid() {
             catch { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
             if (!navigator.share) { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* manual */ } }
           },
+          engine: () => { setUiSet('engine'); setConnectOpen(false); setInstrOpen(false); setBrewIconOpen(false); setChatOpen(false) },
           commons: () => { setChatOpen(o => !o); setBrewIconOpen(false); setInstrOpen(false) },
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
