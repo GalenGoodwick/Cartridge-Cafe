@@ -142,7 +142,11 @@ if (P.x < 20) { P.x = 20; P.vx = 0; } if (P.x > 556) { P.x = 556; P.vx = 0; }
 P.ground = false;
 // land on any standable rect FIELD: top face only, feet within the drawn span
 for (const f of sim.fields.values()) {
-  if (!(f.properties && f.properties.standable) || f.shapeType !== 'rect') continue;
+  // properties is plain JSON from the bridge/eye but a MAP from older browser
+  // sims — read both (the fall-through-the-floor lesson, Sep 14)
+  const props = f.properties || {};
+  const standable = typeof props.get === 'function' ? props.get('standable') : props.standable;
+  if (!standable || f.shapeType !== 'rect') continue;
   const sc = (f.transform && f.transform.scale) || 1;
   const w = (f.w || 0) * sc, top = (f.transform.y || 0) - ((f.h || 0) * sc) * 0.5;
   // slop = the avatar's drawn half-width (18): ANY visible overlap with the

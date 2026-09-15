@@ -688,8 +688,12 @@ export class WorldSandbox {
     if (!this.worker) return
     const fields: { id: string; name: string; transform: unknown; properties: unknown; visualParams: unknown; shapeType?: string; w?: number; h?: number; radius?: number }[] = []
     for (const f of sim.fields.values()) {
-      // geometry rides along (read-only in the box): the drawn shape IS the hitbox
-      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: f.properties, visualParams: f.visualParams, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius })
+      // geometry rides along (read-only in the box): the drawn shape IS the hitbox.
+      // properties is a Map on the live sim but plain JSON from the bridge/eye —
+      // normalize to a plain object so hooks read ONE shape everywhere (the
+      // fall-through-the-floor bug: f.properties.standable was undefined on a Map)
+      const props = f.properties instanceof Map ? Object.fromEntries(f.properties) : f.properties
+      fields.push({ id: f.id, name: f.name, transform: f.transform, properties: props, visualParams: f.visualParams, shapeType: f.shapeType, w: f.w, h: f.h, radius: f.radius })
     }
     // Determinism opt-in: worldData.__fixedStep pins the dt the hook sees to
     // one exact quantum — one tick per rendered frame, same sequence every run
