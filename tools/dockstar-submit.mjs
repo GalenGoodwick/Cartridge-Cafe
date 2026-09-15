@@ -59,8 +59,61 @@ const deleted = [...fate.values()].filter(e => e.fate === 'deleted').length
 console.log(`  ── born ${bay.born.length} · moved ${moved} · deleted ${deleted} · dirty ${dirty}`)
 if (dirty) { console.error('\nRED: triage incomplete — the bay must be EMPTY and every fate on the ledger.'); process.exit(1) }
 
-// ── node-green: per-node proof against the DEPLOYED hooks ──
+// ── THE VISUAL GATE (FIRST — Galen's law, Sep 15): two real-tab shots,
+// portrait + wide, judged for visible content. The GPU eye cannot see
+// aspect bugs; this can. Requires --url <world play url>. ──
 const results = []
+{
+  const urlArg = process.argv.indexOf('--url')
+  const playUrl = urlArg > -1 ? process.argv[urlArg + 1] : null
+  if (!playUrl) {
+    console.log('\n═ VISUAL GATE ═\n  ⚠ no --url given — visual-gate will be UNAVAILABLE and completion will refuse')
+    results.push({ check: 'visual-gate', status: 'unavailable', environment: 'real-tab', details: ['no real-tab capture — pass --url and rerun'] })
+  } else {
+    const { execFileSync } = await import('node:child_process')
+    const { readFileSync: rf } = await import('node:fs')
+    const zlib = await import('node:zlib')
+    const judge = (path) => {   // decode PNG (node zlib) → mean luminance + variance
+      const d = rf(path); let pos = 8, w = 0, hh = 0, idat = Buffer.alloc(0)
+      while (pos < d.length) {
+        const len = d.readUInt32BE(pos); const typ = d.toString('ascii', pos + 4, pos + 8)
+        if (typ === 'IHDR') { w = d.readUInt32BE(pos + 8); hh = d.readUInt32BE(pos + 12) }
+        if (typ === 'IDAT') idat = Buffer.concat([idat, d.subarray(pos + 8, pos + 8 + len)])
+        pos += 12 + len
+      }
+      const raw2 = zlib.inflateSync(idat)
+      const stride = w * 4 + 1
+      let sum = 0, sumSq = 0, n = 0
+      for (let y = 0; y < hh; y += 4) {
+        let prev = 0
+        for (let x = 0; x < w; x += 4) {   // sparse sample; filters approximated by skipping filter byte rows conservatively
+          const i = y * stride + 1 + x * 4
+          if (i + 2 >= raw2.length) break
+          const l = Math.max(raw2[i], raw2[i + 1], raw2[i + 2]); sum += l; sumSq += l * l; n++
+          prev = l
+        }
+      }
+      const mean = sum / Math.max(1, n)
+      const varc = sumSq / Math.max(1, n) - mean * mean
+      return { mean, sd: Math.sqrt(Math.max(0, varc)) }
+    }
+    console.log('\n═ VISUAL GATE (first) ═')
+    let ok = true
+    for (const [label, size] of [['portrait', '480x900'], ['wide', '1600x1000']]) {
+      const out = `/tmp/visual-gate-${label}.png`
+      try {
+        execFileSync('node', ['scripts/world-tab-shot.mjs', playUrl, out, size, '14000'], { cwd: here + '/../web', timeout: 180000 })
+        const j = judge(out)
+        const pass = j.mean > 14 && j.sd > 8   // visible + non-uniform (not a blank/black wash)
+        ok = ok && pass
+        console.log(`  ${pass ? '✅' : '❌'} ${label} ${size}: lum ${j.mean.toFixed(1)} sd ${j.sd.toFixed(1)} → ${out}`)
+      } catch (e) { ok = false; console.log(`  ❌ ${label}: capture failed — ${String(e.message).slice(0, 80)}`) }
+    }
+    results.push({ check: 'visual-gate', status: ok ? 'passed' : 'failed', environment: 'real-tab', details: ['portrait+wide real-tab shots judged for visible non-uniform content'] })
+    if (!ok) { console.error('\nRED — the FIRST gate failed: the world is not visibly correct in a real tab. Nothing else was run.'); process.exit(1) }
+  }
+}
+
 const mkSim = () => {
   let s = 7; const rand = () => (s = (s * 1664525 + 1013904223) >>> 0, s / 2 ** 32)
   const fields = new Map((raw.fields ?? []).map(f => [f.id, {

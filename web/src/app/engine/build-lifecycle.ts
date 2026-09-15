@@ -63,6 +63,12 @@ function needsRestart(spec: BuildSpec | undefined): boolean {
  *  a rendered background ALONE can never make a game "ready". */
 export function requiredChecks(spec: BuildSpec | undefined, facts: WorldFacts): string[] {
   const req: string[] = []
+  // THE VISUAL GATE COMES FIRST (Galen, Sep 15): a REAL tab must have shown
+  // the world visibly correct at two aspects (portrait + wide) before any
+  // other evidence counts for anything. The GPU eye's viewbox is a stub that
+  // cannot see aspect bugs — OMEGA shipped black at desktop aspect with every
+  // other rung green. Evidence: environment 'real-tab' from world-tab-shot.
+  if (facts.fieldCount > 0 || facts.hasVisual) req.push('visual-gate')
   if (facts.fieldCount > 0 || facts.hasVisual) req.push('shader-compile', 'render-frame')
   if (facts.hookCount > 0) req.push('hook-syntax')
   if (facts.interactive) {
