@@ -5,6 +5,7 @@
 // derived mirror of stage === 'ready'. Browser-only checks (render / input /
 // playthrough / performance) arrive via validate_world {results} from the eye.
 
+import { nodeIds as dockstarNodeIds, checkTriage } from '@/lib/dockstar'
 import type { BuildSpec } from '@/lib/build-spec'
 import { normalizeBuildSpec } from '@/lib/build-spec'
 import { BUILTIN_VISUAL_WGSL } from './shaders'
@@ -69,7 +70,11 @@ export function worldFactsFromSnapshot(snap: SnapshotLike): WorldFacts {
   const readsInput = hooks.some(h => /\binput\b|key_|mouse_|__uiClick|wd\.slots|wd\.hud/.test(h.code ?? ''))
   const hasGameplay = !!(spec?.gameplay?.primitives?.length || spec?.gameplay?.controls)
   const interactive = hooks.length > 0 && (readsInput || hasGameplay)
-  return { fieldCount: fields.length, hookCount: hooks.length, hasVisual, interactive }
+  const facts: WorldFacts = { fieldCount: fields.length, hookCount: hooks.length, hasVisual, interactive }
+  if (snap.worldData?.['dockstarBay']) {
+    facts.dockstarNodes = dockstarNodeIds(snap as never)
+  }
+  return facts
 }
 
 export function getLedger(snap: SnapshotLike): BuildLedger {
@@ -101,6 +106,20 @@ export function serverChecks(snap: SnapshotLike): ValidationResult[] {
       environment: 'server-shape',
       details: brokenAttached.length ? [`${brokenAttached.length} field(s) use a non-defining visual → renders black: ${brokenAttached.map(f => f.name).filter(Boolean).slice(0, 6).join(', ')}`] : [],
     })
+  }
+  // DOCKSTAR TRIAGE (auto, snapshot-pure): bay empty + ledger complete + no
+  // ghosts/bad targets. The server computes it, so it can never be claimed.
+  if (snap.worldData?.['dockstarBay']) {
+    const v = checkTriage(snap as never)
+    if (v) {
+      const details: string[] = []
+      if (v.leftovers.length) details.push(`bay NOT empty — untriaged: ${v.leftovers.slice(0, 8).join(', ')}`)
+      if (v.unaccounted.length) details.push(`vanished with no ledger entry (accounting bypassed): ${v.unaccounted.slice(0, 8).join(', ')}`)
+      if (v.ghosts.length) details.push(`ledger names prims never born: ${v.ghosts.slice(0, 8).join(', ')}`)
+      if (v.badTargets.length) details.push(`moved to a node that does not exist: ${v.badTargets.slice(0, 8).join(', ')}`)
+      details.push(`chart: born ${v.counts.born} · moved ${v.counts.moved} · deleted ${v.counts.deleted} · remaining ${v.counts.remaining}`)
+      out.push({ revision, check: 'triage-complete', status: v.ok ? 'passed' : 'failed', environment: 'server-triage', details })
+    }
   }
   return out
 }

@@ -37,6 +37,9 @@ export interface WorldFacts {
   /** reads input / has gameplay — an interactive world owes more than a frame */
   interactive: boolean
   perfTargetMs?: number
+  /** DOCKSTAR world (worldData.dockstarBay): the organized nodes owed green
+   *  evidence + the triage gate. Absent for ordinary worlds. */
+  dockstarNodes?: string[]
 }
 
 /** The core checks a build can be asked for. Acceptance-scenario ids (from the
@@ -65,6 +68,13 @@ export function requiredChecks(spec: BuildSpec | undefined, facts: WorldFacts): 
     if (needsRestart(spec)) req.push('restart')
   }
   if (facts.perfTargetMs != null) req.push('performance')
+  // DOCKSTAR triage law: the bay must be empty + accounted (server-computed)
+  // and EVERY organized node must carry green evidence — publish rides
+  // brief_done, brief_done rides these.
+  if (facts.dockstarNodes) {
+    req.push('triage-complete')
+    for (const id of facts.dockstarNodes) req.push(`node-green:${id}`)
+  }
   return [...new Set(req)]
 }
 

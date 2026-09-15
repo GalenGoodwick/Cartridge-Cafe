@@ -175,6 +175,13 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
     params: { png_b64: 'base64 png (data-URL accepted), 2MB cap' },
     law: 'send a real frame of the running world, never a mockup — the card is the world’s honest face',
   },
+  triage: {
+    scope: 'space', group: G.world,
+    desc: 'DOCKSTAR accounting: record a primitive’s fate and remove it, atomically. moved = its logic was grafted into a node first; deleted = discarded with the reason',
+    params: { prim: 'the prim-* id (must be in the born inventory)', fate: '"moved" | "deleted"', to: 'destination node (fate: moved)', reason: 'why discarded (fate: deleted)' },
+    example: { type: 'triage', prim: 'prim-fps-walk', fate: 'moved', to: 'player' },
+    law: 'graft BEFORE you triage — the verb deletes the primitive. Publish refuses until the bay is empty and every born primitive is on the ledger (0 primitive layover, directly verifiable).',
+  },
   validate_world_doc: { scope: 'space', group: G.world, desc: 'lint the world doc for structural problems' },
   put_world: { scope: 'owner', group: G.world, enforce: true, desc: 'replace the whole world doc (owner-only; members build additively)', params: { world: 'the full doc' } },
   reset_world: { scope: 'space', group: G.world, desc: 'reset run-state to the original snapshot' },

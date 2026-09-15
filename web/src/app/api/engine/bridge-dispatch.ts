@@ -264,10 +264,54 @@ const setCardShot: BridgeHandler = async ({ cmd, auth }) => {
   return { ok: true, type: cmd.type, next: 'the entry card + shelf now show this exact frame' }
 }
 
+// ── triage — DOCKSTAR AI ACCOUNTING (workbench W4). The ONE writer of the
+// worldData.triage ledger, and it's ATOMIC: recording a primitive's fate and
+// removing it from the world happen in the same act, so nothing is ever lost
+// silently. fate 'moved' = its logic was already grafted into node `to`
+// (update_step_hook first, then triage); fate 'deleted' = discarded, with the
+// reason on the record. The publish gate (triage-complete, server-computed)
+// verifies born-inventory ≡ ledger with the bay empty.
+const triageHandler: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
+  const s = await requireSnapshot(auth)
+  if (!s) return { type: cmd.type, error: 'no world snapshot yet' }
+  const { bayOf, ledgerOf, primsInSnapshot, nodeIds } = await import('@/lib/dockstar')
+  const bay = bayOf(s as never)
+  if (!bay) return { type: cmd.type, error: 'not a dockstar world — no worldData.dockstarBay' }
+  const prim = String(cmd.prim ?? '')
+  const fate = String(cmd.fate ?? '')
+  const born = bay.born.find(p => p.id === prim)
+  if (!born) return { type: cmd.type, error: `"${prim}" is not in the born inventory — the ledger cannot invent history. Born: ${bay.born.map(p => p.id).slice(0, 12).join(', ')}` }
+  if (fate !== 'moved' && fate !== 'deleted') return { type: cmd.type, error: 'fate must be "moved" (logic grafted into a node) or "deleted" (discarded, give a reason)' }
+  const entry: Record<string, unknown> = { prim, fate, by: tokenHolder.slice(0, 40), at: Date.now() }
+  if (fate === 'moved') {
+    const to = String(cmd.to ?? '')
+    const nodes = nodeIds(s as never)
+    if (!to || !nodes.includes(to)) return { type: cmd.type, error: `"moved" needs {to: "<node>"} naming an EXISTING node. Nodes: ${nodes.join(', ') || '(none yet — create the node first)'}` }
+    entry.to = to
+  } else {
+    const reason = String(cmd.reason ?? '').trim()
+    if (!reason) return { type: cmd.type, error: '"deleted" needs {reason: "why this primitive is not part of the vision"} — the accounting keeps the why' }
+    entry.reason = reason.slice(0, 200)
+  }
+  // atomic act: remove the prim (if still present) + append the ledger entry
+  const present = primsInSnapshot(s as never).find(p => p.id === prim)
+  if (present?.kind === 'hook') {
+    await applyCommandToSnapshot(auth.spaceId!, { type: 'remove_step_hook', hookId: prim, __internal: true })
+  } else if (present?.kind === 'field') {
+    await applyCommandToSnapshot(auth.spaceId!, { type: 'delete_field', fieldId: prim, __internal: true, force: true })
+  }
+  const ledger = [...ledgerOf(s as never), entry]
+  await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, data: { triage: ledger } })
+  const remaining = bay.born.length - new Set(ledger.map(e => (e as { prim: string }).prim)).size
+  return { ok: true, type: cmd.type, prim, fate, ...(entry.to ? { to: entry.to } : {}),
+    chart: `born ${bay.born.length} · accounted ${new Set(ledger.map(e => (e as { prim: string }).prim)).size} · remaining ${Math.max(0, remaining)}` }
+}
+
 export const BRIDGE_HANDLERS: Record<string, BridgeHandler> = {
   build_spec_set: buildSpecSet,
   build_status: buildStatus,
   set_card_shot: setCardShot,
+  triage: triageHandler,
   validate_world: validateOrComplete,
   complete_build: validateOrComplete,
   create_world: createWorld,
