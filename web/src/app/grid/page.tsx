@@ -159,9 +159,14 @@ export default function TheGrid() {
         // MOBILE creation frames the mobile base, not a letterboxed desktop
         // world. Only the DEFAULTS swap — a base the maker framed on purpose
         // stays put.
+        // NEVER A SPECIFIC GAME (Galen, Sep 15: "base connect AI defaulted
+        // to Cinderfell — should not be specific"): a creation frames the
+        // BASE for its declared shape (the base matrix), and where no base
+        // exists yet (desktop, cells 2-3) it frames nothing specific at all —
+        // the newborn's own space takes the frame the moment it's born.
         setScene(prev => d.targets === 'mobile'
-          ? (prev === 'space:cinderfell' ? 'space:nocturne-district' : prev)   // mobile-base is gone — nocturne is the live mobile flagship
-          : (prev === 'space:nocturne-district' ? 'space:cinderfell' : prev))
+          ? (prev === 'space:cinderfell' ? 'space:base-2d-mobile' : prev)
+          : prev)
       }
       // BORN → THE PROVEN ROUTE (Galen, Aug 31: "find the route and rewire
       // it"): the standalone birth path navigates to /space/<slug>?connect=1,
