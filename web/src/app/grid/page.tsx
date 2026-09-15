@@ -995,7 +995,7 @@ export default function TheGrid() {
                 : isFork ? inviteText(slug, wname, 'fork', opts)
                 : isCreate ? inviteText(undefined, undefined, 'create', opts)
                 : inviteText()
-              const modeBtn = (m: 'edit' | 'fork' | 'create', label: string, on: boolean, enabled: boolean) => (
+              const modeBtn = (m: 'edit' | 'fork' | 'create' | 'connect', label: string, on: boolean, enabled: boolean) => (
                 <button key={m} disabled={!enabled}
                   onClick={() => setConnectMode(m)}
                   className={`flex-1 rounded-lg px-2 py-2 text-[13px] tracking-[0.14em] font-bold border transition-all ${on ? 'bg-amber-400 text-black border-amber-200' : enabled ? 'bg-black/50 text-amber-100 border-amber-300/45 hover:bg-amber-400/15' : 'bg-black/30 text-white/30 border-white/10 cursor-not-allowed'}`}>{label}</button>
@@ -1015,6 +1015,9 @@ export default function TheGrid() {
                   {modeBtn('edit', '✎ EDIT THIS WORLD', isEdit, !!slug)}
                   {modeBtn('fork', '⑂ FORK IT', isFork, !!slug)}
                   {modeBtn('create', '✚ NEW WORLD', isCreate, true)}
+                  {/* the 4th face (Galen, Sep 15): JUST CONNECT — no world
+                      target at all; the generic funnel prompt, never a slug */}
+                  {modeBtn('connect', '⚿ JUST CONNECT', connectMode === 'connect', true)}
                 </div>
                 {(isFork || isCreate) && (
                   <div className="mb-3 space-y-1.5">
