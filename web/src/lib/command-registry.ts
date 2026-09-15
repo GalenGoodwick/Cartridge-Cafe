@@ -175,6 +175,16 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
     params: { png_b64: 'base64 png (data-URL accepted), 2MB cap' },
     law: 'send a real frame of the running world, never a mockup — the card is the world’s honest face',
   },
+  dock_phase: {
+    scope: 'space', group: G.world,
+    desc: 'enter a design phase (vision/frame/space/look/ui/behavior/tune/proof/ship/tend) — serves that phase’s verbs + gate; other verbs refuse while docked',
+    params: { id: 'the phase' }, example: { type: 'dock_phase', id: 'look' },
+    law: 'creation earns forward phase by phase; an ever-shipped world (EDIT) docks any phase directly. Backward is always free.',
+  },
+  undock_phase: {
+    scope: 'space', group: G.world,
+    desc: 'leave the docked phase — its escape gate must be TRUE (creation); refusal names exactly what is untrue',
+  },
   triage: {
     scope: 'space', group: G.world,
     desc: 'DOCKSTAR accounting: record a primitive’s fate and remove it, atomically. moved = its logic was grafted into a node first; deleted = discarded with the reason',

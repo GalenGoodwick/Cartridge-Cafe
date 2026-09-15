@@ -314,7 +314,60 @@ const triageHandler: BridgeHandler = async ({ cmd, auth, tokenHolder }) => {
     chart: `born ${bay.born.length} · accounted ${new Set(ledger.map(e => (e as { prim: string }).prim)).size} · remaining ${Math.max(0, remaining)}` }
 }
 
+// ── PHASE DOCKS — dock_phase / undock_phase (DESIGN-phase-docks.md).
+// Creation earns forward; EDIT (ever-shipped worlds) docks any phase
+// directly. Undock runs the phase's escape gate from the SAME evidence
+// machinery everything else uses — nothing here can be claimed.
+const dockPhase: BridgeHandler = async ({ cmd, auth }) => {
+  const s = await requireSnapshot(auth)
+  if (!s) return { type: cmd.type, error: 'no world snapshot yet' }
+  const pd = await import('@/lib/phase-docks')
+  const target = String(cmd.id ?? '') as import('@/lib/phase-docks').PhaseId
+  const gate = pd.canDock(target, s as never)
+  if (!gate.ok) return { type: cmd.type, error: gate.error }
+  const prev = pd.phaseOf(s as never)
+  const mode = pd.processOf(s as never)
+  const state = { id: target, mode, dockedAt: Date.now(), passed: prev?.passed ?? [] }
+  await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __phase: state } })
+  // THE PACKET: this phase's verbs + gate + guide pointer, served at the gateway
+  return { ok: true, type: cmd.type, phase: target, mode,
+    verbs: [...(pd.PHASE_VERBS[target] ?? [])],
+    gate: pd.PHASE_GATES[target] ?? [],
+    guide: `read_guide {section:"${target}"} — the slice for this phase`,
+  }
+}
+const undockPhase: BridgeHandler = async ({ cmd, auth }) => {
+  const s = await requireSnapshot(auth)
+  if (!s) return { type: cmd.type, error: 'no world snapshot yet' }
+  const pd = await import('@/lib/phase-docks')
+  const cur = pd.phaseOf(s as never)
+  if (!cur) return { type: cmd.type, error: 'no phase docked' }
+  const lc = await import('@/app/engine/build-lifecycle-server')
+  const server = lc.serverChecks(s)
+  const all = lc.mergeEvidence(lc.getLedger(s).evidence, server, lc.worldRevision(s))
+  const { currentEvidence } = await import('@/app/engine/build-lifecycle')
+  const evMap = currentEvidence(all, lc.worldRevision(s)) as never
+  const wd = (s.worldData ?? {}) as Record<string, unknown>
+  const untrue = pd.gateUntrue(cur.id, evMap, {
+    visionDeclared: typeof wd.vision === 'string' && (wd.vision as string).length > 20,
+    frameDeclared: !!(wd && (s as { worldParams?: { gridW?: number } }).worldParams?.gridW),
+    dockstar: !!wd.dockstarBay,
+    liveBugStamp: !!wd.__liveBug,
+  })
+  if (untrue.length && cur.mode === 'creation') {
+    return { type: cmd.type, refused: true, phase: cur.id, untrue,
+      error: `the ${cur.id.toUpperCase()} gate is not true yet: ${untrue.join(' · ')}` }
+  }
+  const passed = cur.mode === 'creation' && !untrue.length && !cur.passed.includes(cur.id)
+    ? [...cur.passed, cur.id] : cur.passed
+  await applyCommandToSnapshot(auth.spaceId!, { type: 'set_world_data', __internal: true, __admin: true, data: { __phase: null, __phasePassed: passed } })
+  const next = pd.PHASE_ORDER[pd.PHASE_ORDER.indexOf(cur.id) + 1]
+  return { ok: true, type: cmd.type, left: cur.id, ...(untrue.length ? { untrue } : {}), ...(next ? { next: `dock_phase {id:"${next}"}` } : {}) }
+}
+
 export const BRIDGE_HANDLERS: Record<string, BridgeHandler> = {
+  dock_phase: dockPhase,
+  undock_phase: undockPhase,
   build_spec_set: buildSpecSet,
   build_status: buildStatus,
   set_card_shot: setCardShot,

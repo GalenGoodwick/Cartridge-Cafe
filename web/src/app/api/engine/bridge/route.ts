@@ -729,6 +729,14 @@ export async function POST(req: NextRequest) {
       // ONLY the global store — a space world leaning on it breaks whenever the
       // global registry changes (the mod_cf_sky class; the Aug 9 dragon-wing
       // lesson). Space-scoped builders are taught the persistent verb instead.
+      // PHASE DOCKS (DESIGN-phase-docks.md): while a phase is docked, only
+      // that phase's verbs work — focus as geometry. Opt-in: undocked worlds
+      // are untouched. dock/undock themselves are handled in dispatch.
+      if (isSpaceScoped && rollback) {
+        const { verbAllowed } = await import('@/lib/phase-docks')
+        const pa = verbAllowed(String(cmd.type ?? ''), rollback as never)
+        if (!pa.ok) { results.push({ type: cmd.type, ok: false, error: pa.error, wrongPhase: true }); continue }
+      }
       // P4 — LOAD-BEARING TEETH (base matrix): on a world carrying a
       // baseManifest, carving a load-bearing entry refuses with the manifest's
       // own hint; {"force": true} overrides for a carver who truly means it.
