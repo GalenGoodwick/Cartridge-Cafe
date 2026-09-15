@@ -23,8 +23,7 @@ export default function ConnectHtml() {
     'bridge console and paste the full JSON result back to you. Start with',
     '{"commands":[{"type":"help"}]} to learn every verb, then read the guide section',
     'the help points you to. Announce what each command will do before you hand it to',
-    'me. Your eyes: ask me to describe the screen or press 📸 SNAPSHOT → AI in the',
-    'world tab whenever you need pixels — never claim a visual is right unseen.',
+    'me.',
   ].join('\n')
   const send = async () => {
     setBusy(true)
