@@ -112,14 +112,17 @@ export async function POST(req: NextRequest) {
       const { emailConsumedGifts } = await import('@/lib/stripe')
       const durableHad = !!(await loadGameSlot(giftSlot)) || (await emailConsumedGifts(session.user.email))
       const had = durableHad || ents.some((e) => e.sessionId === 'first-pair-month')
-      // never clobber a PAID seat: grantEntitlement replaces same-product
-      // records, so an already-member account keeps its record untouched and
-      // just gets the credits half of the gift
-      const alreadyMember = ents.some((e) => e.active && (e.product === 'editor' || e.product === 'editor_pro'))
-      if (!had && !(await isAdminUserId(me.id))) {
-        if (!alreadyMember) {
-          await grantEntitlement(me.id, { product: 'editor', sessionId: 'first-pair-month', until: Date.now() + 30 * 24 * 60 * 60 * 1000 })
-        }
+      // THE GIFT IS FOR NEWCOMERS ONLY (Galen, Sep 15: paid user adian
+      // paired and received the free-membership bonus). The old guard only
+      // skipped the MONTH for active editor/editor_pro rows — a paying user
+      // still got the credits + the "free month granted" banner, and any
+      // other paid product (suite/IP) or a between-renewals row slipped the
+      // check entirely (grantEntitlement REPLACES same-product rows — a
+      // clobber risk). Now: ANY entitlement history — active or not, any
+      // product, paid or promo — means no gift at all. Newcomers only.
+      const hasAnyMembershipHistory = ents.length > 0
+      if (!had && !hasAnyMembershipHistory && !(await isAdminUserId(me.id))) {
+        await grantEntitlement(me.id, { product: 'editor', sessionId: 'first-pair-month', until: Date.now() + 30 * 24 * 60 * 60 * 1000 })
         await addGenCredits(me.id, 2, 'first-pair-credits')
         const { saveGameSlotStrict } = await import('@/app/api/engine/store')
         await saveGameSlotStrict(giftSlot, { at: Date.now() })
