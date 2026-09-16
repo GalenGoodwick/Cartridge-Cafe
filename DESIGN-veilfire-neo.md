@@ -72,3 +72,19 @@ The node grammar — extremely granular, nodes applied to nodes by PULL:
    every gate — the vertical slice that proves the grammar.
 4. Scrap bay loaded from the dump; the port proceeds room by room.
 5. Veilfire classic stays live throughout; Neo ships beside it.
+
+## PORT LAWS (paid for Sep 16, the renderScale miss)
+- **The scrap inventory is the WHOLE world doc.** Hooks, modules, visuals,
+  fields, interaction rules, AND every durable worldData key (tuning, config,
+  progression baselines). The triage gate verifies born ≡ ledger — it cannot
+  see territory the loader never declared. A port therefore always runs a
+  PARITY DIFF: source doc vs bay coverage; any element uncovered = red.
+  (The miss: classic's renderScale 0.28 / maxBufferPixels / noPixelSampling /
+  postProcess never entered the bay — Neo shipped at ~13x the pixel cost and
+  the gate stayed green. 21 keys were late-born and accounted.)
+- **Scrap is a sketchpad (Galen).** Scrap items may be AUTHORED, not just
+  ported: stream-of-thought code, drafts, half-ideas — never executed, never
+  required to compile. The bay tolerates broken text because scrap never
+  runs. The accounting still holds: every sketch eventually MOVES into a real
+  node or is DELETED with its reason. Thinking in code becomes first-class
+  and tracked, without polluting the world.
