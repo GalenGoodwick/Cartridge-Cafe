@@ -45,7 +45,11 @@ export const PHASE_GATES: Record<PhaseId, string[]> = {
   imagine: ['imagine-declared'],
   frame: ['frame-declared'],
   space: ['shader-compile'],            // fields shaped + no non-defining visuals
-  look: ['visual-gate', 'shader-compile'],
+  // LOOK exits on the LAYER truth (machine-checkable) — the MOTH lesson:
+  // a backdrop cannot be human-judged until BEHAVIOR animates it, so the
+  // human visual-gate stays REQUIRED for completion (evaluator) but no
+  // longer deadlocks the walk here.
+  look: ['render-frame', 'shader-compile'],
   ui: ['ui-health'],
   behavior: ['hook-syntax'],
   tune: ['input-response'],             // a real play happened + responded

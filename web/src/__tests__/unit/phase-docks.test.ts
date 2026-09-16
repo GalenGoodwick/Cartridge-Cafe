@@ -60,9 +60,10 @@ describe('phase docks — creation walks, edit jumps', () => {
     // IMAGINE: the dream must exist, raw + layered, before geometry
     expect(gateUntrue('imagine', ev([]), {})[0]).toContain('imagine-declared')
     expect(gateUntrue('imagine', ev([]), { imagineDeclared: true })).toEqual([])
-    // LOOK: needs the real-tab visual gate + compile
-    expect(gateUntrue('look', ev([['shader-compile', 'passed']]), {})).toEqual(['visual-gate: missing'])
-    expect(gateUntrue('look', ev([['visual-gate', 'passed'], ['shader-compile', 'passed']]), {})).toEqual([])
+    // LOOK exits on the layer truth (the MOTH deadlock lesson); the human
+    // visual-gate remains required at completion, not at this door
+    expect(gateUntrue('look', ev([['shader-compile', 'passed']]), {})).toEqual(['render-frame: missing'])
+    expect(gateUntrue('look', ev([['render-frame', 'passed'], ['shader-compile', 'passed']]), {})).toEqual([])
     // TUNE: a real responsive play
     expect(gateUntrue('tune', ev([]), {})).toEqual(['input-response: missing'])
     // PROOF: performance always; triage/no-live-bugs only when applicable
