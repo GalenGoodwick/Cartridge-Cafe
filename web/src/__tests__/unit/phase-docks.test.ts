@@ -27,6 +27,12 @@ describe('phase docks — creation walks, edit jumps', () => {
     expect(canDock('look', w).ok).toBe(false)    // space not passed yet
   })
 
+  it('earned progress survives undock (the Neo walk bug): parked passes count', () => {
+    const w = world({ __phasePassed: ['vision'] })   // undocked, vision earned
+    expect(canDock('imagine', w).ok).toBe(true)      // next unearned
+    expect(canDock('frame', w).ok).toBe(false)       // still cannot skip
+  })
+
   it('EDIT docks any phase directly — the targeted re-entry', () => {
     const w = world({ brief_done: true })
     expect(canDock('tune', w).ok).toBe(true)

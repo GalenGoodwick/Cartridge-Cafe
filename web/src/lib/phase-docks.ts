@@ -84,7 +84,11 @@ export function canDock(target: PhaseId, snap: Snapshotish): { ok: boolean; erro
   const mode = processOf(snap)
   if (mode === 'edit') return { ok: true }   // targeted re-entry: any phase, directly
   const cur = phaseOf(snap)
-  const passed = cur?.passed ?? []
+  // earned progress survives undock: between docks the passed list parks in
+  // __phasePassed (the Neo walk found canDock ignoring it — every undock
+  // silently reset the creation to VISION)
+  const parked = snap.worldData?.['__phasePassed'] as PhaseId[] | undefined
+  const passed = cur?.passed ?? (Array.isArray(parked) ? parked : [])
   const idx = PHASE_ORDER.indexOf(target)
   // creation: may dock any phase already passed (backward is free) or the
   // NEXT unearned one — never skip ahead of an unpassed gate
