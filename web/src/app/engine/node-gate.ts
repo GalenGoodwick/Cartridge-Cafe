@@ -45,6 +45,10 @@ export function canPush(
   opts: { ttl?: number; override?: boolean } = {},
 ): { ok: boolean; status: string; reason?: string } {
   if (opts.override) return { ok: true, status: 'override' }
+  // AUTO-HEAL NEVER LOCKS A BUILDER (Galen, Sep 16: the healer reverted a
+  // node and its hold blocked the OWNER from landing the fix). auto-heal is a
+  // safety-revert, not a builder claiming work — any real push overrides it.
+  if (node?.holder === 'auto-heal') return { ok: true, status: 'heal-override' }
   const status = holdStatus(node, caller, now, opts.ttl ?? NODE_HOLD_TTL)
   if (status === 'held') {
     return {

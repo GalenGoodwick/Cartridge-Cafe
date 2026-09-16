@@ -103,6 +103,22 @@ export async function POST(req: NextRequest) {
     try {
       const sp = await prisma.playerSpace.findUnique({ where: { slug: body.slug }, select: { id: true } })
       if (sp) heal = await recordNodeError(sp.id, entry.hookId)
+      // THE RUNTIME-ERROR GATE (Galen, Sep 16: "bugs thrown probably need to
+      // create a gate"). A hook that THROWS at runtime — not just a heal — is
+      // a live bug: stamp __liveBug at the current revision so complete_build
+      // refuses until the throw is actually fixed (a fix moves the revision
+      // and clears it). Same mechanism as the quarantine dark-world stamp.
+      if (sp && entry.phase === 'runtime') {
+        try {
+          const { worldRevision } = await import('@/app/engine/build-lifecycle-server')
+          const { applyCommandToSnapshot } = await import('../space-store')
+          const full = await prisma.playerSpace.findUnique({ where: { id: sp.id }, select: { snapshot: true } })
+          const revision = worldRevision((full?.snapshot ?? {}) as never)
+          await applyCommandToSnapshot(sp.id, { type: 'set_world_data', __internal: true, __admin: true,
+            data: { __liveBug: { at: Date.now(), revision, phase: 'hook-runtime',
+              reason: `node "${entry.hookId}" threw: ${String(entry.error).slice(0, 200)}` } } })
+        } catch { /* the gate is a courtesy on top of the heal */ }
+      }
       if (heal.reverted !== undefined) {
         // tell the AI in the SAME channel it reads faults from (world state's
         // hookErrors) — a heal it never learns about is a mystery diff
