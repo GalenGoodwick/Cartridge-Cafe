@@ -350,8 +350,10 @@ const undockPhase: BridgeHandler = async ({ cmd, auth }) => {
   const { currentEvidence } = await import('@/app/engine/build-lifecycle')
   const evMap = currentEvidence(all, lc.worldRevision(s)) as never
   const wd = (s.worldData ?? {}) as Record<string, unknown>
+  const im = wd.imagine as { raw?: string; layers?: Record<string, string> } | undefined
   const untrue = pd.gateUntrue(cur.id, evMap, {
     visionDeclared: typeof wd.vision === 'string' && (wd.vision as string).length > 20,
+    imagineDeclared: !!im && typeof im.raw === 'string' && im.raw.length > 200 && !!im.layers && Object.keys(im.layers).length >= 3,
     frameDeclared: !!(wd && (s as { worldParams?: { gridW?: number } }).worldParams?.gridW),
     dockstar: !!wd.dockstarBay,
     liveBugStamp: !!wd.__liveBug,

@@ -7,11 +7,11 @@
 //     and downstream evidence is stale by revision-pinning anyway.
 
 export type PhaseId =
-  | 'vision' | 'frame' | 'space' | 'look' | 'ui'
+  | 'vision' | 'imagine' | 'frame' | 'space' | 'look' | 'ui'
   | 'behavior' | 'tune' | 'proof' | 'ship' | 'tend'
 
 export const PHASE_ORDER: PhaseId[] = [
-  'vision', 'frame', 'space', 'look', 'ui', 'behavior', 'tune', 'proof', 'ship', 'tend',
+  'vision', 'imagine', 'frame', 'space', 'look', 'ui', 'behavior', 'tune', 'proof', 'ship', 'tend',
 ]
 
 /** verbs usable in EVERY phase (reading, navigation, the dock verbs themselves) */
@@ -24,6 +24,9 @@ const ALWAYS = new Set([
  *  the docked phase's set (nor ALWAYS) is refused with the teaching line. */
 export const PHASE_VERBS: Record<PhaseId, string[]> = {
   vision: ['set_world_data', 'build_spec_set'],
+  // IMAGINE — the AI's dream phase (the 'imaginatively' pillar): raw dream →
+  // checkable layered vision. Writing verbs only; no geometry exists yet.
+  imagine: ['set_world_data'],
   frame: ['set_world_params', 'set_world_data', 'create_field', 'set_shape', 'move_field', 'delete_field'],
   space: ['create_field', 'set_shape', 'move_field', 'delete_field', 'clone_field', 'add_tag', 'remove_tag', 'set_world_data'],
   look: ['define_visual', 'set_visual', 'undo_visual', 'define_module', 'remove_module', 'define_sheet', 'define_track', 'set_world_data', 'set_card_shot'],
@@ -39,6 +42,7 @@ export const PHASE_VERBS: Record<PhaseId, string[]> = {
  *  to undock forward. Reuses the existing evidence machinery verbatim. */
 export const PHASE_GATES: Record<PhaseId, string[]> = {
   vision: ['vision-declared'],
+  imagine: ['imagine-declared'],
   frame: ['frame-declared'],
   space: ['shader-compile'],            // fields shaped + no non-defining visuals
   look: ['visual-gate', 'shader-compile'],
@@ -104,13 +108,14 @@ export function verbAllowed(verb: string, snap: Snapshotish): { ok: boolean; err
 export function gateUntrue(
   phase: PhaseId,
   evidence: Map<string, { status: string }>,
-  facts: { visionDeclared?: boolean; frameDeclared?: boolean; uiHealthy?: boolean; dockstar?: boolean; liveBugStamp?: boolean },
+  facts: { visionDeclared?: boolean; imagineDeclared?: boolean; frameDeclared?: boolean; uiHealthy?: boolean; dockstar?: boolean; liveBugStamp?: boolean },
 ): string[] {
   const untrue: string[] = []
   for (const raw of PHASE_GATES[phase] ?? []) {
     const optional = raw.endsWith('?')
     const check = optional ? raw.slice(0, -1) : raw
     if (check === 'vision-declared') { if (!facts.visionDeclared) untrue.push('vision-declared: worldData.vision + spec must exist before any field'); continue }
+    if (check === 'imagine-declared') { if (!facts.imagineDeclared) untrue.push('imagine-declared: worldData.imagine must carry the RAW dream + ≥3 named layers (palette/atmosphere/motion/audio/hero-moment) — specific, never generic'); continue }
     if (check === 'frame-declared') { if (!facts.frameDeclared) untrue.push('frame-declared: gridW/gridH + deviceConfig must be set'); continue }
     if (check === 'ui-health') { if (facts.uiHealthy === false) untrue.push('ui-health: solver warnings outstanding (empty boxes / off-band anchors)'); continue }
     if (optional && check === 'triage-complete' && !facts.dockstar) continue
@@ -119,4 +124,38 @@ export function gateUntrue(
     if (e?.status !== 'passed') untrue.push(`${check}: ${e ? e.status : 'missing'}`)
   }
   return untrue
+}
+
+/** PULL BINDING (Neo stage 1) — node records in worldData.__nodes may declare
+ *  { kind: 'room'|'profile'|'entity'|'event'|'fact'|'spine', uses: [ids] }.
+ *  ROOMS CALL; PROFILES ANSWER. A profile pulled by nothing is INERT and
+ *  surfaces as a leftover; a use naming a missing node is a broken call.
+ *  Push has no grammar here — there is no appliesTo. */
+export interface BindingVerdict {
+  ok: boolean
+  /** profiles no room/entity pulls — inert, visible, never silent */
+  inert: string[]
+  /** uses that name a node which does not exist */
+  broken: string[]
+  rooms: string[]
+  profiles: string[]
+}
+export function checkBindings(snap: Snapshotish): BindingVerdict | null {
+  const nodes = snap.worldData?.['__nodes'] as Record<string, { kind?: string; uses?: string[] }> | undefined
+  if (!nodes || typeof nodes !== 'object') return null
+  const ids = Object.keys(nodes)
+  const kinds = new Map(ids.map(id => [id, String(nodes[id]?.kind ?? '')]))
+  const rooms = ids.filter(id => kinds.get(id) === 'room')
+  const profiles = ids.filter(id => kinds.get(id) === 'profile')
+  if (!rooms.length && !profiles.length) return null   // grammar not in use — opt-in
+  const pulled = new Set<string>()
+  const broken: string[] = []
+  for (const id of ids) {
+    for (const u of nodes[id]?.uses ?? []) {
+      if (!ids.includes(u)) broken.push(`${id} → ${u} (no such node)`)
+      else pulled.add(u)
+    }
+  }
+  const inert = profiles.filter(p2 => !pulled.has(p2))
+  return { ok: inert.length === 0 && broken.length === 0, inert, broken, rooms, profiles }
 }

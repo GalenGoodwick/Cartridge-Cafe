@@ -21,7 +21,7 @@ describe('phase docks — creation walks, edit jumps', () => {
   })
 
   it('creation moves forward exactly one earned phase at a time; backward free', () => {
-    const w = world({ __phase: { id: 'space', mode: 'creation', dockedAt: 1, passed: ['vision', 'frame'] } })
+    const w = world({ __phase: { id: 'space', mode: 'creation', dockedAt: 1, passed: ['vision', 'imagine', 'frame'] } })
     expect(canDock('space', w).ok).toBe(true)    // the next unearned
     expect(canDock('vision', w).ok).toBe(true)   // backward free
     expect(canDock('look', w).ok).toBe(false)    // space not passed yet
@@ -51,6 +51,9 @@ describe('phase docks — creation walks, edit jumps', () => {
     // VISION: refused empty, passes once declared
     expect(gateUntrue('vision', ev([]), {})[0]).toContain('vision-declared')
     expect(gateUntrue('vision', ev([]), { visionDeclared: true })).toEqual([])
+    // IMAGINE: the dream must exist, raw + layered, before geometry
+    expect(gateUntrue('imagine', ev([]), {})[0]).toContain('imagine-declared')
+    expect(gateUntrue('imagine', ev([]), { imagineDeclared: true })).toEqual([])
     // LOOK: needs the real-tab visual gate + compile
     expect(gateUntrue('look', ev([['shader-compile', 'passed']]), {})).toEqual(['visual-gate: missing'])
     expect(gateUntrue('look', ev([['visual-gate', 'passed'], ['shader-compile', 'passed']]), {})).toEqual([])
@@ -64,6 +67,6 @@ describe('phase docks — creation walks, edit jumps', () => {
     // TEND: no exit gate
     expect(gateUntrue('tend', ev([]), {})).toEqual([])
     // the spine is ten stages
-    expect(PHASE_ORDER).toHaveLength(10)
+    expect(PHASE_ORDER).toHaveLength(11)
   })
 })

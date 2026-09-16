@@ -6,6 +6,7 @@
 // playthrough / performance) arrive via validate_world {results} from the eye.
 
 import { nodeIds as dockstarNodeIds, checkTriage } from '@/lib/dockstar'
+import { checkBindings } from '@/lib/phase-docks'
 import type { BuildSpec } from '@/lib/build-spec'
 import { normalizeBuildSpec } from '@/lib/build-spec'
 import { BUILTIN_VISUAL_WGSL } from './shaders'
@@ -129,6 +130,15 @@ export function serverChecks(snap: SnapshotLike): ValidationResult[] {
           details: ['no fresh live measurement — open the world in a real tab (or agent playtest); a live tab writes worldData.__budget every ~2s, then re-run complete_build'] })
       }
     }
+  }
+  // PULL BINDING (Neo grammar, opt-in): rooms call, profiles answer — an
+  // inert profile or a broken call fails conformance, server-computed.
+  {
+    const b = checkBindings(snap as never)
+    if (b) out.push({ revision, check: 'pull-binding', status: b.ok ? 'passed' : 'failed', environment: 'server-binding',
+      details: [ ...(b.inert.length ? [`INERT profiles (pulled by nothing): ${b.inert.join(', ')}`] : []),
+                 ...(b.broken.length ? [`broken calls: ${b.broken.slice(0, 6).join(' · ')}`] : []),
+                 `rooms ${b.rooms.length} · profiles ${b.profiles.length}` ] })
   }
   // NO LIVE BUGS (Galen: completion refuses while a real tab's bug call
   // stands): the quarantine route pins __liveBug to the revision it saw
