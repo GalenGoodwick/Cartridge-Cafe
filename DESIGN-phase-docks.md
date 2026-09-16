@@ -34,33 +34,41 @@ P0 VISION     what this is, for whom, how it should FEEL — spec + vision +
               gate: vision + spec declared (MARBLE's autopsy: a beautiful
               build of the wrong game is a VISION failure, unreachable by
               any later gate)
-P1 FRAME      declare device + grid; containment fields born grid-bounded
+P1 IMAGINE    THE AI'S DREAM (the 'imaginatively' pillar): imagine the world
+              RAW first — light, sound, moments, how minute ten feels — then
+              distill into the CHECKABLE vision with declared layers
+              (palette · atmosphere · motion · audio · the hero moment).
+              No-bias law: infra checks the dream, never prescribes it
+              gate: layered vision exists and is SPECIFIC (a vision that
+              could describe any game fails); LOOK later answers to it
+              (vision-conformance — pillar 3)
+P2 FRAME      declare device + grid; containment fields born grid-bounded
               gate: worldParams declared · fields ⊂ grid (structural)
-P2 SPACE      layout as FIELDS (standables, zones, regions) — field = pixels
+P3 SPACE      layout as FIELDS (standables, zones, regions) — field = pixels
               gate: manifest conformance · pixels≡hitbox (no shadow tables)
-P3 LOOK       visuals per field + THE LANE CONTRACT declared (whiteboard
+P4 LOOK       visuals per field + THE LANE CONTRACT declared (whiteboard
               schema: which uni() lanes mean what, with sane defaults)
               + SOUND (the audio rail is the look of the ears)
               gate: VISUAL GATE (real-tab, portrait+wide, bright+nonuniform)
                     · shader-compile · perf preflight budget
-P4 UI         solver bands only; presets law (merge/fill/visual/vanish)
+P5 UI         solver bands only; presets law (merge/fill/visual/vanish)
               gate: solver health clean · instructions off-grid · no empties
-P5 BEHAVIOR   nodes written ONE AT A TIME via dock_node (the node dock is
+P6 BEHAVIOR   nodes written ONE AT A TIME via dock_node (the node dock is
               the inner focus loop; the phase dock is the outer one)
               gate: node-green per node · spine run clean · lane ownership
                     (owns-guard) · events flow (producers heard by folds)
-P6 TUNE       works ≠ feels right: speeds, tolerances, cooldowns, curves.
+P7 TUNE       works ≠ feels right: speeds, tolerances, cooldowns, curves.
               Every fix from the Sep 14-15 play sessions (walk speed, edge
               slop, hold-to-fire) was TUNE, not BEHAVIOR — it needs its own
               instruments: playthrough METRICS (time-to-first-success,
               deaths/min) + the human feel-word
               gate: feel metrics in declared bands · a real play happened
-P7 PROOF      the whole ladder: statetest · playthrough trace · LIVE perf
+P8 PROOF      the whole ladder: statetest · playthrough trace · LIVE perf
               measurement · no-live-bugs · accounting (bay empty + ledger,
               if dockstar)
-P8 SHIP       card/vision/instructions/blurb · brief_done · HUMAN word
+P9 SHIP       card/vision/instructions/blurb · brief_done · HUMAN word
               gate: publish machinery (exists) — never auto
-P9 TEND       the world in the wild — no exit gate, only re-entry: a live
+P10 TEND       the world in the wild — no exit gate, only re-entry: a live
               fault re-arms BEHAVIOR, a lag report re-arms TUNE, a black
               tab re-arms LOOK. Quarantine stamps, live errors bridging
               back, player counts. Tending is a phase, not an afterthought.
@@ -71,7 +79,7 @@ Rules:
   phase to fix; its gate re-arms). A later phase's evidence goes stale when
   an earlier phase changes (revision pinning — already how evidence works).
 - The tree is the SAME for every game. Archetype knowledge lives in the
-  bay's primitives, never in the process. This is why it's universal: VISION, FRAME,
+  bay's primitives, never in the process. This is why it's universal: VISION, IMAGINE, FRAME,
   SPACE, LOOK, UI, BEHAVIOR, TUNE, PROOF, SHIP, TEND is the anatomy of any
   playable thing, from pinball to a walking poem — a poem needs a feel pass
   and a tended life just as much as an arena does.
