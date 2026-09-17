@@ -14,6 +14,9 @@ const b = await chromium.launch(HEADED
   : { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--enable-unsafe-swiftshader'] })
 const ctx = await b.newContext({ viewport: { width, height }, deviceScaleFactor: 1 })
 const p = await ctx.newPage()
+// the error channel the bridge doesn't have yet (#16): every console line
+p.on('console', m => { const t = m.text(); if (/error|fail|wgsl|shader|tint|compil/i.test(t)) console.log('[console]', t.slice(0, 500)) })
+p.on('pageerror', e => console.log('[pageerror]', String(e).slice(0, 300)))
 await p.goto(url, { waitUntil: 'domcontentloaded' })
 await p.waitForTimeout(4000)
 // THE FRONT DOOR (the blind-instrument lesson): dismiss consent, enter play,
