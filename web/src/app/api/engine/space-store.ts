@@ -770,6 +770,29 @@ export function applyCommandToSnapshotObject(
           snap.worldParams = { ...snap.worldParams, [k]: cmd[k] } as SceneSnapshot['worldParams']
         }
       }
+      // deviceConfig — the flag that frames a world portrait (mobile) vs
+      // landscape (desktop). It was accepted ONLY inside params:{} and silently
+      // dropped at top level, so `set_world_params {deviceConfig:'mobile'}`
+      // vanished with no error — the fresh base framed as desktop and
+      // cover-cropped a portrait world to a band (Galen, Sep 16; cost an hour
+      // of blind debugging). Now accepted top-level, validated, and an UNKNOWN
+      // top-level key WARNS instead of vanishing (no more silent drops).
+      {
+        const dc = cmd['deviceConfig'] ?? (cmd.params as Record<string, unknown> | undefined)?.['deviceConfig']
+        if (dc !== undefined) {
+          if (dc === 'mobile' || dc === 'desktop' || dc === 'universal') {
+            snap.worldParams = { ...snap.worldParams, deviceConfig: dc } as SceneSnapshot['worldParams']
+          } else {
+            result.error = `deviceConfig must be 'mobile' | 'desktop' | 'universal' (got ${JSON.stringify(dc)})`
+            return result
+          }
+        }
+        // NO SILENT DROPS: a top-level key that isn't a known param is a
+        // likely typo/misuse — say so instead of eating it.
+        const TOP_OK = new Set([...WORLD_PARAM_KEYS, 'deviceConfig', 'gridSize', 'gridW', 'gridH', 'params', 'type', 'id', 'author', 'description', '__holder', '__now', '__admin', '__member', '__internal'])
+        const stray = Object.keys(cmd).filter(k => !TOP_OK.has(k))
+        if (stray.length) result.warning = (result.warning ? result.warning + ' · ' : '') + `ignored unknown set_world_params key(s): ${stray.join(', ')} — physics keys are top-level, everything else goes in params:{}`
+      }
       // GRID DIMENSIONS (task #20): worlds beyond 512×512. Clamped [64, 4096];
       // the engine constructs at this size on load, so a change on a LIVE
       // world takes effect when the tab reloads — warn honestly.

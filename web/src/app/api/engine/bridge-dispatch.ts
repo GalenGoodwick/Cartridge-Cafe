@@ -103,8 +103,13 @@ const createWorld: BridgeHandler = async ({ cmd, auth }) => {
   // not name-only — mapped to birth the SAME way. A short {name} still works;
   // unstated fields default (target universal, visibility PRIVATE).
   const { normalizeBuildSpec, specToWorldData, specToBirthParams, specIsPublic } = await import('@/lib/build-spec')
+  // deviceConfig is an ALIAS for target (Galen, Sep 16: a builder thinking
+  // 'mobile' should be able to say deviceConfig:'mobile' at birth, not only
+  // target:'mobile' — the fresh base was born device-less because neither was
+  // passed, then framed as desktop). Either one lands the portrait birth.
+  const targetOrDevice = cmd.target ?? cmd.deviceConfig
   const spec = normalizeBuildSpec({
-    name: cmd.name, brief: cmd.brief, target: cmd.target, visibility: cmd.visibility,
+    name: cmd.name, brief: cmd.brief, target: targetOrDevice, visibility: cmd.visibility,
     gameplay: cmd.gameplay, presentation: cmd.presentation, acceptance: cmd.acceptance,
   })
   const name = (spec.name || 'untitled world').slice(0, 60)

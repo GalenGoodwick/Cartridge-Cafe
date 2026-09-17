@@ -168,7 +168,7 @@ export const COMMAND_REGISTRY: Record<string, CommandSpec> = {
     example: { type: 'set_world_data', data: { instructions: 'WASD moves…' } },
     law: 'premium pricing needs ◆ IP control; internal __keys are route-owned and refused. How-to-play text goes HERE (instructions) — never painted on the world canvas.',
   },
-  set_world_params: { scope: 'space', group: G.world, desc: 'physics/grid params (gravity, friction, gridW/H…)' },
+  set_world_params: { scope: 'space', group: G.world, desc: 'physics/grid params (gravity, friction, gridW/H, deviceConfig)', params: { deviceConfig: "'mobile' (portrait frame) | 'desktop' | 'universal'", gravity: 'top-level ok', gridW: 'grid width', gridH: 'grid height', params: 'object form for any param' }, law: 'deviceConfig frames the world portrait vs landscape — set it or a portrait world cover-crops on desktop; unknown top-level keys WARN, never silently drop' },
   set_card_shot: {
     scope: 'space', group: G.world,
     desc: 'upload the world’s entry-card photo (a png the LOCAL eye captured) — the eye lives builder-side now, so the builder ships the shot',
