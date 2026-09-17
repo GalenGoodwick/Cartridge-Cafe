@@ -64,6 +64,9 @@ describe('phase docks — creation walks, edit jumps', () => {
     // visual-gate remains required at completion, not at this door
     expect(gateUntrue('look', ev([['shader-compile', 'passed']]), {})).toEqual(['render-frame: missing'])
     expect(gateUntrue('look', ev([['render-frame', 'passed'], ['shader-compile', 'passed']]), {})).toEqual([])
+    // FRAME: a declared-rect world without deviceConfig fails the framing gate
+    expect(gateUntrue('frame', ev([]), { frameDeclared: true, rectNoDevice: true })[0]).toContain('deviceConfig')
+    expect(gateUntrue('frame', ev([]), { frameDeclared: true, rectNoDevice: false })).toEqual([])
     // TUNE: a real responsive play
     expect(gateUntrue('tune', ev([]), {})).toEqual(['input-response: missing'])
     // PROOF: performance always; triage/no-live-bugs only when applicable

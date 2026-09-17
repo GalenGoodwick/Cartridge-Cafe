@@ -360,6 +360,7 @@ const undockPhase: BridgeHandler = async ({ cmd, auth }) => {
     visionDeclared: typeof wd.vision === 'string' && (wd.vision as string).length > 20,
     imagineDeclared: !!im && typeof im.raw === 'string' && im.raw.length > 200 && !!im.layers && Object.keys(im.layers).length >= 3,
     frameDeclared: !!(wd && (s as { worldParams?: { gridW?: number } }).worldParams?.gridW),
+    rectNoDevice: (() => { const p = (s as { worldParams?: { gridW?: number; gridH?: number; deviceConfig?: string } }).worldParams ?? {}; return !!p.gridW && !!p.gridH && p.gridW !== p.gridH && !p.deviceConfig })(),
     dockstar: !!wd.dockstarBay,
     liveBugStamp: !!wd.__liveBug,
   })

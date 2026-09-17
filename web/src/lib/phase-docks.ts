@@ -116,7 +116,7 @@ export function verbAllowed(verb: string, snap: Snapshotish): { ok: boolean; err
 export function gateUntrue(
   phase: PhaseId,
   evidence: Map<string, { status: string }>,
-  facts: { visionDeclared?: boolean; imagineDeclared?: boolean; frameDeclared?: boolean; uiHealthy?: boolean; dockstar?: boolean; liveBugStamp?: boolean },
+  facts: { visionDeclared?: boolean; imagineDeclared?: boolean; frameDeclared?: boolean; rectNoDevice?: boolean; uiHealthy?: boolean; dockstar?: boolean; liveBugStamp?: boolean },
 ): string[] {
   const untrue: string[] = []
   for (const raw of PHASE_GATES[phase] ?? []) {
@@ -124,7 +124,16 @@ export function gateUntrue(
     const check = optional ? raw.slice(0, -1) : raw
     if (check === 'vision-declared') { if (!facts.visionDeclared) untrue.push('vision-declared: worldData.vision + spec must exist before any field'); continue }
     if (check === 'imagine-declared') { if (!facts.imagineDeclared) untrue.push('imagine-declared: worldData.imagine must carry the RAW dream + ≥3 named layers (palette/atmosphere/motion/audio/hero-moment) — specific, never generic'); continue }
-    if (check === 'frame-declared') { if (!facts.frameDeclared) untrue.push('frame-declared: gridW/gridH + deviceConfig must be set'); continue }
+    if (check === 'frame-declared') {
+      if (!facts.frameDeclared) untrue.push('frame-declared: gridW/gridH must be set')
+      // THE FRAMING GATE (Galen, Sep 16): a declared-RECT world (gridW≠gridH,
+      // i.e. portrait/landscape, not a classic square) MUST carry deviceConfig
+      // or the grid frames it as desktop and cover-crops it to a zoomed band —
+      // the exact bug that reached a human because the square eye can't see
+      // aspect-crop. Pure data, no render: catch it here, before completion.
+      else if (facts.rectNoDevice) untrue.push('framing: this world declares a non-square grid (portrait/landscape) but has no deviceConfig — set_world_params {params:{deviceConfig:"mobile"|"desktop"}} or the grid cover-crops it to a zoomed band on the wrong aspect')
+      continue
+    }
     if (check === 'ui-health') { if (facts.uiHealthy === false) untrue.push('ui-health: solver warnings outstanding (empty boxes / off-band anchors)'); continue }
     if (optional && check === 'triage-complete' && !facts.dockstar) continue
     if (optional && check === 'no-live-bugs' && !facts.liveBugStamp) continue
