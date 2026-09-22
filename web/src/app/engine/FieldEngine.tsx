@@ -6503,7 +6503,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
               CSS-fills the screen. Always mounted — fullscreen happens while the
               chip (and its own <style>) is hidden. Backing buffer follows
               clientWidth/clientHeight in renderer.ts, so this drives it. */}
-          <style>{`:fullscreen>canvas{width:100%!important;height:100%!important}`}</style>
+          <style>{`:fullscreen>canvas{width:100%!important;height:100%!important} .cafe-tv-idle,.cafe-tv-idle *{cursor:none!important}`}</style>
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"

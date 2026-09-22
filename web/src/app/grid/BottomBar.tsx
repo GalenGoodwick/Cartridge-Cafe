@@ -35,6 +35,7 @@ export type BarCtx = {
   wchatCount: number          // people+AIs recently talking in it (badge; 0 = quiet)
   voteCount: number           // ♥ upvotes on this world (0 = bare heart)
   voteMine: boolean           // I have upvoted — the heart wears amber
+  fsOn: boolean               // ⛶ the visual is filling the whole screen (TV mode)
   title: string
 }
 
@@ -58,6 +59,7 @@ export type BarActions = {
   brewIcon: () => void
   wchat: () => void
   vote: () => void
+  fullscreen: () => void
 }
 
 type Tone = 'gold' | 'goldline' | 'blue' | 'green' | 'chip' | 'rec'
@@ -122,6 +124,10 @@ const FLOW: Btn[] = [
 ]
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
+  // ⛶ FULLSCREEN — fill the whole screen with just the visual (a world on a TV /
+  // wall display; Esc exits). Shown whenever a world is on screen; ▣ once filled.
+  { id: 'fullscreen', tier: 0, tone: 'chip', show: c => c.set === 'games' || c.set === 'main', active: c => c.fsOn,
+    label: c => c.fsOn ? '▣ EXIT FULL' : '⛶ FULLSCREEN', glyph: c => c.fsOn ? '▣' : '⛶', testId: 'fullscreen' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
 ]

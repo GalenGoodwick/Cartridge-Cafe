@@ -81,6 +81,61 @@ export default function TheGrid() {
     const iv = setInterval(tick, 20_000)
     return () => { stop = true; clearInterval(iv) }
   }, [])
+  // ── FULLSCREEN / TV MODE (Galen: "full screen mode for the visual, put it on
+  //    TV screens" · "on the bottom bar, Esc to exit"). We fullscreen the WORLD
+  //    CONTAINER (data-world-container in FieldEngine) — NOT the page — so the
+  //    grid frame + this bottom bar (both siblings of that element) fall away and
+  //    the TV shows ONLY the visual. Esc exits via the browser; the bottom-bar
+  //    button toggles the same. While filled we hold a Wake Lock (the display
+  //    never sleeps) and fade the cursor after a few idle seconds. ──
+  const [fsOn, setFsOn] = useState(false)
+  const wakeLockRef = useRef<{ release: () => void } | null>(null)
+  const toggleFullscreen = useCallback(() => {
+    type FsEl = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }
+    type FsDoc = Document & { webkitExitFullscreen?: () => Promise<void> | void; webkitFullscreenElement?: Element | null }
+    const doc = document as FsDoc
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      void (doc.webkitExitFullscreen ? doc.webkitExitFullscreen() : doc.exitFullscreen())
+      return
+    }
+    const el = document.querySelector('[data-world-container]') as FsEl | null
+    if (!el) return
+    // called straight from the click handler → user activation still holds
+    if (el.requestFullscreen) void el.requestFullscreen().catch(e => console.warn('[cafe] fullscreen refused:', (e as Error).message))
+    else if (el.webkitRequestFullscreen) void el.webkitRequestFullscreen()
+  }, [])
+  useEffect(() => {
+    type FsDoc = Document & { webkitFullscreenElement?: Element | null }
+    type WakeNav = Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
+    const onFsChange = async () => {
+      const on = !!((document as FsDoc).fullscreenElement || (document as FsDoc).webkitFullscreenElement)
+      setFsOn(on)
+      if (on) {
+        try {
+          const wl = await (navigator as WakeNav).wakeLock?.request('screen')
+          if (wl) wakeLockRef.current = { release: () => void wl.release().catch(() => {}) }
+        } catch { /* wake lock unsupported/denied — fullscreen still works */ }
+      } else {
+        wakeLockRef.current?.release(); wakeLockRef.current = null
+      }
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    document.addEventListener('webkitfullscreenchange', onFsChange as EventListener)
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('webkitfullscreenchange', onFsChange as EventListener)
+    }
+  }, [])
+  useEffect(() => {
+    if (!fsOn) return
+    const el = document.querySelector('[data-world-container]') as HTMLElement | null
+    if (!el) return
+    let t = 0
+    const wake = () => { el.classList.remove('cafe-tv-idle'); clearTimeout(t); t = window.setTimeout(() => el.classList.add('cafe-tv-idle'), 2600) }
+    el.addEventListener('mousemove', wake)
+    wake()
+    return () => { clearTimeout(t); el.removeEventListener('mousemove', wake); el.classList.remove('cafe-tv-idle') }
+  }, [fsOn])
   const [instrOpen, setInstrOpen] = useState(false)
   const [instrText, setInstrText] = useState<string>('')
   const [connectOpen, setConnectOpen] = useState(false)
@@ -1521,6 +1576,7 @@ export default function TheGrid() {
           recOn: rec.on, recSecs: rec.secs, copied, pausedOn: gamePaused,
           navOpen: false, commonsOpen: chatOpen, instructionsOpen: instrOpen, brewIconOpen,
           wchatOpen, wchatCount, voteCount: voteInfo?.count ?? 0, voteMine: !!voteInfo?.mine,
+          fsOn,
           title: uiSet === 'main' ? 'Cartridge.Cafe' : (selected?.name ?? spc?.name ?? '—'),
         }}
         act={{
@@ -1545,6 +1601,7 @@ export default function TheGrid() {
           commons: () => { setChatOpen(o => !o); setBrewIconOpen(false); setInstrOpen(false) },
           rec: () => cmd('rec'),
           reset: () => setResetConfirm(true),
+          fullscreen: toggleFullscreen,
           signIn: () => { window.location.href = '/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname + window.location.search) },
           nav: () => { if (uiSet === 'engine' || uiSet === 'create') { setUiSet('games'); setPhase('browse') } else { track('edit', scene.startsWith('space:') ? '/space/' + scene.slice(6) : '/grid'); setUiSet('engine') } },
           account: () => { window.location.href = '/account' },

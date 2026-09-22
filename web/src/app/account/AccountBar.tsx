@@ -32,7 +32,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           recSecs: 0, copied, navOpen: false, commonsOpen: false,
           instructionsOpen: false, brewIconOpen: false,
           // in-game-only doors (♥ vote / ◉ world chat) never show on account
-          wchatOpen: false, wchatCount: 0, voteCount: 0, voteMine: false, title: '',
+          wchatOpen: false, wchatCount: 0, voteCount: 0, voteMine: false, fsOn: false, title: '',
         }}
         act={{
           guide: () => { window.location.href = '/grid?guide=1' },
@@ -55,6 +55,7 @@ export default function AccountBar({ signedOut }: { signedOut: boolean }) {
           brewIcon: () => {},
           account: () => {},   // already here
           wchat: () => {}, vote: () => {},   // in-game only — unreachable here
+          fullscreen: () => {},   // no world on the account page
         }} />
       {connectOpen && <ConnectPanel onClose={() => setConnectOpen(false)} />}
     </>
