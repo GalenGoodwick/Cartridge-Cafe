@@ -125,8 +125,9 @@ const FLOW: Btn[] = [
 const TOGGLES: Btn[] = [
   { id: 'commons', tier: 1, tone: 'green', show: c => c.set === 'main', active: c => c.commonsOpen, label: () => '◉ COMMONS', glyph: () => '◉', testId: 'commons' },
   // ⛶ FULLSCREEN — fill the whole screen with just the visual (a world on a TV /
-  // wall display; Esc exits). Shown whenever a world is on screen; ▣ once filled.
-  { id: 'fullscreen', tier: 0, tone: 'chip', show: c => c.set === 'games' || c.set === 'main', active: c => c.fsOn,
+  // wall display; Esc exits). IN-GAME ONLY (Galen: "only when in game") — not on
+  // the main grid. ▣ EXIT FULL once filled.
+  { id: 'fullscreen', tier: 0, tone: 'chip', show: c => c.playing, active: c => c.fsOn,
     label: c => c.fsOn ? '▣ EXIT FULL' : '⛶ FULLSCREEN', glyph: c => c.fsOn ? '▣' : '⛶', testId: 'fullscreen' },
   { id: 'reset', tier: 1, tone: 'chip', show: c => c.playing && c.rReset, label: () => '⟲ RESET', glyph: () => '⟲', testId: 'reset' },
   { id: 'brewIcon', tier: 1, tone: 'chip', show: c => c.set === 'main', active: c => c.brewIconOpen, label: () => '◆ BREW ICON', glyph: () => '◆', testId: 'brewicon' },
