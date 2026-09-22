@@ -3335,10 +3335,12 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
 
   // THE POINTER-LOCK NODE — the whole mouse-look lock lifecycle (relative-delta
   // capture, cursor hide, click-to-lock gate + engaging-click swallow, and the
-  // Safari fullscreen path) lives in pointer-lock.ts now (Galen: "carve it into
-  // a node — it keeps breaking"). It returns lockSwallow, which handlePointerDown
-  // reads to skip the game press on the click that engaged the lock.
-  const lockSwallow = usePointerLock(canvasRef, simulationRef, swapAtRef, worldContainerRef)
+  // the whole mouse-look cursor-bind lifecycle lives in pointer-lock.ts now
+  // (Galen: "carve it into a node — it keeps breaking" · rebuilt "delete the
+  // pointer lock code and redo as a node"). It returns lockSwallow, which
+  // handlePointerDown reads to skip the game press on the click that engaged the
+  // lock. No fullscreen target — modern Safari locks in-page, so the detour is gone.
+  const lockSwallow = usePointerLock(canvasRef, simulationRef, swapAtRef)
 
   // inspect frame-snapshot loop: cheap (4Hz, only while inspect is on)
   useEffect(() => {
