@@ -227,10 +227,23 @@ export class FieldSimulation {
    *  home made the healer MISREAD every correctly-placed rect backdrop as
    *  drift damage and drag it to the square center — the misaligned birth. */
   private healWorldCoveringField(field: Field): void {
-    if (!this.isWorldCovering(field) || field.parentFieldId || field.properties.get('static') === false) return
+    const bornBackdrop = field.name === 'backdrop' && field.shapeType === 'rect'
+    if ((!this.isWorldCovering(field) && !bornBackdrop) || field.parentFieldId || field.properties.get('static') === false) return
     const wp = this.worldParams as { gridW?: number; gridH?: number }
-    const cx = (typeof wp.gridW === 'number' && wp.gridW > 0 ? wp.gridW : this.gridSize) / 2
-    const cy = (typeof wp.gridH === 'number' && wp.gridH > 0 ? wp.gridH : this.gridSize) / 2
+    const W = typeof wp.gridW === 'number' && wp.gridW > 0 ? wp.gridW : this.gridSize
+    const H = typeof wp.gridH === 'number' && wp.gridH > 0 ? wp.gridH : this.gridSize
+    // BACKDROP ≡ RECT (Galen, Sep 23: "the backdrop is always equal to the
+    // viewport/sizing of the world"): the platform's OWN born backdrop keeps the
+    // declared rect's SIZE too, not just its center. A world born square (grid
+    // undeclared at birth) and rect-declared later left a 512 square pinned
+    // mid-frame — TUPELO's opaque square. Scoped to the birth seed's field
+    // (name 'backdrop'): a builder's deliberate near-cover field keeps its size.
+    if (bornBackdrop && (field.w !== W || field.h !== H)) {
+      field.w = W
+      field.h = H
+    }
+    const cx = W / 2
+    const cy = H / 2
     if (Math.abs(field.transform.x - cx) > 0.5 || Math.abs(field.transform.y - cy) > 0.5) {
       field.transform.x = cx
       field.transform.y = cy
