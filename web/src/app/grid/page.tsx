@@ -155,7 +155,7 @@ export default function TheGrid() {
   const [brewIconOpen, setBrewIconOpen] = useState(false)   // ◆ BREW ICON (MAIN)
   const [resetConfirm, setResetConfirm] = useState(false)   // ⟲ RESET (R-reset worlds) — confirm first
   const [companyScope, setCompanyScope] = useState<string | null>(null)
-  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'audio' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'export' | 'chat' | 'mine' | 'brain'>('eye')   // ENGINE's under-area view
+  const [tool, setTool] = useState<'eye' | 'console' | 'nodes' | 'assets' | 'audio' | 'crew' | 'versions' | 'lineage' | 'config' | 'publish' | 'export' | 'chat' | 'mine'>('eye')   // ENGINE's under-area view
   const [eyeData, setEyeData] = useState<{
     focus?: { action?: string; fieldName?: string; at?: number } | null
     eye?: { png?: string; at?: number; name?: string } | null
@@ -1418,7 +1418,6 @@ export default function TheGrid() {
               )
             })()}
             {tool === 'mine' && <MyWorldsViewM icons={icons} current={scene} onPick={pickScene} co={companyScope} />}
-            {tool === 'brain' && <BrainViewM />}
             {tool === 'config' && (
               <ConfigViewM cfg={cfgStable} sceneIsSpace={sceneIsSpace} />
             )}
@@ -2565,84 +2564,4 @@ const AssetsViewM = memo(AssetsView)
 const VersionsViewM = memo(VersionsView)
 const CrewViewM = memo(CrewView)
 const NodesViewM = memo(NodesView)
-// ◧ THE BRAIN — a CHOSEN helper, not a gate (Galen: "the AI should choose this
-// for a better result"). Give it the world's concept; it threads in excellent
-// authors and hands back the PHYSICS their words encode, the node plan, and the
-// coherence grammar — then copies a build directive for your AI. Bypass is
-// always allowed; this just makes the coherent path the easy one.
-type BrainResp = {
-  authors: string[]; themes: string[]; physics: string[]; nodePlan: string[]; grammar: string[]
-  directive: string; held: boolean
-  communal: null | { champion: string; warmMotifs: string[]; activeWriters: string[] }
-}
-function BrainView() {
-  const [concept, setConcept] = useState('')
-  const [read, setRead] = useState<BrainResp | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [copied, setCopied] = useState(false)
-  // calls /api/brain — feeds the ONE HELD communal brain AND reads it back,
-  // falling back to the local read if the shared brain is momentarily down
-  const run = async () => {
-    if (!concept.trim() || busy) return
-    setBusy(true)
-    try {
-      const r = await fetch('/api/brain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ concept: concept.trim() }) })
-      setRead(await r.json())
-    } catch { setRead(null) } finally { setBusy(false) }
-  }
-  return (
-    <div className="w-full h-full overflow-y-auto p-4 font-mono">
-      <div className="text-[11.5px] tracking-[0.2em] text-fuchsia-200/70 mb-2">◧ THE BRAIN — borrow realism before you build</div>
-      <p className="text-[11px] text-white/45 leading-relaxed mb-3">
-        Describe your world as a <span className="text-white/70">feeling or a place</span>, not a mechanic list.
-        The brain reads in descriptions from excellent authors and hands back the physics that make it look real.
-        Optional — you can always build without it.
-      </p>
-      <textarea value={concept} onChange={e => setConcept(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void run() }}
-        placeholder="a fallen star unraveling in a flooded crypt, the tide breathing its decay…"
-        className="w-full h-20 rounded-xl border border-white/12 bg-black/60 p-3 text-[12.5px] text-white/85 placeholder:text-white/25 resize-none outline-none focus:border-fuchsia-300/40" />
-      <button onClick={() => void run()} disabled={!concept.trim() || busy}
-        className="mt-2 px-3.5 py-1.5 rounded-lg border border-fuchsia-300/50 bg-fuchsia-400/10 text-fuchsia-100 text-[12px] tracking-[0.15em] hover:bg-fuchsia-400/20 disabled:opacity-40 transition-colors">
-        {busy ? '◧ THINKING…' : '◧ THINK IT ONTO THE BRAIN'}
-      </button>
-      {read && (
-        <div className="mt-4 space-y-3">
-          <div className="text-[11px] text-white/55">
-            {read.authors.length > 0 && <>threaded from <span className="text-amber-200/80">{read.authors.join(', ')}</span> · </>}
-            themes: {read.themes.join(', ') || '—'}
-            {read.held
-              ? <span className="text-emerald-300/70"> · ◉ on the shared brain{read.communal && read.communal.activeWriters.length > 1 ? ` (${read.communal.activeWriters.length} minds active)` : ''}</span>
-              : <span className="text-white/30"> · (shared brain offline — local read)</span>}
-          </div>
-          {read.physics.length > 0 && <Sect title="PHYSICS — the realism their words encode" tint="text-sky-200/80" items={read.physics} />}
-          {read.nodePlan.length > 0 && <Sect title="NODE PLAN — build these, in order" tint="text-emerald-200/80" items={read.nodePlan} ordered />}
-          <Sect title="COHERENCE GRAMMAR — obey all" tint="text-fuchsia-200/80" items={read.grammar} />
-          {read.physics.length === 0 && read.nodePlan.length === 0 && (
-            <div className="text-[11px] text-white/40">No themes matched yet — try naming the light, the material, the weather, the place.</div>
-          )}
-          <button onClick={async () => { try { await navigator.clipboard.writeText(read.directive); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* manual */ } }}
-            className="px-3.5 py-1.5 rounded-lg border border-white/20 text-white/75 text-[12px] tracking-[0.12em] hover:bg-white/5 transition-colors">
-            {copied ? '✓ COPIED' : '⧉ COPY BUILD DIRECTIVE FOR YOUR AI'}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-function Sect({ title, tint, items, ordered }: { title: string; tint: string; items: string[]; ordered?: boolean }) {
-  return (
-    <div>
-      <div className={`text-[10.5px] tracking-[0.22em] mb-1 ${tint}`}>{title}</div>
-      <ul className="space-y-0.5">
-        {items.map((it, i) => (
-          <li key={i} className="text-[12px] text-white/80 leading-snug flex gap-2">
-            <span className="text-white/35 shrink-0">{ordered ? `${i + 1}.` : '•'}</span>{it}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-const BrainViewM = memo(BrainView)
 const MyWorldsViewM = memo(MyWorldsView)

@@ -1,6 +1,6 @@
 // PER-IP SLIDING WINDOW (scalability audit, Sep 6): the first line against
 // write-amplification on unauthenticated endpoints that do real DB/upstream
-// work per request (/api/t analytics INSERT, /api/brain's 3 upstream fetches).
+// work per request (e.g. /api/t analytics INSERT).
 // Per-lambda memory — a distributed burst multiplies the budget by instance
 // count, which is exactly the acceptable posture for a FIRST line (Vercel
 // Firewall rate rules are the durable second line, set in the dashboard).
