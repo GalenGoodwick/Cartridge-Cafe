@@ -112,7 +112,7 @@ interface FieldEngineProps {
    *  and a person browsing a sub-main would show as a LIVE cursor on main.
    *  CafeShell passes a per-sub-view key (e.g. 'CAFE/sub/<slug>') so cursors
    *  stay docked inside their own view; nesting on main is the docked-orb count,
-   *  a separate system (/api/presence). Unset → the default spaceId||playScene. */
+   *  a separate system (/api/presence — removed Oct 2; it kept the database awake). Unset → the default spaceId||playScene. */
   presenceKey?: string
 }
 
@@ -7659,7 +7659,7 @@ export default function FieldEngine({ spaceId, spaceSlug, gridSize: gridSizeProp
                 {/* the title (world name) hides in gameplay mode — the back arrow stays,
                     and FocusChip still renders a compact "developer live" pulse in play
                     mode (playMode prop) so the maker-at-work signal survives gameplay */}
-                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} liveSlug={spaceId ? spaceSlug : undefined} viewerIsOwner={isOwner} playMode={playMode} inline />
+                <FocusChip ctx={ctx} nameOverride={spaceId ? spaceName : undefined} ownerName={spaceId ? spaceOwnerName ?? undefined : undefined} ownerId={spaceId ? spaceOwnerId ?? undefined : undefined} ownerHandle={spaceId ? spaceOwnerHandle ?? undefined : undefined} subOverride={sub} playMode={playMode} inline />
                 {/* ♛ SET MAIN removed — the swap-main throne was retired with the
                     tournament; main always serves the original now. */}
               </div>

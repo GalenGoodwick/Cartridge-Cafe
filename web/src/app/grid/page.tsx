@@ -68,19 +68,10 @@ export default function TheGrid() {
   // load and pick their own first entry.
   const [scene, setScene] = useState<string>(() =>
     (typeof window !== 'undefined' && window.innerWidth < 700) ? 'space:nocturne-district' : LOCAL[0].scene)
-  // ◉ N PLAYING NOW — live occupancy per slug; shows ONLY when > 0
-  const [playing, setPlaying] = useState<Record<string, number>>({})
-  useEffect(() => {
-    let stop = false
-    const tick = () => {
-      if (document.hidden) return
-      fetch('/api/presence/counts').then(r => r.json())
-        .then(d => { if (!stop && d?.counts) setPlaying(d.counts) }).catch(() => {})
-    }
-    tick()
-    const iv = setInterval(tick, 20_000)
-    return () => { stop = true; clearInterval(iv) }
-  }, [])
+  // ◉ N PLAYING NOW — gone with the presence system (Galen, Oct 2: it kept the
+  // database awake around the clock). Kept as an always-empty map so the two
+  // "playing now" suffixes below stay honest (they show only when > 0).
+  const playing: Record<string, number> = {}
   // ── FULLSCREEN / TV MODE (Galen: "full screen mode for the visual, put it on
   //    TV screens" · "on the bottom bar, Esc to exit"). We fullscreen the WORLD
   //    CONTAINER (data-world-container in FieldEngine) — NOT the page — so the

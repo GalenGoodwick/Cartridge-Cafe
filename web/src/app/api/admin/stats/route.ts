@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
       FROM "Visit"`) as Record<string, unknown>[])[0]
     return { pv_1d: n(v.pv_1d), pv_7d: n(v.pv_7d), uniq_7d: n(v.uniq_7d), strangers_1d: n(v.strangers_1d), strangers_7d: n(v.strangers_7d) }
   })
-  const liveNow = await safe('liveNow', 0, async () => n((await prisma.$queryRawUnsafe(`SELECT count(DISTINCT id) AS c FROM cc_presence WHERE seen >= now()-interval '2 minutes'`) as Record<string, unknown>[])[0]?.c))
+  const liveNow = 0 // the presence system is gone (Oct 2): nothing beats cc_presence any more
 
   return NextResponse.json({
     generatedAt: new Date().toISOString(),

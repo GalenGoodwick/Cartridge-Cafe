@@ -71,7 +71,7 @@ export function WorldTopbar({ slug, name, ownerName, ownerHandle, ownerId, isOwn
           flex-1 wrapper made its pill span the whole band as a fake title bar */}
       <div className="min-w-0 shrink overflow-hidden">
         <FocusChip ctx={ctx} nameOverride={name} ownerName={ownerName ?? undefined} ownerId={ownerId ?? undefined}
-          ownerHandle={ownerHandle ?? undefined} subOverride={sub} liveSlug={slug} viewerIsOwner={isOwner} inline compact />
+          ownerHandle={ownerHandle ?? undefined} subOverride={sub} inline compact />
       </div>
       <div className="flex-1" />
       {dock && <div className="shrink-0 flex items-start">{dock}</div>}
