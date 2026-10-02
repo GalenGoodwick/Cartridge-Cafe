@@ -8,6 +8,7 @@ import SupportGate from './SupportGate'
 import TermsConsent from './TermsConsent'
 import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
 import { ErrorNet } from '@/components/ErrorNet'
+import { QuietWhenIdle } from './QuietWhenIdle'
 
 const sourceSerif = Source_Serif_4({ subsets: ['latin'], variable: '--font-serif', display: 'swap' })
 const libreFranklin = Libre_Franklin({ subsets: ['latin'], variable: '--font-sans', display: 'swap' })
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${sourceSerif.variable} ${libreFranklin.variable} ${ibmPlexMono.variable} ${fraunces.variable}`}>
       <body className="antialiased">
+        <QuietWhenIdle />
         <Providers><SupportGate>{children}</SupportGate></Providers>
         <Beacon />
         <ConnectAiBar />
