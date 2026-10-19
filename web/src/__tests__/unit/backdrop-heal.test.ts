@@ -70,4 +70,34 @@ describe('world-covering heal — rect-aware home', () => {
     expect(f.transform.x).toBe(400)
     expect(f.transform.y).toBe(700)
   })
+
+  // ── BACKDROP ≡ RECT (Galen, Sep 23: "the backdrop is always equal to the
+  //    viewport/sizing of the world") — the born backdrop's SIZE heals too. ──
+
+  it('a stale square backdrop RESIZES to a later-declared rect (the TUPELO square)', () => {
+    const sim = new Simulation(512)
+    // born square: grid undeclared at birth → 512×512 backdrop at (256,256)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sim.restoreFromSnapshots([backdropSnap(256, 256, 512, 512) as any])
+    // the AI declares the rect after birth (set_world_params over the bridge)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sim.setWorldParams({ gridW: 1024, gridH: 576, gridSize: 1024 } as any)
+    const f = sim.fields.get('bd')!
+    expect(f.w).toBe(1024)            // size snapped to the declared rect
+    expect(f.h).toBe(576)
+    expect(f.transform.x).toBe(512)   // and centered in it
+    expect(f.transform.y).toBe(288)
+  })
+
+  it("a builder's near-cover field (not named 'backdrop') keeps its own size", () => {
+    const sim = new Simulation(1024)
+    const veil = { ...backdropSnap(256, 256, 512, 512), id: 'veil', name: 'veil' }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sim.restoreFromSnapshots([veil as any])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sim.setWorldParams({ gridW: 1024, gridH: 576 } as any)
+    const f = sim.fields.get('veil')!
+    expect(f.w).toBe(512)             // size untouched — only the platform's own backdrop resizes
+    expect(f.h).toBe(512)
+  })
 })
