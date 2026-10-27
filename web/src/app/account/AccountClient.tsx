@@ -35,6 +35,7 @@ export default function AccountClient(p: {
   memberSince: string
   member: boolean
   hasSubscription: boolean
+  seatSub: boolean
   renewsAt: number | null
   endsAt: number | null
   priceUsd: number
@@ -171,36 +172,9 @@ export default function AccountClient(p: {
           <section className={box}>
             <h2 className={h2}>MEMBERSHIP</h2>
             {p.member ? (
-              <>
-                <div className="text-[15px] text-emerald-300/90 mb-1">● editing membership — active</div>
-                {p.renewsAt && <div className="text-[13px] text-white/50">renews {fmt(p.renewsAt)} · ${p.priceUsd}/mo</div>}
-                {p.endsAt && <div className="text-[13px] text-amber-200/70">cancels at period end — access until {fmt(p.endsAt)}</div>}
-                {p.hasSubscription ? (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button onClick={portal} disabled={busy !== null}
-                      className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
-                      {busy === 'portal' ? '…' : 'MANAGE SUBSCRIPTION'}
-                    </button>
-                    {!p.endsAt && (
-                      <button onClick={cancel} disabled={busy !== null}
-                        className={`${btn} border-white/20 text-white/70 hover:bg-white/10 disabled:opacity-40`}>
-                        {busy === 'cancel' ? '…' : 'CANCEL MEMBERSHIP'}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-[13px] text-white/50 mt-3">
-                    {p.memberUntil
-                      ? <>promo seat — live editing until {fmt(p.memberUntil)} (no billing; your credits and worlds are yours forever)</>
-                      : <>your seat is granted (no billing on this account)</>}
-                  </div>
-                )}
-                <p className="text-[12.5px] leading-relaxed text-white/45 mt-3">
-                  cancel membership stops billing in one click — your seat lasts until the period ends, and your worlds and
-                  credit stay yours forever. manage subscription opens Stripe&rsquo;s secure portal for your card and invoices
-                  (canceling works there too).
-                </p>
-              </>
+              <div className="text-[15px] text-emerald-300/90 mb-1">● editing membership — active</div>
+            ) : p.seatSub ? (
+              <div className="text-[15px] text-amber-200/80 mb-1">● editing membership — billing is live, seat is syncing</div>
             ) : (
               <>
                 <div className="text-[14px] text-white/70 mb-1">playing is free. the ${p.priceUsd}/mo editing membership is the seat to build on open building worlds.</div>
@@ -211,6 +185,37 @@ export default function AccountClient(p: {
                     </button>
                   : <div className="text-[13px] text-white/45 mt-2">payments are not configured on this deployment</div>}
               </>
+            )}
+            {p.renewsAt && <div className="text-[13px] text-white/50">renews {fmt(p.renewsAt)} · ${p.priceUsd}/mo</div>}
+            {p.endsAt && <div className="text-[13px] text-amber-200/70">cancels at period end — access until {fmt(p.endsAt)}</div>}
+            {/* billing controls live OUTSIDE the member check: any live billed
+                subscription always shows its way out (click-to-cancel) */}
+            {p.hasSubscription ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button onClick={portal} disabled={busy !== null}
+                    className={`${btn} border-amber-300/50 text-amber-100 hover:bg-amber-400/15 disabled:opacity-40`}>
+                    {busy === 'portal' ? '…' : 'MANAGE SUBSCRIPTION'}
+                  </button>
+                  {p.seatSub && !p.endsAt && (
+                    <button onClick={cancel} disabled={busy !== null}
+                      className={`${btn} border-white/20 text-white/70 hover:bg-white/10 disabled:opacity-40`}>
+                      {busy === 'cancel' ? '…' : 'CANCEL MEMBERSHIP'}
+                    </button>
+                  )}
+                </div>
+                <p className="text-[12.5px] leading-relaxed text-white/45 mt-3">
+                  cancel membership stops billing in one click — your seat lasts until the period ends, and your worlds and
+                  credit stay yours forever. manage subscription opens Stripe&rsquo;s secure portal for your card and invoices
+                  (canceling works there too).
+                </p>
+              </>
+            ) : p.member && (
+              <div className="text-[13px] text-white/50 mt-3">
+                {p.memberUntil
+                  ? <>promo seat — live editing until {fmt(p.memberUntil)} (no billing, nothing to cancel; your credits and worlds are yours forever)</>
+                  : <>your seat is granted (no billing on this account, nothing to cancel)</>}
+              </div>
             )}
             {p.entitlements.length > 0 && (
               <div className="text-[12.5px] text-white/40 mt-3">purchases on record: {p.entitlements.join(', ')}</div>

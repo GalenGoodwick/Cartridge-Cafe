@@ -36,6 +36,11 @@ export default async function AccountPage() {
     membershipUntil(user.id),
   ])
 
+  // the EDITING seat's own subscription drives the cancel button + dates —
+  // never an ads/IP sub, and never gated on the entitlement (a live billed sub
+  // must always show its cancel, even if the seat is out of sync)
+  const seatSub = subs.find((s) => s.product === 'editor' || s.product === 'editor_pro') ?? null
+
   return (
     <AccountClient
       email={user.email}
@@ -43,8 +48,9 @@ export default async function AccountPage() {
       memberSince={user.createdAt.toISOString()}
       member={member}
       hasSubscription={subs.length > 0}
-      renewsAt={subs[0]?.cancelAtPeriodEnd ? null : subs[0]?.currentPeriodEnd ?? null}
-      endsAt={subs[0]?.cancelAtPeriodEnd ? subs[0]?.currentPeriodEnd ?? null : null}
+      seatSub={!!seatSub}
+      renewsAt={seatSub && !seatSub.cancelAtPeriodEnd ? seatSub.currentPeriodEnd : null}
+      endsAt={seatSub?.cancelAtPeriodEnd ? seatSub.currentPeriodEnd : null}
       priceUsd={EDITOR_PRICE_USD}
       buyable={stripeConfigured()}
       genCredits={credits}
