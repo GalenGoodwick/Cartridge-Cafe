@@ -4,7 +4,8 @@
 //   ../battle-engine.js      ENG — physics/energy/turret/route engine, itself
 //                            generated from the tested .mjs modules by
 //                            build-engine-v2.mjs. NEVER hand-edited.
-//   catalogue.part.js        penta geometry helpers + the module catalogue
+//   ../penta-core.mjs        penta geometry, inlined as plain declarations
+//   catalogue.part.js        short aliases onto that geometry + the module catalogue
 //                            (PARTS/V2SPEC/ORIENTABLE/…) — designer-scope truth.
 //   flight.part.js           BATTLE MODE — the momentum/flight node (arcade
 //                            controller, routes, power, guns). Owns its B door.
@@ -27,6 +28,8 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(join(HERE, f), 'utf8').replace(/\s+$/, '')
+// penta-core as plain declarations (drop imports, strip export) — the one tested source of the geometry
+const geometry = read('../penta-core.mjs').replace(/^[ \t]*import\b.*$/gm, '').replace(/^([ \t]*)export\s+/gm, '$1')
 
 // bump when the __pd state SHAPE changes (fields added/renamed/battle bt shape)
 const HOOK_V = 2
@@ -35,6 +38,8 @@ const hook = `try {
 // ── BATTLE ENGINE — generated from the tested modules (build-engine-v2.mjs) ──
 ${read('../battle-engine.js')}
   const wd = sim.worldData
+  // ── GEOMETRY — generated from ../penta-core.mjs (edit THAT file; never this block) ──
+${geometry}
 ${read('catalogue.part.js')}
   // ── STATE FRAME (build-base.mjs) — versioned + self-healing ──
   const HOOK_V = ${HOOK_V}

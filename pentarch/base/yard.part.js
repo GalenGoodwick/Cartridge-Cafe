@@ -124,7 +124,7 @@
     D.tilesL = tiles; D.ghostsL = ghosts; D.layoutRev = D.rev
   }
   if (D.rev !== D.layoutRev) doLayout()
-  let tiles = D.tilesL, ghosts = D.ghostsL, voids = D.voidsL
+  let tiles = D.tilesL, ghosts = D.ghostsL, voidMarks = D.voidsL
 
   // ── view transform: fit the hull (recomputed after a mutation, below) ──
   let mx = 0, my = 0, S = 0.12
@@ -344,7 +344,7 @@
   // cached layout from the top of this tick is STALE — a shorter/longer, reindexed
   // tile list. Re-run it so the publish matches D.tree (else it reads .part of an
   // undefined tile → red error, and draws phantom tiles = "deleted more than one").
-  if (D.rev !== D.layoutRev) { doLayout(); tiles = D.tilesL; ghosts = D.ghostsL; voids = D.voidsL; computeView(); hover = -1 }
+  if (D.rev !== D.layoutRev) { doLayout(); tiles = D.tilesL; ghosts = D.ghostsL; voidMarks = D.voidsL; computeView(); hover = -1 }
   const out = []
   // facing digit rides IN the tile code (part + 10·edge): the shader draws the
   // nozzle/barrel itself — no pip dots. Turrets aim their barrel at the middle

@@ -1,155 +1,200 @@
-// penta-core — the pentagon-hull geometry PENTARCH stands on. Pure math, no IO.
+// penta-core — regular-pentagon tile geometry for PENTARCH. Pure math, no IO.
 //
-// A ship is a tree of regular pentagons (side 1) attached edge-to-edge, but the
-// GEOMETRY is not a tree: pentagons cannot tile the plane (interior angle 108°),
-// so chains curve, curl back into RE-TOUCH contacts, and enclose 36° rhombic
-// VOIDS — all three are gameplay (curved hulls, adjacency mods, diamond slots).
-//
-// Tile pose: {cx, cy, th}. Vertex k at angle th + 90° + k·72° (radius R);
-// edge k spans vertices k..k+1, outward normal at th + 90° + (k+.5)·72°,
-// midpoint at apothem a. Attaching to a parent's edge e puts the child at
-// 2a along that normal, rotated so the CHILD'S EDGE 0 is the shared edge.
+// Model: a tile is a pose {cx, cy, th}. Its five corners are the canonical
+// unit pentagon (corner 0 straight "up" at th = 0, corners numbered counter-
+// clockwise) rotated by th and carried to (cx, cy). Edge k joins corners k and
+// k+1 and faces outward along bearing th + EDGE_BEARING[k]. Two tiles MATE when
+// an edge of each coincides corner-for-corner. Because 108° does not divide
+// 360°, mated chains bend, bend back into RE-TOUCH contacts, and leave 36°
+// wedge VOIDS at shared corners — curved hulls, adjacency, diamond slots.
 
+const SQRT5 = Math.sqrt(5)
+const SIDES = 5
+const STEP = (2 * Math.PI) / SIDES
 export const SIDE = 1
-export const APOTHEM = 1 / (2 * Math.tan(Math.PI / 5))     // 0.68819…
-export const CIRCUM = 1 / (2 * Math.sin(Math.PI / 5))      // 0.85065…
-const STEP = (2 * Math.PI) / 5
+// closed forms for the unit-side regular pentagon (√5 only, no trig at load)
+export const APOTHEM = Math.sqrt(1 + 2 / SQRT5) / 2         // inradius      0.68819…
+export const CIRCUM = Math.sqrt(50 + 10 * SQRT5) / 10       // circumradius  0.85065…
 
-export function edgeNormalAngle(tile, e) { return tile.th + Math.PI / 2 + (e + 0.5) * STEP }
-export function edgeMidpoint(tile, e) {
-  const n = edgeNormalAngle(tile, e)
-  return { x: tile.cx + APOTHEM * Math.cos(n), y: tile.cy + APOTHEM * Math.sin(n) }
+// the canonical tile, built once: corner k and the outward bearing of edge k
+const UNIT_CORNER = Array.from({ length: SIDES }, (_, k) => {
+  const a = Math.PI / 2 + k * STEP
+  return [CIRCUM * Math.cos(a), CIRCUM * Math.sin(a)]
+})
+const EDGE_BEARING = Array.from({ length: SIDES }, (_, k) => Math.PI / 2 + (k + 0.5) * STEP)
+const edgeNo = (e) => ((e % SIDES) + SIDES) % SIDES
+
+/** absolute bearing of edge e's outward normal */
+export function edgeNormalAngle(tile, e) { return tile.th + EDGE_BEARING[edgeNo(e)] }
+/** a point `r` out from the tile centre along one of its edge bearings */
+function polarPoint(tile, r, e) {
+  const a = edgeNormalAngle(tile, e)
+  return { x: tile.cx + r * Math.cos(a), y: tile.cy + r * Math.sin(a) }
 }
+export function edgeMidpoint(tile, e) { return polarPoint(tile, APOTHEM, e) }
+/** the five corners: canonical table rotated by th, carried to (cx, cy) */
 export function vertices(tile) {
-  const out = []
-  for (let k = 0; k < 5; k++) {
-    const a = tile.th + Math.PI / 2 + k * STEP
-    out.push({ x: tile.cx + CIRCUM * Math.cos(a), y: tile.cy + CIRCUM * Math.sin(a) })
-  }
-  return out
+  const c = Math.cos(tile.th), s = Math.sin(tile.th)
+  return UNIT_CORNER.map(([x, y]) => ({ x: tile.cx + c * x - s * y, y: tile.cy + s * x + c * y }))
 }
 
-/** the pose a child takes when attached across the parent's edge e —
- *  the child's edge 0 becomes the shared edge (its normal faces the parent) */
+/** The pose that mates a new tile's edge `ce` onto `parent`'s edge `e`, the new
+ *  tile on the far side. Solved from two constraints: the child centre lies one
+ *  apothem beyond the shared edge's midpoint along the parent's normal, and the
+ *  child's edge `ce` must bear exactly back at the parent (normal + π). */
 export function attachPose(parent, e, ce = 0) {
   const n = edgeNormalAngle(parent, e)
+  const m = edgeMidpoint(parent, e)
   return {
-    cx: parent.cx + 2 * APOTHEM * Math.cos(n),
-    cy: parent.cy + 2 * APOTHEM * Math.sin(n),
-    th: n + Math.PI / 2 - Math.PI / 5 - ce * STEP,  // ce = child's mating edge (0 = canonical). A flush contact needs BOTH edges to be reproduced exactly — proved 25/25 flush + reversible.
+    cx: m.x + APOTHEM * Math.cos(n),
+    cy: m.y + APOTHEM * Math.sin(n),
+    th: n + Math.PI - EDGE_BEARING[edgeNo(ce)],
   }
 }
 
-/** SAT polygon overlap for two pentagons — the GHOST VALIDITY oracle.
- *  Flush edge-sharing (distance exactly 2a) is TOUCHING, not overlap: we shrink
- *  each pentagon a hair (EPS_SHRINK) so legal adjacency never reads as illegal. */
-const EPS_SHRINK = 1e-4
-function axes(vs) {
-  const out = []
-  for (let i = 0; i < vs.length; i++) {
-    const a = vs[i], b = vs[(i + 1) % vs.length]
-    const nx = -(b.y - a.y), ny = b.x - a.x
-    const L = Math.hypot(nx, ny)
-    out.push({ x: nx / L, y: ny / L })
-  }
-  return out
+/** Do two tiles share interior area? Mated neighbours TOUCH along an edge and
+ *  must read false, so the exact test runs on tiles a hair under full size.
+ *  Three stages: circumcircles apart → false; incircles crossing → true;
+ *  otherwise exact convex geometry — a corner of one strictly inside the
+ *  other, or a pair of edges properly crossing. */
+const SHRINK = 1 - 1e-4
+const TOUCH = 2 * APOTHEM * (1 - SHRINK)
+function insetCorners(tile) {
+  return vertices(tile).map(v => ({ x: tile.cx + (v.x - tile.cx) * SHRINK, y: tile.cy + (v.y - tile.cy) * SHRINK }))
 }
-function shrunk(tile) {
-  const vs = vertices(tile)
-  return vs.map(v => ({ x: v.x + (tile.cx - v.x) * EPS_SHRINK, y: v.y + (tile.cy - v.y) * EPS_SHRINK }))
-}
-export function overlaps(t1, t2) {
-  if (Math.hypot(t1.cx - t2.cx, t1.cy - t2.cy) > 2 * CIRCUM) return false
-  const v1 = shrunk(t1), v2 = shrunk(t2)
-  for (const ax of [...axes(v1), ...axes(v2)]) {
-    let min1 = Infinity, max1 = -Infinity, min2 = Infinity, max2 = -Infinity
-    for (const v of v1) { const p = v.x * ax.x + v.y * ax.y; if (p < min1) min1 = p; if (p > max1) max1 = p }
-    for (const v of v2) { const p = v.x * ax.x + v.y * ax.y; if (p < min2) min2 = p; if (p > max2) max2 = p }
-    if (max1 < min2 || max2 < min1) return false
-  }
+const sideOf = (a, b, p) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+function strictlyInside(p, poly) {
+  for (let i = 0; i < poly.length; i++) if (sideOf(poly[i], poly[(i + 1) % poly.length], p) <= 0) return false
   return true
 }
-
-/** Build tile poses from a design tree. Design: [{parent, edge, part}] — tile 0
- *  is the base (pose 0,0,0); every later entry attaches to an EXISTING tile.
- *  Returns { tiles, rejected } — a placement whose ghost would overlap ANY
- *  existing tile is rejected (Galen: "if ghost would overlap … no ghost"). */
-export function layout(design) {
-  const tiles = [{ cx: 0, cy: 0, th: 0, part: design[0]?.part ?? 'hull', parent: -1, edge: -1 }]
-  const rejected = []
-  for (let i = 1; i < design.length; i++) {
-    const d = design[i]
-    const parent = tiles[d.parent]
-    if (!parent) { rejected.push({ i, why: 'no parent' }); continue }
-    const pose = attachPose(parent, d.edge, d.ce || 0)
-    let bad = false
-    for (const t of tiles) { if (overlaps(pose, t)) { bad = true; break } }
-    if (bad) { rejected.push({ i, why: 'overlap' }); continue }
-    tiles.push({ ...pose, part: d.part ?? 'hull', parent: d.parent, edge: d.edge })
+function segmentsCross(a, b, c, d) {
+  const s1 = sideOf(a, b, c), s2 = sideOf(a, b, d), s3 = sideOf(c, d, a), s4 = sideOf(c, d, b)
+  return s1 * s2 < 0 && s3 * s4 < 0
+}
+export function overlaps(t1, t2) {
+  const d = Math.hypot(t1.cx - t2.cx, t1.cy - t2.cy)
+  if (d > 2 * CIRCUM) return false
+  if (d < 2 * APOTHEM - TOUCH) return true
+  const A = insetCorners(t1), B = insetCorners(t2)
+  if (A.some(p => strictlyInside(p, B)) || B.some(p => strictlyInside(p, A))) return true
+  for (let i = 0; i < SIDES; i++) for (let j = 0; j < SIDES; j++) {
+    if (segmentsCross(A[i], A[(i + 1) % SIDES], B[j], B[(j + 1) % SIDES])) return true
   }
+  return false
+}
+/** true when `pose` overlaps none of `tiles` */
+function fitsAmong(pose, tiles) { return !tiles.some(t => overlaps(pose, t)) }
+
+/** Tile poses from a design tree. Design: [{parent, edge, part, ce?}] — entry
+ *  0 is the base at the origin; each later entry mates onto an already-laid
+ *  tile. Folds the design into { tiles, rejected }: a placement that would
+ *  overlap anything already laid is refused, never nudged. */
+export function layout(design) {
+  const rejected = []
+  const tiles = design.slice(1).reduce((laid, d, k) => {
+    const onto = laid[d.parent]
+    const pose = onto && attachPose(onto, d.edge, d.ce || 0)
+    const why = !onto ? 'no parent' : fitsAmong(pose, laid) ? null : 'overlap'
+    if (why) rejected.push({ i: k + 1, why })
+    else laid.push({ ...pose, part: d.part ?? 'hull', parent: d.parent, edge: d.edge })
+    return laid
+  }, [{ cx: 0, cy: 0, th: 0, part: design[0]?.part ?? 'hull', parent: -1, edge: -1 }])
   return { tiles, rejected }
 }
 
-/** All edge contacts — parent links AND re-touch (a chain curled back flush).
+// ── spatial index: points on a coarse grid, queried with their 3×3 neighbours
+//    so a point straddling a cell boundary is never missed ───────────────────
+const CELL = 1e-3
+function gridIndex() {
+  const cells = new Map()
+  const cellOf = (x, y) => Math.round(x / CELL) + '|' + Math.round(y / CELL)
+  return {
+    add(x, y, item) { const k = cellOf(x, y); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(item) },
+    near(x, y, eps, accept) {
+      const gx = Math.round(x / CELL), gy = Math.round(y / CELL)
+      const out = []
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        for (const it of cells.get((gx + dx) + '|' + (gy + dy)) || []) {
+          if (accept(it) && Math.hypot(it.x - x, it.y - y) < eps) out.push(it)
+        }
+      }
+      return out
+    },
+  }
+}
+/** every edge of every tile, with its midpoint, indexed */
+function edgeTable(tiles) {
+  const index = gridIndex()
+  const edges = []
+  tiles.forEach((t, i) => {
+    for (let e = 0; e < SIDES; e++) {
+      const m = edgeMidpoint(t, e)
+      const rec = { i, e, x: m.x, y: m.y }
+      edges.push(rec)
+      index.add(m.x, m.y, rec)
+    }
+  })
+  const mates = (rec, eps) => index.near(rec.x, rec.y, eps, o => o.i !== rec.i)
+  return { edges, mates }
+}
+
+/** Edge contacts — parent links AND re-touches (a chain curled back flush).
  *  Two edges are in contact when their midpoints coincide. */
 export function contacts(tiles, eps = 1e-6) {
+  const tol = Math.max(eps, 1e-3)
+  const { edges, mates } = edgeTable(tiles)
   const out = []
-  for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
-    if (Math.hypot(tiles[i].cx - tiles[j].cx, tiles[i].cy - tiles[j].cy) > 2 * APOTHEM + 0.01) continue
-    for (let ei = 0; ei < 5; ei++) for (let ej = 0; ej < 5; ej++) {
-      const mi = edgeMidpoint(tiles[i], ei), mj = edgeMidpoint(tiles[j], ej)
-      if (Math.hypot(mi.x - mj.x, mi.y - mj.y) < Math.max(eps, 1e-3)) {
-        out.push({ i, j, ei, ej, retouch: !(tiles[j].parent === i && tiles[j].edge === ei) && !(tiles[i].parent === j && tiles[i].edge === ej) })
-      }
-    }
+  for (const a of edges) for (const b of mates(a, tol)) {
+    if (b.i < a.i) continue                                  // each pair once, from the lower tile
+    const parental = (tiles[b.i].parent === a.i && tiles[b.i].edge === a.e) || (tiles[a.i].parent === b.i && tiles[a.i].edge === b.e)
+    out.push({ i: a.i, j: b.i, ei: a.e, ej: b.e, retouch: !parental })
   }
-  return out
+  return out.sort((p, q) => p.i - q.i || p.j - q.j || p.ei - q.ei || p.ej - q.ej)
 }
 
-/** Free edges: not in any contact. Each carries its ghost pose + whether the
- *  ghost is LEGAL (the designer shows a ghost) or blocked (maybe a void). */
+/** Free edges: unmated. Each carries the ghost pose a new tile would take there
+ *  and whether that ghost is LEGAL (fits) or blocked. */
 export function freeEdges(tiles) {
-  const used = new Set()
-  for (const c of contacts(tiles)) { used.add(c.i + ':' + c.ei); used.add(c.j + ':' + c.ej) }
+  const { edges, mates } = edgeTable(tiles)
   const out = []
-  for (let i = 0; i < tiles.length; i++) for (let e = 0; e < 5; e++) {
-    if (used.has(i + ':' + e)) continue
-    const ghost = attachPose(tiles[i], e)
-    let legal = true
-    for (const t of tiles) { if (overlaps(ghost, t)) { legal = false; break } }
-    out.push({ i, e, ghost, legal })
+  for (const r of edges) {
+    if (mates(r, 1e-3).length) continue
+    const ghost = attachPose(tiles[r.i], r.e)
+    out.push({ i: r.i, e: r.e, ghost, legal: fitsAmong(ghost, tiles) })
   }
   return out
 }
 
-/** VOIDS — the diamonds. Pentagon frustration is ANGULAR: where tile corners
- *  meet at one point, each contributes its 108° interior angle. Three tiles
- *  cover 324°, leaving a 36° wedge NOTHING can ever fill (a pentagon needs
- *  108°). Those unfillable pockets are the special build slots. Returns
- *  [{x, y, gapDeg, tiles: [i…], dir}] — dir = unit vector into the gap. */
+/** VOIDS — the unfillable wedges. Where tiles meet at one shared corner each
+ *  takes 108° of it; the leftover (360 − 108·n) is a void when it is too narrow
+ *  for another tile (< 108°). The void's direction is found explicitly: sort
+ *  the covering tiles' centre bearings around the corner and bisect the widest
+ *  empty arc. Returns [{x, y, gapDeg, tiles: [i…], dir}], dir a unit vector. */
 export function voids(tiles, eps = 1e-3) {
-  // cluster coincident vertices across tiles
-  const pts = []
-  tiles.forEach((t, i) => vertices(t).forEach((v, k) => pts.push({ i, k, x: v.x, y: v.y })))
-  const used = new Set()
+  const index = gridIndex()
+  const corners = []
+  tiles.forEach((t, i) => vertices(t).forEach((v, k) => {
+    const rec = { i, k, x: v.x, y: v.y, seen: false }
+    corners.push(rec)
+    index.add(v.x, v.y, rec)
+  }))
   const out = []
-  for (let a = 0; a < pts.length; a++) {
-    if (used.has(a)) continue
-    const cluster = [pts[a]]; used.add(a)
-    for (let b = a + 1; b < pts.length; b++) {
-      if (used.has(b)) continue
-      if (Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y) < eps) { cluster.push(pts[b]); used.add(b) }
-    }
-    const distinct = [...new Set(cluster.map(p => p.i))]
-    if (distinct.length < 2) continue
+  for (const c of corners) {
+    if (c.seen) continue
+    const cluster = index.near(c.x, c.y, eps, o => !o.seen)
+    for (const o of cluster) o.seen = true
+    const covering = [...new Set(cluster.map(o => o.i))].sort((p, q) => p - q)
+    if (covering.length < 2) continue
     const gapDeg = 360 - 108 * cluster.length
-    if (gapDeg <= 1 || gapDeg >= 108) continue        // ≥108° could hold a pentagon — not a sealed void
-    // the gap opens opposite the average direction of the covering tiles
-    let dx = 0, dy = 0
-    for (const p of cluster) { const t = tiles[p.i]; dx += t.cx - p.x; dy += t.cy - p.y }
-    const L = Math.hypot(dx, dy) || 1
-    const dir = { x: -dx / L, y: -dy / L }
-    out.push({ x: pts[a].x + dir.x * 0.22, y: pts[a].y + dir.y * 0.22, gapDeg, tiles: distinct, dir })
+    if (gapDeg <= 1 || gapDeg >= 108) continue               // ≥108° could seat a tile — not a sealed void
+    const bearings = cluster.map(o => Math.atan2(tiles[o.i].cy - c.y, tiles[o.i].cx - c.x)).sort((p, q) => p - q)
+    let widest = -1, open = 0
+    for (let b = 0; b < bearings.length; b++) {
+      const from = bearings[b], to = b + 1 < bearings.length ? bearings[b + 1] : bearings[0] + 2 * Math.PI
+      if (to - from > widest) { widest = to - from; open = (from + to) / 2 }
+    }
+    const dir = { x: Math.cos(open), y: Math.sin(open) }
+    out.push({ x: c.x + dir.x * 0.22, y: c.y + dir.y * 0.22, gapDeg, tiles: covering, dir })
   }
   return out
 }

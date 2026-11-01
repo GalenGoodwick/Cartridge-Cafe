@@ -38,6 +38,9 @@ DISPATCH = "if (SC==='designer'){" + designer.SRC + "}"
   PRELUDE, so `layout`, `freeEdges`, `voids`, `contacts`, `holes`, `classify`,
   `attachPose`, `vertices`, `overlaps`, `APOTHEM`, `CIRCUM` … are all in scope.
   These `.mjs` stay the single tested source of truth (`penta-core.test.mjs`).
+  The same bodies are GENERATED into `battle-engine.js` (its GEOMETRY marker
+  section, by `build-engine-v2.mjs`) and into `base/hook.js` (by
+  `base/build-base.mjs`); `test/penta-geometry.test.mjs` fails if either drifts.
 
 ## 2. PRELUDE provides (build.mjs owns this; modules just call it)
 

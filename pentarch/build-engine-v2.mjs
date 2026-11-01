@@ -6,6 +6,7 @@
 //   phys.step → flyStep · energy2.tick → powerTick · energy2.budget → powerBudget
 //   turret.fire → mountFire · turret.cool → mountCool · turret.wrap → wrapAng
 //   turret's freeEdges import → freeEdgesV2 (derived from ENG's own contacts())
+// Also regenerates the GEOMETRY section (penta-core + penta-holes) between its markers.
 // Run: node pentarch/build-engine-v2.mjs
 import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -68,6 +69,15 @@ ${route}
 `
 
 let eng = readFileSync(new URL('./battle-engine.js', import.meta.url), 'utf8')
+// GEOMETRY: penta-core + penta-holes inlined from the tested modules (between markers; regenerated every run)
+const geometry = `// ═══════════════ GEOMETRY (generated from penta-core.mjs + penta-holes.mjs — edit THOSE + rerun build-engine-v2) ═══════════════
+${strip(read('./penta-core.mjs'))}
+${strip(read('./penta-holes.mjs'))}
+// ═══════════════ end GEOMETRY ═══════════════
+`
+const geoRe = /\/\/ ═+ GEOMETRY \([\s\S]*?\/\/ ═+ end GEOMETRY ═+\n/
+if (!geoRe.test(eng)) throw new Error('GEOMETRY markers not found in battle-engine.js')
+eng = eng.replace(geoRe, geometry)
 // remove a previous V2 section (regeneration)
 eng = eng.replace(/\n\/\/ ═+ V2 SHIP SYSTEMS[\s\S]*?\/\/ ═+ end V2 ═+\n/, '\n')
 // strip previous V2 names from the return line, then re-add

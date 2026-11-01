@@ -1,24 +1,6 @@
-  // ── penta math (inlined from the tested core) ──
-  const AP = 1 / (2 * Math.tan(Math.PI / 5)), CR = 1 / (2 * Math.sin(Math.PI / 5)), ST = 2 * Math.PI / 5
-  const ena = (t, e) => t.th + Math.PI / 2 + (e + 0.5) * ST
-  // ce = which of the CHILD's edges mates onto the parent edge (0 = canonical, today's
-  // behaviour). A flush contact is only fully described by BOTH edges — recording just
-  // the parent edge scrambled re-rooted subtrees after route-aware deletes.
-  const attach = (t, e, ce = 0) => { const n = ena(t, e); return { cx: t.cx + 2 * AP * Math.cos(n), cy: t.cy + 2 * AP * Math.sin(n), th: n + Math.PI / 2 - Math.PI / 5 - ce * ST } }
-  const verts = (t) => { const o = []; for (let k = 0; k < 5; k++) { const a = t.th + Math.PI / 2 + k * ST; o.push({ x: t.cx + CR * Math.cos(a), y: t.cy + CR * Math.sin(a) }) } return o }
-  const shrink = (t) => verts(t).map(v => ({ x: v.x + (t.cx - v.x) * 1e-4, y: v.y + (t.cy - v.y) * 1e-4 }))
-  const axes = (vs) => { const o = []; for (let i = 0; i < 5; i++) { const a = vs[i], b = vs[(i + 1) % 5]; const nx = -(b.y - a.y), ny = b.x - a.x, L = Math.hypot(nx, ny); o.push({ x: nx / L, y: ny / L }) } return o }
-  const overlaps = (t1, t2) => {
-    if (Math.hypot(t1.cx - t2.cx, t1.cy - t2.cy) > 2 * CR) return false
-    const v1 = shrink(t1), v2 = shrink(t2)
-    for (const ax of axes(v1).concat(axes(v2))) {
-      let a1 = Infinity, b1 = -Infinity, a2 = Infinity, b2 = -Infinity
-      for (const v of v1) { const p = v.x * ax.x + v.y * ax.y; if (p < a1) a1 = p; if (p > b1) b1 = p }
-      for (const v of v2) { const p = v.x * ax.x + v.y * ax.y; if (p < a2) a2 = p; if (p > b2) b2 = p }
-      if (b1 < a2 || b2 < a1) return false
-    }
-    return true
-  }
+  // ── penta math: short aliases onto the inlined penta-core (build-base.mjs emits it just above) ──
+  const AP = APOTHEM, CR = CIRCUM, ST = STEP
+  const ena = edgeNormalAngle, attach = attachPose, verts = vertices
   // ── THE MODULE CATALOGUE (parts.mjs, inlined) — the single source of truth for
   //    what a tile IS: cost, battle durability, design-stat, colour, category.
   //    The designer + the battle both read this. NAME/COST/STAT below are thin
